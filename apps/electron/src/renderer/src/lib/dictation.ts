@@ -4,6 +4,7 @@ import {
   getClient,
   getServerToken,
   initApiBase,
+  refreshApiBase,
 } from "@renderer/lib/api";
 import { LevelMeter } from "@renderer/lib/level-meter";
 import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
@@ -16,7 +17,7 @@ export interface DictationCallbacks {
   onPhase: (phase: DictationPhase) => void;
   onPartial: (text: string) => void;
   onComposerText: (text: string) => void;
-  onError: (message: string) => void;
+  onError: (message: string, code?: string) => void;
   onLevel?: (level: number) => void;
 }
 
@@ -25,11 +26,31 @@ export interface DictationOptions {
   outputMode: () => "paste" | "clipboard";
   soundEnabled: () => boolean;
   audioPlaybackMode: () => "off" | "duck" | "pause";
+  micDeviceId?: () => string | null;
 }
 
 type TonePreset = "start" | "stop";
 
 const TRANSCRIBE_TIMEOUT_MS = 15_000;
+
+const ERROR_COPY: Record<string, string> = {
+  cloud_auth_required: "Sign in to Freestyle to dictate",
+  usage_exceeded: "You've reached your Freestyle usage limit",
+  provider_unavailable: "Transcription is temporarily unavailable",
+};
+
+function describeError(message: string, code?: string): string {
+  return (code && ERROR_COPY[code]) || message;
+}
+
+function startErrorMessage(err: unknown): string {
+  if (err instanceof Error) {
+    if (err.name === "NotAllowedError") return "Microphone access is off";
+    if (err.name === "NotFoundError") return "No microphone found";
+    return err.message;
+  }
+  return "Could not start recording";
+}
 
 const TONE_PRESETS: Record<TonePreset, { freq: number; ms: number }> = {
   start: { freq: 347, ms: 125 },
@@ -118,17 +139,13 @@ export class DictationController {
       onPartial: (text) => this.callbacks.onPartial(text),
       onFinal: (text) => {
         if (!this.settleFinal()) return;
-        this.setPhase("idle");
+        if (!this.active) this.setPhase("idle");
         this.enqueue(text);
       },
-      onError: (message) => {
-        // A streaming transport can report an error after the watchdog has
-        // already recovered the recording through the REST path. Treat that
-        // as stale just like a late final: the user has their transcript and
-        // should not see a spurious failure card.
-        if (!this.settleFinal()) return;
-        this.setPhase("idle");
-        this.callbacks.onError(message);
+      onError: (message, code) => {
+        if (!this.active && this.awaitingFinals === 0) return;
+        this.abort();
+        this.callbacks.onError(describeError(message, code), code);
       },
       onReady: () => {},
       onConfig: () => {},
@@ -305,6 +322,16 @@ export class DictationController {
     return this.active;
   }
 
+  async reconnectServer(): Promise<void> {
+    await refreshApiBase();
+    if (this.streamer && this.streamer.baseUrl === getApiBase()) return;
+    this.cancel();
+    this.streamer?.destroy();
+    this.streamer = null;
+    this.ensureStreamer();
+    void refreshBeforeOutputHookPresence();
+  }
+
   async start(): Promise<void> {
     if (this.active) return;
     this.active = true;
@@ -321,7 +348,9 @@ export class DictationController {
       await initApiBase();
       const streamer = this.ensureStreamer();
       void this.captureAppContext();
-      const stream = await this.recorder.acquireStream();
+      const stream = await this.recorder.acquireStream(
+        this.options.micDeviceId?.() ?? null,
+      );
       if (session !== this.session) return;
       if (!this.active) {
         this.recorder.releaseStream();
@@ -345,9 +374,7 @@ export class DictationController {
       this.setPhase("idle");
       this.meter?.detach();
       void this.restoreAudio();
-      this.callbacks.onError(
-        err instanceof Error ? err.message : "Could not start recording",
-      );
+      this.callbacks.onError(startErrorMessage(err));
     }
   }
 
@@ -379,17 +406,21 @@ export class DictationController {
     void this.drain();
   }
 
-  cancel(): void {
+  private abort(): void {
     this.active = false;
     this.capturing = false;
     this.awaitingFinals = 0;
     this.clearTranscribeWatchdog();
     this.setPhase("idle");
-    this.pending = [];
     this.streamer?.cancel();
     this.meter?.detach();
     this.recorder.releaseStream();
     void this.restoreAudio();
+  }
+
+  cancel(): void {
+    this.abort();
+    this.pending = [];
   }
 
   destroy(): void {

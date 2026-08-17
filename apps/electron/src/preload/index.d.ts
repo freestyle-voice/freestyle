@@ -1,6 +1,7 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
 import type { CompanionForm, CompanionState } from "../shared/companion";
+import type { DictationPrefs } from "../shared/dictation-prefs";
 import type {
   RemixContextResult,
   RemixCopyResult,
@@ -21,6 +22,7 @@ declare global {
       getServerPort: () => Promise<number>;
       getServerUrl: () => Promise<string>;
       getServerToken: () => Promise<string>;
+      onServerChanged: (callback: () => void) => () => void;
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
       onTalkDown: (cb: () => void) => () => void;
@@ -29,6 +31,8 @@ declare global {
       onHotkeyUp: (callback: () => void) => () => void;
       onDictationCancel: (callback: () => void) => () => void;
       setDictationPhase: (phase: "idle" | "recording" | "transcribing") => void;
+      onHotkeyError: (callback: (message: string) => void) => () => void;
+      setHotkeyMode: (mode: "hold" | "toggle") => void;
       reloadRemixHotkey: () => void;
       remixGetContext: () => Promise<RemixContextResult>;
       remixReadDocument: () => Promise<RemixReadDocumentResult>;
@@ -52,19 +56,9 @@ declare global {
           text: string;
         }) => void,
       ) => () => void;
-      dictationPrefs: () => Promise<{
-        destination: "cursor" | "composer";
-        outputMode: "paste" | "clipboard";
-        soundEnabled: boolean;
-        audioPlaybackMode: "off" | "duck" | "pause";
-      }>;
+      dictationPrefs: () => Promise<DictationPrefs>;
       onDictationPrefs: (
-        callback: (prefs: {
-          destination: "cursor" | "composer";
-          outputMode: "paste" | "clipboard";
-          soundEnabled: boolean;
-          audioPlaybackMode: "off" | "duck" | "pause";
-        }) => void,
+        callback: (prefs: DictationPrefs) => void,
       ) => () => void;
       reloadDictationPrefs: () => void;
       panelClose: () => void;

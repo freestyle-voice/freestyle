@@ -2,10 +2,7 @@ import "../overlay.css";
 
 import { Spark, sparkScaleFor } from "@renderer/components/spark";
 import { initApiBase } from "@renderer/lib/api";
-import {
-  DictationController,
-  type DictationDestination,
-} from "@renderer/lib/dictation";
+import { DictationController } from "@renderer/lib/dictation";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { SPRITES } from "@renderer/sprites/registry";
 import { SpriteStage } from "@renderer/sprites/stage";
@@ -15,6 +12,7 @@ import {
   type CompanionState,
   DEFAULT_COMPANION_FORM,
 } from "@shared/companion";
+import type { DictationPrefs } from "@shared/dictation-prefs";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -22,9 +20,11 @@ import { createRoot } from "react-dom/client";
 const SPARK_HOT_RECT = { x: 18, y: 190, width: 52, height: 52 };
 
 export interface BubbleState {
-  phase: "recording" | "transcribing";
+  phase: "recording" | "transcribing" | "error";
   partial: string;
 }
+
+const ERROR_BUBBLE_MS = 4000;
 
 function useDictation(
   setState: (s: CompanionState) => void,
@@ -32,24 +32,41 @@ function useDictation(
   levelRef: React.RefObject<HTMLSpanElement | null>,
   setBubble: (b: BubbleState | null) => void,
   bubbleLevelRef: React.RefObject<HTMLDivElement | null>,
+  busyRef: React.RefObject<boolean>,
 ): void {
   useEffect(() => {
-    let destination: DictationDestination = "cursor";
-    let outputMode: "paste" | "clipboard" = "paste";
-    let soundEnabled = true;
-    let audioPlaybackMode: "off" | "duck" | "pause" = "off";
+    let prefs: DictationPrefs = {
+      destination: "cursor",
+      outputMode: "paste",
+      soundEnabled: true,
+      audioPlaybackMode: "off",
+      micDeviceId: null,
+    };
     let talkSession = false;
+    let errorTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const showError = (message: string): void => {
+      if (errorTimer) clearTimeout(errorTimer);
+      setBubble({ phase: "error", partial: message });
+      errorTimer = setTimeout(() => {
+        errorTimer = null;
+        setBubble(null);
+      }, ERROR_BUBBLE_MS);
+    };
 
     const controller = new DictationController(
       {
         onPhase: (phase) => {
           window.api.setDictationPhase(phase);
+          busyRef.current = phase !== "idle";
           setState(phase === "idle" ? "idle" : "working");
           setListening(phase === "recording");
-          if (phase === "idle") {
-            setBubble(null);
-          } else {
+          if (phase !== "idle") {
+            if (errorTimer) clearTimeout(errorTimer);
+            errorTimer = null;
             setBubble({ phase, partial: "" });
+          } else if (!errorTimer) {
+            setBubble(null);
           }
         },
         onLevel: (level) => {
@@ -64,7 +81,7 @@ function useDictation(
         },
         onPartial: (text) => {
           setBubble({ phase: "recording", partial: text });
-          if (talkSession || destination === "composer")
+          if (talkSession || prefs.destination === "composer")
             window.api.panelDictationPartial(text);
         },
         onComposerText: (text) => {
@@ -74,32 +91,28 @@ function useDictation(
         },
         onError: (message) => {
           talkSession = false;
+          showError(message);
           window.api.panelDictationError(message);
         },
       },
       {
-        destination: () => (talkSession ? "composer" : destination),
-        outputMode: () => outputMode,
-        soundEnabled: () => soundEnabled,
-        audioPlaybackMode: () => audioPlaybackMode,
+        destination: () => (talkSession ? "composer" : prefs.destination),
+        outputMode: () => prefs.outputMode,
+        soundEnabled: () => prefs.soundEnabled,
+        audioPlaybackMode: () => prefs.audioPlaybackMode,
+        micDeviceId: () => prefs.micDeviceId,
       },
     );
 
     void window.api
       .dictationPrefs()
-      .then((prefs) => {
-        destination = prefs.destination;
-        outputMode = prefs.outputMode;
-        soundEnabled = prefs.soundEnabled;
-        audioPlaybackMode = prefs.audioPlaybackMode;
+      .then((next) => {
+        prefs = next;
       })
       .catch(() => {});
 
-    const offPrefs = window.api.onDictationPrefs((prefs) => {
-      destination = prefs.destination;
-      outputMode = prefs.outputMode;
-      soundEnabled = prefs.soundEnabled;
-      audioPlaybackMode = prefs.audioPlaybackMode;
+    const offPrefs = window.api.onDictationPrefs((next) => {
+      prefs = next;
     });
     const offDown = window.api.onHotkeyDown(() => {
       // Key-repeat on the held key re-fires this; a live session must not be
@@ -122,7 +135,12 @@ function useDictation(
       if (!controller.isActive()) void controller.start();
     });
     const offTalkUp = window.api.onTalkUp(() => controller.stop());
+    const offServer = window.api.onServerChanged(() => {
+      void controller.reconnectServer();
+    });
     return () => {
+      offServer?.();
+      if (errorTimer) clearTimeout(errorTimer);
       offPrefs?.();
       offDown?.();
       offUp?.();
@@ -131,7 +149,7 @@ function useDictation(
       offTalkUp?.();
       controller.destroy();
     };
-  }, [setState, setListening, levelRef, setBubble, bubbleLevelRef]);
+  }, [setState, setListening, levelRef, setBubble, bubbleLevelRef, busyRef]);
 }
 
 const BUBBLE_BARS = [0.6, 1, 0.7];
@@ -153,7 +171,9 @@ function SparkBubble({
       : "…";
   return (
     <div className="bubble" ref={levelHostRef}>
-      <div className="bubble-chip">
+      <div
+        className={`bubble-chip${bubble.phase === "error" ? " is-error" : ""}`}
+      >
         <div className="bubble-bars">
           {BUBBLE_BARS.map((weight, i) => (
             <span
@@ -265,6 +285,16 @@ function SparkStage({
         .bubble-bar.is-paused {
           background: #8e7f5f;
         }
+        .bubble-chip.is-error {
+          background: rgba(251, 233, 231, 0.95);
+          border-color: rgba(214, 120, 108, 0.8);
+        }
+        .bubble-chip.is-error .bubble-bar {
+          background: #b42318;
+        }
+        .bubble-chip.is-error .bubble-text {
+          color: #7a2016;
+        }
         .bubble-text {
           font-size: 11px;
           line-height: 1.35;
@@ -314,8 +344,16 @@ function CompanionRoot(): React.JSX.Element | null {
   const [bubble, setBubble] = useState<BubbleState | null>(null);
   const levelRef = useRef<HTMLSpanElement>(null);
   const bubbleLevelRef = useRef<HTMLDivElement>(null);
+  const busyRef = useRef(false);
 
-  useDictation(setState, setListening, levelRef, setBubble, bubbleLevelRef);
+  useDictation(
+    setState,
+    setListening,
+    levelRef,
+    setBubble,
+    bubbleLevelRef,
+    busyRef,
+  );
   (window as unknown as Record<string, unknown>).__companionTest = {
     setBubble,
   };
@@ -326,7 +364,10 @@ function CompanionRoot(): React.JSX.Element | null {
       .then(setForm)
       .catch(() => setForm(DEFAULT_COMPANION_FORM));
     const offForm = window.api.onCompanionForm((next) => setForm(next));
-    const offState = window.api.onCompanionState((next) => setState(next));
+    const offState = window.api.onCompanionState((next) => {
+      if (next === "idle" && busyRef.current) return;
+      setState(next);
+    });
     const offHot = window.api.onCompanionHotEnter(() => {
       window.api.companionHover();
     });

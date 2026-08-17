@@ -157,12 +157,33 @@ export class FreestyleCloudTranscriptionProvider
       }
     });
 
-    ws.on("error", (err) => {
-      if (!closed) {
+    let rejected = false;
+    ws.on("unexpected-response", (_req, res) => {
+      rejected = true;
+      const status = res.statusCode ?? 0;
+      if (status === 401 || status === 403) {
         callbacks.onError(
-          err instanceof Error ? err.message : "Cloud WebSocket error",
+          "Sign in to Freestyle Transcribe",
+          "cloud_auth_required",
+        );
+      } else if (status === 429) {
+        callbacks.onError(
+          "Freestyle Cloud usage limit reached",
+          "usage_exceeded",
+        );
+      } else {
+        callbacks.onError(
+          `Freestyle Cloud rejected the connection (${status})`,
         );
       }
+      ws.terminate();
+    });
+
+    ws.on("error", (err) => {
+      if (closed || rejected) return;
+      callbacks.onError(
+        err instanceof Error ? err.message : "Cloud WebSocket error",
+      );
     });
 
     ws.on("close", () => {

@@ -98,6 +98,7 @@ import {
   resolveDictationWindowDisplays,
   resolvePanelCompanionDisplays,
 } from "../shared/companion-position";
+import type { DictationPrefs } from "../shared/dictation-prefs";
 import {
   findFocusedSwayNode,
   getSwayFocusedWindowBounds,
@@ -1090,6 +1091,7 @@ async function deliverOutput(
 
 // Per-request timeout for main-process API calls to the server.
 const SERVER_SETTING_TIMEOUT_MS = 5000;
+const EXTERNAL_SERVER_POLL_MS = 30_000;
 // How long boot waits for the server to answer before registering the hotkey
 // with whatever it can read (falling back to the default accelerator).
 const SERVER_READY_TIMEOUT_MS = 5000;
@@ -1944,8 +1946,10 @@ app.whenReady().then(async () => {
     startFreestyleServer({ port, host: "127.0.0.1" })
       .then(({ server, port: boundPort }) => {
         httpServer = server;
+        const changed = serverPort !== boundPort;
         serverPort = boundPort;
         log.info(`Server running on http://localhost:${boundPort}`);
+        if (changed) broadcastServerChanged();
       })
       .catch((err: NodeJS.ErrnoException) => {
         if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
@@ -1968,30 +1972,40 @@ app.whenReady().then(async () => {
 
   if (existingServer) {
     serverPort = DEFAULT_PORT;
-    log.info(
+    log.warn(
       `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
     );
+    const watchdog = setInterval(async () => {
+      if (httpServer || getServerUrl()) {
+        clearInterval(watchdog);
+        return;
+      }
+      if (await probeServerHealth(`http://127.0.0.1:${DEFAULT_PORT}`, 1500))
+        return;
+      clearInterval(watchdog);
+      log.warn("Reused Freestyle server went away; starting our own.");
+      startServer(DEFAULT_PORT);
+    }, EXTERNAL_SERVER_POLL_MS);
+    watchdog.unref();
   } else {
     startServer(DEFAULT_PORT);
   }
 
-  if (readSettings().companionEnabled !== false) {
-    createCompanionWindow();
-    registerSummonShortcut();
-    capturePerson({
-      companion_form: companionFormSetting(),
-      launch_at_login: app.getLoginItemSettings().openAtLogin,
-    });
-    initNotificationWindow({
-      spriteForm: () => companionFormSetting(),
-      companionBounds: () => {
-        if (!companionWindow || companionWindow.isDestroyed()) return null;
-        const b = companionWindow.getBounds();
-        return { x: b.x, y: b.y, width: b.width };
-      },
-    });
-    startNotificationEvents();
-  }
+  createCompanionWindow();
+  registerSummonShortcut();
+  capturePerson({
+    companion_form: companionFormSetting(),
+    launch_at_login: app.getLoginItemSettings().openAtLogin,
+  });
+  initNotificationWindow({
+    spriteForm: () => companionFormSetting(),
+    companionBounds: () => {
+      if (!companionWindow || companionWindow.isDestroyed()) return null;
+      const b = companionWindow.getBounds();
+      return { x: b.x, y: b.y, width: b.width };
+    },
+  });
+  startNotificationEvents();
 
   // A signed-out launch surfaces the panel unprompted: the sign-in gate is
   // the whole product until there's a session, and a first-time user doesn't
@@ -3137,17 +3151,14 @@ function companionFormSetting(): CompanionForm {
   return parseCompanionForm(readSettings().companionForm as string | undefined);
 }
 
-function dictationPrefs(): {
-  destination: "cursor" | "composer";
-  outputMode: "paste" | "clipboard";
-  soundEnabled: boolean;
-  audioPlaybackMode: AudioPlaybackMode;
-} {
+function dictationPrefs(): DictationPrefs {
   let destination: "cursor" | "composer" = "cursor";
   let outputMode: "paste" | "clipboard" = "paste";
   let soundEnabled = true;
   let audioPlaybackMode: AudioPlaybackMode = "off";
+  let micDeviceId: string | null = null;
   try {
+    micDeviceId = readServerSetting(SETTINGS_KEYS.micDeviceId) || null;
     destination = parseDictationDestination(
       readServerSetting(SETTINGS_KEYS.dictationDestination),
     );
@@ -3161,7 +3172,13 @@ function dictationPrefs(): {
       audioPlaybackMode = mode;
     }
   } catch {}
-  return { destination, outputMode, soundEnabled, audioPlaybackMode };
+  return {
+    destination,
+    outputMode,
+    soundEnabled,
+    audioPlaybackMode,
+    micDeviceId,
+  };
 }
 
 export function broadcastDictationPrefs(): void {
@@ -3785,6 +3802,12 @@ function createCompanionWindow(): void {
     companionWindow = null;
   });
 
+  companionWindow.webContents.on("render-process-gone", (_event, details) => {
+    log.error(`Companion renderer gone (${details.reason}); recreating.`);
+    destroyCompanionWindow();
+    createCompanionWindow();
+  });
+
   companionWindow.once("ready-to-show", () => {
     companionWindow?.showInactive();
   });
@@ -4126,6 +4149,20 @@ function handleNativeHotkeyUp(): void {
   }
 }
 
+let lastHotkeyError: string | null = null;
+function reportHotkeyError(message: string): void {
+  hotkeyLog.error(message);
+  panelWindow?.webContents.send("hotkey:error", { message });
+  if (message === lastHotkeyError) return;
+  lastHotkeyError = message;
+  if (Notification.isSupported()) {
+    new Notification({
+      title: "Freestyle hotkey problem",
+      body: message,
+    }).show();
+  }
+}
+
 // Notify once per session when hold-to-talk degrades to toggle mode, so the
 // user isn't left wondering why holding the hotkey stopped working.
 let hotkeyDegradedNotified = false;
@@ -4236,7 +4273,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     // unregisterAll() drops every accelerator this app holds, including the
     // panel summon claimed at boot — re-claim it or it dies on the first
     // hotkey registration and never comes back within the session.
-    if (readSettings().companionEnabled !== false) registerSummonShortcut();
+    registerSummonShortcut();
 
     if (!hotkey) {
       // Unreachable server yields no map; registration falls back to the
@@ -4280,10 +4317,9 @@ async function registerHotkey(hotkey?: string): Promise<void> {
         if (registeredAccel) {
           notifyHotkeyDegraded(accel, nativeError);
         } else {
-          const errorPayload = {
-            message: `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Freestyle or pick a different combination in Settings.`,
-          };
-          panelWindow?.webContents.send("hotkey:error", errorPayload);
+          reportHotkeyError(
+            `The hotkey listener stopped working and "${accel}" could not be re-registered. Restart Freestyle or pick a different combination in Settings.`,
+          );
         }
       },
     });
@@ -4330,8 +4366,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
         ) {
           message = `Hotkey "${accel}" requires access to input devices. Run: sudo usermod -aG input $USER — then log out and back in.`;
         }
-        const errorPayload = { message };
-        panelWindow?.webContents.send("hotkey:error", errorPayload);
+        reportHotkeyError(message);
       }
     }
   } catch (err) {

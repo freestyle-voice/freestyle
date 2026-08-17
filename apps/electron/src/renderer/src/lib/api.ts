@@ -65,8 +65,8 @@ export async function initApiBase(): Promise<void> {
   // doesn't fire the server-URL/token/health probe twice in the same tick.
   if (!initPromise) {
     initPromise = refreshApiBase()
-      .then(() => {
-        initialized = true;
+      .then((healthy) => {
+        initialized = healthy;
       })
       .finally(() => {
         initPromise = null;

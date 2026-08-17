@@ -53,26 +53,4 @@ export function revertFreestyleCloudDefaults(): void {
        ON CONFLICT(key) DO UPDATE SET value = 'false', updated_at = datetime('now')`,
     ).run();
   }
-
-  const current = db
-    .prepare(
-      "SELECT provider FROM model_configs WHERE type = 'voice' AND is_default = 1 LIMIT 1",
-    )
-    .get() as { provider: string } | undefined;
-  if (!current || current.provider !== FREESTYLE_CLOUD_PROVIDER_ID) return;
-
-  db.prepare(
-    "UPDATE model_configs SET is_default = 0 WHERE type = 'voice'",
-  ).run();
-
-  const fallback = db
-    .prepare(
-      "SELECT id FROM model_configs WHERE type = 'voice' AND provider != ? ORDER BY created_at DESC LIMIT 1",
-    )
-    .get(FREESTYLE_CLOUD_PROVIDER_ID) as { id: number } | undefined;
-  if (!fallback) return;
-
-  db.prepare("UPDATE model_configs SET is_default = 1 WHERE id = ?").run(
-    fallback.id,
-  );
 }

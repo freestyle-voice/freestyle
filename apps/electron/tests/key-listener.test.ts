@@ -294,3 +294,29 @@ test("nextRightModifierLatch does not latch when a right token arrives after a l
   );
   expect(latch).toBeNull();
 });
+
+test("Fn held with a regular key is a chord, not a solo Fn press", async () => {
+  const { listener, events } = createFnListener();
+
+  listener.handleLine("FN_DOWN");
+  listener.handleLine("KEY_DOWN:Delete");
+  await wait(75);
+  listener.handleLine("FN_UP");
+  expect(events).toEqual([]);
+});
+
+test("compound hotkey releases when its key goes up while the modifier is held", () => {
+  const events: string[] = [];
+  const listener = new NativeKeyListener({
+    hotkey: "Alt+Space",
+    onKeyDown: () => events.push("down"),
+    onKeyUp: () => events.push("up"),
+  }) as unknown as LineHandler;
+
+  listener.handleLine("FLAGS:option");
+  listener.handleLine("KEY_DOWN:Space");
+  expect(events).toEqual(["down"]);
+
+  listener.handleLine("KEY_UP:Space");
+  expect(events).toEqual(["down", "up"]);
+});

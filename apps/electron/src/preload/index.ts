@@ -2,6 +2,7 @@ import { electronAPI } from "@electron-toolkit/preload";
 import { contextBridge, ipcRenderer } from "electron";
 import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
 import type { CompanionForm, CompanionState } from "../shared/companion";
+import type { DictationPrefs } from "../shared/dictation-prefs";
 import type {
   RemixContextResult,
   RemixCopyResult,
@@ -26,6 +27,11 @@ const api = {
   // Configured external server URL/token ("" = built-in local server / no auth).
   getServerUrl: (): Promise<string> => ipcRenderer.invoke("server:url"),
   getServerToken: (): Promise<string> => ipcRenderer.invoke("server:token"),
+  onServerChanged: (callback: () => void): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on("server:changed", handler);
+    return () => ipcRenderer.removeListener("server:changed", handler);
+  },
   // Reveal the diagnostic logs folder (freestyle.log) in the OS file manager.
   openLogsFolder: (): Promise<boolean> =>
     ipcRenderer.invoke("logs:open-folder"),
@@ -58,6 +64,16 @@ const api = {
   },
   setDictationPhase: (phase: "idle" | "recording" | "transcribing"): void =>
     ipcRenderer.send("dictation:state", phase),
+  onHotkeyError: (callback: (message: string) => void): (() => void) => {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      payload: { message: string },
+    ): void => callback(payload.message);
+    ipcRenderer.on("hotkey:error", handler);
+    return () => ipcRenderer.removeListener("hotkey:error", handler);
+  },
+  setHotkeyMode: (mode: "hold" | "toggle"): void =>
+    ipcRenderer.send("hotkey:set-mode", mode),
   // --- Remix ---
   reloadRemixHotkey: (): void => ipcRenderer.send("remix-hotkey:reload"),
   // --- Remix primitives (the agent's tools; workflow lives in its prompt) ---
@@ -101,27 +117,13 @@ const api = {
     ipcRenderer.on("panel:dictation", handler);
     return () => ipcRenderer.removeListener("panel:dictation", handler);
   },
-  dictationPrefs: (): Promise<{
-    destination: "cursor" | "composer";
-    outputMode: "paste" | "clipboard";
-    soundEnabled: boolean;
-    audioPlaybackMode: "off" | "duck" | "pause";
-  }> => ipcRenderer.invoke("dictation:prefs"),
+  dictationPrefs: (): Promise<DictationPrefs> =>
+    ipcRenderer.invoke("dictation:prefs"),
   onDictationPrefs: (
-    callback: (prefs: {
-      destination: "cursor" | "composer";
-      outputMode: "paste" | "clipboard";
-    }) => void,
+    callback: (prefs: DictationPrefs) => void,
   ): (() => void) => {
-    const handler = (
-      _e: unknown,
-      prefs: {
-        destination: "cursor" | "composer";
-        outputMode: "paste" | "clipboard";
-        soundEnabled: boolean;
-        audioPlaybackMode: "off" | "duck" | "pause";
-      },
-    ): void => callback(prefs);
+    const handler = (_e: unknown, prefs: DictationPrefs): void =>
+      callback(prefs);
     ipcRenderer.on("dictation:prefs", handler);
     return () => ipcRenderer.removeListener("dictation:prefs", handler);
   },

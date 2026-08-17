@@ -48,6 +48,7 @@ export class Streamer {
   private configReceived = false;
   private readonly callbacks: StreamerCallbacks;
   private readonly wsUrl: string;
+  readonly baseUrl: string;
   private currentContext: string | null = null;
   private connectionState: StreamerConnectionState = "disconnected";
   private reconnectAttempts = 0;
@@ -58,6 +59,7 @@ export class Streamer {
    * first recording after a disconnect cannot silently stream into no session.
    */
   private sessionStartPending = false;
+  private commitMessage: Record<string, unknown> | null = null;
 
   // Capture pipeline — reused across sessions when possible
   private ctx: AudioContext | null = null;
@@ -75,6 +77,7 @@ export class Streamer {
     // configured server's bearer token travels as a `?token=` query param
     // (the server authenticates WS upgrades from it). Empty for the local
     // server / no-auth case.
+    this.baseUrl = baseUrl;
     const wsBase = `${baseUrl.replace(/^http/, "ws")}/stream`;
     this.wsUrl = token
       ? `${wsBase}?token=${encodeURIComponent(token)}`
@@ -150,18 +153,18 @@ export class Streamer {
       (this.pcmSampleCount / TARGET_RATE) * 1000,
     );
     this.stopCapture();
-    this.sessionStartPending = false;
-    this.flushPendingChunks();
-    this.sendJSON({
+    this.commitMessage = {
       type: "commit",
       audioDurationMs,
       context: this.currentContext,
-    });
+    };
+    this.tryCommit();
   }
 
   cancel(): void {
     this.stopCapture();
     this.sessionStartPending = false;
+    this.commitMessage = null;
     this.sendJSON({ type: "cancel" });
   }
 
@@ -176,6 +179,7 @@ export class Streamer {
   destroy(): void {
     this.destroyed = true;
     this.sessionStartPending = false;
+    this.commitMessage = null;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -251,7 +255,7 @@ export class Streamer {
   private startPendingSession(): void {
     if (
       !this.sessionStartPending ||
-      !this.capturing ||
+      !(this.capturing || this.commitMessage) ||
       !this.configReceived ||
       this.ws?.readyState !== WebSocket.OPEN
     ) {
@@ -261,6 +265,18 @@ export class Streamer {
       JSON.stringify({ type: "start", context: this.currentContext }),
     );
     this.sessionStartPending = false;
+  }
+
+  private tryCommit(): void {
+    if (!this.commitMessage) return;
+    if (this.ws?.readyState !== WebSocket.OPEN || !this.configReceived) {
+      this.ensureConnected();
+      return;
+    }
+    if (this.sessionStartPending) return;
+    this.flushPendingChunks();
+    this.ws.send(JSON.stringify(this.commitMessage));
+    this.commitMessage = null;
   }
 
   /**
@@ -356,11 +372,13 @@ export class Streamer {
             model: msg.model ?? "",
             providerCategory: msg.providerCategory,
           });
-          this.startPendingSession();
+          if (this.sessionStartPending) this.startPendingSession();
+          else this.tryCommit();
           break;
         case "session.ready":
           this.flushPendingChunks();
           this.callbacks.onReady();
+          this.tryCommit();
           break;
         case "partial":
           this.callbacks.onPartial?.(msg.text ?? "");
@@ -380,7 +398,7 @@ export class Streamer {
       if (this.ws !== ws) return;
       this.ws = null;
       this.configReceived = false;
-      if (this.capturing) {
+      if (this.capturing || this.commitMessage) {
         this.sessionStartPending = true;
         this.stageCapturedAudioForReplay();
       }

@@ -1079,6 +1079,8 @@ function DictationPage({
     value(SETTINGS_KEYS.language),
   );
   const translateOn = value(SETTINGS_KEYS.translateMode) === "true";
+  const [hotkeyError, setHotkeyError] = useState<string | null>(null);
+  useEffect(() => window.api.onHotkeyError(setHotkeyError), []);
 
   const setLanguages = (next: string[]): void => {
     const normalized = normalizeLanguageList(next);
@@ -1103,8 +1105,12 @@ function DictationPage({
             value(SETTINGS_KEYS.remixHotkey) || getDefaultRemixHotkey(),
           )
         }
-        onSaved={(accel) => setSetting(SETTINGS_KEYS.hotkey, accel)}
+        onSaved={(accel) => {
+          setHotkeyError(null);
+          setSetting(SETTINGS_KEYS.hotkey, accel);
+        }}
       />
+      {hotkeyError ? <p className="tavern-notice">{hotkeyError}</p> : null}
       <ChoiceRow
         label="Press style"
         value={value(SETTINGS_KEYS.hotkeyMode, "hold")}
@@ -1112,7 +1118,10 @@ function DictationPage({
           { id: "hold", label: "Hold" },
           { id: "toggle", label: "Toggle" },
         ]}
-        onChange={(id) => setSetting(SETTINGS_KEYS.hotkeyMode, id)}
+        onChange={(id) => {
+          setSetting(SETTINGS_KEYS.hotkeyMode, id);
+          window.api.setHotkeyMode(id === "toggle" ? "toggle" : "hold");
+        }}
       />
       <MicrophoneRow
         value={value(SETTINGS_KEYS.micDeviceId)}

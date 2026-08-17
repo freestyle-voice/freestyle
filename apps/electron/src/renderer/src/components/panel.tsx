@@ -21,7 +21,7 @@ import {
   executeAgentTool,
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
-import { apiFetch, initApiBase } from "@renderer/lib/api";
+import { apiFetch, initApiBase, refreshApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
 import { composerAction } from "@renderer/lib/composer-action";
 import { seedMessageFor } from "@renderer/lib/onboarding-core";
@@ -1353,6 +1353,9 @@ initApiBase();
 installGlobalErrorHandlers();
 
 const queryClient = createQueryClient();
+window.api.onServerChanged(() => {
+  void refreshApiBase().then(() => queryClient.invalidateQueries());
+});
 
 const container = document.getElementById("root");
 if (container)

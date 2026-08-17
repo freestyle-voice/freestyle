@@ -217,23 +217,21 @@ describe("Freestyle Transcribe default on sign-in", () => {
     expect(getDefaultModels().voice?.provider).toBe("openai");
   });
 
-  it("reverts to a non-cloud model and disables cleanup on sign-out", async () => {
-    insertNonCloudVoiceDefault();
+  it("keeps the Freestyle voice default and disables cleanup on sign-out", async () => {
     await signIn();
     expect(getDefaultModels().voice?.provider).toBe("freestyle-cloud");
 
     const res = await app.request("/api/auth/sign-out", { method: "POST" });
     expect(res.status).toBe(200);
 
-    expect(getDefaultModels().voice?.provider).toBe("openai");
+    expect(getDefaultModels().voice?.provider).toBe("freestyle-cloud");
     expect(readSetting("llm_cleanup")).toBe("false");
   });
 
   it("re-applies the Freestyle bundle when signing in again", async () => {
-    insertNonCloudVoiceDefault();
     await signIn();
     await app.request("/api/auth/sign-out", { method: "POST" });
-    expect(getDefaultModels().voice?.provider).toBe("openai");
+    expect(readSetting("llm_cleanup")).toBe("false");
 
     await signIn();
 
@@ -241,16 +239,5 @@ describe("Freestyle Transcribe default on sign-in", () => {
     expect(defaults.voice?.provider).toBe("freestyle-cloud");
     expect(defaults.llm?.provider).toBe("freestyle-cloud");
     expect(readSetting("llm_cleanup")).toBe("true");
-  });
-
-  it("clears the voice default on sign-out when nothing else is configured", async () => {
-    await signIn();
-    expect(getDefaultModels().voice?.provider).toBe("freestyle-cloud");
-
-    const res = await app.request("/api/auth/sign-out", { method: "POST" });
-    expect(res.status).toBe(200);
-
-    expect(getDefaultModels().voice).toBeNull();
-    expect(readSetting("llm_cleanup")).toBe("false");
   });
 });

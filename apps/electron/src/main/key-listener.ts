@@ -360,12 +360,13 @@ export class NativeKeyListener {
     }
 
     if (line.startsWith("KEY_DOWN:")) {
+      if (this.macFnDown) this.cancelMacSoloFnDown();
       this.handleMacKeyEvent(line.slice(9), true);
       return;
     }
 
     if (line.startsWith("KEY_UP:")) {
-      this.handleMacKeyEvent(line.slice(9), false);
+      this.handleMacKeyEvent(line.slice(7), false);
       return;
     }
   }

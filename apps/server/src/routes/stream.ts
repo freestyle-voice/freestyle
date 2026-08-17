@@ -59,6 +59,7 @@ const stream = new Hono().get(
     let voiceDefaults: { provider: string; model_id: string } | null = null;
     /** Fingerprint of the settings the current upstream session was built with. */
     let upstreamConfigKey: string | null = null;
+    let announcedKey: string | null = null;
     let appContext: string | null = null;
     const effectiveAppContext = (): string | null =>
       resolveAppContextForCleanup(appContext);
@@ -194,6 +195,38 @@ const stream = new Hono().get(
         });
     }
 
+    function failSession(
+      ws: { send: (data: string) => void },
+      message: string,
+      code?: string,
+    ): void {
+      sessionStarting = false;
+      const hadCommit = pendingCommit;
+      pendingCommit = false;
+      pendingAudioChunks = [];
+      if (closed) return;
+      ws.send(
+        JSON.stringify({ type: "error", ...(code ? { code } : {}), message }),
+      );
+      if (hadCommit) ws.send(JSON.stringify({ type: "final", text: "" }));
+    }
+
+    function startUpstream(
+      ws: {
+        send: (data: string) => void;
+        close: () => void;
+      },
+      announced?: AnnouncedStreamConfig,
+    ): void {
+      connectUpstream(ws, announced).catch((err: unknown) => {
+        captureException(err);
+        failSession(
+          ws,
+          err instanceof Error ? err.message : "Could not start transcription",
+        );
+      });
+    }
+
     function announceConfig(ws: {
       send: (data: string) => void;
       close: () => void;
@@ -220,15 +253,19 @@ const stream = new Hono().get(
 
       const modelShort = stripProviderPrefix(voice.model_id);
 
-      ws.send(
-        JSON.stringify({
-          type: "config",
-          model: modelShort,
-          streaming: canStream,
-          sessionTransport: canUseSessionTransport,
-          providerCategory: voiceProviderCategory(voice.provider),
-        }),
-      );
+      const announceKey = `${config.key}:${canStream}:${canUseSessionTransport}`;
+      if (announceKey !== announcedKey) {
+        announcedKey = announceKey;
+        ws.send(
+          JSON.stringify({
+            type: "config",
+            model: modelShort,
+            streaming: canStream,
+            sessionTransport: canUseSessionTransport,
+            providerCategory: voiceProviderCategory(voice.provider),
+          }),
+        );
+      }
 
       return {
         config,
@@ -679,7 +716,7 @@ const stream = new Hono().get(
           onError: (message, code) => {
             if (upstream !== session) return;
             sessionTransportUnavailable = true;
-            sessionStarting = false;
+            announcedKey = null;
             ws.send(
               JSON.stringify({
                 type: "config",
@@ -688,32 +725,24 @@ const stream = new Hono().get(
                 model: modelShort,
               }),
             );
-            ws.send(
-              JSON.stringify({
-                type: "error",
-                ...(code ? { code } : {}),
-                message,
-              }),
-            );
             upstream = null;
             try {
               session.close();
             } catch {}
+            if (code === "cloud_auth_required") invalidateSession();
+            failSession(ws, message, code);
           },
           onClose: () => {
             // Ignore close from a superseded socket (replaced on a later "start").
             if (upstream !== session) return;
             upstream = null;
-            if (
-              !closed &&
-              !sessionTransportUnavailable &&
-              reconnectAttempts < MAX_RECONNECT_ATTEMPTS
-            ) {
+            if (closed || sessionTransportUnavailable) return;
+            if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
               reconnectAttempts++;
-              try {
-                connectUpstream(ws);
-              } catch {}
+              startUpstream(ws);
+              return;
             }
+            failSession(ws, "Could not reach Freestyle Transcribe");
           },
         },
       });
@@ -744,7 +773,7 @@ const stream = new Hono().get(
           ) {
             return;
           }
-          connectUpstream(ws, announced);
+          startUpstream(ws, announced);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           ws.send(JSON.stringify({ type: "error", message }));
@@ -853,9 +882,7 @@ const stream = new Hono().get(
             if (upstream) {
               closeUpstreamSession(upstream);
             }
-            try {
-              connectUpstream(ws);
-            } catch {}
+            startUpstream(ws);
             break;
           }
           case "commit":

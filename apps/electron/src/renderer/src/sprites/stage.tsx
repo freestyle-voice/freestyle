@@ -15,6 +15,7 @@ function bubbleText(
   if (partial) {
     return partial.length > maxChars ? `…${partial.slice(-maxChars)}` : partial;
   }
+  if (bubble.phase === "error") return "Something went wrong";
   return bubble.phase === "recording" ? "I'm listening…" : "…";
 }
 
@@ -88,7 +89,10 @@ export function SpriteStage({
   }, [state]);
 
   useEffect(() => {
-    performerRef.current?.handle({ kind: "listening", on: bubble !== null });
+    performerRef.current?.handle({
+      kind: "listening",
+      on: bubble !== null && bubble.phase !== "error",
+    });
     setSay(bubbleText(bubble, def.bubble.maxChars));
   }, [bubble, def]);
 

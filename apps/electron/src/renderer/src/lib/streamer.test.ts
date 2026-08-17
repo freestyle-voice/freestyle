@@ -166,4 +166,49 @@ describe("Streamer reconnects an active capture", () => {
     );
     expect(streamer.isConnected()).toBe(true);
   });
+
+  it("replays the recording and commits after a drop between capture and commit", async () => {
+    streamer = new Streamer("http://localhost:3000", "", {
+      onConfig: vi.fn(),
+      onReady: vi.fn(),
+      onFinal: vi.fn(),
+      onError: vi.fn(),
+    });
+    const config = {
+      type: "config",
+      streaming: true,
+      sessionTransport: true,
+      providerCategory: "freestyle_cloud",
+    };
+
+    const firstSocket = FakeWebSocket.instances[0];
+    firstSocket.open();
+    await streamer.startCapture({} as MediaStream);
+    firstSocket.message(config);
+    firstSocket.message({ type: "session.ready" });
+    const pcm = new Int16Array([1, 2, 3]).buffer;
+    FakeAudioWorkletNode.instances[0].port.onmessage?.({ data: pcm });
+
+    firstSocket.disconnect();
+    streamer.commit();
+
+    await vi.advanceTimersByTimeAsync(400);
+    const secondSocket = FakeWebSocket.instances[1];
+    secondSocket.open();
+    secondSocket.message(config);
+    expect(secondSocket.sent).toContainEqual(
+      JSON.stringify({ type: "start", context: null }),
+    );
+    expect(
+      secondSocket.sent.some(
+        (m) => typeof m === "string" && m.includes('"commit"'),
+      ),
+    ).toBe(false);
+
+    secondSocket.message({ type: "session.ready" });
+    const kinds = secondSocket.sent.map((m) =>
+      m instanceof ArrayBuffer ? "audio" : JSON.parse(m as string).type,
+    );
+    expect(kinds).toEqual(["start", "audio", "commit"]);
+  });
 });

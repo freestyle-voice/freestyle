@@ -38,6 +38,10 @@ export default function AppLayout() {
                   <Stack.Screen name="onboarding" />
                   <Stack.Screen name="settings" />
                   <Stack.Screen name="profile" />
+                  <Stack.Screen name="history" />
+                  <Stack.Screen name="vocabulary" />
+                  <Stack.Screen name="dictionary" />
+                  <Stack.Screen name="tone" />
                   <Stack.Screen name="keyboard-setup" />
                   <Stack.Screen name="help" />
                   <Stack.Screen name="billing" />

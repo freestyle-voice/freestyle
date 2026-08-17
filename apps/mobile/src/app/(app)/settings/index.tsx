@@ -2,13 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
 import {
+  BookOpen,
   CircleQuestionMark,
   Globe,
   Keyboard,
   Languages,
   Monitor,
   Moon,
+  Replace,
   Shield,
+  Sparkles,
   Sun,
   Trash2,
   Volume2,
@@ -167,6 +170,24 @@ export default function SettingsScreen() {
           label="Voice keyboard"
           value="Dictate in any app"
           onPress={() => router.push("/(app)/keyboard-setup")}
+        />
+        <SettingsNavRow
+          icon={Sparkles}
+          label="Cleanup & tone"
+          value="How Freestyle polishes your words"
+          onPress={() => router.push("/(app)/tone")}
+        />
+        <SettingsNavRow
+          icon={BookOpen}
+          label="Vocabulary"
+          value="Names and phrases to recognize"
+          onPress={() => router.push("/(app)/vocabulary")}
+        />
+        <SettingsNavRow
+          icon={Replace}
+          label="Dictionary"
+          value="On-device text replacements"
+          onPress={() => router.push("/(app)/dictionary")}
         />
         <SettingsNavRow
           icon={CircleQuestionMark}

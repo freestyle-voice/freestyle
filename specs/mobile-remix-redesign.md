@@ -14,13 +14,12 @@ focused text field.
 - **Remix is the default mobile mode.** The Home screen starts in Remix and
   exposes a segmented `Remix / Dictate` control. Dictate changes the Home
   working surface without changing the rest of the application.
-- **Use a native tab bar.** Replace the custom floating five-item dock with
-  Expo Router's `NativeTabs`, visually following the Esopteric mobile app.
-  There are exactly three destinations: Home, Activity, and Profile.
-- **Move configuration out of navigation.** Dictation history, vocabulary,
-  dictionary replacements, tone, keyboard setup, account, usage, integrations,
-  and MCP/connected-app configuration are reached from Profile or its pushed
-  detail screens. They do not each receive a bottom tab.
+- **Use a native tab bar.** Replace the custom floating dock with Expo Router's
+  `NativeTabs`, visually following the Esopteric mobile app. The five primary
+  destinations are Home, Activity, Keyboard, Words, and Profile.
+- **Reserve tabs for frequent work.** Keyboard and Words are daily utilities;
+  cleanup/tone, dictionary replacements, account, usage, integrations, and
+  MCP/connected-app configuration remain grouped in their detail surfaces.
 - **The keyboard is compact and voice-only in Remix mode.** It never becomes a
   miniature chat composer, shows no thread history, and has no typed agent
   input. It renders only the current instruction, a short status, or one short
@@ -86,6 +85,10 @@ Native tabs
 │   ├── Remix conversations and completed runs
 │   ├── briefs / scheduled outcomes when returned by cloud
 │   └── existing dictation history
+├── Keyboard
+│   └── setup, microphone permission, and voice-only Remix follow-up behaviour
+├── Words
+│   └── vocabulary as the high-frequency language-control surface
 └── Profile
     ├── Connected apps & MCPs
     ├── Keyboard
@@ -180,8 +183,9 @@ enabled. When disabled, it displays the question and waits for a mic tap.
 ## Delivery slices
 
 1. **Native shell and navigation migration.** Replace floating tabs; create
-   Home, Activity, and Profile destinations; route existing configuration to
-   Profile detail links. Preserve dictation as Home's Dictate mode.
+   Home, Activity, Keyboard, Words, and Profile destinations; route existing
+   configuration to their appropriate detail links. Preserve dictation as
+   Home's Dictate mode.
 2. **Remix Home conversation.** Add mobile thread storage, streaming request
    client, composable status/tool UI, usage and failure handling, plus basic
    connected-app configuration entry point.
@@ -202,8 +206,8 @@ enabled. When disabled, it displays the question and waits for a mic tap.
 
 ## Acceptance criteria
 
-1. A signed-in user sees native Home, Activity, and Profile tabs; Remix is the
-   selected Home mode after fresh launch.
+1. A signed-in user sees native Home, Activity, Keyboard, Words, and Profile
+   tabs; Remix is the selected Home mode after fresh launch.
 2. The Dictate mode retains the current audio session safety, transcription,
    copy/share, and local-history behaviour.
 3. A mobile Remix turn streams in Home and renders success, usage-limit,

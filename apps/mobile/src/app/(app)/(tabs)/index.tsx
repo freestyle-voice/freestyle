@@ -305,8 +305,8 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: "center",
     gap: Spacing.three,
-    // Sit just above the docked tab bar (bar + raised mic + safe inset).
-    paddingBottom: 120,
+    // Clear the native tab dock and the resident keyboard status strip.
+    paddingBottom: 96,
   },
   status: {
     fontFamily: Fonts.mono,

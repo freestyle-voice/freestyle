@@ -1,1 +1,5 @@
-export { default } from "../profile";
+import { ProfileContent } from "../profile";
+
+export default function AccountTab() {
+  return <ProfileContent isTab />;
+}

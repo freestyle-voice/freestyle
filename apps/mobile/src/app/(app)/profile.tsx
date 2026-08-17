@@ -5,7 +5,14 @@ import {
 } from "@freestyle-voice/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Building2, Check, LogOut, Sparkles } from "lucide-react-native";
+import {
+  Building2,
+  Check,
+  Keyboard,
+  LogOut,
+  SlidersHorizontal,
+  Sparkles,
+} from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -21,7 +28,9 @@ import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
 import {
   Card,
   OptionCard,
+  SettingsNavRow,
   SettingsScreenScaffold,
+  TabScreenScaffold,
 } from "@/components/settings-ui";
 import { Skeleton } from "@/components/skeleton";
 import { ThemedText } from "@/components/themed-text";
@@ -48,6 +57,10 @@ import { formatNumber } from "@/lib/format";
 import { initialsFor } from "@/lib/initials";
 
 export default function ProfileScreen() {
+  return <ProfileContent />;
+}
+
+export function ProfileContent({ isTab = false }: { isTab?: boolean }) {
   const theme = useTheme();
   const router = useRouter();
   const { user, signedIn, signOut } = useAuth();
@@ -121,8 +134,8 @@ export default function ProfileScreen() {
       })
     : "";
 
-  return (
-    <SettingsScreenScaffold title="Profile">
+  const content = (
+    <>
       {/* Account */}
       <Card>
         <View style={styles.accountHeader}>
@@ -156,6 +169,22 @@ export default function ProfileScreen() {
             ) : null}
           </View>
         </View>
+      </Card>
+
+      <Card style={styles.workspaceCard}>
+        <SettingsNavRow
+          icon={Keyboard}
+          label="Keyboard"
+          value="Dictate and Remix anywhere"
+          onPress={() => router.push("/(app)/keyboard-setup")}
+        />
+        <SettingsNavRow
+          icon={SlidersHorizontal}
+          label="Dictation settings"
+          value="Language, cleanup, and privacy"
+          onPress={() => router.push("/(app)/settings")}
+          last
+        />
       </Card>
 
       {/* Personal information */}
@@ -286,7 +315,19 @@ export default function ProfileScreen() {
           Sign out
         </ThemedText>
       </Pressable>
-    </SettingsScreenScaffold>
+    </>
+  );
+
+  if (isTab) {
+    return (
+      <TabScreenScaffold title="Profile" showHeaderActions={false}>
+        {content}
+      </TabScreenScaffold>
+    );
+  }
+
+  return (
+    <SettingsScreenScaffold title="Profile">{content}</SettingsScreenScaffold>
   );
 }
 
@@ -843,6 +884,7 @@ const styles = StyleSheet.create({
   accountInfo: { flex: 1 },
   accountName: { fontFamily: Fonts.serif, fontSize: 22, lineHeight: 24 },
   accountEmail: { fontSize: 13, marginTop: 3 },
+  workspaceCard: { gap: 0, paddingVertical: Spacing.one },
   inlineRow: {
     flexDirection: "row",
     justifyContent: "space-between",

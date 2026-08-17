@@ -32,6 +32,25 @@ export default function TabsLayout() {
         />
       </NativeTabs.Trigger>
 
+      <NativeTabs.Trigger name="keyboard">
+        <NativeTabs.Trigger.Label>Keyboard</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{ default: "keyboard", selected: "keyboard.fill" }}
+          md={{ default: "keyboard", selected: "keyboard" }}
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="words">
+        <NativeTabs.Trigger.Label>Words</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf={{
+            default: "text.book.closed",
+            selected: "text.book.closed.fill",
+          }}
+          md={{ default: "dictionary", selected: "dictionary" }}
+        />
+      </NativeTabs.Trigger>
+
       <NativeTabs.Trigger name="account">
         <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon

@@ -118,7 +118,7 @@ export default function HistoryScreen() {
 
   return (
     <TabScreenScaffold
-      title="History"
+      title="Activity"
       subtitle="Your recent dictations, kept on this device. Tap any entry to copy it."
       action={
         history.length > 0 ? (

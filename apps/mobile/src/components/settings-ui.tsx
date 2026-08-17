@@ -96,11 +96,13 @@ export function TabScreenScaffold({
   title,
   subtitle,
   action,
+  showHeaderActions = true,
   children,
 }: {
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  showHeaderActions?: boolean;
   children: ReactNode;
 }) {
   const { tabTitleSize } = useResponsive();
@@ -120,7 +122,7 @@ export function TabScreenScaffold({
           </ThemedText>
           <View style={styles.tabHeaderActions}>
             {action}
-            <HeaderActions />
+            {showHeaderActions ? <HeaderActions /> : null}
           </View>
         </View>
         <ScrollView
@@ -332,9 +334,9 @@ const styles = StyleSheet.create({
   // Pushed pages have no tab bar, but the dictation strip can slide down into
   // that space, so leave room for it at the end of the scroll.
   body: { paddingBottom: 100, gap: Spacing.four },
-  // Tab roots sit under the floating pill tab bar (and the strip above it), so
-  // clear extra space.
-  tabBody: { paddingBottom: 120 },
+  // Native tabs reserve their own dock. Leave breathing room for the keyboard
+  // status strip without carrying the old floating-pill spacing forward.
+  tabBody: { paddingBottom: 96 },
   tabHeader: {
     flexDirection: "row",
     alignItems: "center",

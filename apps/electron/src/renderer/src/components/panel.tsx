@@ -12,6 +12,7 @@ import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
 import { OpenerCards } from "@renderer/components/opener-cards";
 import { SettingsView } from "@renderer/components/settings-view";
 import { Spark } from "@renderer/components/spark";
+import { ThreadHistory } from "@renderer/components/thread-history";
 import { TodosTab } from "@renderer/components/todos-tab";
 import {
   type AgentToolCall,
@@ -33,18 +34,10 @@ import {
   latestThreadQueryOptions,
   prependThreadToHistory,
   queryKeys,
-  threadHistoryInfiniteQueryOptions,
-  threadQueryOptions,
 } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
-import {
-  getThread,
-  THREAD_ORIGIN_LABELS,
-  THREAD_ORIGINS,
-  type ThreadOrigin,
-  type ThreadState,
-} from "@renderer/lib/threads";
+import { getThread, type ThreadState } from "@renderer/lib/threads";
 import { highlightToolJson, toolJson } from "@renderer/lib/tool-json";
 import {
   connectorToolkitSlug,
@@ -57,7 +50,6 @@ import { PANEL_TABS, type PanelTab } from "@shared/panel";
 import { SPRITES_INFO } from "@shared/sprites";
 import {
   QueryClientProvider,
-  useInfiniteQuery,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
@@ -67,7 +59,7 @@ import {
   type UIMessage,
 } from "ai";
 import type React from "react";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const TAB_LABELS: Record<PanelTab, string> = {
@@ -478,21 +470,6 @@ function ChatMessage({
   );
 }
 
-function dateGroup(ts: number): string {
-  const day = (d: Date): number =>
-    new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const date = new Date(ts);
-  const now = new Date();
-  const diffDays = Math.round((day(now) - day(date)) / 86_400_000);
-  if (diffDays <= 0) return "Today";
-  if (diffDays === 1) return "Yesterday";
-  const opts: Intl.DateTimeFormatOptions =
-    date.getFullYear() === now.getFullYear()
-      ? { month: "long", day: "numeric" }
-      : { month: "long", day: "numeric", year: "numeric" };
-  return date.toLocaleDateString(undefined, opts);
-}
-
 async function openThreadById(threadId: string): Promise<ThreadState | null> {
   try {
     const res = await apiFetch(`/api/agent/thread/${threadId}`);
@@ -664,94 +641,6 @@ function PanelRoot(): React.JSX.Element {
   if (!thread) return <div className="tavern tavern-panel" />;
   return (
     <PanelInner key={thread.id} thread={thread} onSwitchThread={setThread} />
-  );
-}
-
-function ThreadHistory({
-  onPick,
-  currentId,
-}: {
-  onPick: (thread: ThreadState) => void;
-  currentId: string;
-}): React.JSX.Element {
-  const queryClient = useQueryClient();
-  const [origin, setOrigin] = useState<ThreadOrigin>("user");
-  const historyQuery = useInfiniteQuery(
-    threadHistoryInfiniteQueryOptions(origin),
-  );
-  const threads =
-    historyQuery.data?.pages.flatMap((page) => page.threads) ?? [];
-
-  const filter = (
-    <div className="tavern-thread-filter" role="tablist">
-      {THREAD_ORIGINS.map((id) => (
-        <button
-          key={id}
-          type="button"
-          role="tab"
-          aria-selected={origin === id}
-          className="tavern-thread-filter-tab"
-          onClick={() => setOrigin(id)}
-        >
-          {THREAD_ORIGIN_LABELS[id]}
-        </button>
-      ))}
-    </div>
-  );
-
-  if (historyQuery.isLoading)
-    return <div className="tavern-empty">Loading conversations…</div>;
-  if (threads.length === 0)
-    return (
-      <>
-        {filter}
-        <div className="tavern-empty">
-          {origin === "user"
-            ? "No conversations yet."
-            : "No briefs yet. Scheduled tasks write what they find here."}
-        </div>
-      </>
-    );
-
-  let lastGroup = "";
-  return (
-    <>
-      {filter}
-      {threads.map((t) => {
-        const group = dateGroup(t.updatedAt);
-        const divider = group !== lastGroup;
-        lastGroup = group;
-        return (
-          <Fragment key={t.id}>
-            {divider ? <p className="tavern-thread-divider">{group}</p> : null}
-            <button
-              type="button"
-              className={`tavern-thread-row${t.id === currentId ? " is-current" : ""}`}
-              onClick={() => {
-                capture("thread_opened", { origin });
-                void queryClient
-                  .fetchQuery(threadQueryOptions(t.id))
-                  .then((picked) => picked && onPick(picked));
-              }}
-            >
-              {t.title}
-            </button>
-          </Fragment>
-        );
-      })}
-      {historyQuery.hasNextPage ? (
-        <button
-          type="button"
-          className="tavern-thread-row"
-          disabled={historyQuery.isFetchingNextPage}
-          onClick={() => void historyQuery.fetchNextPage()}
-        >
-          {historyQuery.isFetchingNextPage
-            ? "Loading conversations…"
-            : "Load more conversations"}
-        </button>
-      ) : null}
-    </>
   );
 }
 

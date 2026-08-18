@@ -10,7 +10,7 @@
   <a href="https://discord.gg/Fmgt5yZCDu"><img src="https://img.shields.io/badge/Discord-Join%20Server-5865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
 </p>
 
-Freestyle is the AI assistant that lives on your desktop and makes sure you never forget an important thing again. Tell it what matters to you, connect the apps where that stuff lives, and it periodically checks on its own. When something needs you, it taps you on the shoulder: the invoice that is three weeks overdue, the pull request nobody has reviewed, the flight credit that expires Friday. Then it offers to do the next step, and waits for you to say yes.
+Freestyle is the intelligent reminders app. It lives on your desktop: tell it what matters to you, connect the apps where that stuff lives, and it periodically checks on its own. When something needs you, it taps you on the shoulder: the invoice that is three weeks overdue, the pull request nobody has reviewed, the flight credit that expires Friday. Then it offers to do the next step, and waits for you to say yes.
 
 It keeps notes and todos for you, remembers what you tell it, and can draft the reply, book the time, or start the task itself. Anything it wants to send, post, or buy is shown to you first and only happens when you press Allow.
 

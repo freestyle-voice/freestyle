@@ -48,6 +48,41 @@ describe("consumeNotificationEvents", () => {
 
     expect(refreshes).toBe(0);
   });
+
+  it("does not leak an abort error when cancelling an already errored stream", async () => {
+    const controller = new AbortController();
+    let streamController!: ReadableStreamDefaultController<Uint8Array>;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        streamController = controller;
+      },
+    });
+    let onUnhandled!: (reason: unknown) => void;
+    const unhandled = new Promise<unknown>((resolve) => {
+      onUnhandled = resolve;
+      process.once("unhandledRejection", onUnhandled);
+    });
+    const consuming = consumeNotificationEvents(stream, () => {}, {
+      signal: controller.signal,
+    }).catch(() => {});
+
+    streamController.error(
+      new DOMException("This operation was aborted", "AbortError"),
+    );
+    controller.abort();
+
+    try {
+      await expect(
+        Promise.race([
+          unhandled,
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 0)),
+        ]),
+      ).resolves.toBeNull();
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+    await consuming;
+  });
 });
 
 describe("startNotificationStream", () => {

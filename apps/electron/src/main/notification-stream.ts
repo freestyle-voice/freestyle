@@ -11,7 +11,10 @@ export async function consumeNotificationEvents(
   const decoder = new TextDecoder();
   let buffer = "";
   const abort = (): void => {
-    void reader.cancel();
+    // Aborting the fetch can error its body before this listener runs. The
+    // resulting cancellation rejection is expected and must not escape as an
+    // unhandled rejection from this fire-and-forget cleanup.
+    void reader.cancel().catch(() => {});
   };
   options?.signal?.addEventListener("abort", abort, { once: true });
 

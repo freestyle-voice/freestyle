@@ -1476,12 +1476,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tavern-tool.is-running .tavern-tool-mark {
+  .tavern-tool.is-running .tavern-tool-mark,
+  .tavern-tool-spinner {
     animation: none;
   }
 }
 
-.tavern-tool-static,
 .tavern-tool-toggle {
   font: inherit;
   display: inline-flex;
@@ -1501,8 +1501,33 @@
   cursor: pointer;
 }
 
-.tavern-tool-toggle:hover {
+.tavern-tool-toggle:disabled {
+  cursor: default;
+}
+
+.tavern-tool-toggle:hover:not(:disabled) {
   color: var(--tavern-ink);
+}
+
+.tavern-tool-spinner {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--tavern-rule);
+  border-top-color: var(--tavern-lantern);
+  animation: tavern-tool-spin 0.8s linear infinite;
+}
+
+@keyframes tavern-tool-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.tavern-tool-waiting {
+  font-size: 11px;
+  color: var(--tavern-mute);
 }
 
 .tavern-tool-toggle:focus-visible {

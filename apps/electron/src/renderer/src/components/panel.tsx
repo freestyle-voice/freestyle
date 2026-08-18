@@ -165,6 +165,7 @@ function ToolChip({
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const presentation = toolPresentation(partType, phase);
+  const running = phase === "running";
   const hasInput =
     input !== undefined &&
     input !== null &&
@@ -174,34 +175,13 @@ function ToolChip({
     output !== null &&
     (typeof output !== "object" ||
       Object.keys(output).some((key) => key !== "ok"));
-  const canExpand = (hasInput || hasOutput) && phase !== "running";
-  const activity = (
-    <>
-      <ToolMark partType={partType} />
-      <span className="tavern-tool-label">
-        {presentation.title}
-        {presentation.detail ? ` · ${presentation.detail}` : ""}
-      </span>
-      {canExpand ? (
-        <span className="tavern-tool-caret" aria-hidden="true">
-          {open ? "▾" : "▸"}
-        </span>
-      ) : null}
-    </>
-  );
+  const canExpand = hasInput || hasOutput || running;
 
-  const tone =
-    phase === "running"
-      ? " is-running"
-      : phase === "declined" || phase === "failed"
-        ? " is-inert"
-        : "";
-
-  if (!canExpand) {
-    return (
-      <div className={`tavern-tool tavern-tool-static${tone}`}>{activity}</div>
-    );
-  }
+  const tone = running
+    ? " is-running"
+    : phase === "declined" || phase === "failed"
+      ? " is-inert"
+      : "";
 
   return (
     <div className={`tavern-tool${tone}`}>
@@ -210,8 +190,25 @@ function ToolChip({
         className="tavern-tool-toggle"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
+        disabled={!canExpand}
       >
-        {activity}
+        <ToolMark partType={partType} />
+        <span className="tavern-tool-label">
+          {presentation.title}
+          {presentation.detail ? ` · ${presentation.detail}` : ""}
+        </span>
+        {running ? (
+          <span
+            className="tavern-tool-spinner"
+            role="status"
+            aria-label="Working"
+          />
+        ) : null}
+        {canExpand ? (
+          <span className="tavern-tool-caret" aria-hidden="true">
+            {open ? "▾" : "▸"}
+          </span>
+        ) : null}
       </button>
       {open ? (
         <div className="tavern-tool-detail">
@@ -225,6 +222,11 @@ function ToolChip({
             <>
               <span className="tavern-tool-heading">Result</span>
               <ShikiJson value={output} />
+            </>
+          ) : running ? (
+            <>
+              <span className="tavern-tool-heading">Result</span>
+              <span className="tavern-tool-waiting">Working…</span>
             </>
           ) : null}
         </div>
@@ -425,7 +427,7 @@ function ChatMessage({
                 <ToolChip
                   key={`${message.id}-${i}`}
                   partType={part.type}
-                  input={undefined}
+                  input={tool.input}
                   output={undefined}
                   phase="running"
                 />

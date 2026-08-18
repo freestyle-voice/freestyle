@@ -422,23 +422,46 @@ export function ScheduledTasks({
         </div>
       ) : (
         tasks.map((task) => (
-          <button
+          <div
             key={task.id}
-            type="button"
             className={`tavern-sched is-card${task.enabled ? "" : " is-off"}`}
-            onClick={() => setView({ kind: "detail", id: task.id })}
           >
-            <div className="tavern-sched-head">
+            <button
+              type="button"
+              className="tavern-sched-open"
+              onClick={() => setView({ kind: "detail", id: task.id })}
+            >
               <span className="tavern-sched-name">{task.name}</span>
-              <span
+              <p className="tavern-sched-schedule">{task.schedule}</p>
+              <span className="tavern-sched-meta">{meta(task)}</span>
+            </button>
+            <div className="tavern-sched-side">
+              <button
+                type="button"
                 className={`tavern-sched-toggle${task.enabled ? " is-on" : ""}`}
+                role="switch"
+                aria-checked={task.enabled}
+                aria-label={`${task.name} enabled`}
+                disabled={busy === task.id}
+                onClick={() => toggle(task)}
               >
                 {task.enabled ? "On" : "Off"}
-              </span>
+              </button>
+              <button
+                type="button"
+                className="tavern-sched-action"
+                aria-label={`Run ${task.name} now`}
+                disabled={busy === task.id}
+                onClick={() => runNow(task)}
+              >
+                {busy === task.id
+                  ? "Running…"
+                  : ran === task.id
+                    ? "Ran ✓"
+                    : "Run now"}
+              </button>
             </div>
-            <p className="tavern-sched-schedule">{task.schedule}</p>
-            <span className="tavern-sched-meta">{meta(task)}</span>
-          </button>
+          </div>
         ))
       )}
       <button

@@ -3539,21 +3539,40 @@
 }
 
 .tavern-sched.is-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.tavern-sched-open {
+  flex: 1;
+  min-width: 0;
   display: block;
-  width: 100%;
   font: inherit;
   text-align: left;
   color: inherit;
+  padding: 0;
+  border: 0;
+  background: none;
   cursor: pointer;
 }
 
-.tavern-sched.is-card:hover {
-  border-color: var(--tavern-ink);
+.tavern-sched-open:hover .tavern-sched-name {
+  text-decoration: underline;
 }
 
-.tavern-sched.is-card:focus-visible {
+.tavern-sched-open:focus-visible {
   outline: 2px solid var(--tavern-lantern);
-  outline-offset: 1px;
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.tavern-sched-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .tavern-sched.is-detail {

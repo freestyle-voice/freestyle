@@ -71,6 +71,8 @@ describe("ScheduledTasks", () => {
     expect(html).toContain("next in 1h");
     expect(html).toContain("never run");
     expect(html).toContain("New scheduled task");
+    expect(html).toContain('aria-label="Run Morning brief now"');
+    expect(html).toContain('role="switch"');
     expect(html).not.toContain("Check the");
   });
 

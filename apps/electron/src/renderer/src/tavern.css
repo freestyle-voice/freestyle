@@ -408,6 +408,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -428,13 +429,16 @@
   border: 2px solid var(--tavern-ink);
   border-radius: 11px 11px 4px 11px;
   padding: 6px 10px;
+  min-width: 0;
+  max-width: 100%;
   white-space: pre-wrap;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   box-shadow: 2px 2px 0 var(--tavern-ink);
 }
 
 .tavern-msg-assistant {
-  overflow-wrap: break-word;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .tavern-msg {
@@ -456,6 +460,7 @@
 .tavern-msg-assistant-content {
   display: grid;
   gap: 8px;
+  min-width: 0;
 }
 
 .tavern-msg-actions {
@@ -580,7 +585,14 @@
 
 .tavern-md {
   line-height: 1.55;
-  word-break: break-word;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.tavern-md img {
+  max-width: 100%;
+  height: auto;
 }
 
 .tavern-md > *:first-child {
@@ -657,6 +669,7 @@
   background: var(--tavern-wash);
   border-radius: 4px;
   padding: 1px 4px;
+  overflow-wrap: anywhere;
 }
 
 .tavern-md pre {
@@ -665,7 +678,9 @@
   border-radius: 10px;
   background: var(--tavern-wash);
   border: 1px solid var(--tavern-rule);
-  overflow-x: auto;
+  max-width: 100%;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .tavern-md pre code {
@@ -673,6 +688,8 @@
   padding: 0;
   font-size: 12px;
   line-height: 1.5;
+  white-space: inherit;
+  overflow-wrap: inherit;
 }
 
 .tavern-md blockquote {
@@ -693,6 +710,7 @@
   margin: 0 0 8px;
   font-size: 12px;
   display: block;
+  max-width: 100%;
   overflow-x: auto;
 }
 
@@ -1037,7 +1055,7 @@
 
 .tavern-approve-text {
   white-space: pre-wrap;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
 }
 
 .tavern-approve-actions {
@@ -1560,7 +1578,7 @@
   border-radius: 8px;
   padding: 6px 9px;
   white-space: pre-wrap;
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere;
   max-height: 180px;
   overflow-y: auto;
 }

@@ -89,10 +89,6 @@ export function useOnboarding(enabled: boolean): {
     ...threadHistoryInfiniteQueryOptions(),
     enabled,
   });
-  // The local verdict outlives any refetch of the settings cache. Without it,
-  // a stale settings read (the PUT still in flight, or a refetch that raced
-  // it) or any dependency change (the seeded thread landing in history) would
-  // re-derive "show" and drop the user back onto the last beat.
   const decided = useRef<OnboardingSaved | null>(null);
 
   useEffect(() => {

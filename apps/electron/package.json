@@ -3,7 +3,7 @@
   "productName": "Freestyle",
   "desktopName": "freestyle.desktop",
   "version": "0.8.5",
-  "description": "Voice-to-text that works everywhere",
+  "description": "The intelligent reminders app",
   "author": "freestyle-voice",
   "homepage": "https://github.com/freestyle-voice/freestyle",
   "main": "./out/main/index.js",

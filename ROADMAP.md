@@ -14,7 +14,7 @@
 
 Hey there! I'm Matt. I'm one of the maintainers of Freestyle. I really appreciate you taking the time to go through our roadmap and considering contributing to the project. It means a lot
 
-Below is the high level roadmap of this project. The roadmap is broken up into sections of the project. This roadmap is not concrete and is subject to change. If you'd like to propose changes to the roadmpa, please create a pull request for it. All suggestions are welcome. Consider joining our Discord community to participate in discussions!
+Below is the high level roadmap of this project. The roadmap is broken up into sections of the project. This roadmap is not concrete and is subject to change. If you'd like to propose changes to the roadmap, please create a pull request for it. All suggestions are welcome. Consider joining our Discord community to participate in discussions!
 
 Note that all goals below are high level goals, not specific tasks. It's this community's work to figure out how to achieve them. 
 

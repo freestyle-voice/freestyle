@@ -1,6 +1,8 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
+import { capture } from "@renderer/lib/analytics";
 import { queryKeys, scheduledTasksQueryOptions } from "@renderer/lib/query";
 import {
+  runScheduledTaskNow,
   type ScheduledTaskView,
   updateScheduledTask,
 } from "@renderer/lib/scheduled-tasks";
@@ -28,6 +30,8 @@ export function ScheduledTasks({
   const tasksQuery = useQuery(scheduledTasksQueryOptions());
   const tasks = tasksQuery.data ?? [];
   const [busy, setBusy] = useState<string | null>(null);
+  const [running, setRunning] = useState<string | null>(null);
+  const [ran, setRan] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const toggle = (task: ScheduledTaskView): void => {
@@ -59,6 +63,28 @@ export function ScheduledTasks({
         setError("Couldn’t update that task. Try again.");
       })
       .finally(() => setBusy(null));
+  };
+
+  const runNow = (task: ScheduledTaskView): void => {
+    setRunning(task.id);
+    setRan(null);
+    setError(null);
+    capture("scheduled_task_run_now", { task: task.name });
+    void runScheduledTaskNow(task.id)
+      .then(() => {
+        setRan(task.id);
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.scheduled.tasks,
+        });
+      })
+      .catch((err: unknown) => {
+        setError(
+          err instanceof Error && err.message
+            ? err.message
+            : "That didn’t run. Try again in a moment.",
+        );
+      })
+      .finally(() => setRunning(null));
   };
 
   if (tasksQuery.isLoading)
@@ -118,6 +144,21 @@ export function ScheduledTasks({
           <span className="tavern-sched-meta">
             {whenLastRun(task.lastCompletedAt)} · {task.timezone}
           </span>
+          <div className="tavern-sched-actions">
+            <button
+              type="button"
+              className="tavern-sched-action"
+              disabled={running !== null}
+              aria-label={`Run ${task.name} now`}
+              onClick={() => runNow(task)}
+            >
+              {running === task.id
+                ? "Running…"
+                : ran === task.id
+                  ? "Ran ✓"
+                  : "Run now"}
+            </button>
+          </div>
         </div>
       ))}
     </>

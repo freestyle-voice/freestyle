@@ -41,3 +41,19 @@ export async function updateScheduledTask(
   );
   return data.task;
 }
+
+export interface ScheduledTaskRunResult {
+  ok: true;
+  threadId: string | null;
+  notificationId: string | null;
+}
+
+export async function runScheduledTaskNow(
+  id: string,
+): Promise<ScheduledTaskRunResult> {
+  return responseJson<ScheduledTaskRunResult>(
+    await apiFetch(`/api/scheduled/tasks/${encodeURIComponent(id)}/run`, {
+      method: "POST",
+    }),
+  );
+}

@@ -13,11 +13,12 @@ import {
   DEFAULT_COMPANION_FORM,
 } from "@shared/companion";
 import type { DictationPrefs } from "@shared/dictation-prefs";
+import { SPRITES_INFO } from "@shared/sprites";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-const SPARK_HOT_RECT = { x: 18, y: 190, width: 52, height: 52 };
+const SPARK_HOT_RECT = SPRITES_INFO.spark.body;
 
 export interface BubbleState {
   phase: "recording" | "transcribing" | "error";

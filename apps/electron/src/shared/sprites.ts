@@ -11,10 +11,13 @@ export interface SpriteAnchor {
   bodyBottom: number;
   /** Breathing room between the body and the screen corner, px. */
   margin: number;
-  /** Where the drawn body's top edge sits inside the window, px. */
-  bodyTop: number;
-  /** Drawn body width, px. */
-  bodyWidth: number;
+}
+
+export interface SpriteBody {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
 export interface SpriteInfo {
@@ -29,6 +32,8 @@ export interface SpriteInfo {
    * corner. null = the sprite fills its own corner (Spark).
    */
   anchor: SpriteAnchor | null;
+  /** The drawn body's box inside the window, px; where bubbles hang from. */
+  body: SpriteBody;
   /** May physically fly across the screen to perform deliver-class tools. */
   travel?: boolean;
 }
@@ -40,6 +45,7 @@ export const SPRITES_INFO = {
     kind: "custom",
     windowSize: 256,
     anchor: null,
+    body: { x: 18, y: 190, width: 52, height: 52 },
     travel: false,
   },
   jeb: {
@@ -51,9 +57,8 @@ export const SPRITES_INFO = {
       bodyLeft: 100,
       bodyBottom: 38,
       margin: 4,
-      bodyTop: 150,
-      bodyWidth: 44,
     },
+    body: { x: 100, y: 150, width: 44, height: 68 },
     travel: true,
   },
 } as const satisfies Record<string, SpriteInfo>;

@@ -10,6 +10,7 @@ const def = {
   kind: "sheet",
   windowSize: 96,
   anchor: null,
+  body: { x: 0, y: 0, width: 1, height: 1 },
   hotRect: { x: 0, y: 0, width: 1, height: 1 },
   bubble: { x: 0, y: 0, maxChars: 1 },
   manifest: {

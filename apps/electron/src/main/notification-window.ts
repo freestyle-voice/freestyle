@@ -38,20 +38,19 @@ function anchorBounds(): {
   const height = Math.min(Math.max(contentHeight, 60), MAX_HEIGHT);
   const info = SPRITES_INFO[host.spriteForm()];
   const bounds = host.companionBounds();
-  const display = screen.getDisplayNearestPoint(
-    bounds ? { x: bounds.x, y: bounds.y } : screen.getCursorScreenPoint(),
-  );
-  const { x: waX, y: waY, width: waW, height: waH } = display.workArea;
-
-  const windowX = bounds ? bounds.x : waX;
-  const windowY = bounds ? bounds.y : waY + waH - info.windowSize;
-
-  const bodyTop = windowY + (info.anchor?.bodyTop ?? 0);
-  const bodyCenterX =
-    windowX +
-    (info.anchor
-      ? info.anchor.bodyLeft + info.anchor.bodyWidth / 2
-      : info.windowSize / 2);
+  const cursor = screen.getCursorScreenPoint();
+  const homeDisplay = screen.getDisplayNearestPoint(cursor);
+  const windowX = bounds ? bounds.x : homeDisplay.workArea.x;
+  const windowY = bounds
+    ? bounds.y
+    : homeDisplay.workArea.y + homeDisplay.workArea.height - info.windowSize;
+  const bodyTop = windowY + info.body.y;
+  const bodyCenterX = windowX + info.body.x + info.body.width / 2;
+  const display = screen.getDisplayNearestPoint({
+    x: Math.round(bodyCenterX),
+    y: Math.round(bodyTop + info.body.height / 2),
+  });
+  const { x: waX, y: waY, width: waW } = display.workArea;
 
   const x = Math.min(
     Math.max(Math.round(bodyCenterX - TAIL_OFFSET), waX + 4),

@@ -13,7 +13,7 @@ export const SPRITES: Record<SpriteId, SpriteDefinition> = {
   spark: {
     ...SPRITES_INFO.spark,
     kind: "custom",
-    hotRect: { x: 18, y: 190, width: 52, height: 52 },
+    hotRect: SPRITES_INFO.spark.body,
     bubble: { x: 12, y: 68, maxChars: 220 },
   },
   jeb: JEB,

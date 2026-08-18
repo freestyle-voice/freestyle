@@ -24,8 +24,7 @@ export const JEB: SheetSpriteDefinition = {
   kind: "sheet",
   manifest: JEB_MANIFEST,
   sheets,
-  // Body measured from the frames' alpha at 2x: x 100–144, y 150–218.
-  hotRect: { x: 100, y: 150, width: 44, height: 68 },
+  hotRect: SPRITES_INFO.jeb.body,
   bubble: { x: 106, y: 116, maxChars: 80 },
   fx: {
     shuriken: {

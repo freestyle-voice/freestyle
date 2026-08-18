@@ -32,6 +32,7 @@ import {
 import {
   connectorConnectionsQueryOptions,
   connectorSuggestedQueryOptions,
+  queryKeys,
   settingsQueryOptions,
   threadHistoryInfiniteQueryOptions,
 } from "@renderer/lib/query";
@@ -43,7 +44,12 @@ import {
 import { useUpdateProfileFields } from "@renderer/lib/use-profile";
 import type { CloudUser } from "@shared/cloud-user";
 import type { SpriteId } from "@shared/sprites";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useInfiniteQuery,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -53,6 +59,13 @@ function persistSaved(state: OnboardingSaved): void {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ value: JSON.stringify(state) }),
   }).catch(() => {});
+}
+
+function cacheSaved(queryClient: QueryClient, state: OnboardingSaved): void {
+  queryClient.setQueryData<Record<string, string>>(
+    queryKeys.settings,
+    (prev) => ({ ...(prev ?? {}), [ONBOARDING_KEY]: JSON.stringify(state) }),
+  );
 }
 
 export type OnboardingStatus = "loading" | "show" | "done";
@@ -70,16 +83,26 @@ export function useOnboarding(enabled: boolean): {
 } {
   const [status, setStatus] = useState<OnboardingStatus>("loading");
   const [saved, setSaved] = useState<OnboardingSaved | null>(null);
+  const queryClient = useQueryClient();
   const settingsQuery = useQuery({ ...settingsQueryOptions(), enabled });
   const threadsQuery = useInfiniteQuery({
     ...threadHistoryInfiniteQueryOptions(),
     enabled,
   });
+  // The local verdict outlives any refetch of the settings cache. Without it,
+  // a stale settings read (the PUT still in flight, or a refetch that raced
+  // it) or any dependency change (the seeded thread landing in history) would
+  // re-derive "show" and drop the user back onto the last beat.
+  const decided = useRef<OnboardingSaved | null>(null);
 
   useEffect(() => {
     if (!enabled) return;
     if (settingsQuery.isPending || threadsQuery.isPending) return;
     const parsed = parseSaved(settingsQuery.data?.[ONBOARDING_KEY]);
+    if (decided.current?.done && !parsed?.done) {
+      cacheSaved(queryClient, decided.current);
+      return;
+    }
     setSaved(parsed);
     if (parsed?.done) {
       setStatus("done");
@@ -87,7 +110,9 @@ export function useOnboarding(enabled: boolean): {
       setStatus("show");
     } else if ((threadsQuery.data?.pages[0]?.threads.length ?? 0) > 0) {
       const grandfathered: OnboardingSaved = { v: 2, done: true };
+      decided.current = grandfathered;
       persistSaved(grandfathered);
+      cacheSaved(queryClient, grandfathered);
       setSaved(grandfathered);
       setStatus("done");
     } else {
@@ -95,14 +120,19 @@ export function useOnboarding(enabled: boolean): {
     }
   }, [
     enabled,
+    queryClient,
     settingsQuery.data,
     settingsQuery.isPending,
     threadsQuery.data,
     threadsQuery.isPending,
   ]);
 
-  const markDone = useCallback((task: string): void => {
-    setSaved((prev) => {
+  const savedRef = useRef<OnboardingSaved | null>(null);
+  savedRef.current = saved;
+
+  const markDone = useCallback(
+    (task: string): void => {
+      const prev = savedRef.current;
       const next: OnboardingSaved = {
         v: 2,
         done: true,
@@ -111,18 +141,23 @@ export function useOnboarding(enabled: boolean): {
         ...(prev?.automations?.length ? { automations: prev.automations } : {}),
         ...(prev?.replayed ? { replayed: true } : {}),
       };
+      decided.current = next;
       persistSaved(next);
-      return next;
-    });
-    setStatus("done");
-  }, []);
+      cacheSaved(queryClient, next);
+      setSaved(next);
+      setStatus("done");
+    },
+    [queryClient],
+  );
 
   const replay = useCallback((): void => {
     const next: OnboardingSaved = { v: 2, done: false, replayed: true };
+    decided.current = next;
     persistSaved(next);
+    cacheSaved(queryClient, next);
     setSaved(next);
     setStatus("show");
-  }, []);
+  }, [queryClient]);
 
   return { status, saved, markDone, replay };
 }

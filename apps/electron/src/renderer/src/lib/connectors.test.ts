@@ -7,7 +7,6 @@ vi.mock("@renderer/lib/api", () => ({ apiFetch }));
 import {
   connectorToolActionName,
   isConnectorToolName,
-  isReadOnlyConnectorToolName,
   listConnectorCatalog,
 } from "./connectors";
 import { connectorSearchInfiniteQueryOptions } from "./query";
@@ -15,7 +14,7 @@ import { connectorSearchInfiniteQueryOptions } from "./query";
 describe("connected-app tool approvals", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("requires confirmation before a connector action can execute", async () => {
+  it("recognizes server-named connector tools", async () => {
     expect(
       isConnectorToolName("connector__connection_1__GMAIL_SEND_EMAIL"),
     ).toBe(true);
@@ -23,17 +22,6 @@ describe("connected-app tool approvals", () => {
 
   it("does not mistake malformed tool names for connector actions", async () => {
     expect(isConnectorToolName("connector__broken")).toBe(false);
-  });
-
-  it("identifies only server-marked read-only connector tools", () => {
-    expect(
-      isReadOnlyConnectorToolName(
-        "connector__gmail__ro_474d41494c5f46455443485f454d41494c53",
-      ),
-    ).toBe(true);
-    expect(
-      isReadOnlyConnectorToolName("connector__gmail__474d41494c5f53454"),
-    ).toBe(false);
   });
 
   it("keeps the approval copy readable for collision-safe tool names", () => {
@@ -45,6 +33,20 @@ describe("connected-app tool approvals", () => {
         "connector__gmail__ro_474d41494c5f46455443485f454d41494c53",
       ),
     ).toBe("GMAIL_FETCH_EMAILS");
+  });
+
+  it("prefers the executed tool slug from the input over the executor name", () => {
+    expect(
+      connectorToolActionName("connector__github__ro_524541445f544f4f4c", {
+        tool_slug: "GITHUB_LIST_PULL_REQUESTS",
+        arguments: {},
+      }),
+    ).toBe("GITHUB_LIST_PULL_REQUESTS");
+    expect(
+      connectorToolActionName("connector__github__ro_524541445f544f4f4c", {
+        tool_slug: "not a slug",
+      }),
+    ).toBe("READ_TOOL");
   });
 
   it("requests a bounded connector catalog page using the opaque cursor", async () => {

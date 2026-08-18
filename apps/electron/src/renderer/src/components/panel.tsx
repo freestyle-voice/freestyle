@@ -156,7 +156,7 @@ function ToolChip({
   phase?: ToolPhase;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const presentation = toolPresentation(partType, phase);
+  const presentation = toolPresentation(partType, phase, input);
   const running = phase === "running";
   const hasInput =
     input !== undefined &&
@@ -760,7 +760,7 @@ function PanelInner({
         }
         const output =
           tier === "free"
-            ? await executeAgentTool(call, thread.id)
+            ? await executeAgentTool(call)
             : { ok: false, reason: `unknown tool: ${call.toolName}` };
         addToolOutput({
           tool: toolCall.toolName,
@@ -884,9 +884,7 @@ function PanelInner({
       prev.filter((a) => a.toolCallId !== call.toolCallId),
     );
     void (async () => {
-      const output = allowed
-        ? await executeAgentTool(call, thread.id)
-        : DECLINED_OUTPUT;
+      const output = allowed ? await executeAgentTool(call) : DECLINED_OUTPUT;
       addToolOutput({
         tool: call.toolName,
         toolCallId: call.toolCallId,

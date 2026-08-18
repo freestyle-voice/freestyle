@@ -79,26 +79,26 @@ export function isConnectorToolName(name: string): boolean {
   return /^connector__[a-zA-Z0-9_-]+__(?:ro_)?[a-zA-Z0-9_]+$/.test(name);
 }
 
-/** A read-only marker is added server-side from Composio's tool metadata. */
-export function isReadOnlyConnectorToolName(name: string): boolean {
-  return /^connector__[a-zA-Z0-9_-]+__ro_[a-zA-Z0-9_]+$/.test(name);
-}
-
-/** Decode the collision-safe Cloud tool suffix for human approval copy. */
-export function connectorToolActionName(toolName: string): string {
+export function connectorToolActionName(
+  toolName: string,
+  input?: unknown,
+): string {
+  const slug =
+    input && typeof input === "object"
+      ? (input as { tool_slug?: unknown }).tool_slug
+      : undefined;
+  if (typeof slug === "string" && /^[A-Z0-9_]+$/.test(slug)) return slug;
   const encoded = (toolName.split("__").at(-1) ?? "").replace(/^ro_/, "");
-  if (/^(?:[0-9a-f]{2})+$/i.test(encoded)) {
-    try {
-      return new TextDecoder().decode(
-        Uint8Array.from(encoded.match(/.{2}/g) ?? [], (byte) =>
-          parseInt(byte, 16),
-        ),
-      );
-    } catch {
-      // Fall through to the opaque name below. The server still validates it.
-    }
+  if (!/^(?:[0-9a-f]{2})+$/i.test(encoded)) return encoded;
+  try {
+    return new TextDecoder().decode(
+      Uint8Array.from(encoded.match(/.{2}/g) ?? [], (byte) =>
+        parseInt(byte, 16),
+      ),
+    );
+  } catch {
+    return encoded;
   }
-  return encoded;
 }
 
 async function responseJson<T>(response: Response): Promise<T> {
@@ -147,7 +147,6 @@ export async function listConnectorConnections(): Promise<
 
 export type SuggestedConnectors = {
   connectors: ConnectorCatalogItem[];
-  /** Section title, e.g. "Recommended for engineers"; role-aware server-side. */
   heading: string;
 };
 
@@ -181,8 +180,6 @@ export async function connectToolkit(toolkit: string): Promise<void> {
     throw new Error("Could not open your browser to connect this app.");
 }
 
-/** API-key apps skip the browser: the key goes straight to the cloud, which
- * verifies it with Composio and returns the now-active connection. */
 export async function connectToolkitWithCredentials(
   toolkit: string,
   credentials: Record<string, string>,
@@ -214,37 +211,4 @@ export async function disconnectToolkit(toolkit: string): Promise<void> {
     ),
   );
   capture("connector_disconnected", { toolkit });
-}
-
-export async function approveConnectorAction(input: {
-  threadId: string;
-  toolName: string;
-  input: Record<string, unknown>;
-}): Promise<{ approvalToken: string }> {
-  return responseJson(
-    await apiFetch("/api/connectors/approve", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }),
-  );
-}
-
-export async function executeConnectorAction(input: {
-  approvalToken: string;
-  threadId: string;
-  toolName: string;
-  input: Record<string, unknown>;
-}): Promise<Record<string, unknown>> {
-  const data = await responseJson<{
-    ok: true;
-    output: Record<string, unknown>;
-  }>(
-    await apiFetch("/api/connectors/execute", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
-    }),
-  );
-  return data.output;
 }

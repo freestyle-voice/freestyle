@@ -25,9 +25,12 @@ const TOOL_LABELS: Record<string, string> = {
   "tool-brain_search": "Searched memories",
   "tool-brain_delete": "Forgot a memory",
   "tool-emote": "Changed expression",
+  "tool-connector_search_tools": "Looked up connected-app actions",
+  "tool-suggest_connections": "Suggested apps to connect",
 };
 
 const RUNNING_LABELS: Record<string, string> = {
+  "tool-connector_search_tools": "Looking up connected-app actions",
   "tool-current_time": "Checking the time",
   "tool-web_search": "Searching the web",
   "tool-image_search": "Searching for images",
@@ -93,7 +96,6 @@ function appName(slug: string): string {
   );
 }
 
-/** Toolkit slug for a connected-app tool part, or null for built-in tools. */
 export function connectorToolkitSlug(partType: string): string | null {
   const name = partType.replace(/^tool-/, "");
   if (!isConnectorToolName(name)) return null;
@@ -102,10 +104,10 @@ export function connectorToolkitSlug(partType: string): string | null {
 
 export type ToolPhase = "running" | "done" | "declined" | "failed";
 
-/** The short, user-facing label for an AI SDK tool part. */
 export function toolPresentation(
   partType: string,
   phase: ToolPhase = "done",
+  input?: unknown,
 ): {
   title: string;
   detail: string | undefined;
@@ -113,7 +115,7 @@ export function toolPresentation(
   const name = partType.replace(/^tool-/, "");
   if (isConnectorToolName(name)) {
     const [, toolkitSlug = "connected app"] = name.split("__");
-    const action = words(connectorToolActionName(name)).replace(
+    const action = words(connectorToolActionName(name, input)).replace(
       new RegExp(
         `^${toolkitSlug.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&").replace(/[-_]/g, " ")}\\s*`,
         "i",

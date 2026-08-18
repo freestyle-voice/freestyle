@@ -1,10 +1,7 @@
 import { apiFetch } from "@renderer/lib/api";
 import {
-  approveConnectorAction,
   connectorToolActionName,
-  executeConnectorAction,
   isConnectorToolName,
-  isReadOnlyConnectorToolName,
 } from "@renderer/lib/connectors";
 import { parseSpriteEmotion } from "@shared/sprite-events";
 
@@ -16,66 +13,22 @@ export interface AgentToolCall {
   input: unknown;
 }
 
-const BASH_ALLOWLIST = new Set([
-  "ls",
-  "cat",
-  "grep",
-  "find",
-  "head",
-  "tail",
-  "wc",
-  "pwd",
-  "date",
-  "echo",
-  "which",
-  "file",
-  "du",
-]);
-
-const BASH_SAFE_SHAPE = /^[a-zA-Z0-9_./\s"'*=:,+-]+$/;
-
-const BASH_MUTATING_FLAGS: Record<string, RegExp> = {
-  find: /(^|\s)-(delete|exec|execdir|ok|okdir|fprint0?|fprintf|fls)(\s|$)/,
-};
-
-export function bashIsReadOnly(command: string): boolean {
-  if (!BASH_SAFE_SHAPE.test(command)) return false;
-  const first = command.trim().split(/\s+/)[0] ?? "";
-  if (!BASH_ALLOWLIST.has(first)) return false;
-  return !BASH_MUTATING_FLAGS[first]?.test(command);
-}
-
 const str = (input: Record<string, unknown>, key: string): string =>
   typeof input[key] === "string" ? (input[key] as string) : "";
 
 export async function agentToolTier(
   call: AgentToolCall,
 ): Promise<AgentToolTier | null> {
-  const input = (call.input ?? {}) as Record<string, unknown>;
-  void input;
-  if (isConnectorToolName(call.toolName))
-    return isReadOnlyConnectorToolName(call.toolName) ? "free" : "confirmed";
   switch (call.toolName) {
     case "current_time":
     case "emote":
-      return "free";
-    // Cursor/screen/clipboard tools disabled for now — see AGENT_CLIENT_TOOLS.
-    // case "get_context":
-    // case "read_document":
-    // case "get_clipboard":
-    //   return "free";
-    // case "set_clipboard":
-    // case "paste":
-    //   return "confirmed";
     case "Bash":
-      return bashIsReadOnly(str(input, "command")) ? "free" : "confirmed";
     case "Read":
     case "Glob":
     case "Grep":
-      return "free";
     case "Write":
     case "Edit":
-      return "confirmed";
+      return "free";
     default:
       return null;
   }
@@ -85,19 +38,12 @@ export function describeAgentAction(call: AgentToolCall): string {
   const input = (call.input ?? {}) as Record<string, unknown>;
   if (isConnectorToolName(call.toolName)) {
     const action =
-      connectorToolActionName(call.toolName).replace(/_/g, " ").toLowerCase() ||
-      "connected-app action";
+      connectorToolActionName(call.toolName, input)
+        .replace(/_/g, " ")
+        .toLowerCase() || "connected-app action";
     return `Use a connected app to ${action}.`;
   }
   switch (call.toolName) {
-    // Cursor/clipboard tools disabled for now.
-    // case "set_clipboard": {
-    //   const text = str(input, "text");
-    //   const preview = text.length > 120 ? `${text.slice(0, 120)}…` : text;
-    //   return `Put this on your clipboard (${text.length} characters):\n“${preview}”`;
-    // }
-    // case "paste":
-    //   return "Paste the clipboard into the app you're using, at your cursor.";
     case "Bash": {
       const command = str(input, "command");
       const preview =
@@ -136,7 +82,6 @@ async function runOsTool(
 
 export async function executeAgentTool(
   call: AgentToolCall,
-  threadId?: string,
 ): Promise<Record<string, unknown>> {
   const input = (call.input ?? {}) as Record<string, unknown>;
   const badArgs = (expected: string): Record<string, unknown> => ({
@@ -147,20 +92,6 @@ export async function executeAgentTool(
   });
 
   try {
-    if (isConnectorToolName(call.toolName)) {
-      if (!threadId) return { ok: false, reason: "missing-thread" };
-      const approval = await approveConnectorAction({
-        threadId,
-        toolName: call.toolName,
-        input,
-      });
-      return await executeConnectorAction({
-        approvalToken: approval.approvalToken,
-        threadId,
-        toolName: call.toolName,
-        input,
-      });
-    }
     switch (call.toolName) {
       case "current_time": {
         const now = new Date();
@@ -177,27 +108,6 @@ export async function executeAgentTool(
         });
         return { ok: true };
       }
-      // Cursor/screen/clipboard tools disabled for now — restore together
-      // with their AGENT_CLIENT_TOOLS entries and the agent-prompt guidance.
-      // case "get_context":
-      //   return { ...(await window.api.remixGetContext()) };
-      // case "read_document":
-      //   return { ...(await window.api.remixReadDocument()) };
-      // case "get_clipboard":
-      //   return { ...(await window.api.remixGetClipboard()) };
-      // case "set_clipboard":
-      //   if (!str(input, "text")) return badArgs("{ text: string }");
-      //   return {
-      //     ...(await window.api.remixSetClipboard(str(input, "text"))),
-      //   };
-      // case "paste":
-      //   // The theater contract: the sprite travels to the caret and swings;
-      //   // this resolves at the impact frame (or a hard ceiling), so the
-      //   // paste lands on the hit. A missing sprite resolves immediately.
-      //   await window.api
-      //     .spritePerformSync({ name: "paste", toolClass: "deliver" })
-      //     .catch(() => {});
-      //   return { ...(await window.api.remixPasteClipboard()) };
       case "Bash":
         if (!str(input, "command")) return badArgs("{ command: string }");
         return runOsTool("bash", { command: str(input, "command") });

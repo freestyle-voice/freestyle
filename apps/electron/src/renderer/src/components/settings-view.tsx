@@ -11,7 +11,6 @@ import {
   NotificationsHistory,
   QuietHoursSettings,
 } from "@renderer/components/notifications-history";
-import { ScheduledTasks } from "@renderer/components/scheduled-tasks";
 import {
   acceleratorsEqual,
   formatAcceleratorKeys,
@@ -55,7 +54,6 @@ type SettingsPage =
   | "profile"
   | "billing"
   | "notifications"
-  | "scheduled"
   | "dictation"
   | "talk"
   | "application"
@@ -66,7 +64,6 @@ const PAGE_TITLES: Record<Exclude<SettingsPage, "root">, string> = {
   profile: "Profile",
   billing: "Billing & Usage",
   notifications: "Notifications",
-  scheduled: "Scheduled",
   dictation: "Dictation",
   talk: "Talk & Summon",
   application: "Application",
@@ -1534,21 +1531,12 @@ export function SettingsView({
   const auth = useCloudAuth();
   const usage = useCloudUsage(!!auth.user);
   const [version, setVersion] = useState("");
-  const [spriteForm, setSpriteForm] = useState<CompanionForm>(
-    DEFAULT_COMPANION_FORM,
-  );
 
   useEffect(() => {
     void window.api
       .getAppVersion()
       .then(setVersion)
       .catch(() => {});
-    void window.api
-      .companionForm()
-      .then(setSpriteForm)
-      .catch(() => {});
-    const off = window.api.onCompanionForm(setSpriteForm);
-    return () => off?.();
   }, []);
 
   if (settings === null)
@@ -1571,8 +1559,6 @@ export function SettingsView({
           <ProfilePage />
         ) : page === "billing" ? (
           <BillingPage />
-        ) : page === "scheduled" ? (
-          <ScheduledTasks mascot={SPRITES_INFO[spriteForm].label} />
         ) : page === "notifications" ? (
           <>
             <QuietHoursSettings />
@@ -1626,7 +1612,6 @@ export function SettingsView({
         detail={auth.user ? (usage.isPro ? "Pro" : "Free") : undefined}
         onClick={() => setPage("billing")}
       />
-      <NavRow label="Scheduled" onClick={() => setPage("scheduled")} />
       <NavRow label="Notifications" onClick={() => setPage("notifications")} />
       <NavRow
         label="Dictation"

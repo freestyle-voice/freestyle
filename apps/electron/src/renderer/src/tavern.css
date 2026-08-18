@@ -3524,6 +3524,62 @@
   color: var(--tavern-mute);
 }
 
+.tavern-sched-section {
+  margin-bottom: 14px;
+}
+
+.tavern-sched-label {
+  display: block;
+  margin: 0 0 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tavern-mute);
+}
+
+.tavern-sched.is-card {
+  display: block;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.tavern-sched.is-card:hover {
+  border-color: var(--tavern-ink);
+}
+
+.tavern-sched.is-card:focus-visible {
+  outline: 2px solid var(--tavern-lantern);
+  outline-offset: 1px;
+}
+
+.tavern-sched.is-detail {
+  margin-bottom: 12px;
+}
+
+.tavern-sched-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tavern-sched-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tavern-sched-field .tavern-sched-label {
+  margin: 0;
+}
+
+.tavern-sched-field .tavern-editor {
+  min-height: 140px;
+}
+
 /* ── Apps page v2: logos, detail pane, in-chat connect cards ─────────── */
 
 .connector-card {

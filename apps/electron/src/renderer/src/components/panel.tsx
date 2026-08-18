@@ -85,7 +85,7 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
   todos: "Nothing to do yet.",
   notes: "No notes yet.",
   brain:
-    "Everything Freestyle knows lives here — memories, notes, skills, todos.",
+    "Everything Freestyle knows lives here — scheduled tasks, memories, notes, skills, todos.",
   apps: "Connect the apps you live in, and Freestyle can work them for you.",
 };
 
@@ -521,6 +521,15 @@ function touchesBrain(message: UIMessage): boolean {
   );
 }
 
+function touchesScheduled(message: UIMessage): boolean {
+  return message.parts.some(
+    (part) =>
+      part.type === "tool-scheduled_task_create" ||
+      part.type === "tool-scheduled_task_update" ||
+      part.type === "tool-scheduled_task_delete",
+  );
+}
+
 function PanelTail(): React.JSX.Element {
   // A manga balloon tail. The card fill reaches up through the panel's border
   // and hard shadow so the bubble opens into the tail; the ink stroke draws
@@ -838,6 +847,11 @@ function PanelInner({
         if (touchesBrain(last)) {
           resetBrainCache();
           void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
+        }
+        if (touchesScheduled(last)) {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.scheduled.tasks,
+          });
         }
         const text = messageText(last);
         if (!text) return;

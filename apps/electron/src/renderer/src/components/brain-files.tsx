@@ -1,5 +1,6 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
+import { ScheduledTasks } from "@renderer/components/scheduled-tasks";
 import { capture } from "@renderer/lib/analytics";
 import {
   deleteBrainFile,
@@ -185,6 +186,8 @@ export function BrainFiles({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [view, setView] = useState<FileView>({ kind: "list" });
   const [error, setError] = useState<string | null>(null);
+  const [scheduledOpen, setScheduledOpen] = useState(false);
+  const scheduled = root === "";
 
   if (filesQuery.isLoading) return <DataSkeleton label="Loading Brain files" />;
   if (filesQuery.isError)
@@ -318,8 +321,12 @@ export function BrainFiles({
     );
   }
 
+  if (scheduled && scheduledOpen)
+    return <ScheduledTasks onOpenChange={setScheduledOpen} />;
+
   return (
     <>
+      {scheduled ? <ScheduledTasks onOpenChange={setScheduledOpen} /> : null}
       {files.length === 0 ? (
         <div className="tavern-empty">{emptyText}</div>
       ) : (

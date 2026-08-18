@@ -285,7 +285,7 @@ function AutomationRow({
       <strong>{automation.name}</strong>
       <small>
         {state === "on"
-          ? "On. Manage it in Settings \u2192 Scheduled."
+          ? "On. Manage it in Brain \u2192 Scheduled."
           : state === "error"
             ? "Couldn't set that up. Ask in chat instead."
             : `Runs ${automation.schedule}. Only notifies when it matters.`}

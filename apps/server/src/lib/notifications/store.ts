@@ -118,7 +118,10 @@ export function upsertFromCloud(
        title = excluded.title,
        body = excluded.body,
        payload = excluded.payload,
-       expires_at = excluded.expires_at`,
+       expires_at = excluded.expires_at,
+       seen_at = CASE WHEN excluded.created_at > notifications.created_at THEN NULL ELSE notifications.seen_at END,
+       dismissed_at = CASE WHEN excluded.created_at > notifications.created_at THEN NULL ELSE notifications.dismissed_at END,
+       created_at = MAX(excluded.created_at, notifications.created_at)`,
   );
 
   db.exec("BEGIN");

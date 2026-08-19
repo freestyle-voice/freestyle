@@ -1,6 +1,8 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
+import { useDictationTarget } from "@renderer/hooks/use-dictation-target";
 import { capture } from "@renderer/lib/analytics";
 import { readBrainFile, writeBrainFile } from "@renderer/lib/brain-fs";
+import type { RegisterDictationSink } from "@renderer/lib/dictation-sink";
 import { queryKeys } from "@renderer/lib/query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
@@ -29,7 +31,13 @@ function parseItems(lines: string[]): TodoItem[] {
   return items;
 }
 
-export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
+export function TodosTab({
+  mascot,
+  registerDictation,
+}: {
+  mascot: string;
+  registerDictation: RegisterDictationSink;
+}): React.JSX.Element {
   const queryClient = useQueryClient();
   const todosQuery = useQuery({
     queryKey: queryKeys.brain.file(TODOS_PATH),
@@ -41,6 +49,8 @@ export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
   const [editing, setEditing] = useState<{ line: number; text: string } | null>(
     null,
   );
+  // Dictation fills the box; Enter commits it, so a misheard item is fixable.
+  useDictationTarget(registerDictation, draft, setDraft, { mode: "replace" });
 
   const save = (next: string[]): void => {
     const nextText = next.join("\n");
@@ -159,7 +169,7 @@ export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
       <input
         className="tavern-todo-add"
         value={draft}
-        placeholder="Add a to-do"
+        placeholder="Add a to-do, or say it"
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") add();

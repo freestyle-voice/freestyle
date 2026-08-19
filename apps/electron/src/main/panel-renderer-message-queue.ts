@@ -4,7 +4,7 @@ export type PanelDictationEvent = {
 };
 
 export type PanelRendererMessage =
-  | { channel: "panel:focus-composer" }
+  | { channel: "panel:focus-composer"; payload?: string }
   | { channel: "panel:dictation"; payload: PanelDictationEvent }
   | { channel: "panel:open-thread"; payload: string };
 
@@ -16,7 +16,7 @@ export type PanelRendererMessage =
 export class PanelRendererMessageQueue {
   private ready = false;
   private initialNavigation = true;
-  private focusComposerPending = false;
+  private focusComposerPending: PanelRendererMessage | null = null;
   private pendingDictation: PanelRendererMessage | null = null;
   private pendingOpenThread: PanelRendererMessage | null = null;
 
@@ -30,7 +30,7 @@ export class PanelRendererMessageQueue {
       return;
     }
     if (message.channel === "panel:focus-composer") {
-      this.focusComposerPending = true;
+      this.focusComposerPending = message;
       return;
     }
     if (message.channel === "panel:open-thread") {
@@ -45,11 +45,10 @@ export class PanelRendererMessageQueue {
   markReady(): void {
     if (this.ready) return;
     this.ready = true;
-    if (this.focusComposerPending)
-      this.deliver({ channel: "panel:focus-composer" });
+    if (this.focusComposerPending) this.deliver(this.focusComposerPending);
     if (this.pendingDictation) this.deliver(this.pendingDictation);
     if (this.pendingOpenThread) this.deliver(this.pendingOpenThread);
-    this.focusComposerPending = false;
+    this.focusComposerPending = null;
     this.pendingDictation = null;
     this.pendingOpenThread = null;
   }
@@ -69,7 +68,7 @@ export class PanelRendererMessageQueue {
 
   private clear(): void {
     this.ready = false;
-    this.focusComposerPending = false;
+    this.focusComposerPending = null;
     this.pendingDictation = null;
     this.pendingOpenThread = null;
   }

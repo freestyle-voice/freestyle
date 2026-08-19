@@ -3519,14 +3519,7 @@ let panelResizing = false;
 const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
-  if (
-    message.channel === "panel:dictation" ||
-    message.channel === "panel:open-thread"
-  ) {
-    win.webContents.send(message.channel, message.payload);
-    return;
-  }
-  win.webContents.send(message.channel);
+  win.webContents.send(message.channel, message.payload);
 });
 const PANEL_HIDE_GRACE_MS = 420;
 const PANEL_HOVER_PAD = 24;
@@ -3675,7 +3668,10 @@ function openPanel(
   if (opts.focusComposer) {
     win.show();
     win.focus();
-    panelRendererMessages.send({ channel: "panel:focus-composer" });
+    panelRendererMessages.send({
+      channel: "panel:focus-composer",
+      payload: opts.trigger ?? "other",
+    });
   } else {
     win.showInactive();
   }

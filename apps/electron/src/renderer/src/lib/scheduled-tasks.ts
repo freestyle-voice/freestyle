@@ -32,6 +32,25 @@ export interface ScheduledTaskRunResult {
   notificationId: string | null;
 }
 
+export type ScheduledTaskRunStatus =
+  | "claimed"
+  | "running"
+  | "succeeded"
+  | "failed";
+
+export interface ScheduledTaskRunView {
+  id: string;
+  status: ScheduledTaskRunStatus;
+  threadId: string | null;
+  notificationId: string | null;
+  error: string | null;
+  startedAt: number | null;
+  completedAt: number | null;
+}
+
+const RUN_POLL_INTERVAL_MS = 2_000;
+const RUN_POLL_TIMEOUT_MS = 12 * 60_000;
+
 async function responseJson<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as
     | T
@@ -86,12 +105,58 @@ export async function deleteScheduledTask(id: string): Promise<void> {
   if (!response.ok) await responseJson(response);
 }
 
+export async function getScheduledTaskRun(
+  taskId: string,
+  runId: string,
+): Promise<ScheduledTaskRunView> {
+  const data = await responseJson<{ run: ScheduledTaskRunView }>(
+    await apiFetch(
+      `/api/scheduled/tasks/${encodeURIComponent(taskId)}/runs/${encodeURIComponent(runId)}`,
+    ),
+  );
+  return data.run;
+}
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function runScheduledTaskNow(
   id: string,
+  options: { pollIntervalMs?: number; timeoutMs?: number } = {},
 ): Promise<ScheduledTaskRunResult> {
-  return responseJson<ScheduledTaskRunResult>(
+  const started = await responseJson<{
+    ok: true;
+    runId?: string;
+    status?: string;
+    threadId?: string | null;
+    notificationId?: string | null;
+  }>(
     await apiFetch(`/api/scheduled/tasks/${encodeURIComponent(id)}/run`, {
       method: "POST",
     }),
   );
+  if (!started.runId) {
+    return {
+      ok: true,
+      threadId: started.threadId ?? null,
+      notificationId: started.notificationId ?? null,
+    };
+  }
+  const interval = options.pollIntervalMs ?? RUN_POLL_INTERVAL_MS;
+  const deadline = Date.now() + (options.timeoutMs ?? RUN_POLL_TIMEOUT_MS);
+  while (Date.now() < deadline) {
+    await sleep(interval);
+    const run = await getScheduledTaskRun(id, started.runId);
+    if (run.status === "succeeded") {
+      return {
+        ok: true,
+        threadId: run.threadId,
+        notificationId: run.notificationId,
+      };
+    }
+    if (run.status === "failed") {
+      throw new Error(run.error ?? "Scheduled task failed.");
+    }
+  }
+  throw new Error("That run is taking longer than expected. Check back soon.");
 }

@@ -71,7 +71,6 @@ declare global {
       notificationDismiss: (id: string) => void;
       notificationOpen: (id: string) => void;
       notificationSetHeight: (height: number) => void;
-      notificationSetHovered: (hovering: boolean) => void;
       onNotificationsChanged: (callback: () => void) => () => void;
       agentTurnFinished: (payload: {
         threadId: string;

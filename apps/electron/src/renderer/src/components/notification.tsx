@@ -127,10 +127,6 @@ function NotificationStack(): React.JSX.Element | null {
       className="tavern tavern-bub-stack"
       ref={rootRef}
       aria-label="Notifications"
-      onMouseEnter={() => window.api.notificationSetHovered(true)}
-      onMouseLeave={() => window.api.notificationSetHovered(false)}
-      onFocus={() => window.api.notificationSetHovered(true)}
-      onBlur={() => window.api.notificationSetHovered(false)}
     >
       {shown.map((item, index) => (
         <NotificationCard

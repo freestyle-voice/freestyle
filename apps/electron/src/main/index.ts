@@ -3168,15 +3168,10 @@ ipcMain.on("sprite:event", (event, ev: unknown) => {
 });
 
 const NOTIFICATION_FALLBACK_POLL_MS = 120_000;
-/** How long an unread bubble sits open before it collapses to the
- *  companion's suggestion glow. It stays unread either way. */
-const NOTIFICATION_COLLAPSE_MS = 30_000;
 let notificationFallbackPollTimer: NodeJS.Timeout | null = null;
-let notificationCollapseTimer: NodeJS.Timeout | null = null;
 let stopNotificationStream: (() => void) | null = null;
-let notificationHovered = false;
+let notificationsShowing = false;
 const notifiedIds = new Set<string>();
-const collapsedIds = new Set<string>();
 
 interface DesktopNotification {
   id: string;
@@ -3222,33 +3217,10 @@ async function postNotification(
   }
 }
 
-function clearCollapseTimer(): void {
-  if (!notificationCollapseTimer) return;
-  clearTimeout(notificationCollapseTimer);
-  notificationCollapseTimer = null;
-}
-
-function scheduleCollapse(ids: string[]): void {
-  clearCollapseTimer();
-  if (ids.length === 0) return;
-  notificationCollapseTimer = setTimeout(() => {
-    notificationCollapseTimer = null;
-    if (notificationHovered) {
-      scheduleCollapse(ids);
-      return;
-    }
-    for (const id of ids) collapsedIds.add(id);
-    hideNotifications();
-    setCompanionState("suggestion");
-  }, NOTIFICATION_COLLAPSE_MS);
-  notificationCollapseTimer.unref();
-}
-
 async function refreshNotifications(): Promise<void> {
   const items = await fetchNotifications();
   if (items.length === 0) {
-    clearCollapseTimer();
-    collapsedIds.clear();
+    notificationsShowing = false;
     hideNotifications();
     notifyRendererChanged();
     if (!panelBusy) setCompanionState("idle");
@@ -3257,18 +3229,12 @@ async function refreshNotifications(): Promise<void> {
 
   notifyRendererChanged();
 
-  // A bubble the user neither opened nor dismissed used to float over their
-  // desktop until the 14-day server TTL. It now folds into the companion's
-  // glow, which keeps the item unread without holding the screen.
-  const live = items.filter((n) => !collapsedIds.has(n.id));
-  if (live.length === 0) {
-    hideNotifications();
-    setCompanionState("suggestion");
-  } else {
-    showNotifications();
-    setCompanionState("suggestion");
-    scheduleCollapse(live.map((n) => n.id));
-  }
+  // A bubble stays on screen until the user opens or dismisses it. There is
+  // deliberately no auto-collapse: a reminder that quietly folds itself away
+  // while the user is at lunch is a reminder that never happened.
+  notificationsShowing = true;
+  showNotifications();
+  setCompanionState("suggestion");
 
   const fresh = items.filter(
     (n) => n.seenAt === null && !notifiedIds.has(n.id),
@@ -3371,10 +3337,6 @@ ipcMain.on("notifications:open", (_event, id: unknown) => {
 ipcMain.on("notifications:set-height", (_event, height: unknown) => {
   if (typeof height !== "number") return;
   setNotificationHeight(height);
-});
-
-ipcMain.on("notifications:hover", (_event, hovering: unknown) => {
-  notificationHovered = hovering === true;
 });
 
 ipcMain.on("agent:turn-finished", (_event, payload: unknown) => {
@@ -3492,7 +3454,7 @@ ipcMain.on("panel:set-busy", (event, busy: unknown) => {
   // Falling out of a run must not clear a pending suggestion glow.
   if (next !== panelBusy) {
     setCompanionState(
-      next ? "working" : collapsedIds.size > 0 ? "suggestion" : "idle",
+      next ? "working" : notificationsShowing ? "suggestion" : "idle",
     );
   }
   panelBusy = next;

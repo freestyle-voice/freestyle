@@ -36,3 +36,48 @@ export function cloudAuthUrl(): string {
 export function cloudStreamWsUrl(): string {
   return `${cloudUrl().replace(/^http/, "ws")}/v2/stream`;
 }
+
+/**
+ * StoreKit / Play Billing product IDs for the Freestyle Pro subscription.
+ *
+ * These must match the product identifiers created in App Store Connect and
+ * Google Play Console. They are kept overridable via app config (`extra.iap`)
+ * so a staging build can point at sandbox products without a code change, but
+ * default to the production IDs.
+ */
+const DEFAULT_PRO_MONTHLY_ID = "com.freestylevoice.app.pro.monthly";
+const DEFAULT_PRO_YEARLY_ID = "com.freestylevoice.app.pro.yearly";
+
+interface IapConfig {
+  proMonthlyId?: string;
+  proYearlyId?: string;
+}
+
+function iapConfig(): IapConfig {
+  return (
+    (Constants.expoConfig?.extra as { iap?: IapConfig } | undefined)?.iap ?? {}
+  );
+}
+
+/** Subscription product ID for monthly Freestyle Pro. */
+export function proMonthlyProductId(): string {
+  return (
+    process.env.EXPO_PUBLIC_IAP_PRO_MONTHLY ||
+    iapConfig().proMonthlyId ||
+    DEFAULT_PRO_MONTHLY_ID
+  );
+}
+
+/** Subscription product ID for annual Freestyle Pro. */
+export function proYearlyProductId(): string {
+  return (
+    process.env.EXPO_PUBLIC_IAP_PRO_YEARLY ||
+    iapConfig().proYearlyId ||
+    DEFAULT_PRO_YEARLY_ID
+  );
+}
+
+/** All Freestyle Pro subscription product IDs, monthly first. */
+export function proProductIds(): string[] {
+  return [proMonthlyProductId(), proYearlyProductId()];
+}

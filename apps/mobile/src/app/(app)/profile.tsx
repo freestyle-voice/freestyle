@@ -28,6 +28,7 @@ import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
+import { proMonthlyProductId } from "@/lib/cloud/config";
 import {
   getActiveOrganization,
   listOrganizations,
@@ -42,8 +43,8 @@ import {
   updateName,
   updateProfileFields,
 } from "@/lib/cloud/profile";
-import { openBillingPortal, startProCheckout } from "@/lib/cloud/subscription";
 import { fetchCloudUsage } from "@/lib/cloud/usage";
+import { useProSubscription } from "@/lib/cloud/use-pro-subscription";
 import { formatNumber } from "@/lib/format";
 import { initialsFor } from "@/lib/initials";
 
@@ -51,8 +52,6 @@ export default function ProfileScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { user, signedIn, signOut } = useAuth();
-  const queryClient = useQueryClient();
-  const [busy, setBusy] = useState(false);
 
   const { data: usage, isLoading: usageLoading } = useQuery({
     queryKey: ["cloud-usage"],
@@ -61,54 +60,39 @@ export default function ProfileScreen() {
     retry: 1,
   });
 
-  // Refresh the cached usage/plan. Pass `fresh` after a checkout so the cloud
-  // bypasses its plan cache and the upgrade is reflected immediately; a plain
-  // refresh (e.g. on org switch) uses the cached path.
-  const refreshUsage = useCallback(
-    (opts: { fresh?: boolean } = {}) => {
-      if (opts.fresh) {
-        void queryClient
-          .fetchQuery({
-            queryKey: ["cloud-usage"],
-            queryFn: () => fetchCloudUsage({ fresh: true }),
-          })
-          .catch(() => {});
-        return;
-      }
-      void queryClient.invalidateQueries({ queryKey: ["cloud-usage"] });
-    },
-    [queryClient],
-  );
+  const {
+    products,
+    busy,
+    phase,
+    error: purchaseError,
+    purchase,
+    restore,
+    manage,
+  } = useProSubscription(signedIn);
 
-  const onUpgrade = useCallback(async () => {
-    setBusy(true);
-    try {
-      await startProCheckout(false); // monthly for beta; annual toggle optional later
-      refreshUsage({ fresh: true });
-    } catch (e) {
-      Alert.alert(
-        "Checkout unavailable",
-        e instanceof Error ? e.message : "Try again.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }, [refreshUsage]);
+  // The store's localized price for the monthly plan, when loaded. Products
+  // aren't returned in a guaranteed order, so match by product id.
+  const monthlyPrice = products.find(
+    (p) => p.id === proMonthlyProductId(),
+  )?.displayPrice;
 
-  const onManage = useCallback(async () => {
-    setBusy(true);
-    try {
-      await openBillingPortal();
-      refreshUsage({ fresh: true });
-    } catch (e) {
-      Alert.alert(
-        "Portal unavailable",
-        e instanceof Error ? e.message : "Try again.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  }, [refreshUsage]);
+  // Surface purchase/verification errors as an alert (the hook clears its error
+  // on the next attempt, so we don't need to reset it here).
+  useEffect(() => {
+    if (purchaseError) Alert.alert("Subscription", purchaseError);
+  }, [purchaseError]);
+
+  const onUpgrade = useCallback(() => {
+    void purchase();
+  }, [purchase]);
+
+  const onManage = useCallback(() => {
+    void manage();
+  }, [manage]);
+
+  const onRestore = useCallback(() => {
+    void restore();
+  }, [restore]);
 
   const percent =
     usage && usage.limit > 0
@@ -258,10 +242,25 @@ export default function ProfileScreen() {
                       { color: theme.primaryForeground },
                     ]}
                   >
-                    Upgrade to Pro
+                    {monthlyPrice
+                      ? `Upgrade to Pro — ${monthlyPrice}/mo`
+                      : "Upgrade to Pro"}
                   </ThemedText>
                 </>
               )}
+            </Pressable>
+
+            <Pressable
+              onPress={onRestore}
+              disabled={busy}
+              style={styles.restoreButton}
+            >
+              <ThemedText
+                themeColor="mutedForeground"
+                style={styles.restoreText}
+              >
+                {phase === "restoring" ? "Restoring…" : "Restore purchases"}
+              </ThemedText>
             </Pressable>
           </>
         )}
@@ -881,6 +880,13 @@ const styles = StyleSheet.create({
     marginTop: Spacing.one,
   },
   outlineButtonText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
+  restoreButton: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  restoreText: { fontFamily: Fonts.sansMedium, fontSize: 14 },
   buttonDisabled: { opacity: 0.6 },
   input: {
     borderWidth: 1,

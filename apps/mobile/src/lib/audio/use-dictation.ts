@@ -9,6 +9,7 @@
  */
 
 import * as Haptics from "expo-haptics";
+import { router } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
 import { useSharedValue } from "react-native-reanimated";
@@ -17,7 +18,6 @@ import type { MicState } from "@/components/mic-button";
 import { useChimes } from "@/lib/audio/chimes";
 import { authHeaders } from "@/lib/cloud/session";
 import { CloudStreamSession } from "@/lib/cloud/stream";
-import { startProCheckout } from "@/lib/cloud/subscription";
 import { applyDictionaryReplacements, useEntries } from "@/lib/entries";
 import { useHistory } from "@/lib/history";
 import { useSettings } from "@/lib/settings";
@@ -224,7 +224,7 @@ export function useDictation({
                 { text: "Not now", style: "cancel" },
                 {
                   text: "Upgrade",
-                  onPress: () => void startProCheckout(false),
+                  onPress: () => router.push("/(app)/profile"),
                 },
               ],
             );

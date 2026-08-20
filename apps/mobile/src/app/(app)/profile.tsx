@@ -6,7 +6,9 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import {
+  Bell,
   Building2,
+  CalendarClock,
   Check,
   Keyboard,
   LogOut,
@@ -190,6 +192,18 @@ export function ProfileContent({ isTab = false }: { isTab?: boolean }) {
           label="Connected apps & MCPs"
           value="Give Remix access to your tools"
           onPress={() => router.push("/(app)/connected-apps")}
+        />
+        <SettingsNavRow
+          icon={CalendarClock}
+          label="Automations"
+          value="Scheduled work and briefs"
+          onPress={() => router.push("/(app)/automations")}
+        />
+        <SettingsNavRow
+          icon={Bell}
+          label="Notifications"
+          value="Updates from Remix"
+          onPress={() => router.push("/(app)/notifications")}
           last
         />
       </Card>

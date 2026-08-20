@@ -114,7 +114,7 @@ export default function ConnectedAppsScreen() {
   return (
     <SettingsScreenScaffold
       title="Connected apps"
-      subtitle="Connect the tools Remix can use for you. You stay in control of actions that change something."
+      subtitle="Connect the tools Remix can use for you. Review connections here and disconnect any app you no longer want to use."
     >
       <Card>
         <SectionTitle icon={PlugZap} title="Connected" />

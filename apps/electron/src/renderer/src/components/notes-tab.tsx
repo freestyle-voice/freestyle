@@ -126,9 +126,6 @@ export function NotesTab({
     registerDictation,
     view.kind === "note" ? view.draft : "",
     setNoteText,
-    // NotesTab stays mounted across note navigation, so an utterance in flight
-    // must not carry one note's text into another.
-    { resetKey: view.kind === "note" ? (view.path ?? "new") : "list" },
   );
 
   const closeNote = (): void => {
@@ -152,6 +149,14 @@ export function NotesTab({
             ← Notes
           </button>
           <span className="tavern-head-spacer" />
+          <button
+            type="button"
+            className="tavern-note-save"
+            disabled={!view.draft.trim()}
+            onClick={closeNote}
+          >
+            {view.path ? "Done" : "Create"}
+          </button>
           {view.path ? (
             <button
               type="button"
@@ -180,6 +185,7 @@ export function NotesTab({
         {view.editing || !view.draft.trim() ? (
           <textarea
             className="tavern-editor tavern-note-editor"
+            id="panel-note-editor"
             value={view.draft}
             ref={(el) => el?.focus()}
             placeholder="Start writing or talking — the first line becomes the title."

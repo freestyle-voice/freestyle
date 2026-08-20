@@ -184,6 +184,24 @@ describe("nextUtterance sessions", () => {
   it("closes the utterance on final so a reset cannot strand a base", () => {
     expect(dictate("", say("buy milk")).base).toBeNull();
   });
+
+  it("writes the utterance once, and repeats it if the base is reset between events", () => {
+    // Why no field clears the base mid-session: a reset makes the next event
+    // re-snapshot, so the utterance stacks on itself. Notes briefly reset on
+    // every view change and produced exactly this — the note is created by the
+    // first partial and autosave then names it, two resets inside one
+    // utterance. Fields track the base for a whole session, as chat does.
+    const events: DictationSinkEvent[] = say("Hi, how are you doing?");
+    expect(dictate("", events).text).toBe("Hi, how are you doing?");
+
+    let state: DictationSinkState = { base: null, text: "" };
+    for (const ev of events) {
+      state = { ...nextUtterance(state, ev), base: null };
+    }
+    expect(state.text).toBe(
+      "Hi, how are Hi, how are you doing? Hi, how are you doing?",
+    );
+  });
 });
 
 describe("sinkForTab", () => {

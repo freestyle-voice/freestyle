@@ -33,8 +33,7 @@ import { useKeyboardDictation } from "@/lib/keyboard/keyboard-dictation-provider
 
 /**
  * Space the tab bar occupies at the bottom edge, so the strip can sit just
- * above it. Mirrors `floating-tab-bar.tsx`: BAR_HEIGHT (52) + its wrap padding
- * (`max(insets.bottom - 10, 4)`).
+ * above it. Native tabs reserve the same compact 52-point dock region.
  */
 const TAB_BAR_HEIGHT = 52;
 

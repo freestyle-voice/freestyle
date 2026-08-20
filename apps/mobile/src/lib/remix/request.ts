@@ -10,7 +10,7 @@ export function createMobileRemixContext(
 ): RemixContext {
   return {
     selection: null,
-    appName: "Freestyle Mobile",
+    appName: null,
     windowTitle: null,
     languages,
     capturedAt,

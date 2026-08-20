@@ -168,6 +168,7 @@ export function TodosTab({
       ))}
       <input
         className="tavern-todo-add"
+        id="panel-todo-add"
         value={draft}
         placeholder="Add a to-do, or say it"
         onChange={(e) => setDraft(e.target.value)}

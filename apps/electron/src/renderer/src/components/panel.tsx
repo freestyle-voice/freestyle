@@ -92,6 +92,13 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
   apps: "Connect the apps you live in, and Freestyle can work them for you.",
 };
 
+/** The field each sink writes into, focused so its own key handling works. */
+const SINK_FIELD_ID: Record<DictationSinkId, string> = {
+  chat: "panel-composer",
+  todo: "panel-todo-add",
+  note: "panel-note-editor",
+};
+
 function registerSinkHandler(
   handlers: Map<DictationSinkId, (ev: DictationSinkEvent) => void>,
   id: DictationSinkId,
@@ -1024,13 +1031,13 @@ function PanelInner({
       setTab("chat");
     };
     const offFocus = window.api.onPanelFocusComposer((trigger) => {
-      // Dictation opens the panel through this channel too; surfacing the
-      // composer there would drag the user off Todos and take the transcript
-      // with it. Tray and hotkey opens still always land on the composer.
-      if (trigger === "dictation" && resolveSink() !== "chat") return;
-      showComposer();
+      // Dictation opens the panel through this channel too, so it focuses the
+      // field it is aimed at rather than dragging the user to the composer.
+      // Every other open — tray, hotkey, sign-in — still lands on chat.
+      const sink = trigger === "dictation" ? resolveSink() : "chat";
+      if (sink === "chat") showComposer();
       requestAnimationFrame(() =>
-        document.getElementById("panel-composer")?.focus(),
+        document.getElementById(SINK_FIELD_ID[sink])?.focus(),
       );
     });
     const offShowSettings = window.api.onPanelShowSettings(() => {

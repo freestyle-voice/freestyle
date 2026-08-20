@@ -15,6 +15,15 @@ import type {
 
 const THREAD_PAGE_SIZE = 24;
 
+export type RemixThread = { id: string; messages: UIMessage[] };
+
+export async function getLatestThread(): Promise<RemixThread | null> {
+  const result = await cloud.json<{ thread: RemixThread | null }>(
+    "/v2/threads/latest",
+  );
+  return result.thread;
+}
+
 export async function listThreads({
   origin = "user",
   cursor,

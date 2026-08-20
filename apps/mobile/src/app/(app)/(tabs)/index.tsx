@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { useIsFocused } from "expo-router";
-import { useCallback, useState } from "react";
+import { useIsFocused, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import {
   Pressable,
   ScrollView,
@@ -204,10 +204,25 @@ function ModeSwitch({
 
 function RemixHome() {
   const theme = useTheme();
-  const { messages, status, error, activeTool, send, stop, newThread } =
-    useRemixThread();
+  const { threadId: selectedThreadId } = useLocalSearchParams<{
+    threadId?: string;
+  }>();
+  const {
+    messages,
+    status,
+    error,
+    activeTool,
+    send,
+    stop,
+    newThread,
+    loadThread,
+  } = useRemixThread();
   const [draft, setDraft] = useState("");
   const busy = status === "streaming";
+
+  useEffect(() => {
+    if (selectedThreadId) void loadThread(selectedThreadId);
+  }, [loadThread, selectedThreadId]);
 
   const submit = useCallback(async () => {
     const sent = await send(draft);

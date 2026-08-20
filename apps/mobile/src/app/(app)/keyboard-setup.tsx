@@ -23,7 +23,7 @@ const STEPS = [
   "Open Settings › General › Keyboard › Keyboards.",
   "Tap “Add New Keyboard…” and choose Freestyle.",
   "Tap Freestyle in the list, then enable “Allow Full Access”.",
-  "In any app, switch to the Freestyle keyboard and tap the mic to dictate.",
+  "In any app, choose Dictate for instant transcription or Remix for a voice-only request.",
 ];
 
 export function KeyboardSetupScreen({ isTab = false }: { isTab?: boolean }) {
@@ -112,6 +112,15 @@ export function KeyboardSetupScreen({ isTab = false }: { isTab?: boolean }) {
       </Pressable>
 
       <Card>
+        <ThemedText style={styles.rowLabel}>Two voice modes</ThemedText>
+        <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+          Dictate pastes your spoken words. Remix hears a request, streams a
+          short follow-up here if it needs one, then pastes only the finished
+          result.
+        </ThemedText>
+      </Card>
+
+      <Card>
         <ThemedText style={styles.rowLabel}>Remix follow-up</ThemedText>
         <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
           When Remix asks a short question, start listening again automatically.
@@ -172,7 +181,7 @@ export function KeyboardSetupScreen({ isTab = false }: { isTab?: boolean }) {
   );
 
   const subtitle =
-    "Add the Freestyle keyboard once, then use it in any app. Tap the mic and Freestyle opens to capture your voice, then drops the transcript straight back into the field. Full Access lets the keyboard talk to Freestyle and insert your text.";
+    "Add the Freestyle keyboard once, then use it in any app. Choose Dictate to paste what you say, or Remix to give the agent a voice-only request. Full Access lets the keyboard talk to Freestyle and insert the finished text.";
 
   if (isTab) {
     return (

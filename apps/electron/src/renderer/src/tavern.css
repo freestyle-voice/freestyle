@@ -79,6 +79,36 @@
   background-size: 7px 7px;
 }
 
+.tavern-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 38px;
+  width: 12px;
+  cursor: ew-resize;
+  z-index: 10;
+  touch-action: none;
+}
+
+.tavern-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 44px;
+  border-radius: 2px;
+  background: var(--tavern-ink);
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.tavern-resize-handle:hover::after,
+.tavern-resize-handle:active::after {
+  opacity: 0.45;
+}
+
 /* The manga tail: an SVG swoosh growing out of the bubble's bottom border.
    Its top overlaps the 3px border only; the composer's content is never
    touched. */

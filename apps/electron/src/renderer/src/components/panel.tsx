@@ -46,7 +46,12 @@ import {
 } from "@renderer/lib/tool-presentation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
-import { PANEL_TABS, type PanelTab } from "@shared/panel";
+import {
+  PANEL_MAX_WIDTH,
+  PANEL_MIN_WIDTH,
+  PANEL_TABS,
+  type PanelTab,
+} from "@shared/panel";
 import { SPRITES_INFO } from "@shared/sprites";
 import {
   QueryClientProvider,
@@ -534,6 +539,57 @@ function PanelTail(): React.JSX.Element {
   );
 }
 
+function PanelResizeHandle(): React.JSX.Element {
+  const drag = useRef<{ startX: number; startWidth: number } | null>(null);
+  const frame = useRef<number | null>(null);
+  const pending = useRef<number | null>(null);
+
+  const widthFor = (e: React.PointerEvent<HTMLDivElement>): number => {
+    const d = drag.current;
+    if (!d) return window.innerWidth;
+    const next = d.startWidth + (e.screenX - d.startX);
+    return Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, next));
+  };
+
+  const endDrag = (e: React.PointerEvent<HTMLDivElement>): void => {
+    if (!drag.current) return;
+    const width = widthFor(e);
+    drag.current = null;
+    pending.current = null;
+    if (frame.current !== null) {
+      cancelAnimationFrame(frame.current);
+      frame.current = null;
+    }
+    window.api.panelResizeWidth(width);
+    window.api.panelCommitWidth();
+  };
+
+  return (
+    <div
+      className="tavern-resize-handle"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { startX: e.screenX, startWidth: window.innerWidth };
+      }}
+      onPointerMove={(e) => {
+        if (!drag.current) return;
+        pending.current = widthFor(e);
+        if (frame.current !== null) return;
+        frame.current = requestAnimationFrame(() => {
+          frame.current = null;
+          if (pending.current === null) return;
+          window.api.panelResizeWidth(pending.current);
+          pending.current = null;
+        });
+      }}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+    />
+  );
+}
+
 function SignInGate(): React.JSX.Element {
   const auth = useCloudAuth();
   return (
@@ -994,6 +1050,7 @@ function PanelInner({
           {auth.loading ? null : <SignInGate />}
         </div>
         <PanelTail />
+        <PanelResizeHandle />
       </div>
     );
   }
@@ -1028,6 +1085,7 @@ function PanelInner({
           ) : null}
         </div>
         <PanelTail />
+        <PanelResizeHandle />
       </div>
     );
   }
@@ -1294,6 +1352,7 @@ function PanelInner({
         ) : null}
       </div>
       <PanelTail />
+      <PanelResizeHandle />
     </div>
   );
 }

@@ -129,6 +129,9 @@ const api = {
   },
   reloadDictationPrefs: (): void => ipcRenderer.send("dictation:reload-prefs"),
   panelClose: (): void => ipcRenderer.send("panel:close"),
+  panelResizeWidth: (width: number): void =>
+    ipcRenderer.send("panel:resize-width", width),
+  panelCommitWidth: (): void => ipcRenderer.send("panel:commit-width"),
   panelSetBusy: (busy: boolean): void =>
     ipcRenderer.send("panel:set-busy", busy),
   panelRequestFocus: (): void => ipcRenderer.send("panel:request-focus"),

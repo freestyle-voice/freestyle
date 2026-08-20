@@ -108,6 +108,8 @@ import {
   COMPANION_CLEARANCE,
   PANEL_GAP,
   PANEL_HEIGHT,
+  PANEL_MAX_WIDTH,
+  PANEL_MIN_WIDTH,
   PANEL_WIDTH,
 } from "../shared/panel";
 import {
@@ -3435,6 +3437,33 @@ ipcMain.on("panel:close", (event) => {
 
 ipcMain.on("panel:pointer-left", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
+  if (panelResizing) return;
+  schedulePanelHide();
+});
+
+// Live width while the renderer drags the resize handle. The pointer often
+// leaves the window mid-drag (the window resizes under it), so hides are
+// suppressed until the commit.
+ipcMain.on("panel:resize-width", (event, width: unknown) => {
+  if (event.sender !== panelWindow?.webContents) return;
+  const win = panelWindow;
+  if (!win || win.isDestroyed()) return;
+  if (typeof width !== "number" || !Number.isFinite(width)) return;
+  panelResizing = true;
+  cancelPanelHide();
+  const bounds = win.getBounds();
+  const display = screen.getDisplayMatching(bounds);
+  const next = clampPanelWidth(width, display);
+  if (next !== bounds.width) setPanelBounds(win, { ...bounds, width: next });
+});
+
+ipcMain.on("panel:commit-width", (event) => {
+  if (event.sender !== panelWindow?.webContents) return;
+  panelResizing = false;
+  const win = panelWindow;
+  if (win && !win.isDestroyed()) {
+    writeSettings({ panelWidth: win.getBounds().width });
+  }
   schedulePanelHide();
 });
 
@@ -3475,6 +3504,7 @@ ipcMain.on("panel:request-focus", (event) => {
 let panelWindow: BrowserWindow | null = null;
 let panelHideTimer: NodeJS.Timeout | null = null;
 let panelBusy = false;
+let panelResizing = false;
 const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
@@ -3487,33 +3517,60 @@ const panelRendererMessages = new PanelRendererMessageQueue((message) => {
 const PANEL_HIDE_GRACE_MS = 420;
 const PANEL_HOVER_PAD = 24;
 
+function clampPanelWidth(width: number, display: Display): number {
+  const max = Math.min(
+    PANEL_MAX_WIDTH,
+    Math.max(PANEL_MIN_WIDTH, display.workArea.width - 32),
+  );
+  return Math.min(max, Math.max(PANEL_MIN_WIDTH, Math.round(width)));
+}
+
+function storedPanelWidth(): number {
+  const raw = readSettings().panelWidth;
+  return typeof raw === "number" && Number.isFinite(raw)
+    ? Math.round(raw)
+    : PANEL_WIDTH;
+}
+
 function panelPosition(display: Display): {
   x: number;
   y: number;
+  width: number;
   height: number;
 } {
   const { x: waX, y: waY, width, height } = display.workArea;
-  const x = Math.min(waX + 16, waX + Math.max(0, width - PANEL_WIDTH - 16));
+  const panelWidth = clampPanelWidth(storedPanelWidth(), display);
+  const x = Math.min(waX + 16, waX + Math.max(0, width - panelWidth - 16));
   const available = height - COMPANION_CLEARANCE - PANEL_GAP;
   const panelHeight = Math.max(320, Math.min(PANEL_HEIGHT, available));
   const y = Math.max(waY, waY + height - COMPANION_CLEARANCE - panelHeight);
-  return { x, y, height: panelHeight };
+  return { x, y, width: panelWidth, height: panelHeight };
+}
+
+// The panel is created non-resizable, which on some platforms also pins its
+// size against setBounds. Lift the constraint just for the call.
+function setPanelBounds(
+  win: BrowserWindow,
+  bounds: { x: number; y: number; width: number; height: number },
+): void {
+  win.setResizable(true);
+  win.setBounds(bounds);
+  win.setResizable(false);
 }
 
 function positionPanelOnDisplay(display: Display): void {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
-  const { x, y, height } = panelPosition(display);
-  win.setBounds({ x, y, width: PANEL_WIDTH, height });
+  setPanelBounds(win, panelPosition(display));
 }
 
 function createPanelWindow(): void {
   if (panelWindow && !panelWindow.isDestroyed()) return;
   const display = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const { x, y, height } = panelPosition(display);
+  const { x, y, width, height } = panelPosition(display);
 
   panelWindow = new BrowserWindow({
-    width: PANEL_WIDTH,
+    width,
     height,
     x,
     y,
@@ -3540,6 +3597,7 @@ function createPanelWindow(): void {
   panelWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   panelWindow.on("closed", () => {
     panelWindow = null;
+    panelResizing = false;
     panelRendererMessages.reset();
   });
   panelWindow.webContents.on(
@@ -3633,7 +3691,7 @@ function schedulePanelHide(): void {
     panelHideTimer = null;
     const win = panelWindow;
     if (!win || win.isDestroyed() || !win.isVisible()) return;
-    if (panelBusy) return;
+    if (panelBusy || panelResizing) return;
     if (win.isFocused()) return;
     // A pointer heading for the companion, or hovering the gap between the two,
     // is not a pointer leaving — only hide when it is clear of both.

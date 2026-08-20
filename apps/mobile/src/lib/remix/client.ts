@@ -24,6 +24,13 @@ export async function getLatestThread(): Promise<RemixThread | null> {
   return result.thread;
 }
 
+export async function getThread(id: string): Promise<RemixThread | null> {
+  const result = await cloud.json<{ thread: RemixThread | null }>(
+    `/v2/threads/${encodeURIComponent(id)}`,
+  );
+  return result.thread;
+}
+
 export async function listThreads({
   origin = "user",
   cursor,

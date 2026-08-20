@@ -1,7 +1,17 @@
+import { useQuery } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { useFocusEffect } from "expo-router";
-import { Clock, Search, SearchX, Trash2, X } from "lucide-react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import {
+  ArrowUpRight,
+  Bot,
+  Clock,
+  FileClock,
+  Search,
+  SearchX,
+  Trash2,
+  X,
+} from "lucide-react-native";
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
@@ -15,6 +25,8 @@ import {
   useHistory,
 } from "@/lib/history";
 import { confirmClearHistory } from "@/lib/history-alerts";
+import { mergeActivity } from "@/lib/remix/activity";
+import { listThreads } from "@/lib/remix/client";
 
 interface DateGroup {
   key: string;
@@ -75,10 +87,24 @@ function formatCount(n: number): string {
 
 export default function HistoryScreen() {
   const theme = useTheme();
+  const router = useRouter();
   const { history, pauseHistory, removeHistory, clearHistory } = useHistory();
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [now, setNow] = useState(Date.now);
+
+  const { data: agentActivity = [], isLoading: agentActivityLoading } =
+    useQuery({
+      queryKey: ["agent-activity"],
+      queryFn: async () => {
+        const [conversations, briefs] = await Promise.all([
+          listThreads({ origin: "user" }),
+          listThreads({ origin: "scheduled" }),
+        ]);
+        return mergeActivity(conversations.threads, briefs.threads);
+      },
+      retry: 1,
+    });
 
   useFocusEffect(
     useCallback(() => {
@@ -134,6 +160,86 @@ export default function HistoryScreen() {
         ) : null
       }
     >
+      <View style={styles.agentSection}>
+        <View style={styles.agentSectionHeader}>
+          <View style={styles.agentSectionTitle}>
+            <Bot color={theme.primary} size={17} />
+            <ThemedText type="eyebrow" themeColor="mutedForeground">
+              REMIX ACTIVITY
+            </ThemedText>
+          </View>
+          {agentActivity.length > 0 ? (
+            <ThemedText themeColor="mutedForeground" style={styles.count}>
+              {agentActivity.length}
+            </ThemedText>
+          ) : null}
+        </View>
+        {agentActivityLoading ? (
+          <Card>
+            <ThemedText themeColor="mutedForeground" style={styles.emptyText}>
+              Loading your Remix work…
+            </ThemedText>
+          </Card>
+        ) : agentActivity.length === 0 ? (
+          <Card>
+            <View style={styles.empty}>
+              <Bot color={theme.mutedForeground} size={22} />
+              <ThemedText themeColor="mutedForeground" style={styles.emptyText}>
+                Remix conversations and scheduled briefs will appear here.
+              </ThemedText>
+            </View>
+          </Card>
+        ) : (
+          <Card style={styles.listCard}>
+            {agentActivity.slice(0, 12).map((entry, index) => {
+              const Icon = entry.kind === "brief" ? FileClock : Bot;
+              return (
+                <View key={entry.id}>
+                  {index > 0 ? (
+                    <View
+                      style={[
+                        styles.divider,
+                        { backgroundColor: theme.border },
+                      ]}
+                    />
+                  ) : null}
+                  <Pressable
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(app)/agent-thread/[id]",
+                        params: { id: entry.id },
+                      })
+                    }
+                    style={({ pressed }) => [
+                      styles.agentRow,
+                      pressed && { opacity: 0.6 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Open ${entry.kind === "brief" ? "scheduled brief" : "Remix conversation"}: ${entry.title}`}
+                  >
+                    <Icon color={theme.mutedForeground} size={18} />
+                    <View style={styles.agentRowCopy}>
+                      <ThemedText style={styles.agentTitle} numberOfLines={1}>
+                        {entry.title || "Untitled conversation"}
+                      </ThemedText>
+                      <ThemedText
+                        themeColor="mutedForeground"
+                        style={styles.agentMeta}
+                      >
+                        {entry.kind === "brief"
+                          ? "Scheduled brief"
+                          : "Conversation"}{" "}
+                        · {formatClock(entry.updatedAt)}
+                      </ThemedText>
+                    </View>
+                    <ArrowUpRight color={theme.mutedForeground} size={16} />
+                  </Pressable>
+                </View>
+              );
+            })}
+          </Card>
+        )}
+      </View>
       {history.length > 0 ? (
         <Card>
           <View style={styles.statsRow}>
@@ -329,6 +435,27 @@ function StatCell({
 }
 
 const styles = StyleSheet.create({
+  agentSection: { gap: Spacing.two },
+  agentSectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  agentSectionTitle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.one,
+  },
+  count: { fontFamily: Fonts.mono, fontSize: 12 },
+  agentRow: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+  },
+  agentRowCopy: { flex: 1, gap: 2 },
+  agentTitle: { fontFamily: Fonts.sansMedium, fontSize: 15 },
+  agentMeta: { fontFamily: Fonts.mono, fontSize: 11 },
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-between",

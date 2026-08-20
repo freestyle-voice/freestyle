@@ -1,8 +1,8 @@
 import type { UIMessage } from "ai";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { runRemixTurn } from "./client";
-import { appendAssistantDelta } from "./thread";
+import { getLatestThread, runRemixTurn } from "./client";
+import { appendAssistantDelta, latestThreadState } from "./thread";
 
 export type RemixRunStatus = "idle" | "streaming" | "failed";
 
@@ -11,12 +11,33 @@ function newId(prefix: string): string {
 }
 
 export function useRemixThread() {
-  const [threadId, setThreadId] = useState(() => newId("thread"));
+  const initialThreadId = useRef(newId("thread"));
+  const [threadId, setThreadId] = useState(initialThreadId.current);
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [status, setStatus] = useState<RemixRunStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const hydratedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void getLatestThread()
+      .then((latest) => {
+        if (cancelled || hydratedRef.current) return;
+        hydratedRef.current = true;
+        const next = latestThreadState(latest, initialThreadId.current);
+        setThreadId(next.threadId);
+        setMessages(next.messages);
+      })
+      .catch(() => {
+        // Home is still useful offline or before sign-in recovers. The next
+        // sent turn will create a durable thread with the fallback id.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const newThread = useCallback(() => {
     abortRef.current?.abort();
@@ -25,6 +46,7 @@ export function useRemixThread() {
     setError(null);
     setActiveTool(null);
     setStatus("idle");
+    hydratedRef.current = true;
   }, []);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
@@ -40,6 +62,7 @@ export function useRemixThread() {
       };
       const nextMessages = [...messages, userMessage];
       const controller = new AbortController();
+      const assistantId = newId("assistant");
       abortRef.current = controller;
       setMessages(nextMessages);
       setStatus("streaming");
@@ -54,7 +77,7 @@ export function useRemixThread() {
           onEvent: (event) => {
             if (event.type === "text") {
               setMessages((current) =>
-                appendAssistantDelta(current, event.text),
+                appendAssistantDelta(current, event.text, assistantId),
               );
             } else if (event.type === "tool") {
               setActiveTool(event.name.replace(/_/g, " "));

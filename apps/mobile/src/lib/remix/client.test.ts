@@ -7,7 +7,12 @@ const { request, json } = vi.hoisted(() => ({
 
 vi.mock("@/lib/cloud/client", () => ({ cloud: { json, request } }));
 
-import { getLatestThread, listThreads, runRemixTurn } from "./client";
+import {
+  getLatestThread,
+  getThread,
+  listThreads,
+  runRemixTurn,
+} from "./client";
 
 function responseWithEvents(events: object[]): Response {
   const body = events
@@ -46,6 +51,16 @@ describe("mobile Remix cloud client", () => {
       messages: [],
     });
     expect(json).toHaveBeenCalledWith("/v2/threads/latest");
+  });
+
+  it("loads a selected durable conversation from Activity", async () => {
+    json.mockResolvedValueOnce({ thread: { id: "thread-1", messages: [] } });
+
+    await expect(getThread("thread-1")).resolves.toEqual({
+      id: "thread-1",
+      messages: [],
+    });
+    expect(json).toHaveBeenCalledWith("/v2/threads/thread-1");
   });
 
   it("streams generated text through the durable agent route", async () => {

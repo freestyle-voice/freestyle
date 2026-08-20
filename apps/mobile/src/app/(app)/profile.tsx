@@ -10,6 +10,7 @@ import {
   Check,
   Keyboard,
   LogOut,
+  PlugZap,
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react-native";
@@ -183,6 +184,12 @@ export function ProfileContent({ isTab = false }: { isTab?: boolean }) {
           label="Dictation settings"
           value="Language, cleanup, and privacy"
           onPress={() => router.push("/(app)/settings")}
+        />
+        <SettingsNavRow
+          icon={PlugZap}
+          label="Connected apps & MCPs"
+          value="Give Remix access to your tools"
+          onPress={() => router.push("/(app)/connected-apps")}
           last
         />
       </Card>

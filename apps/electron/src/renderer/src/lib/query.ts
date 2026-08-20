@@ -9,7 +9,7 @@ import {
   listSuggestedConnectors,
 } from "./connectors";
 import type { AvailableModel } from "./models";
-import { getQuietHours, listNotificationHistory } from "./notifications";
+import { listNotificationHistory } from "./notifications";
 import { listScheduledTasks } from "./scheduled-tasks";
 import {
   getLatestThread,
@@ -99,7 +99,6 @@ export const queryKeys = {
   },
   notifications: {
     history: ["notifications", "history"] as const,
-    quietHours: ["notifications", "quiet-hours"] as const,
   },
   brain: {
     all: ["brain"] as const,
@@ -323,14 +322,6 @@ export function prependThreadToHistory(
       return { ...data, pages: [{ ...first, threads }, ...rest] };
     },
   );
-}
-
-export function quietHoursQueryOptions() {
-  return {
-    queryKey: queryKeys.notifications.quietHours,
-    queryFn: getQuietHours,
-    staleTime: ONE_HOUR,
-  };
 }
 
 export function notificationHistoryQueryOptions() {

@@ -731,7 +731,6 @@ export async function unlinkCloudAccount(
  */
 export interface CloudUserProfile {
   timezone?: string;
-  quietHours?: { start: number; end: number } | null;
 }
 
 export async function putCloudUserProfile(
@@ -742,15 +741,6 @@ export async function putCloudUserProfile(
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(data),
-    signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
-  });
-}
-
-export async function getCloudUserProfile(
-  token: string,
-): Promise<CloudUserProfile> {
-  return cloudJson<CloudUserProfile>("/profile", token, {
-    method: "GET",
     signal: AbortSignal.timeout(PROFILE_REQUEST_TIMEOUT_MS),
   });
 }

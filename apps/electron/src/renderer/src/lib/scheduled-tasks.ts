@@ -49,7 +49,9 @@ export interface ScheduledTaskRunView {
 }
 
 const RUN_POLL_INTERVAL_MS = 2_000;
-const RUN_POLL_TIMEOUT_MS = 12 * 60_000;
+// Run now queues the run for the next server tick (up to 5 minutes) before
+// the run itself starts, so the budget covers queue wait plus a long run.
+const RUN_POLL_TIMEOUT_MS = 20 * 60_000;
 
 async function responseJson<T>(response: Response): Promise<T> {
   const payload = (await response.json().catch(() => null)) as

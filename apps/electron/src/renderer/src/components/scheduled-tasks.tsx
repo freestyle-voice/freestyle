@@ -3,16 +3,21 @@ import { Markdown } from "@renderer/components/markdown";
 import { capture } from "@renderer/lib/analytics";
 import { queryKeys, scheduledTasksQueryOptions } from "@renderer/lib/query";
 import {
+  clearRunNow,
+  runNowSnapshot,
+  startRunNow,
+  subscribeRunNow,
+} from "@renderer/lib/run-now-store";
+import {
   createScheduledTask,
   deleteScheduledTask,
-  runScheduledTaskNow,
   type ScheduledTaskInput,
   type ScheduledTaskView,
   updateScheduledTask,
 } from "@renderer/lib/scheduled-tasks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
 type View =
   | { kind: "list" }
@@ -151,16 +156,22 @@ function TaskForm({
 export function ScheduledTasks({
   mascot = "Freestyle",
   onOpenChange,
+  onOpenThread,
 }: {
   mascot?: string;
   onOpenChange?: (open: boolean) => void;
+  onOpenThread?: (threadId: string) => void;
 }): React.JSX.Element {
   const queryClient = useQueryClient();
   const tasksQuery = useQuery(scheduledTasksQueryOptions());
   const tasks = tasksQuery.data ?? [];
+  const runStates = useSyncExternalStore(
+    subscribeRunNow,
+    runNowSnapshot,
+    runNowSnapshot,
+  );
   const [view, setViewState] = useState<View>({ kind: "list" });
   const [busy, setBusy] = useState<string | null>(null);
-  const [ran, setRan] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -211,18 +222,57 @@ export function ScheduledTasks({
   };
 
   const runNow = (task: ScheduledTaskView): void => {
-    setBusy(task.id);
-    setRan(null);
     setError(null);
-    capture("scheduled_task_run_now", { task: task.name });
-    void runScheduledTaskNow(task.id)
-      .then(() => {
-        setRan(task.id);
-        void refresh();
-      })
-      .catch(fail("That didn’t run. Try again in a moment."))
-      .finally(() => setBusy(null));
+    startRunNow(queryClient, task);
   };
+
+  const runControls = (task: ScheduledTaskView): React.JSX.Element => {
+    const runState = runStates.get(task.id);
+    const running = runState?.status === "running";
+    return (
+      <>
+        <button
+          type="button"
+          className="tavern-sched-action"
+          aria-label={`Run ${task.name} now`}
+          disabled={running}
+          onClick={() => runNow(task)}
+        >
+          {running
+            ? "Running…"
+            : runState?.status === "ran"
+              ? "Ran ✓"
+              : "Run now"}
+        </button>
+        {runState?.status === "ran" && runState.threadId && onOpenThread ? (
+          <button
+            type="button"
+            className="tavern-sched-action"
+            onClick={() => {
+              const threadId = runState.threadId;
+              clearRunNow(task.id);
+              if (threadId) onOpenThread(threadId);
+            }}
+          >
+            View brief
+          </button>
+        ) : null}
+      </>
+    );
+  };
+
+  const runNotices = (ids: string[]): React.JSX.Element[] =>
+    ids.flatMap((id) => {
+      const runState = runStates.get(id);
+      if (runState?.status !== "error") return [];
+      const task = tasks.find((entry) => entry.id === id);
+      return [
+        <p key={`run-${id}`} className="tavern-notice" role="alert">
+          {task ? `${task.name}: ` : ""}
+          {runState.message}
+        </p>,
+      ];
+    });
 
   const remove = (task: ScheduledTaskView): void => {
     setBusy(task.id);
@@ -260,9 +310,16 @@ export function ScheduledTasks({
     </p>
   ) : null;
 
+  const refreshFailed =
+    tasksQuery.isError && tasksQuery.data ? (
+      <p className="tavern-notice" role="alert">
+        Couldn&apos;t refresh scheduled tasks — showing the last loaded list.
+      </p>
+    ) : null;
+
   if (tasksQuery.isLoading)
     return <DataSkeleton label="Loading scheduled tasks" />;
-  if (tasksQuery.isError) {
+  if (tasksQuery.isError && !tasksQuery.data) {
     return (
       <div className="tavern-empty">
         <p>Couldn&apos;t load scheduled tasks.</p>
@@ -331,6 +388,8 @@ export function ScheduledTasks({
           ← Scheduled
         </button>
         {notice}
+        {refreshFailed}
+        {runNotices([task.id])}
         <div
           className={`tavern-sched is-detail${task.enabled ? "" : " is-off"}`}
         >
@@ -342,7 +401,9 @@ export function ScheduledTasks({
               role="switch"
               aria-checked={task.enabled}
               aria-label={`${task.name} enabled`}
-              disabled={busy === task.id}
+              disabled={
+                busy === task.id || runStates.get(task.id)?.status === "running"
+              }
               onClick={() => toggle(task)}
             >
               {task.enabled ? "On" : "Off"}
@@ -367,18 +428,7 @@ export function ScheduledTasks({
           >
             Edit
           </button>
-          <button
-            type="button"
-            className="tavern-sched-action"
-            disabled={busy === task.id}
-            onClick={() => runNow(task)}
-          >
-            {busy === task.id
-              ? "Running…"
-              : ran === task.id
-                ? "Ran ✓"
-                : "Run now"}
-          </button>
+          {runControls(task)}
           {confirming === task.id ? (
             <>
               <button
@@ -415,6 +465,8 @@ export function ScheduledTasks({
     <section className="tavern-sched-section" aria-label="Scheduled tasks">
       <p className="tavern-sched-label">Scheduled</p>
       {notice}
+      {refreshFailed}
+      {runNotices(tasks.map((t) => t.id))}
       {tasks.length === 0 ? (
         <div className="tavern-empty">
           Nothing scheduled. Ask {mascot} to do something regularly — "check the
@@ -442,24 +494,15 @@ export function ScheduledTasks({
                 role="switch"
                 aria-checked={task.enabled}
                 aria-label={`${task.name} enabled`}
-                disabled={busy === task.id}
+                disabled={
+                  busy === task.id ||
+                  runStates.get(task.id)?.status === "running"
+                }
                 onClick={() => toggle(task)}
               >
                 {task.enabled ? "On" : "Off"}
               </button>
-              <button
-                type="button"
-                className="tavern-sched-action"
-                aria-label={`Run ${task.name} now`}
-                disabled={busy === task.id}
-                onClick={() => runNow(task)}
-              >
-                {busy === task.id
-                  ? "Running…"
-                  : ran === task.id
-                    ? "Ran ✓"
-                    : "Run now"}
-              </button>
+              {runControls(task)}
             </div>
           </div>
         ))

@@ -172,10 +172,12 @@ export function BrainFiles({
   root,
   emptyText,
   newLabel,
+  onOpenThread,
 }: {
   root: string;
   emptyText: string;
   newLabel: string;
+  onOpenThread?: (threadId: string) => void;
 }): React.JSX.Element {
   const queryClient = useQueryClient();
   const filesQuery = useQuery({
@@ -188,17 +190,6 @@ export function BrainFiles({
   const [error, setError] = useState<string | null>(null);
   const [scheduledOpen, setScheduledOpen] = useState(false);
   const scheduled = root === "";
-
-  if (filesQuery.isLoading) return <DataSkeleton label="Loading Brain files" />;
-  if (filesQuery.isError)
-    return (
-      <div className="tavern-empty">
-        <p>Couldn&apos;t load Brain files.</p>
-        <button type="button" onClick={() => void filesQuery.refetch()}>
-          Try again
-        </button>
-      </div>
-    );
 
   const openFile = (path: string): void => {
     void readBrainFile(path)
@@ -322,12 +313,31 @@ export function BrainFiles({
   }
 
   if (scheduled && scheduledOpen)
-    return <ScheduledTasks onOpenChange={setScheduledOpen} />;
+    return (
+      <ScheduledTasks
+        onOpenChange={setScheduledOpen}
+        {...(onOpenThread ? { onOpenThread } : {})}
+      />
+    );
 
   return (
     <>
-      {scheduled ? <ScheduledTasks onOpenChange={setScheduledOpen} /> : null}
-      {files.length === 0 ? (
+      {scheduled ? (
+        <ScheduledTasks
+          onOpenChange={setScheduledOpen}
+          {...(onOpenThread ? { onOpenThread } : {})}
+        />
+      ) : null}
+      {filesQuery.isLoading ? (
+        <DataSkeleton label="Loading Brain files" />
+      ) : filesQuery.isError ? (
+        <div className="tavern-empty">
+          <p>Couldn&apos;t load Brain files.</p>
+          <button type="button" onClick={() => void filesQuery.refetch()}>
+            Try again
+          </button>
+        </div>
+      ) : files.length === 0 ? (
         <div className="tavern-empty">{emptyText}</div>
       ) : (
         <div className="tavern-tree">

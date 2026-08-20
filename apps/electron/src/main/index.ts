@@ -3173,7 +3173,8 @@ const NOTIFICATION_FALLBACK_POLL_MS = 120_000;
 let notificationFallbackPollTimer: NodeJS.Timeout | null = null;
 let stopNotificationStream: (() => void) | null = null;
 let notificationsShowing = false;
-const notifiedIds = new Set<string>();
+const notifiedIds = new Map<string, number>();
+const activeNotifications = new Map<string, Notification>();
 
 interface DesktopNotification {
   id: string;
@@ -3238,15 +3239,29 @@ async function refreshNotifications(): Promise<void> {
   showNotifications();
   setCompanionState("suggestion");
 
+  const live = new Set(items.map((n) => n.id));
+  for (const id of notifiedIds.keys()) {
+    if (!live.has(id)) notifiedIds.delete(id);
+  }
   const fresh = items.filter(
-    (n) => n.seenAt === null && !notifiedIds.has(n.id),
+    (n) => n.seenAt === null && notifiedIds.get(n.id) !== n.createdAt,
   );
   if (fresh.length === 0) return;
+  if (!Notification.isSupported()) return;
   for (const item of fresh) {
-    notifiedIds.add(item.id);
-    if (!Notification.isSupported()) continue;
+    notifiedIds.set(item.id, item.createdAt);
+    activeNotifications.get(item.id)?.close();
     const note = new Notification({ title: item.title, body: item.body });
-    note.on("click", () => void openNotification(item.id));
+    activeNotifications.set(item.id, note);
+    note.on("click", () => {
+      activeNotifications.delete(item.id);
+      void openNotification(item.id);
+    });
+    note.on("close", () => {
+      if (activeNotifications.get(item.id) === note) {
+        activeNotifications.delete(item.id);
+      }
+    });
     note.show();
   }
   // The companion reacts to work that finished while the panel was closed;
@@ -3266,22 +3281,18 @@ async function openNotification(id: string): Promise<void> {
     threadId?: string;
     url?: string;
   } | null;
-  await refreshNotifications();
-  if (result?.threadId) {
-    openPanel({ focusComposer: false, trigger: "notification" });
-    const win = panelWindow;
-    if (!win || win.isDestroyed()) return;
-    const threadId = result.threadId;
-    const send = (): void =>
-      win.webContents.send("panel:open-thread", threadId);
-    if (win.webContents.isLoading()) {
-      win.webContents.once("did-finish-load", send);
-    } else {
-      send();
-    }
+  void refreshNotifications();
+  if (result?.url) {
+    void shell.openExternal(result.url);
     return;
   }
-  if (result?.url) void shell.openExternal(result.url);
+  openPanel({ focusComposer: false, trigger: "notification" });
+  if (result?.threadId) {
+    panelRendererMessages.send({
+      channel: "panel:open-thread",
+      payload: result.threadId,
+    });
+  }
 }
 
 function startNotificationFallbackPoll(): void {
@@ -3508,7 +3519,10 @@ let panelResizing = false;
 const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
-  if (message.channel === "panel:dictation") {
+  if (
+    message.channel === "panel:dictation" ||
+    message.channel === "panel:open-thread"
+  ) {
     win.webContents.send(message.channel, message.payload);
     return;
   }

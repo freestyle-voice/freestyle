@@ -464,7 +464,7 @@ export interface CloudNotificationDto {
   kind: "thread" | "info";
   title: string;
   body: string;
-  payload: { messages?: unknown[]; url?: string } | null;
+  payload: { threadId?: string; messages?: unknown[]; url?: string } | null;
   createdAt: number;
   expiresAt: number | null;
 }

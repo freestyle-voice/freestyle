@@ -64,7 +64,7 @@ import {
   type UIMessage,
 } from "ai";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const TAB_LABELS: Record<PanelTab, string> = {
@@ -673,14 +673,21 @@ function PanelRoot(): React.JSX.Element {
   const [thread, setThread] = useState<ThreadState | null>(null);
   const queryClient = useQueryClient();
   const latestQuery = useQuery(latestThreadQueryOptions());
+  const selectionRef = useRef(0);
+
+  const switchThread = useCallback((next: ThreadState) => {
+    selectionRef.current += 1;
+    setThread(next);
+  }, []);
 
   useEffect(() => {
     const off = window.api.onPanelOpenThread((threadId) => {
+      const selection = ++selectionRef.current;
       void invalidateThreads(queryClient);
       void getThread(threadId)
         .catch(() => null)
         .then((picked) => {
-          if (!picked) return;
+          if (!picked || selectionRef.current !== selection) return;
           queryClient.setQueryData(queryKeys.threads.detail(threadId), picked);
           setThread(picked);
         });
@@ -698,12 +705,12 @@ function PanelRoot(): React.JSX.Element {
 
   useEffect(() => {
     if (latestQuery.isPending) return;
-    setThread(latestQuery.data ?? newThread());
+    setThread((current) => current ?? latestQuery.data ?? newThread());
   }, [latestQuery.data, latestQuery.isPending]);
 
   if (!thread) return <div className="tavern tavern-panel" />;
   return (
-    <PanelInner key={thread.id} thread={thread} onSwitchThread={setThread} />
+    <PanelInner key={thread.id} thread={thread} onSwitchThread={switchThread} />
   );
 }
 
@@ -1302,6 +1309,12 @@ function PanelInner({
               root=""
               emptyText={TAB_PLACEHOLDER.brain}
               newLabel="New file"
+              onOpenThread={(threadId) => {
+                setTab("chat");
+                void openThreadById(threadId).then((picked) => {
+                  if (picked) onSwitchThread(picked);
+                });
+              }}
             />
           ) : chatActive ? (
             <OpenerCards

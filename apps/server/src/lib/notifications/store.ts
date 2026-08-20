@@ -195,7 +195,7 @@ function enqueue(id: string, action: NotificationAction): void {
         `INSERT INTO notification_outbox (notification_id, action, next_attempt_at, attempts, last_error)
          VALUES (?, ?, datetime('now'), 0, NULL)
          ON CONFLICT(notification_id) DO UPDATE SET
-           action = excluded.action,
+           action = CASE WHEN notification_outbox.action = 'open' THEN 'open' ELSE excluded.action END,
            next_attempt_at = datetime('now'),
            attempts = 0,
            last_error = NULL`,
@@ -230,8 +230,8 @@ export function open(id: string): OpenResult {
   const record = getNotification(id);
   if (!record) return { ok: false };
 
-  const threadId = record.threadId ?? record.payload?.threadId ?? null;
-  if (threadId && !record.threadId) {
+  const threadId = record.payload?.threadId ?? record.threadId ?? null;
+  if (threadId && record.threadId !== threadId) {
     getDb()
       .prepare("UPDATE notifications SET thread_id = ? WHERE id = ?")
       .run(threadId, id);

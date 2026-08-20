@@ -45,6 +45,8 @@ export default function AppLayout() {
                   <Stack.Screen name="keyboard-setup" />
                   <Stack.Screen name="help" />
                   <Stack.Screen name="billing" />
+                  <Stack.Screen name="connected-apps" />
+                  <Stack.Screen name="agent-thread/[id]" />
                 </Stack>
                 <KeyboardDictationStrip />
               </KeyboardDictationProvider>

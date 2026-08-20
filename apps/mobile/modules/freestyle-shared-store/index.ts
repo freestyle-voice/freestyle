@@ -17,9 +17,10 @@
 import FreestyleSharedStoreModule, {
   type DictationStateInput,
   type KeyboardCommand,
+  type KeyboardMode,
 } from "./src/FreestyleSharedStoreModule";
 
-export type { DictationStateInput, KeyboardCommand };
+export type { DictationStateInput, KeyboardCommand, KeyboardMode };
 
 /** Publish a full session snapshot for the keyboard (stamps the heartbeat). */
 export function writeState(state: DictationStateInput): void {
@@ -79,4 +80,9 @@ export function clearSharedStore(): void {
  */
 export function keyboardLastActive(): number {
   return FreestyleSharedStoreModule.keyboardLastActive();
+}
+
+/** The keyboard's current compact mode selector. */
+export function keyboardMode(): KeyboardMode {
+  return FreestyleSharedStoreModule.keyboardMode();
 }

@@ -37,12 +37,16 @@ import { AppState } from "react-native";
 import type { useSharedValue } from "react-native-reanimated";
 
 import { useResidentDictation } from "@/lib/audio/use-resident-dictation";
+import { resolveVoiceAgentResult } from "@/lib/keyboard/voice-agent";
+import { runRemixTurn } from "@/lib/remix/client";
 import {
   addCommandListener,
   clearCommand,
   isKeyboardBridgeAvailable,
   type KeyboardCommand,
+  type KeyboardMode,
   loadCommand,
+  loadKeyboardMode,
   type Phase,
   resetState,
   touchHeartbeat,
@@ -76,6 +80,7 @@ interface UseKeyboardDictationBridge {
 
 export function useKeyboardDictationBridge(
   signedIn: boolean,
+  autoListenAfterRemixQuestion: boolean,
 ): UseKeyboardDictationBridge {
   const available = isKeyboardBridgeAvailable();
 
@@ -90,6 +95,11 @@ export function useKeyboardDictationBridge(
   const partialRef = useRef("");
   // The most recent ready transcript's insertion token, cleared on ack.
   const pendingInsertRef = useRef("");
+  const modeRef = useRef<KeyboardMode>("dictate");
+  const agentMessagesRef = useRef<import("ai").UIMessage[]>([]);
+  const agentThreadIdRef = useRef(`keyboard-${crypto.randomUUID()}`);
+  const agentAbortRef = useRef<AbortController | null>(null);
+  const agentFinalRef = useRef<(text: string) => void>(() => {});
   // Fallback timer that re-arms if the keyboard never acks a `ready` insert.
   const reArmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref to the mic-level shared value so `publish` can read the latest level.
@@ -147,6 +157,10 @@ export function useKeyboardDictationBridge(
       publish("transcribing", { partial: partialRef.current });
     },
     onFinal: (text) => {
+      if (modeRef.current === "remix") {
+        agentFinalRef.current(text);
+        return;
+      }
       setFinalText(text);
       const token = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       pendingInsertRef.current = token;
@@ -182,6 +196,79 @@ export function useKeyboardDictationBridge(
   });
   levelRef.current = session.level;
 
+  const runVoiceAgent = useCallback(
+    (transcript: string) => {
+      const prior = agentMessagesRef.current;
+      const firstTurn = prior.length === 0;
+      const userText = firstTurn
+        ? `Voice keyboard request: ${transcript}\n\nReply with only the text that should be pasted. If essential information is missing, ask exactly one short question ending in a question mark instead.`
+        : transcript;
+      const nextMessages: import("ai").UIMessage[] = [
+        ...prior,
+        {
+          id: `voice-user-${crypto.randomUUID()}`,
+          role: "user",
+          parts: [{ type: "text", text: userText }],
+        },
+      ];
+      const controller = new AbortController();
+      agentAbortRef.current?.abort();
+      agentAbortRef.current = controller;
+      let response = "";
+      publish("transcribing", { statusMessage: "Remix is thinking…" });
+      void runRemixTurn({
+        messages: nextMessages,
+        threadId: agentThreadIdRef.current,
+        firstTurn,
+        signal: controller.signal,
+        onEvent: (event) => {
+          if (event.type !== "text") return;
+          response += event.text;
+          publish("transcribing", { partial: response });
+        },
+      })
+        .then(() => {
+          if (controller.signal.aborted || !response.trim()) return;
+          const result = resolveVoiceAgentResult(response);
+          agentMessagesRef.current = [
+            ...nextMessages,
+            {
+              id: `voice-remix-${crypto.randomUUID()}`,
+              role: "assistant",
+              parts: [{ type: "text", text: result.text }],
+            },
+          ];
+          if (result.kind === "question") {
+            publish("armed", { statusMessage: result.text });
+            if (autoListenAfterRemixQuestion) {
+              setTimeout(() => session.beginCapture(), 250);
+            }
+            return;
+          }
+          setFinalText(result.text);
+          const token = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          pendingInsertRef.current = token;
+          publish("ready", {
+            finalTranscript: result.text,
+            insertionToken: token,
+          });
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            publish("armed", {
+              statusMessage: "Remix couldn't finish. Tap and try again.",
+            });
+          }
+        })
+        .finally(() => {
+          if (agentAbortRef.current === controller)
+            agentAbortRef.current = null;
+        });
+    },
+    [autoListenAfterRemixQuestion, publish, session],
+  );
+  agentFinalRef.current = runVoiceAgent;
+
   // --- Command handling.
   const handleCommand = useCallback(
     (command: KeyboardCommand) => {
@@ -206,6 +293,7 @@ export function useKeyboardDictationBridge(
 
       switch (command.kind) {
         case "start":
+          modeRef.current = loadKeyboardMode();
           // Cold start from the keyboard: arm the mic AND begin the first
           // phrase, so the single tap that opened the app is already recording.
           if (!sessionIdRef.current) sessionIdRef.current = `${Date.now()}`;
@@ -213,6 +301,7 @@ export function useKeyboardDictationBridge(
           if (signedIn) void session.arm({ beginImmediately: true });
           break;
         case "beginCapture":
+          modeRef.current = loadKeyboardMode();
           // In-place begin: the mic is already warm, no app trip needed.
           if (phaseRef.current === "armed" || phaseRef.current === "ready") {
             session.beginCapture();
@@ -285,6 +374,8 @@ export function useKeyboardDictationBridge(
       reArmTimerRef.current = null;
     }
     pendingInsertRef.current = "";
+    agentAbortRef.current?.abort();
+    agentAbortRef.current = null;
     session.disarm();
   }, [session]);
 

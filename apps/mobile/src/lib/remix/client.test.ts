@@ -1,4 +1,3 @@
-import type { RemixContext } from "@freestyle-voice/validations";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { request, json } = vi.hoisted(() => ({
@@ -9,14 +8,6 @@ const { request, json } = vi.hoisted(() => ({
 vi.mock("@/lib/cloud/client", () => ({ cloud: { json, request } }));
 
 import { listThreads, runRemixTurn } from "./client";
-
-const context: RemixContext = {
-  selection: null,
-  appName: null,
-  windowTitle: null,
-  languages: ["en"],
-  capturedAt: 1_700_000_000_000,
-};
 
 function responseWithEvents(events: object[]): Response {
   const body = events
@@ -47,7 +38,7 @@ describe("mobile Remix cloud client", () => {
     expect(url.searchParams.get("limit")).toBe("24");
   });
 
-  it("emits generated text from a Remix UI-message stream", async () => {
+  it("streams generated text through the durable agent route", async () => {
     request.mockResolvedValueOnce(
       responseWithEvents([
         { type: "start" },
@@ -67,13 +58,18 @@ describe("mobile Remix cloud client", () => {
           parts: [{ type: "text", text: "Help me write" }],
         },
       ],
-      context,
+      threadId: "thread-123",
+      firstTurn: true,
       signal: new AbortController().signal,
       onEvent: (event) => events.push(event),
     });
 
     expect(events).toContainEqual({ type: "text", text: "Here is a draft." });
     expect(events).toContainEqual({ type: "complete" });
+    expect(request).toHaveBeenCalledWith(
+      "/v2/agent",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("holds an insert request for the keyboard instead of treating it as an app paste", async () => {
@@ -99,7 +95,7 @@ describe("mobile Remix cloud client", () => {
           parts: [{ type: "text", text: "Draft a reply" }],
         },
       ],
-      context,
+      threadId: "thread-123",
       signal: new AbortController().signal,
       onEvent: (event) => events.push(event),
     });

@@ -3,7 +3,6 @@ import {
   CloudRequestError,
   CloudUsageError,
 } from "@freestyle-voice/utils/cloud";
-import type { RemixContext } from "@freestyle-voice/validations";
 import { DefaultChatTransport, type UIMessage } from "ai";
 
 import { cloud } from "@/lib/cloud/client";
@@ -32,13 +31,14 @@ export async function listThreads({
 }
 
 function remixTransport(
-  context: RemixContext,
+  threadId: string,
+  firstTurn: boolean,
 ): DefaultChatTransport<UIMessage> {
   return new DefaultChatTransport({
-    api: "/v2/remix",
-    body: { context },
+    api: "/v2/agent",
+    body: { threadId, firstTurn },
     fetch: async (_input, init) => {
-      const response = await cloud.request("/v2/remix", {
+      const response = await cloud.request("/v2/agent", {
         method: init?.method ?? "POST",
         headers: init?.headers,
         body: init?.body,
@@ -66,16 +66,18 @@ function remixTransport(
 
 export async function runRemixTurn({
   messages,
-  context,
+  threadId,
+  firstTurn = false,
   signal,
   onEvent,
 }: {
   messages: UIMessage[];
-  context: RemixContext;
+  threadId: string;
+  firstTurn?: boolean;
   signal: AbortSignal;
   onEvent: (event: RemixStreamEvent) => void;
 }): Promise<void> {
-  const stream = await remixTransport(context).sendMessages({
+  const stream = await remixTransport(threadId, firstTurn).sendMessages({
     chatId: "mobile-remix",
     messages,
     abortSignal: signal,

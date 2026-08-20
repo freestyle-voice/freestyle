@@ -4,7 +4,7 @@
 
 **Goal:** Complete the mobile Remix experience to parity with the desktop agent where that capability is useful and safe on a phone: conversations, streamed runs, connected apps, scheduled outcomes, and a compact voice-only iOS keyboard agent.
 
-**Architecture:** Keep mobile as a thin authenticated client of the existing Cloud contracts: `/v2/remix`, `/v2/threads`, `/v2/connectors`, `/v2/scheduled`, and `/v2/notifications`. Model the agent UI as a small Remix domain layer, separate from the existing dictation recorder. The app hosts full conversations and any approval cards; the keyboard hosts only spoken input, one clarification, compact progress, and one final `insert_at_cursor` result.
+**Architecture:** Keep mobile as a thin authenticated client of the durable Cloud agent contracts: `/v2/agent`, `/v2/threads`, `/v2/connectors`, `/v2/scheduled`, and `/v2/notifications`. Model the agent UI as a small Remix domain layer, separate from the existing dictation recorder. The app hosts full conversations and any approval cards; the keyboard hosts only spoken input, one clarification, compact progress, and one final `insert_at_cursor` result.
 
 **Tech Stack:** Expo Router NativeTabs, React Native, TypeScript, TanStack Query, Better Auth Expo session cookies, Vercel AI SDK UI-message streams, Swift/UIKit, App Group `UserDefaults`, Vitest.
 
@@ -70,7 +70,7 @@
 **Interfaces:**
 
 - Produces `listThreads(input)`, `getThread(id)`, `getLatestThread()`, and `runRemixTurn(input, handlers)`.
-- `runRemixTurn` accepts `{ messages: UIMessage[]; context: RemixContext; signal: AbortSignal }` and emits `text`, `tool`, `tool-result-needed`, `error`, and `complete` events.
+- `runRemixTurn` accepts `{ messages: UIMessage[]; threadId: string; firstTurn?: boolean; signal: AbortSignal }` and emits `text`, `tool`, `tool-result-needed`, `error`, and `complete` events.
 - The reducer owns `idle | submitting | streaming | awaiting-approval | failed | complete`; UI components consume normalized events only.
 
 - [ ] **Step 1: Write failing transport tests.**
@@ -78,11 +78,11 @@
   Cover the raw Cloud request and stream contract using a mocked `cloud.request()`:
 
   ```ts
-  it("posts the full UI-message thread with mobile-only context", async () => {
-    await runRemixTurn({ messages, context, signal: new AbortController().signal }, handlers);
+  it("posts the full UI-message thread to its durable agent thread", async () => {
+    await runRemixTurn({ messages, threadId, signal: new AbortController().signal }, handlers);
     expect(cloud.request).toHaveBeenCalledWith(
-      "/v2/remix",
-      expect.objectContaining({ method: "POST", json: { messages, context } }),
+      "/v2/agent",
+      expect.objectContaining({ method: "POST", json: { messages, threadId } }),
     );
   });
 
@@ -100,7 +100,7 @@
 
 - [ ] **Step 3: Implement the typed adapter.**
 
-  Use `cloud.request("/v2/remix", { method: "POST", json, signal })` so the existing cookie handling and status taxonomy are preserved. Use AI SDK UI-message stream utilities rather than splitting SSE text. Map `401`, `429`, aborted requests, and malformed streams to stable mobile error codes. Change `createMobileRemixContext()` to send `selection`, `appName`, and `windowTitle` as `null`; its only variable fields are `languages` and `capturedAt`.
+  Use `cloud.request("/v2/agent", { method: "POST", json, signal })` so the existing cookie handling and status taxonomy are preserved. Send the full UI-message thread with a stable `threadId` and `firstTurn` for new conversations. Use AI SDK UI-message stream utilities rather than splitting SSE text. Map `401`, `429`, aborted requests, and malformed streams to stable mobile error codes.
 
   Query `/v2/threads` with `origin: "user" | "scheduled"`; cache summaries, individual thread messages, and the latest user thread separately. Do not store full assistant messages in AsyncStorage—the Cloud thread is the source of truth.
 

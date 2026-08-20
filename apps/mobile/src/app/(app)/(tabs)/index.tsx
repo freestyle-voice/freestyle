@@ -40,6 +40,9 @@ export default function VoiceScreen() {
   const [mode, setMode] = useState<RemixMode>(DEFAULT_HOME_MODE);
   const [text, setText] = useState("");
   const [copied, setCopied] = useState(false);
+  // Keep this mounted across the Home switch. In particular, switching to
+  // Dictate must not discard a running Remix turn or its durable thread.
+  const remixThread = useRemixThread();
 
   const { micState, partial, level, onPressIn, onPressOut } = useDictation({
     signedIn: signedIn && focused && mode === "dictate",
@@ -92,7 +95,7 @@ export default function VoiceScreen() {
           <ModeSwitch mode={mode} onChange={setMode} />
 
           {mode === "remix" ? (
-            <RemixHome />
+            <RemixHome thread={remixThread} />
           ) : (
             <>
               <TranscriptView
@@ -202,7 +205,7 @@ function ModeSwitch({
   );
 }
 
-function RemixHome() {
+function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
   const theme = useTheme();
   const { threadId: selectedThreadId } = useLocalSearchParams<{
     threadId?: string;
@@ -216,7 +219,7 @@ function RemixHome() {
     stop,
     newThread,
     loadThread,
-  } = useRemixThread();
+  } = thread;
   const [draft, setDraft] = useState("");
   const busy = status === "streaming";
 

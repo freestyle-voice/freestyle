@@ -15,7 +15,11 @@ import {
 import { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
-import { Card, TabScreenScaffold } from "@/components/settings-ui";
+import {
+  Card,
+  RetryLoadState,
+  TabScreenScaffold,
+} from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -93,18 +97,22 @@ export default function HistoryScreen() {
   const [search, setSearch] = useState("");
   const [now, setNow] = useState(Date.now);
 
-  const { data: agentActivity = [], isLoading: agentActivityLoading } =
-    useQuery({
-      queryKey: ["agent-activity"],
-      queryFn: async () => {
-        const [conversations, briefs] = await Promise.all([
-          listThreads({ origin: "user" }),
-          listThreads({ origin: "scheduled" }),
-        ]);
-        return mergeActivity(conversations.threads, briefs.threads);
-      },
-      retry: 1,
-    });
+  const {
+    data: agentActivity = [],
+    isLoading: agentActivityLoading,
+    isError: agentActivityError,
+    refetch: refetchAgentActivity,
+  } = useQuery({
+    queryKey: ["agent-activity"],
+    queryFn: async () => {
+      const [conversations, briefs] = await Promise.all([
+        listThreads({ origin: "user" }),
+        listThreads({ origin: "scheduled" }),
+      ]);
+      return mergeActivity(conversations.threads, briefs.threads);
+    },
+    retry: 1,
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -179,6 +187,13 @@ export default function HistoryScreen() {
             <ThemedText themeColor="mutedForeground" style={styles.emptyText}>
               Loading your Remix work…
             </ThemedText>
+          </Card>
+        ) : agentActivityError && agentActivity.length === 0 ? (
+          <Card>
+            <RetryLoadState
+              message="Couldn't load Remix activity. Check your connection and try again."
+              onRetry={() => void refetchAgentActivity()}
+            />
           </Card>
         ) : agentActivity.length === 0 ? (
           <Card>

@@ -2,7 +2,7 @@ import { NativeTabs } from "expo-router/unstable-native-tabs";
 
 import { useTheme } from "@/hooks/use-theme";
 
-/** The three primary places in the Remix-first mobile experience. */
+/** The five primary places in the Remix-first mobile experience. */
 export default function TabsLayout() {
   const theme = useTheme();
 

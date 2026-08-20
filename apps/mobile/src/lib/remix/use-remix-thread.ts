@@ -41,8 +41,20 @@ export function useRemixThread() {
     };
   }, []);
 
+  // A tab switch or navigation change must stop the underlying fetch as well
+  // as discard its UI. Otherwise a late stream chunk can resurrect an assistant
+  // message in a different conversation.
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      abortRef.current = null;
+    },
+    [],
+  );
+
   const newThread = useCallback(() => {
     abortRef.current?.abort();
+    abortRef.current = null;
     setThreadId(newId("thread"));
     setMessages([]);
     setError(null);
@@ -54,6 +66,7 @@ export function useRemixThread() {
   const loadThread = useCallback(async (id: string) => {
     if (!id || statusRef.current === "streaming") return false;
     abortRef.current?.abort();
+    abortRef.current = null;
     hydratedRef.current = true;
     setStatus("idle");
     setError(null);
@@ -74,7 +87,12 @@ export function useRemixThread() {
     }
   }, []);
 
-  const stop = useCallback(() => abortRef.current?.abort(), []);
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setStatus("idle");
+    setActiveTool(null);
+  }, []);
 
   const send = useCallback(
     async (text: string) => {
@@ -100,6 +118,9 @@ export function useRemixThread() {
           firstTurn: messages.length === 0,
           signal: controller.signal,
           onEvent: (event) => {
+            if (abortRef.current !== controller || controller.signal.aborted) {
+              return;
+            }
             if (event.type === "text") {
               setMessages((current) =>
                 appendAssistantDelta(current, event.text, assistantId),
@@ -111,12 +132,15 @@ export function useRemixThread() {
             }
           },
         });
+        if (abortRef.current !== controller || controller.signal.aborted) {
+          return false;
+        }
         setStatus("idle");
         setActiveTool(null);
         return true;
       } catch (cause) {
         if (controller.signal.aborted) {
-          setStatus("idle");
+          if (abortRef.current === controller) setStatus("idle");
           return false;
         }
         setStatus("failed");

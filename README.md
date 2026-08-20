@@ -16,7 +16,7 @@ It keeps notes and todos for you, remembers what you tell it, and can draft the 
 
 ### Features
 
-- **Scheduled tasks** — "Every morning, look at my repo and tell me about open issues." "Tell me when a deal goes quiet for five days." Each one becomes a standing job that runs on a timer you set, and you get one desktop notification when something crosses the line, not a feed to scroll. Quiet hours keep it from pinging you at night.
+- **Scheduled tasks** — "Every morning, look at my repo and tell me about open issues." "Tell me when a deal goes quiet for five days." Each one becomes a standing job that runs on a timer you set, and you get one desktop notification when something crosses the line, not a feed to scroll.
 - **Connected apps** — Gmail, Google Calendar, Slack, GitHub, Notion, Google Drive and Sheets out of the box, plus around 1,200 more tools through MCP. Connect an app once and Freestyle can read from it to check the things you asked about, and write to it only through an action you approve.
 - **Todos and notes** — Freestyle tracks what you care about in a Todos list and plain-text notes. It reminds you when you are falling behind, verifies whether something actually got done, and checks items off for you when it sees they are finished.
 - **Brain** — a memory of the things you have told it, kept as plain text you can read, edit, and delete. Say something once and it is there for every future conversation.

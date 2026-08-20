@@ -1,17 +1,10 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
 import {
-  DEFAULT_QUIET_HOURS,
   NotificationHistoryError,
   type NotificationHistoryRow,
-  type QuietHours,
-  setQuietHours,
 } from "@renderer/lib/notifications";
-import {
-  notificationHistoryQueryOptions,
-  queryKeys,
-  quietHoursQueryOptions,
-} from "@renderer/lib/query";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { notificationHistoryQueryOptions } from "@renderer/lib/query";
+import { useQuery } from "@tanstack/react-query";
 import type React from "react";
 
 function when(ts: number): string {
@@ -36,86 +29,6 @@ function statusOf(row: NotificationHistoryRow): {
   if (row.expiresAt !== null && row.expiresAt <= Date.now())
     return { label: "Expired", tone: "is-expired" };
   return { label: "Unread", tone: "is-unread" };
-}
-
-const HOUR_OPTIONS = Array.from({ length: 24 }, (_, hour) => ({
-  value: String(hour),
-  label: `${String(hour).padStart(2, "0")}:00`,
-}));
-
-export function QuietHoursSettings(): React.JSX.Element | null {
-  const queryClient = useQueryClient();
-  const quietQuery = useQuery(quietHoursQueryOptions());
-  const quiet = quietQuery.data;
-
-  if (quiet === undefined) return null;
-
-  const save = (next: QuietHours): void => {
-    queryClient.setQueryData(queryKeys.notifications.quietHours, next);
-    void setQuietHours(next).catch(() => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.notifications.quietHours,
-      });
-    });
-  };
-
-  return (
-    <>
-      <div className="tavern-set-row is-static">
-        <span className="tavern-set-label">Quiet hours</span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={quiet !== null}
-          className={`tavern-set-switch${quiet !== null ? " is-on" : ""}`}
-          onClick={() => save(quiet === null ? DEFAULT_QUIET_HOURS : null)}
-        >
-          <span className="tavern-set-knob" />
-        </button>
-      </div>
-      {quiet !== null ? (
-        <>
-          <div className="tavern-set-row is-static">
-            <span className="tavern-set-label">From</span>
-            <select
-              className="tavern-set-select"
-              value={String(quiet.start)}
-              aria-label="Quiet hours start"
-              onChange={(e) =>
-                save({ ...quiet, start: Number(e.target.value) })
-              }
-            >
-              {HOUR_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="tavern-set-row is-static">
-            <span className="tavern-set-label">Until</span>
-            <select
-              className="tavern-set-select"
-              value={String(quiet.end)}
-              aria-label="Quiet hours end"
-              onChange={(e) => save({ ...quiet, end: Number(e.target.value) })}
-            >
-              {HOUR_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </div>
-        </>
-      ) : null}
-      <p className="tavern-set-hint">
-        {quiet === null
-          ? "Freestyle can reach you at any hour."
-          : "Scheduled tasks still run and still write to your history — they just won't interrupt you in this window."}
-      </p>
-    </>
-  );
 }
 
 export function NotificationsHistory({

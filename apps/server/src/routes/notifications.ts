@@ -2,11 +2,7 @@ import { createAppLogger } from "@freestyle-voice/utils";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
-import {
-  freestyleCloudUrl,
-  getCloudUserProfile,
-  putCloudUserProfile,
-} from "../lib/freestyle-cloud.js";
+import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
 import { notificationEvents } from "../lib/notifications/events.js";
 import { drainNotificationOutbox } from "../lib/notifications/outbox.js";
 import * as store from "../lib/notifications/store.js";
@@ -14,8 +10,6 @@ import { notificationTransport } from "../lib/notifications/transport.js";
 import { getSessionToken, invalidateSession } from "../lib/sessions.js";
 
 const log = createAppLogger("notifications");
-
-export const DEFAULT_QUIET_HOURS = { start: 21, end: 7 } as const;
 
 const createSchema = z.object({
   kind: z.enum(["thread", "info"]).default("thread"),
@@ -106,45 +100,9 @@ async function forwardHistory(): Promise<{ status: number; payload: unknown }> {
   }
 }
 
-const quietHoursSchema = z.object({
-  quietHours: z
-    .object({
-      start: z.number().int().min(0).max(23),
-      end: z.number().int().min(0).max(23),
-    })
-    .nullable(),
-});
-
 const notificationsRoute = new Hono()
   .get("/", (c) => c.json({ notifications: store.listActive() }))
   .get("/stream", (c) => notificationStream(c.req.raw))
-  .get("/preferences", async (c) => {
-    const token = getSessionToken();
-    if (!token) return c.json({ quietHours: DEFAULT_QUIET_HOURS });
-    try {
-      const profile = await getCloudUserProfile(token);
-      return c.json({
-        quietHours:
-          profile.quietHours === undefined
-            ? DEFAULT_QUIET_HOURS
-            : profile.quietHours,
-      });
-    } catch {
-      return c.json({ quietHours: DEFAULT_QUIET_HOURS });
-    }
-  })
-  .put("/preferences", zValidator("json", quietHoursSchema), async (c) => {
-    const token = getSessionToken();
-    if (!token)
-      return c.json({ ok: false, reason: "cloud_auth_required" }, 401);
-    try {
-      await putCloudUserProfile(token, c.req.valid("json"));
-      return c.json({ ok: true });
-    } catch (err) {
-      log.error(`Quiet hours update failed: ${err}`);
-      return c.json({ ok: false, reason: "cloud-unreachable" }, 502);
-    }
-  })
   .get("/history", async (c) => {
     const local = store
       .listActive()

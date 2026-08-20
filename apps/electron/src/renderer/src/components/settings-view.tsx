@@ -7,10 +7,7 @@ import {
   normalizeLanguageList,
   resolveLanguageOptions,
 } from "@freestyle-voice/validations";
-import {
-  NotificationsHistory,
-  QuietHoursSettings,
-} from "@renderer/components/notifications-history";
+import { NotificationsHistory } from "@renderer/components/notifications-history";
 import {
   acceleratorsEqual,
   formatAcceleratorKeys,
@@ -1561,7 +1558,6 @@ export function SettingsView({
           <BillingPage />
         ) : page === "notifications" ? (
           <>
-            <QuietHoursSettings />
             <SectionLabel>History</SectionLabel>
             <NotificationsHistory {...(onOpenThread ? { onOpenThread } : {})} />
           </>

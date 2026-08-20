@@ -1,7 +1,7 @@
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { getLatestThread, runRemixTurn } from "./client";
+import { getLatestThread, getThread, runRemixTurn } from "./client";
 import { appendAssistantDelta, latestThreadState } from "./thread";
 
 export type RemixRunStatus = "idle" | "streaming" | "failed";
@@ -48,6 +48,33 @@ export function useRemixThread() {
     setStatus("idle");
     hydratedRef.current = true;
   }, []);
+
+  const loadThread = useCallback(
+    async (id: string) => {
+      if (!id || status === "streaming") return false;
+      abortRef.current?.abort();
+      hydratedRef.current = true;
+      setStatus("idle");
+      setError(null);
+      setActiveTool(null);
+      try {
+        const thread = await getThread(id);
+        if (!thread)
+          throw new Error("This conversation is no longer available.");
+        setThreadId(thread.id);
+        setMessages(thread.messages);
+        return true;
+      } catch (cause) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Couldn't load this conversation.",
+        );
+        return false;
+      }
+    },
+    [status],
+  );
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 
@@ -117,5 +144,6 @@ export function useRemixThread() {
     send,
     stop,
     newThread,
+    loadThread,
   };
 }

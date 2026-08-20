@@ -18,7 +18,9 @@ export function useRemixThread() {
   const [error, setError] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const statusRef = useRef<RemixRunStatus>(status);
   const hydratedRef = useRef(false);
+  statusRef.current = status;
 
   useEffect(() => {
     let cancelled = false;
@@ -49,32 +51,28 @@ export function useRemixThread() {
     hydratedRef.current = true;
   }, []);
 
-  const loadThread = useCallback(
-    async (id: string) => {
-      if (!id || status === "streaming") return false;
-      abortRef.current?.abort();
-      hydratedRef.current = true;
-      setStatus("idle");
-      setError(null);
-      setActiveTool(null);
-      try {
-        const thread = await getThread(id);
-        if (!thread)
-          throw new Error("This conversation is no longer available.");
-        setThreadId(thread.id);
-        setMessages(thread.messages);
-        return true;
-      } catch (cause) {
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : "Couldn't load this conversation.",
-        );
-        return false;
-      }
-    },
-    [status],
-  );
+  const loadThread = useCallback(async (id: string) => {
+    if (!id || statusRef.current === "streaming") return false;
+    abortRef.current?.abort();
+    hydratedRef.current = true;
+    setStatus("idle");
+    setError(null);
+    setActiveTool(null);
+    try {
+      const thread = await getThread(id);
+      if (!thread) throw new Error("This conversation is no longer available.");
+      setThreadId(thread.id);
+      setMessages(thread.messages);
+      return true;
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Couldn't load this conversation.",
+      );
+      return false;
+    }
+  }, []);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 

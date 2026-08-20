@@ -2,7 +2,12 @@ import { Check } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 
-import { SettingsScreenScaffold } from "@/components/settings-ui";
+import {
+  Card,
+  OptionCard,
+  SettingsScreenScaffold,
+  TabScreenScaffold,
+} from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -12,18 +17,20 @@ import {
   requestMicPermission,
 } from "@/lib/audio/recorder";
 import { useKeyboardStatus } from "@/lib/keyboard/use-keyboard-status";
+import { useSettings } from "@/lib/settings";
 
 const STEPS = [
   "Open Settings › General › Keyboard › Keyboards.",
   "Tap “Add New Keyboard…” and choose Freestyle.",
   "Tap Freestyle in the list, then enable “Allow Full Access”.",
-  "In any app, switch to the Freestyle keyboard and tap the mic to dictate.",
+  "In any app, choose Dictate for instant transcription or Remix for a voice-only request.",
 ];
 
-export default function KeyboardSetupScreen() {
+export function KeyboardSetupScreen({ isTab = false }: { isTab?: boolean }) {
   const theme = useTheme();
   const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
   const { status: keyboardStatus, ready: keyboardReady } = useKeyboardStatus();
+  const { settings, setAutoListenAfterRemixQuestion } = useSettings();
 
   useEffect(() => {
     void checkMicPermission().then(setMicStatus);
@@ -39,11 +46,8 @@ export default function KeyboardSetupScreen() {
     if (status === "denied") void Linking.openSettings();
   }, []);
 
-  return (
-    <SettingsScreenScaffold
-      title="Voice keyboard"
-      subtitle="Add the Freestyle keyboard once, then use it in any app. Tap the mic and Freestyle opens to capture your voice, then drops the transcript straight back into the field. Full Access lets the keyboard talk to Freestyle and insert your text."
-    >
+  const content = (
+    <>
       {/* Live status — flips to a confirmed state the moment the keyboard runs
           with Full Access (detected via the shared App Group handshake). */}
       {keyboardStatus !== "unsupported" ? (
@@ -107,6 +111,34 @@ export default function KeyboardSetupScreen() {
         )}
       </Pressable>
 
+      <Card>
+        <ThemedText style={styles.rowLabel}>Two voice modes</ThemedText>
+        <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+          Dictate pastes your spoken words. Remix hears a request, streams a
+          short follow-up here if it needs one, then pastes only the finished
+          result.
+        </ThemedText>
+      </Card>
+
+      <Card>
+        <ThemedText style={styles.rowLabel}>Remix follow-up</ThemedText>
+        <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+          When Remix asks a short question, start listening again automatically.
+        </ThemedText>
+        <OptionCard
+          label="Resume listening"
+          hint="Recommended for a quick voice-only keyboard flow."
+          selected={settings.autoListenAfterRemixQuestion}
+          onPress={() => setAutoListenAfterRemixQuestion(true)}
+        />
+        <OptionCard
+          label="Wait for my tap"
+          hint="Keep the keyboard quiet until you choose to answer."
+          selected={!settings.autoListenAfterRemixQuestion}
+          onPress={() => setAutoListenAfterRemixQuestion(false)}
+        />
+      </Card>
+
       <View style={styles.steps}>
         {STEPS.map((step, i) => (
           <View key={step} style={styles.step}>
@@ -145,9 +177,28 @@ export default function KeyboardSetupScreen() {
           </ThemedText>
         </Pressable>
       ) : null}
+    </>
+  );
+
+  const subtitle =
+    "Add the Freestyle keyboard once, then use it in any app. Choose Dictate to paste what you say, or Remix to give the agent a voice-only request. Full Access lets the keyboard talk to Freestyle and insert the finished text.";
+
+  if (isTab) {
+    return (
+      <TabScreenScaffold title="Keyboard" subtitle={subtitle}>
+        {content}
+      </TabScreenScaffold>
+    );
+  }
+
+  return (
+    <SettingsScreenScaffold title="Voice keyboard" subtitle={subtitle}>
+      {content}
     </SettingsScreenScaffold>
   );
 }
+
+export default KeyboardSetupScreen;
 
 const styles = StyleSheet.create({
   statusBanner: {

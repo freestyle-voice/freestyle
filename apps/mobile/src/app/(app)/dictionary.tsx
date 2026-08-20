@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import {
   Card,
   SectionTitle,
-  TabScreenScaffold,
+  SettingsScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -59,7 +59,7 @@ export default function DictionaryScreen() {
   const canSave = key.trim().length > 0 && value.trim().length > 0;
 
   return (
-    <TabScreenScaffold
+    <SettingsScreenScaffold
       title="Dictionary"
       subtitle="Automatic text replacements applied on your device after cleanup. Great for expanding shorthand or fixing how a word is spelled."
     >
@@ -195,7 +195,7 @@ export default function DictionaryScreen() {
           ))}
         </Card>
       ) : null}
-    </TabScreenScaffold>
+    </SettingsScreenScaffold>
   );
 }
 

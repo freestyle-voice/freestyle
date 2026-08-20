@@ -1,0 +1,108 @@
+import { useQuery } from "@tanstack/react-query";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
+
+import {
+  Card,
+  RetryLoadState,
+  SettingsScreenScaffold,
+} from "@/components/settings-ui";
+import { ThemedText } from "@/components/themed-text";
+import { Fonts, Spacing } from "@/constants/theme";
+import { useTheme } from "@/hooks/use-theme";
+import { getThread } from "@/lib/remix/client";
+
+export default function AgentThreadScreen() {
+  const theme = useTheme();
+  const router = useRouter();
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const {
+    data: thread,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ["agent-thread", id],
+    queryFn: () => getThread(id),
+    enabled: Boolean(id),
+    retry: 1,
+  });
+
+  return (
+    <SettingsScreenScaffold title="Remix conversation">
+      {isLoading ? (
+        <View style={styles.loading}>
+          <ActivityIndicator color={theme.primary} />
+          <ThemedText themeColor="mutedForeground">
+            Loading conversation…
+          </ThemedText>
+        </View>
+      ) : error ? (
+        <Card>
+          <RetryLoadState
+            message="Couldn't load this conversation. Check your connection and try again."
+            onRetry={() => void refetch()}
+          />
+        </Card>
+      ) : !thread ? (
+        <Card>
+          <ThemedText themeColor="mutedForeground" style={styles.empty}>
+            This conversation is no longer available.
+          </ThemedText>
+        </Card>
+      ) : (
+        <>
+          {thread.messages.map((message) => {
+            const text = message.parts
+              .filter((part) => part.type === "text")
+              .map((part) => part.text)
+              .join("");
+            if (!text) return null;
+            return (
+              <Card key={message.id}>
+                <ThemedText type="eyebrow" themeColor="mutedForeground">
+                  {message.role === "user" ? "YOU" : "REMIX"}
+                </ThemedText>
+                <ThemedText style={styles.message}>{text}</ThemedText>
+              </Card>
+            );
+          })}
+          <Pressable
+            onPress={() =>
+              router.push({
+                pathname: "/(app)/(tabs)",
+                params: { threadId: id },
+              })
+            }
+            style={[styles.continueButton, { backgroundColor: theme.primary }]}
+            accessibilityRole="button"
+          >
+            <ThemedText
+              style={[styles.continueText, { color: theme.primaryForeground }]}
+            >
+              Continue in Remix
+            </ThemedText>
+          </Pressable>
+        </>
+      )}
+    </SettingsScreenScaffold>
+  );
+}
+
+const styles = StyleSheet.create({
+  loading: {
+    minHeight: 160,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: Spacing.two,
+  },
+  empty: { fontSize: 14, lineHeight: 21 },
+  message: { fontFamily: Fonts.sans, fontSize: 15, lineHeight: 23 },
+  continueButton: {
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 999,
+  },
+  continueText: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
+});

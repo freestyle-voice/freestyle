@@ -8,7 +8,7 @@
 
 import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react-native";
 import type { ReactNode } from "react";
 import type { AccessibilityRole, ViewStyle } from "react-native";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -96,11 +96,13 @@ export function TabScreenScaffold({
   title,
   subtitle,
   action,
+  showHeaderActions = true,
   children,
 }: {
   title: string;
   subtitle?: string;
   action?: ReactNode;
+  showHeaderActions?: boolean;
   children: ReactNode;
 }) {
   const { tabTitleSize } = useResponsive();
@@ -120,7 +122,7 @@ export function TabScreenScaffold({
           </ThemedText>
           <View style={styles.tabHeaderActions}>
             {action}
-            <HeaderActions />
+            {showHeaderActions ? <HeaderActions /> : null}
           </View>
         </View>
         <ScrollView
@@ -162,6 +164,39 @@ export function Card({
       ]}
     >
       {children}
+    </View>
+  );
+}
+
+/** A consistent, actionable recovery state for cloud-backed screens. */
+export function RetryLoadState({
+  message = "We couldn't load this right now.",
+  onRetry,
+}: {
+  message?: string;
+  onRetry: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.retryLoad}>
+      <ThemedText themeColor="mutedForeground" style={styles.retryMessage}>
+        {message}
+      </ThemedText>
+      <Pressable
+        onPress={onRetry}
+        accessibilityRole="button"
+        accessibilityLabel="Try loading again"
+        style={({ pressed }) => [
+          styles.retryButton,
+          { borderColor: theme.border },
+          pressed && { opacity: 0.6 },
+        ]}
+      >
+        <RotateCw color={theme.primary} size={15} />
+        <ThemedText style={[styles.retryText, { color: theme.primary }]}>
+          Try again
+        </ThemedText>
+      </Pressable>
     </View>
   );
 }
@@ -332,9 +367,9 @@ const styles = StyleSheet.create({
   // Pushed pages have no tab bar, but the dictation strip can slide down into
   // that space, so leave room for it at the end of the scroll.
   body: { paddingBottom: 100, gap: Spacing.four },
-  // Tab roots sit under the floating pill tab bar (and the strip above it), so
-  // clear extra space.
-  tabBody: { paddingBottom: 120 },
+  // Native tabs reserve their own dock. Leave breathing room for the keyboard
+  // status strip without carrying the old floating-pill spacing forward.
+  tabBody: { paddingBottom: 96 },
   tabHeader: {
     flexDirection: "row",
     alignItems: "center",
@@ -370,6 +405,22 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     gap: Spacing.three,
   },
+  retryLoad: {
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  retryMessage: { textAlign: "center", fontSize: 14, lineHeight: 21 },
+  retryButton: {
+    minHeight: 36,
+    paddingHorizontal: Spacing.three,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.one,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  retryText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
   sectionTitle: {
     flexDirection: "row",
     alignItems: "center",

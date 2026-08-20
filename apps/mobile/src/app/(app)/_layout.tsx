@@ -38,9 +38,17 @@ export default function AppLayout() {
                   <Stack.Screen name="onboarding" />
                   <Stack.Screen name="settings" />
                   <Stack.Screen name="profile" />
+                  <Stack.Screen name="history" />
+                  <Stack.Screen name="vocabulary" />
+                  <Stack.Screen name="dictionary" />
+                  <Stack.Screen name="tone" />
                   <Stack.Screen name="keyboard-setup" />
                   <Stack.Screen name="help" />
                   <Stack.Screen name="billing" />
+                  <Stack.Screen name="connected-apps" />
+                  <Stack.Screen name="automations" />
+                  <Stack.Screen name="notifications" />
+                  <Stack.Screen name="agent-thread/[id]" />
                 </Stack>
                 <KeyboardDictationStrip />
               </KeyboardDictationProvider>

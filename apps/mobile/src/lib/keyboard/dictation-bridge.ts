@@ -13,6 +13,8 @@ import { Platform } from "react-native";
 
 type Bridge = typeof import("../../../modules/freestyle-shared-store");
 
+export type KeyboardMode = "dictate" | "remix";
+
 export type Phase =
   | "idle"
   | "arming"
@@ -138,4 +140,9 @@ export function clearKeyboardSession(): void {
  */
 export function keyboardLastActive(): number | null {
   return getBridge()?.keyboardLastActive() ?? null;
+}
+
+/** The mode selected in the keyboard's compact two-option control. */
+export function loadKeyboardMode(): KeyboardMode {
+  return getBridge()?.keyboardMode() === "remix" ? "remix" : "dictate";
 }

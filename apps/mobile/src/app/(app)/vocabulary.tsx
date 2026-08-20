@@ -5,6 +5,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import {
   Card,
   SectionTitle,
+  SettingsScreenScaffold,
   TabScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
@@ -17,7 +18,7 @@ import {
   type VocabEntry,
 } from "@/lib/entries";
 
-export default function VocabularyScreen() {
+export function VocabularyScreen({ isTab = false }: { isTab?: boolean }) {
   const theme = useTheme();
   const { vocabulary, addVocab, updateVocab, removeVocab, removeVocabMany } =
     useEntries();
@@ -120,12 +121,8 @@ export default function VocabularyScreen() {
       </Pressable>
     ) : undefined;
 
-  return (
-    <TabScreenScaffold
-      title="Vocabulary"
-      subtitle="Names, jargon, and phrases Freestyle should recognize. These bias speech recognition so tricky words come out right."
-      action={headerAction}
-    >
+  const content = (
+    <>
       {selecting ? (
         <View
           style={[
@@ -320,9 +317,32 @@ export default function VocabularyScreen() {
           })}
         </Card>
       ) : null}
-    </TabScreenScaffold>
+    </>
+  );
+
+  if (isTab) {
+    return (
+      <TabScreenScaffold
+        title="Words"
+        subtitle="Names, jargon, and phrases Freestyle should recognize. These bias speech recognition so tricky words come out right."
+        action={headerAction}
+      >
+        {content}
+      </TabScreenScaffold>
+    );
+  }
+
+  return (
+    <SettingsScreenScaffold
+      title="Vocabulary"
+      subtitle="Names, jargon, and phrases Freestyle should recognize. These bias speech recognition so tricky words come out right."
+    >
+      {content}
+    </SettingsScreenScaffold>
   );
 }
+
+export default VocabularyScreen;
 
 const styles = StyleSheet.create({
   input: {

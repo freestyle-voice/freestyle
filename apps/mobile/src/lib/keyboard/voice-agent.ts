@@ -9,6 +9,21 @@ export type VoiceAgentResult =
  */
 export function resolveVoiceAgentResult(text: string): VoiceAgentResult {
   const normalized = text.trim();
+  if (/^clarify:\s*/i.test(normalized)) {
+    return {
+      kind: "question",
+      text: normalized.replace(/^clarify:\s*/i, ""),
+    };
+  }
+  if (/^final:\s*/i.test(normalized)) {
+    return {
+      kind: "insert",
+      text: normalized.replace(/^final:\s*/i, ""),
+    };
+  }
+  // Keep accepting untagged answers while older Cloud agent prompts may still
+  // be in flight. New keyboard requests use explicit prefixes so a finished
+  // draft that happens to end in a question mark can still be pasted.
   return /\?\s*$/.test(normalized)
     ? { kind: "question", text: normalized }
     : { kind: "insert", text: normalized };

@@ -137,6 +137,17 @@ export function useKeyboardDictationBridge(
     [setPhaseBoth],
   );
 
+  /** Never leave the warm session stranded when the keyboard disappears before
+   * it can acknowledge an inserted result. */
+  const scheduleReadyFallback = useCallback(() => {
+    if (reArmTimerRef.current) clearTimeout(reArmTimerRef.current);
+    reArmTimerRef.current = setTimeout(() => {
+      if (phaseRef.current !== "ready") return;
+      pendingInsertRef.current = "";
+      publish("armed");
+    }, 4_000);
+  }, [publish]);
+
   // --- The resident (warm-mic) recording session.
   const session = useResidentDictation({
     onArmed: () => {
@@ -170,13 +181,7 @@ export function useKeyboardDictationBridge(
       // even if the ack is missed (keyboard closed, notification dropped) so we
       // never get stuck showing "ready" with a warm-but-idle mic.
       publish("ready", { finalTranscript: text, insertionToken: token });
-      if (reArmTimerRef.current) clearTimeout(reArmTimerRef.current);
-      reArmTimerRef.current = setTimeout(() => {
-        if (phaseRef.current === "ready") {
-          pendingInsertRef.current = "";
-          publish("armed");
-        }
-      }, 4_000);
+      scheduleReadyFallback();
     },
     onError: (message, recoverable) => {
       if (recoverable) {
@@ -188,6 +193,15 @@ export function useKeyboardDictationBridge(
       }
     },
     onDisarmed: () => {
+      // A mode switch, close, or explicit cancellation must also cancel an
+      // in-flight cloud agent turn. Otherwise it could publish a late `ready`
+      // result into a field after the user has abandoned the request.
+      agentAbortRef.current?.abort();
+      agentAbortRef.current = null;
+      if (reArmTimerRef.current) {
+        clearTimeout(reArmTimerRef.current);
+        reArmTimerRef.current = null;
+      }
       sessionIdRef.current = "";
       pendingInsertRef.current = "";
       setPhaseBoth("idle");
@@ -200,9 +214,11 @@ export function useKeyboardDictationBridge(
     (transcript: string) => {
       const prior = agentMessagesRef.current;
       const firstTurn = prior.length === 0;
+      const requestFormat =
+        "Start with `CLARIFY: ` only when essential information is missing; otherwise start with `FINAL: `. Keep the rest to only the single question or text that should be pasted.";
       const userText = firstTurn
-        ? `Voice keyboard request: ${transcript}\n\nReply with only the text that should be pasted. If essential information is missing, ask exactly one short question ending in a question mark instead.`
-        : transcript;
+        ? `Voice keyboard request: ${transcript}\n\n${requestFormat}`
+        : `${transcript}\n\n${requestFormat}`;
       const nextMessages: import("ai").UIMessage[] = [
         ...prior,
         {
@@ -241,7 +257,9 @@ export function useKeyboardDictationBridge(
           if (result.kind === "question") {
             publish("armed", { statusMessage: result.text });
             if (autoListenAfterRemixQuestion) {
-              setTimeout(() => session.beginCapture(), 250);
+              // Leave the clarification visible long enough to be understood
+              // before the default hands-free follow-up starts listening.
+              setTimeout(() => session.beginCapture(), 750);
             }
             return;
           }
@@ -252,6 +270,7 @@ export function useKeyboardDictationBridge(
             finalTranscript: result.text,
             insertionToken: token,
           });
+          scheduleReadyFallback();
         })
         .catch(() => {
           if (!controller.signal.aborted) {
@@ -265,7 +284,7 @@ export function useKeyboardDictationBridge(
             agentAbortRef.current = null;
         });
     },
-    [autoListenAfterRemixQuestion, publish, session],
+    [autoListenAfterRemixQuestion, publish, scheduleReadyFallback, session],
   );
   agentFinalRef.current = runVoiceAgent;
 
@@ -297,8 +316,12 @@ export function useKeyboardDictationBridge(
           // Cold start from the keyboard: arm the mic AND begin the first
           // phrase, so the single tap that opened the app is already recording.
           if (!sessionIdRef.current) sessionIdRef.current = `${Date.now()}`;
+          if (!signedIn) {
+            publish("failed", { statusMessage: "Sign in to use voice." });
+            break;
+          }
           publish("arming");
-          if (signedIn) void session.arm({ beginImmediately: true });
+          void session.arm({ beginImmediately: true });
           break;
         case "beginCapture":
           modeRef.current = loadKeyboardMode();
@@ -311,8 +334,12 @@ export function useKeyboardDictationBridge(
           ) {
             // Session lapsed (e.g. disarmed on memory pressure). Re-arm+begin.
             if (!sessionIdRef.current) sessionIdRef.current = `${Date.now()}`;
+            if (!signedIn) {
+              publish("failed", { statusMessage: "Sign in to use voice." });
+              break;
+            }
             publish("arming");
-            if (signedIn) void session.arm({ beginImmediately: true });
+            void session.arm({ beginImmediately: true });
           }
           break;
         case "commit":
@@ -351,8 +378,12 @@ export function useKeyboardDictationBridge(
       case "idle":
       case "failed":
         if (!sessionIdRef.current) sessionIdRef.current = `${Date.now()}`;
+        if (!signedIn) {
+          publish("failed", { statusMessage: "Sign in to use voice." });
+          break;
+        }
         publish("arming");
-        if (signedIn) void session.arm({ beginImmediately: true });
+        void session.arm({ beginImmediately: true });
         break;
       case "armed":
       case "ready":

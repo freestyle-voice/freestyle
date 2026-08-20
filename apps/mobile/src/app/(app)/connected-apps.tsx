@@ -13,6 +13,7 @@ import {
 
 import {
   Card,
+  RetryLoadState,
   SectionTitle,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
@@ -36,12 +37,22 @@ export default function ConnectedAppsScreen() {
     useState<ConnectorCatalogItem | null>(null);
   const [credentials, setCredentials] = useState<Record<string, string>>({});
 
-  const { data: connections = [], isLoading: connectionsLoading } = useQuery({
+  const {
+    data: connections = [],
+    isLoading: connectionsLoading,
+    isError: connectionsError,
+    refetch: refetchConnections,
+  } = useQuery({
     queryKey: ["connector-connections"],
     queryFn: listConnectorConnections,
     retry: 1,
   });
-  const { data: catalog, isLoading: catalogLoading } = useQuery({
+  const {
+    data: catalog,
+    isLoading: catalogLoading,
+    isError: catalogError,
+    refetch: refetchCatalog,
+  } = useQuery({
     queryKey: ["connector-catalog", search.trim()],
     queryFn: () => listConnectorCatalog({ search: search.trim() || undefined }),
     retry: 1,
@@ -109,6 +120,11 @@ export default function ConnectedAppsScreen() {
         <SectionTitle icon={PlugZap} title="Connected" />
         {connectionsLoading ? (
           <Loading />
+        ) : connectionsError && connections.length === 0 ? (
+          <RetryLoadState
+            message="Couldn't load your connected apps. Check your connection and try again."
+            onRetry={() => void refetchConnections()}
+          />
         ) : connections.length === 0 ? (
           <ThemedText themeColor="mutedForeground" style={styles.empty}>
             No apps connected yet. Add one below to let Remix work with it.
@@ -184,6 +200,11 @@ export default function ConnectedAppsScreen() {
         />
         {catalogLoading ? (
           <Loading />
+        ) : catalogError && catalogItems.length === 0 ? (
+          <RetryLoadState
+            message="Couldn't load available apps. Check your connection and try again."
+            onRetry={() => void refetchCatalog()}
+          />
         ) : catalogItems.length === 0 ? (
           <ThemedText themeColor="mutedForeground" style={styles.empty}>
             No matching apps found.

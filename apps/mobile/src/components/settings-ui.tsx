@@ -8,7 +8,7 @@
 
 import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
-import { ChevronLeft, ChevronRight } from "lucide-react-native";
+import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react-native";
 import type { ReactNode } from "react";
 import type { AccessibilityRole, ViewStyle } from "react-native";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -164,6 +164,39 @@ export function Card({
       ]}
     >
       {children}
+    </View>
+  );
+}
+
+/** A consistent, actionable recovery state for cloud-backed screens. */
+export function RetryLoadState({
+  message = "We couldn't load this right now.",
+  onRetry,
+}: {
+  message?: string;
+  onRetry: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.retryLoad}>
+      <ThemedText themeColor="mutedForeground" style={styles.retryMessage}>
+        {message}
+      </ThemedText>
+      <Pressable
+        onPress={onRetry}
+        accessibilityRole="button"
+        accessibilityLabel="Try loading again"
+        style={({ pressed }) => [
+          styles.retryButton,
+          { borderColor: theme.border },
+          pressed && { opacity: 0.6 },
+        ]}
+      >
+        <RotateCw color={theme.primary} size={15} />
+        <ThemedText style={[styles.retryText, { color: theme.primary }]}>
+          Try again
+        </ThemedText>
+      </Pressable>
     </View>
   );
 }
@@ -372,6 +405,22 @@ const styles = StyleSheet.create({
     padding: Spacing.three,
     gap: Spacing.three,
   },
+  retryLoad: {
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  retryMessage: { textAlign: "center", fontSize: 14, lineHeight: 21 },
+  retryButton: {
+    minHeight: 36,
+    paddingHorizontal: Spacing.three,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.one,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  retryText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
   sectionTitle: {
     flexDirection: "row",
     alignItems: "center",

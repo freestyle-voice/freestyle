@@ -5,6 +5,7 @@ import { Alert, Pressable, StyleSheet, Switch, View } from "react-native";
 
 import {
   Card,
+  RetryLoadState,
   SectionTitle,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
@@ -22,7 +23,12 @@ export default function AutomationsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { data: tasks = [], isLoading } = useQuery({
+  const {
+    data: tasks = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["scheduled-tasks"],
     queryFn: listScheduledTasks,
     retry: 1,
@@ -84,6 +90,11 @@ export default function AutomationsScreen() {
           <ThemedText themeColor="mutedForeground" style={styles.description}>
             Loading automations…
           </ThemedText>
+        ) : isError && tasks.length === 0 ? (
+          <RetryLoadState
+            message="Couldn't load automations. Check your connection and try again."
+            onRetry={() => void refetch()}
+          />
         ) : tasks.length === 0 ? (
           <ThemedText themeColor="mutedForeground" style={styles.description}>
             No automations yet. Try “send me a morning brief of my calendar and

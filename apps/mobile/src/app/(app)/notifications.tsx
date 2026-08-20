@@ -3,7 +3,11 @@ import { useRouter } from "expo-router";
 import { Bell, Check, X } from "lucide-react-native";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
 
-import { Card, SettingsScreenScaffold } from "@/components/settings-ui";
+import {
+  Card,
+  RetryLoadState,
+  SettingsScreenScaffold,
+} from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -17,7 +21,12 @@ export default function NotificationsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
-  const { data: notifications = [], isLoading } = useQuery({
+  const {
+    data: notifications = [],
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: ["agent-notifications"],
     queryFn: listNotifications,
     retry: 1,
@@ -48,6 +57,13 @@ export default function NotificationsScreen() {
           <ThemedText themeColor="mutedForeground">
             Loading notifications…
           </ThemedText>
+        </Card>
+      ) : isError && notifications.length === 0 ? (
+        <Card>
+          <RetryLoadState
+            message="Couldn't load notifications. Check your connection and try again."
+            onRetry={() => void refetch()}
+          />
         </Card>
       ) : notifications.length === 0 ? (
         <Card>

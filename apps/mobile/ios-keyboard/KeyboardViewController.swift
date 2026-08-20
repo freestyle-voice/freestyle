@@ -541,6 +541,17 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
 
+        // In Remix mode the app publishes the generated response as it
+        // arrives. Keep that feedback in the compact status area while the
+        // keyboard waits for either a clarification or the final paste.
+        if isRemixMode,
+           state.phase == .transcribing,
+           !state.partialTranscript.isEmpty {
+            setStatus(state.partialTranscript, mono: false)
+            setHint("ONE SEC")
+            return
+        }
+
         let hint: String
         let status: String?
         if alive {

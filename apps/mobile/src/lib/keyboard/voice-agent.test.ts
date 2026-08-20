@@ -18,4 +18,22 @@ describe("voice-only keyboard agent results", () => {
       text: "Thanks, I will send it today.",
     });
   });
+
+  it("can paste a finished draft that ends with a question mark", () => {
+    expect(
+      resolveVoiceAgentResult("FINAL: Could you send that by Friday?"),
+    ).toEqual({
+      kind: "insert",
+      text: "Could you send that by Friday?",
+    });
+  });
+
+  it("keeps an explicitly tagged clarification in the keyboard", () => {
+    expect(
+      resolveVoiceAgentResult("CLARIFY: Who should this be addressed to?"),
+    ).toEqual({
+      kind: "question",
+      text: "Who should this be addressed to?",
+    });
+  });
 });

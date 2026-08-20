@@ -2,7 +2,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 
-import { Card, SettingsScreenScaffold } from "@/components/settings-ui";
+import {
+  Card,
+  RetryLoadState,
+  SettingsScreenScaffold,
+} from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
@@ -16,6 +20,7 @@ export default function AgentThreadScreen() {
     data: thread,
     isLoading,
     error,
+    refetch,
   } = useQuery({
     queryKey: ["agent-thread", id],
     queryFn: () => getThread(id),
@@ -32,7 +37,14 @@ export default function AgentThreadScreen() {
             Loading conversation…
           </ThemedText>
         </View>
-      ) : error || !thread ? (
+      ) : error ? (
+        <Card>
+          <RetryLoadState
+            message="Couldn't load this conversation. Check your connection and try again."
+            onRetry={() => void refetch()}
+          />
+        </Card>
+      ) : !thread ? (
         <Card>
           <ThemedText themeColor="mutedForeground" style={styles.empty}>
             This conversation is no longer available.

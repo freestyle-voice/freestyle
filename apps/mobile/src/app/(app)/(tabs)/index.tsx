@@ -2,7 +2,14 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useIsFocused } from "expo-router";
 import { useCallback, useState } from "react";
-import { Pressable, Share, StyleSheet, View } from "react-native";
+import {
+  Pressable,
+  ScrollView,
+  Share,
+  StyleSheet,
+  TextInput,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { HeaderActions } from "@/components/header-actions";
@@ -18,6 +25,7 @@ import { useTheme } from "@/hooks/use-theme";
 import { useDictation } from "@/lib/audio/use-dictation";
 import { DEFAULT_HOME_MODE } from "@/lib/remix/home-mode";
 import type { RemixMode } from "@/lib/remix/types";
+import { useRemixThread } from "@/lib/remix/use-remix-thread";
 
 export default function VoiceScreen() {
   const theme = useTheme();
@@ -196,33 +204,110 @@ function ModeSwitch({
 
 function RemixHome() {
   const theme = useTheme();
+  const { messages, status, error, activeTool, send, stop, newThread } =
+    useRemixThread();
+  const [draft, setDraft] = useState("");
+  const busy = status === "streaming";
+
+  const submit = useCallback(async () => {
+    const sent = await send(draft);
+    if (sent) setDraft("");
+  }, [draft, send]);
 
   return (
     <View style={styles.remixHome}>
-      <View style={styles.remixHeading}>
+      <View style={styles.remixTopline}>
         <ThemedText type="title" style={styles.remixTitle}>
           Make the next move.
         </ThemedText>
-        <ThemedText themeColor="mutedForeground" style={styles.remixCopy}>
-          Ask Remix to shape a message, plan a task, or work with your connected
-          apps.
-        </ThemedText>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="New conversation"
+          onPress={newThread}
+          style={[styles.newThread, { borderColor: theme.border }]}
+        >
+          <ThemedText style={styles.newThreadText}>New</ThemedText>
+        </Pressable>
       </View>
-
+      <ScrollView
+        contentContainerStyle={styles.remixScroll}
+        keyboardShouldPersistTaps="handled"
+      >
+        {messages.length === 0 ? (
+          <View
+            style={[
+              styles.remixState,
+              { backgroundColor: theme.card, borderColor: theme.border },
+            ]}
+          >
+            <ThemedText style={styles.remixEyebrow}>REMIX</ThemedText>
+            <ThemedText style={styles.remixStateTitle}>
+              Your focused writing partner.
+            </ThemedText>
+            <ThemedText themeColor="mutedForeground" style={styles.remixDetail}>
+              Ask for a draft, a plan, or help working through a task.
+            </ThemedText>
+          </View>
+        ) : null}
+        {messages.map((message) => (
+          <View
+            key={message.id}
+            style={[
+              styles.turn,
+              {
+                backgroundColor:
+                  message.role === "user" ? theme.secondary : theme.card,
+                borderColor: theme.border,
+              },
+            ]}
+          >
+            <ThemedText type="eyebrow" themeColor="mutedForeground">
+              {message.role === "user" ? "YOU" : "REMIX"}
+            </ThemedText>
+            <ThemedText style={styles.turnText}>
+              {message.parts
+                .filter((part) => part.type === "text")
+                .map((part) => part.text)
+                .join("")}
+            </ThemedText>
+          </View>
+        ))}
+        {activeTool ? (
+          <ThemedText themeColor="mutedForeground" style={styles.toolStatus}>
+            {activeTool}…
+          </ThemedText>
+        ) : null}
+        {error ? (
+          <ThemedText style={[styles.error, { color: theme.destructive }]}>
+            {error}
+          </ThemedText>
+        ) : null}
+      </ScrollView>
       <View
         style={[
-          styles.remixState,
+          styles.composer,
           { backgroundColor: theme.card, borderColor: theme.border },
         ]}
       >
-        <ThemedText style={styles.remixEyebrow}>REMIX IS READY</ThemedText>
-        <ThemedText style={styles.remixStateTitle}>
-          Your focused writing partner.
-        </ThemedText>
-        <ThemedText themeColor="mutedForeground" style={styles.remixDetail}>
-          Remix conversations live here. The keyboard keeps its faster,
-          voice-first flow.
-        </ThemedText>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          editable={!busy}
+          placeholder="Ask Remix anything"
+          placeholderTextColor={theme.mutedForeground}
+          multiline
+          style={[styles.input, { color: theme.foreground }]}
+        />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={busy ? "Stop Remix" : "Send to Remix"}
+          onPress={busy ? stop : () => void submit()}
+          style={[styles.send, { backgroundColor: theme.primary }]}
+        >
+          <ThemedText style={{ color: theme.primaryForeground }}>
+            {busy ? "■" : "↑"}
+          </ThemedText>
+        </Pressable>
       </View>
     </View>
   );
@@ -264,8 +349,62 @@ const styles = StyleSheet.create({
   modeLabel: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
   remixHome: {
     flex: 1,
+    minHeight: 0,
+    gap: Spacing.three,
+    paddingBottom: 96,
+  },
+  remixTopline: {
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "space-between",
-    paddingBottom: 120,
+    gap: Spacing.three,
+  },
+  newThread: {
+    minHeight: 40,
+    paddingHorizontal: Spacing.three,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  newThreadText: { fontFamily: Fonts.sansSemiBold, fontSize: 13 },
+  remixScroll: { gap: Spacing.two, paddingBottom: Spacing.two },
+  turn: {
+    gap: Spacing.one,
+    borderWidth: 1,
+    borderRadius: Radius.xl,
+    padding: Spacing.three,
+  },
+  turnText: { fontSize: 15, lineHeight: 22 },
+  toolStatus: {
+    fontFamily: Fonts.mono,
+    fontSize: 11,
+    paddingHorizontal: Spacing.one,
+  },
+  error: { fontSize: 13, lineHeight: 19, paddingHorizontal: Spacing.one },
+  composer: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.xl,
+    padding: Spacing.two,
+  },
+  input: {
+    flex: 1,
+    minHeight: 38,
+    maxHeight: 104,
+    fontFamily: Fonts.sans,
+    fontSize: 15,
+    lineHeight: 21,
+    paddingHorizontal: Spacing.one,
+    paddingVertical: Spacing.one,
+  },
+  send: {
+    width: 40,
+    height: 40,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
   },
   remixHeading: { gap: Spacing.two, paddingTop: Spacing.two },
   remixTitle: { fontSize: 42, lineHeight: 46 },

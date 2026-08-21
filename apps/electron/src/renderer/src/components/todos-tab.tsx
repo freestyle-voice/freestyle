@@ -171,6 +171,9 @@ export function TodosTab({
         id="panel-todo-add"
         value={draft}
         placeholder="Add a to-do, or say it"
+        // Dictation routes here only while the panel holds key focus, which a
+        // content click does not reliably take on macOS.
+        onMouseDown={() => window.api.panelRequestFocus()}
         onChange={(e) => setDraft(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") add();

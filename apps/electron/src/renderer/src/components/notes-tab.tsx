@@ -187,6 +187,7 @@ export function NotesTab({
             className="tavern-editor tavern-note-editor"
             id="panel-note-editor"
             value={view.draft}
+            onMouseDown={() => window.api.panelRequestFocus()}
             ref={(el) => el?.focus()}
             placeholder="Start writing or talking — the first line becomes the title."
             onChange={(e) => {

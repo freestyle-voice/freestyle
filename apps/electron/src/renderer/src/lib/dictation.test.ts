@@ -81,7 +81,49 @@ vi.mock("@renderer/lib/streamer", () => ({
 
 const { apiFetch, recorder, streamer, state } = mocks;
 
-import { DictationController } from "./dictation";
+import { DictationController, resolveDestination } from "./dictation";
+
+describe("resolveDestination", () => {
+  it("pastes behind the app when the panel does not have focus", () => {
+    expect(
+      resolveDestination({
+        talkSession: false,
+        panelFocused: false,
+        preference: "cursor",
+      }),
+    ).toBe("cursor");
+  });
+
+  it("writes into the panel when plain dictation starts on a focused panel", () => {
+    expect(
+      resolveDestination({
+        talkSession: false,
+        panelFocused: true,
+        preference: "cursor",
+      }),
+    ).toBe("composer");
+  });
+
+  it("keeps click-to-activate targeting the panel regardless of focus", () => {
+    expect(
+      resolveDestination({
+        talkSession: true,
+        panelFocused: false,
+        preference: "cursor",
+      }),
+    ).toBe("composer");
+  });
+
+  it("honours a composer preference when nothing else applies", () => {
+    expect(
+      resolveDestination({
+        talkSession: false,
+        panelFocused: false,
+        preference: "composer",
+      }),
+    ).toBe("composer");
+  });
+});
 
 function makeController() {
   const phases: string[] = [];

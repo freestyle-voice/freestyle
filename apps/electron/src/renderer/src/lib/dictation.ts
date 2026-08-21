@@ -13,6 +13,19 @@ import { Streamer } from "@renderer/lib/streamer";
 export type DictationPhase = "idle" | "recording" | "transcribing";
 export type DictationDestination = "cursor" | "composer";
 
+/**
+ * Click-to-activate always targets the panel. Plain dictation pastes where the
+ * user was working, unless the panel itself holds focus.
+ */
+export function resolveDestination(opts: {
+  talkSession: boolean;
+  panelFocused: boolean;
+  preference: DictationDestination;
+}): DictationDestination {
+  if (opts.talkSession || opts.panelFocused) return "composer";
+  return opts.preference;
+}
+
 export interface DictationCallbacks {
   onPhase: (phase: DictationPhase) => void;
   onPartial: (text: string) => void;

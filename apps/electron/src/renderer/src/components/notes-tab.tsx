@@ -1,11 +1,13 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
+import { useDictationTarget } from "@renderer/hooks/use-dictation-target";
 import {
   deleteBrainFile,
   uniqueBrainPath,
   writeBrainFile,
 } from "@renderer/lib/brain-fs";
 import type { NoteSummary } from "@renderer/lib/brain-views";
+import type { RegisterDictationSink } from "@renderer/lib/dictation-sink";
 import {
   brainFileQueryOptions,
   notesQueryOptions,
@@ -58,7 +60,11 @@ type NoteView =
   | { kind: "list" }
   | { kind: "note"; path: string | null; draft: string; editing: boolean };
 
-export function NotesTab(): React.JSX.Element {
+export function NotesTab({
+  registerDictation,
+}: {
+  registerDictation: RegisterDictationSink;
+}): React.JSX.Element {
   const queryClient = useQueryClient();
   const notesQuery = useQuery(notesQueryOptions());
   const notes: NoteSummary[] = notesQuery.data ?? [];
@@ -103,6 +109,25 @@ export function NotesTab(): React.JSX.Element {
     [persist],
   );
 
+  // Dictating from the list opens a fresh note; an empty result (a cancelled or
+  // failed utterance) leaves the list alone.
+  const setNoteText = useCallback(
+    (text: string): void => {
+      setView((v) => {
+        if (v.kind === "note") return { ...v, draft: text, editing: true };
+        if (!text) return v;
+        return { kind: "note", path: null, draft: text, editing: true };
+      });
+      scheduleSave();
+    },
+    [scheduleSave],
+  );
+  useDictationTarget(
+    registerDictation,
+    view.kind === "note" ? view.draft : "",
+    setNoteText,
+  );
+
   const closeNote = (): void => {
     if (saveTimer.current) {
       clearTimeout(saveTimer.current);
@@ -124,6 +149,14 @@ export function NotesTab(): React.JSX.Element {
             ← Notes
           </button>
           <span className="tavern-head-spacer" />
+          <button
+            type="button"
+            className="tavern-note-save"
+            disabled={!view.draft.trim()}
+            onClick={closeNote}
+          >
+            {view.path ? "Done" : "Create"}
+          </button>
           {view.path ? (
             <button
               type="button"
@@ -152,9 +185,11 @@ export function NotesTab(): React.JSX.Element {
         {view.editing || !view.draft.trim() ? (
           <textarea
             className="tavern-editor tavern-note-editor"
+            id="panel-note-editor"
             value={view.draft}
+            onMouseDown={() => window.api.panelRequestFocus()}
             ref={(el) => el?.focus()}
-            placeholder="Start writing — the first line becomes the title."
+            placeholder="Start writing or talking — the first line becomes the title."
             onChange={(e) => {
               setView({ ...view, draft: e.target.value, editing: true });
               scheduleSave();

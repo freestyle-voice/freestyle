@@ -68,7 +68,11 @@ declare global {
       panelRequestFocus: () => void;
       panelPointerLeft: () => void;
       panelPointerEntered: () => void;
-      onPanelFocusComposer: (callback: () => void) => () => void;
+      panelIsFocused: () => Promise<boolean>;
+      onPanelFocusState: (callback: (focused: boolean) => void) => () => void;
+      onPanelFocusComposer: (
+        callback: (trigger?: string) => void,
+      ) => () => void;
       notificationsList: () => Promise<unknown[]>;
       notificationDismiss: (id: string) => void;
       notificationOpen: (id: string) => void;

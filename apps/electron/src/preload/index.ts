@@ -137,8 +137,17 @@ const api = {
   panelRequestFocus: (): void => ipcRenderer.send("panel:request-focus"),
   panelPointerLeft: (): void => ipcRenderer.send("panel:pointer-left"),
   panelPointerEntered: (): void => ipcRenderer.send("panel:pointer-entered"),
-  onPanelFocusComposer: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
+  panelIsFocused: (): Promise<boolean> =>
+    ipcRenderer.invoke("panel:is-focused"),
+  onPanelFocusState: (callback: (focused: boolean) => void): (() => void) => {
+    const handler = (_e: unknown, focused: boolean): void => callback(focused);
+    ipcRenderer.on("panel:focus-state", handler);
+    return () => ipcRenderer.removeListener("panel:focus-state", handler);
+  },
+  onPanelFocusComposer: (
+    callback: (trigger?: string) => void,
+  ): (() => void) => {
+    const handler = (_e: unknown, trigger?: string): void => callback(trigger);
     ipcRenderer.on("panel:focus-composer", handler);
     return () => ipcRenderer.removeListener("panel:focus-composer", handler);
   },

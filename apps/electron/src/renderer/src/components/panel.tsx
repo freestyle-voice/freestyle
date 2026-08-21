@@ -26,6 +26,12 @@ import { apiFetch, initApiBase, refreshApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
 import { resetBrainCache } from "@renderer/lib/brain-fs";
 import { composerAction } from "@renderer/lib/composer-action";
+import {
+  type DictationSinkEvent,
+  type DictationSinkId,
+  nextUtterance,
+  sinkForTab,
+} from "@renderer/lib/dictation-sink";
 import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
@@ -85,6 +91,24 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
     "Everything Freestyle knows lives here — scheduled tasks, memories, notes, skills, todos.",
   apps: "Connect the apps you live in, and Freestyle can work them for you.",
 };
+
+/** The field each sink writes into, focused so its own key handling works. */
+const SINK_FIELD_ID: Record<DictationSinkId, string> = {
+  chat: "panel-composer",
+  todo: "panel-todo-add",
+  note: "panel-note-editor",
+};
+
+function registerSinkHandler(
+  handlers: Map<DictationSinkId, (ev: DictationSinkEvent) => void>,
+  id: DictationSinkId,
+  handler: (ev: DictationSinkEvent) => void,
+): () => void {
+  handlers.set(id, handler);
+  return () => {
+    if (handlers.get(id) === handler) handlers.delete(id);
+  };
+}
 
 function ShikiJson({ value }: { value: unknown }): React.JSX.Element {
   const source = toolJson(value);
@@ -764,6 +788,22 @@ function PanelInner({
   const dictationBaseRef = useRef<string | null>(null);
   // Whether the current draft arrived by voice, so message_sent can say so.
   const dictatedRef = useRef(false);
+  const sinkHandlers = useRef(
+    new Map<DictationSinkId, (ev: DictationSinkEvent) => void>(),
+  );
+  const tabRef = useRef(tab);
+  tabRef.current = tab;
+  const lastSinkRef = useRef<DictationSinkId>("chat");
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
+
+  // Resolved per event, not per render: a tab's handler registers in a child
+  // effect that runs after this component has rendered. Falling back to chat
+  // covers tabs whose field is unmounted, e.g. behind the settings view.
+  const resolveSink = useCallback((): DictationSinkId => {
+    const id = sinkForTab(tabRef.current);
+    return sinkHandlers.current.has(id) ? id : "chat";
+  }, []);
 
   const transport = useMemo(
     () =>
@@ -990,47 +1030,44 @@ function PanelInner({
       setSettingsOpen(false);
       setTab("chat");
     };
-    const offFocus = window.api.onPanelFocusComposer(() => {
-      showComposer();
+    const offFocus = window.api.onPanelFocusComposer((trigger) => {
+      // Dictation opens the panel through this channel too, so it focuses the
+      // field it is aimed at rather than dragging the user to the composer.
+      // Every other open — tray, hotkey, sign-in — still lands on chat.
+      const sink = trigger === "dictation" ? resolveSink() : "chat";
+      if (sink === "chat") showComposer();
       requestAnimationFrame(() =>
-        document.getElementById("panel-composer")?.focus(),
+        document.getElementById(SINK_FIELD_ID[sink])?.focus(),
       );
     });
     const offShowSettings = window.api.onPanelShowSettings(() => {
       setSettingsOpen(true);
     });
     const offDictation = window.api.onPanelDictation((ev) => {
-      if (ev.kind !== "error") showComposer();
-      if (ev.kind === "error") {
-        setNotice(ev.text);
-        const base = dictationBaseRef.current;
+      const sink = resolveSink();
+      // Switching tabs mid-utterance strands the previous sink's snapshot.
+      if (sink !== lastSinkRef.current) {
+        lastSinkRef.current = sink;
         dictationBaseRef.current = null;
-        if (base !== null) setDraft(base);
+      }
+      const handler = sinkHandlers.current.get(sink);
+      if (sink !== "chat" && handler) {
+        setNotice(ev.kind === "error" ? ev.text : null);
+        handler(ev);
         return;
       }
-      setNotice(null);
-      if (ev.kind === "partial" || ev.kind === "final")
-        dictatedRef.current = true;
-      if (ev.kind === "partial") {
-        // Snapshot whatever was typed before this utterance once; every
-        // partial then re-renders base + live text, replacing the previous
-        // partial rather than stacking on it.
-        setDraft((prev) => {
-          if (dictationBaseRef.current === null)
-            dictationBaseRef.current = prev.trim();
-          const base = dictationBaseRef.current;
-          return base ? `${base} ${ev.text}` : ev.text;
-        });
-        return;
-      }
-      // Final REPLACES the partial tail — appending to the draft here would
-      // duplicate the utterance, since the partials already wrote it.
-      const base = dictationBaseRef.current;
-      dictationBaseRef.current = null;
-      setDraft((prev) => {
-        const anchor = base ?? prev.trim();
-        return anchor ? `${anchor} ${ev.text}` : ev.text;
-      });
+
+      // Chat also owns tab surfacing and the dictated-vs-typed analytics flag.
+      if (ev.kind !== "error") showComposer();
+      setNotice(ev.kind === "error" ? ev.text : null);
+      if (ev.kind !== "error") dictatedRef.current = true;
+      const next = nextUtterance(
+        { base: dictationBaseRef.current, text: draftRef.current },
+        ev,
+      );
+      dictationBaseRef.current = next.base;
+      draftRef.current = next.text;
+      setDraft(next.text);
     });
     window.api.panelRendererReady();
     return () => {
@@ -1038,7 +1075,19 @@ function PanelInner({
       offShowSettings?.();
       offDictation?.();
     };
-  }, []);
+  }, [resolveSink]);
+
+  // Only the visible tab is mounted, so at most one handler is live at a time.
+  const registerTodoSink = useCallback(
+    (handler: (ev: DictationSinkEvent) => void): (() => void) =>
+      registerSinkHandler(sinkHandlers.current, "todo", handler),
+    [],
+  );
+  const registerNoteSink = useCallback(
+    (handler: (ev: DictationSinkEvent) => void): (() => void) =>
+      registerSinkHandler(sinkHandlers.current, "note", handler),
+    [],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -1313,9 +1362,12 @@ function PanelInner({
               ) : null}
             </>
           ) : tab === "todos" ? (
-            <TodosTab mascot={SPRITES_INFO[spriteForm].label} />
+            <TodosTab
+              mascot={SPRITES_INFO[spriteForm].label}
+              registerDictation={registerTodoSink}
+            />
           ) : tab === "notes" ? (
-            <NotesTab />
+            <NotesTab registerDictation={registerNoteSink} />
           ) : tab === "brain" ? (
             <BrainFiles
               root=""

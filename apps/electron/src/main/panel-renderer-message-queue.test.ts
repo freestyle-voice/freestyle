@@ -51,6 +51,21 @@ describe("PanelRendererMessageQueue", () => {
     ]);
   });
 
+  it("carries the open trigger through the queue", () => {
+    const delivered: PanelRendererMessage[] = [];
+    const queue = new PanelRendererMessageQueue((message) => {
+      delivered.push(message);
+    });
+
+    queue.send({ channel: "panel:focus-composer", payload: "tray" });
+    queue.send({ channel: "panel:focus-composer", payload: "dictation" });
+    queue.markReady();
+
+    expect(delivered).toEqual([
+      { channel: "panel:focus-composer", payload: "dictation" },
+    ]);
+  });
+
   it("keeps only the latest dictation state while the renderer is unready", () => {
     const delivered: PanelRendererMessage[] = [];
     const queue = new PanelRendererMessageQueue((message) => {

@@ -3504,6 +3504,12 @@ ipcMain.on("panel:set-busy", (event, busy: unknown) => {
 // Clicking into the composer after an agent tool yielded key focus: panel
 // windows don't always take key back from a content click on macOS, so the
 // renderer asks for it explicitly.
+// Transitions alone leave a recreated companion stale until the next blur.
+ipcMain.handle("panel:is-focused", () => {
+  const win = panelWindow;
+  return !!win && !win.isDestroyed() && win.isFocused();
+});
+
 ipcMain.on("panel:request-focus", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
   const win = panelWindow;
@@ -3519,14 +3525,7 @@ let panelResizing = false;
 const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
-  if (
-    message.channel === "panel:dictation" ||
-    message.channel === "panel:open-thread"
-  ) {
-    win.webContents.send(message.channel, message.payload);
-    return;
-  }
-  win.webContents.send(message.channel);
+  win.webContents.send(message.channel, message.payload);
 });
 const PANEL_HIDE_GRACE_MS = 420;
 const PANEL_HOVER_PAD = 24;
@@ -3625,10 +3624,19 @@ function createPanelWindow(): void {
   // the panel is focused, so re-check on blur. Agent tool calls blur the
   // panel deliberately mid-turn — panelBusy suppresses those.
   panelWindow.on("blur", () => {
+    sendPanelFocusState(false);
     if (!panelBusy) schedulePanelHide();
   });
+  panelWindow.on("focus", () => sendPanelFocusState(true));
+  panelWindow.on("hide", () => sendPanelFocusState(false));
 
   void panelWindow.loadURL(rendererUrl("panel.html"));
+}
+
+// Pushed rather than polled so the companion can read it synchronously when the
+// hotkey fires, instead of racing an IPC round trip against the session start.
+function sendPanelFocusState(focused: boolean): void {
+  companionWindow?.webContents.send("panel:focus-state", focused);
 }
 
 function cancelPanelHide(): void {
@@ -3675,7 +3683,10 @@ function openPanel(
   if (opts.focusComposer) {
     win.show();
     win.focus();
-    panelRendererMessages.send({ channel: "panel:focus-composer" });
+    panelRendererMessages.send({
+      channel: "panel:focus-composer",
+      payload: opts.trigger ?? "other",
+    });
   } else {
     win.showInactive();
   }

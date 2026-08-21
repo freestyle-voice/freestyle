@@ -2,7 +2,10 @@ import "../overlay.css";
 
 import { Spark, sparkScaleFor } from "@renderer/components/spark";
 import { initApiBase } from "@renderer/lib/api";
-import { DictationController } from "@renderer/lib/dictation";
+import {
+  DictationController,
+  resolveDestination,
+} from "@renderer/lib/dictation";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { SPRITES } from "@renderer/sprites/registry";
 import { SpriteStage } from "@renderer/sprites/stage";
@@ -44,6 +47,9 @@ function useDictation(
       micDeviceId: null,
     };
     let talkSession = false;
+    let panelFocused = false;
+    // Sampled at key-down, since focus can move mid-utterance.
+    let intoPanel = false;
     let errorTimer: ReturnType<typeof setTimeout> | null = null;
 
     const showError = (message: string): void => {
@@ -81,23 +87,34 @@ function useDictation(
           );
         },
         onPartial: (text) => {
-          setBubble({ phase: "recording", partial: text });
-          if (talkSession || prefs.destination === "composer")
-            window.api.panelDictationPartial(text);
+          const toPanel =
+            talkSession || intoPanel || prefs.destination === "composer";
+          // Only intoPanel means the panel is already on screen to preview the
+          // text; click-to-activate opens it on release, so the bubble is the
+          // only preview while the key is held.
+          setBubble({ phase: "recording", partial: intoPanel ? "" : text });
+          if (toPanel) window.api.panelDictationPartial(text);
         },
         onComposerText: (text) => {
           talkSession = false;
+          intoPanel = false;
           window.api.panelOpenForDictation();
           window.api.panelDictationFinal(text);
         },
         onError: (message) => {
           talkSession = false;
+          intoPanel = false;
           showError(message);
           window.api.panelDictationError(message);
         },
       },
       {
-        destination: () => (talkSession ? "composer" : prefs.destination),
+        destination: () =>
+          resolveDestination({
+            talkSession,
+            panelFocused: intoPanel,
+            preference: prefs.destination,
+          }),
         outputMode: () => prefs.outputMode,
         soundEnabled: () => prefs.soundEnabled,
         audioPlaybackMode: () => prefs.audioPlaybackMode,
@@ -115,17 +132,34 @@ function useDictation(
     const offPrefs = window.api.onDictationPrefs((next) => {
       prefs = next;
     });
+    void window.api
+      .panelIsFocused()
+      .then((focused) => {
+        panelFocused = focused;
+      })
+      .catch(() => {});
+
+    const offPanelFocus = window.api.onPanelFocusState((focused) => {
+      panelFocused = focused;
+    });
     const offDown = window.api.onHotkeyDown(() => {
       // Key-repeat on the held key re-fires this; a live session must not be
       // restarted or demoted back to cursor mode mid-recording.
       if (controller.isActive()) return;
       talkSession = false;
+      intoPanel = panelFocused;
       void controller.start();
     });
     const offUp = window.api.onHotkeyUp(() => controller.stop());
     const offCancel = window.api.onDictationCancel(() => {
+      const wasPanelBound =
+        talkSession || intoPanel || prefs.destination === "composer";
       talkSession = false;
+      intoPanel = false;
       controller.cancel();
+      // No final arrives, so a streamed partial would sit stranded in the
+      // field. An empty message rewinds it without showing a notice.
+      if (wasPanelBound) window.api.panelDictationError("");
     });
     const offTalkDown = window.api.onTalkDown(() => {
       // Fn+Control shares Fn with dictation, so the plain-dictation session
@@ -146,6 +180,7 @@ function useDictation(
       offDown?.();
       offUp?.();
       offCancel?.();
+      offPanelFocus?.();
       offTalkDown?.();
       offTalkUp?.();
       controller.destroy();

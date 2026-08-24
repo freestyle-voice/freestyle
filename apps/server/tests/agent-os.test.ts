@@ -23,8 +23,11 @@ afterEach(() => {
 });
 
 describe("path resolution", () => {
-  it("absolute paths pass through; relative resolve against home", () => {
-    expect(resolveAgentPath("/etc/hosts").full).toBe("/etc/hosts");
+  it("resolves native absolute paths and relative paths against home", () => {
+    const absolutePath = path.resolve(
+      process.platform === "win32" ? "C:\\etc\\hosts" : "/etc/hosts",
+    );
+    expect(resolveAgentPath(absolutePath).full).toBe(absolutePath);
     expect(resolveAgentPath("Documents/x.txt").full).toBe(
       path.join(homedir(), "Documents", "x.txt"),
     );

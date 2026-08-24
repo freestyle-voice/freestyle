@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowUp, Menu, Mic, Square } from "lucide-react-native";
+import { ArrowUp, Menu, Mic, Settings, Square } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -95,6 +95,11 @@ export default function VoiceScreen() {
     setSidebarOpen(true);
   }, []);
 
+  const openSettings = useCallback(() => {
+    Keyboard.dismiss();
+    router.push("/(app)/profile");
+  }, [router]);
+
   useEffect(() => {
     const showEvent =
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
@@ -159,6 +164,15 @@ export default function VoiceScreen() {
                   <Menu color={theme.foreground} size={20} />
                 </Pressable>
                 <ModeSwitch mode={mode} onChange={setMode} />
+                <Pressable
+                  onPress={openSettings}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open account and settings"
+                  style={[styles.settingsButton, { borderColor: theme.border }]}
+                >
+                  <Settings color={theme.foreground} size={19} />
+                </Pressable>
               </View>
 
               {mode === "remix" ? (
@@ -170,11 +184,28 @@ export default function VoiceScreen() {
                 />
               ) : (
                 <>
-                  <TranscriptView
-                    text={text}
-                    partial={partial}
-                    placeholder="Start speaking and your words will appear here."
-                  />
+                  <View
+                    style={[
+                      styles.dictationStage,
+                      {
+                        backgroundColor: theme.card,
+                        borderColor: theme.border,
+                      },
+                    ]}
+                  >
+                    <ThemedText
+                      type="eyebrow"
+                      themeColor="mutedForeground"
+                      style={styles.dictationEyebrow}
+                    >
+                      DICTATE
+                    </ThemedText>
+                    <TranscriptView
+                      text={text}
+                      partial={partial}
+                      placeholder="Tap the mic, then speak naturally. Your words will appear here."
+                    />
+                  </View>
 
                   {text && micState === "idle" ? (
                     <View style={styles.actions}>
@@ -217,8 +248,12 @@ export default function VoiceScreen() {
 
                   <View
                     style={[
-                      styles.footer,
-                      { paddingBottom: insets.bottom + Spacing.four },
+                      styles.dictationDock,
+                      {
+                        backgroundColor: theme.card,
+                        borderColor: theme.border,
+                        paddingBottom: insets.bottom + Spacing.three,
+                      },
                     ]}
                   >
                     <Waveform level={level} active={micState === "recording"} />
@@ -230,6 +265,7 @@ export default function VoiceScreen() {
                     </ThemedText>
                     <MicButton
                       state={micState}
+                      size={76}
                       level={level}
                       onPressIn={onPressIn}
                       onPressOut={onPressOut}
@@ -501,7 +537,8 @@ const styles = StyleSheet.create({
   appCanvas: {
     flex: 1,
     overflow: "hidden",
-    borderRadius: Radius["2xl"],
+    borderTopLeftRadius: 38,
+    borderBottomLeftRadius: 38,
   },
   keyboardAvoiding: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four },
@@ -521,6 +558,16 @@ const styles = StyleSheet.create({
   menuButton: {
     position: "absolute",
     left: 0,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  settingsButton: {
+    position: "absolute",
+    right: 0,
     width: 40,
     height: 40,
     alignItems: "center",
@@ -607,12 +654,21 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   actionText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
-  footer: {
+  dictationStage: {
+    flex: 1,
+    minHeight: 0,
+    borderWidth: 1,
+    borderRadius: Radius["2xl"],
+    paddingHorizontal: Spacing.three,
+  },
+  dictationEyebrow: { paddingTop: Spacing.three },
+  dictationDock: {
     alignItems: "center",
-    gap: Spacing.three,
-    // The home screen owns no tab dock. Keep the control close to the bottom
-    // safe area so Dictate reads as a deliberate voice surface, not a floating
-    // control stranded above an obsolete navigation bar.
+    gap: Spacing.two,
+    marginTop: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius["2xl"],
+    paddingTop: Spacing.two,
   },
   status: {
     fontFamily: Fonts.mono,

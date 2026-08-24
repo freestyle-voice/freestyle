@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { MessageSquarePlus, Settings, X } from "lucide-react-native";
+import { MessageSquarePlus } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -85,7 +85,7 @@ export function ChatSidebar({
 
   if (!mounted) return null;
 
-  const navigate = (path: "/(app)/history" | "/(app)/profile") => {
+  const navigate = (path: "/(app)/history") => {
     onClose();
     router.push(path);
   };
@@ -145,21 +145,6 @@ export function ChatSidebar({
               },
             ]}
           >
-            <View style={styles.topRow}>
-              <ThemedText type="title" style={styles.brand}>
-                Freestyle
-              </ThemedText>
-              <Pressable
-                onPress={onClose}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Close sessions"
-                style={[styles.close, { borderColor: theme.border }]}
-              >
-                <X color={theme.foreground} size={18} />
-              </Pressable>
-            </View>
-
             <View style={styles.sessionsLabel}>
               <ThemedText type="eyebrow" themeColor="mutedForeground">
                 {mode === "dictate" ? "RECENT DICTATIONS" : "RECENT CHATS"}
@@ -265,19 +250,6 @@ export function ChatSidebar({
                   New chat
                 </ThemedText>
               </Pressable>
-              <Pressable
-                onPress={() => navigate("/(app)/profile")}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Open account and settings"
-                style={({ pressed }) => [
-                  styles.settingsButton,
-                  { backgroundColor: theme.secondary },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Settings color={theme.foreground} size={21} />
-              </Pressable>
             </View>
           </View>
         </Animated.View>
@@ -302,22 +274,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: Spacing.four,
   },
-  topRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingBottom: Spacing.three,
-  },
-  brand: { fontSize: 30, lineHeight: 36 },
-  close: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderRadius: Radius.full,
-  },
-  sessionsLabel: { paddingTop: Spacing.three, paddingBottom: Spacing.three },
+  sessionsLabel: { paddingBottom: Spacing.three },
   sessionScroll: { flex: 1, minHeight: 0 },
   sessionList: { gap: Spacing.half, paddingBottom: Spacing.two },
   session: {
@@ -347,14 +304,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.one,
   },
   emptyTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 16 },
-  footer: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.two,
-    paddingTop: Spacing.three,
-  },
+  footer: { paddingTop: Spacing.three },
   newChat: {
-    flex: 1,
     minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
@@ -363,12 +314,5 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   newChatText: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
-  settingsButton: {
-    width: 48,
-    height: 48,
-    alignItems: "center",
-    justifyContent: "center",
-    borderRadius: Radius.full,
-  },
   pressed: { opacity: 0.62 },
 });

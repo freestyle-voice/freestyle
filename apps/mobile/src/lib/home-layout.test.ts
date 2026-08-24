@@ -26,6 +26,14 @@ describe("Remix home layout", () => {
     );
   });
 
+  it("balances the session menu with account settings and gives Dictate its own voice dock", () => {
+    expect(screen).toMatch(/accessibilityLabel="Open account and settings"/);
+    expect(screen).toMatch(/styles\.dictationStage/);
+    expect(screen).toMatch(/styles\.dictationDock/);
+    expect(styles).toMatch(/borderTopLeftRadius: 38/);
+    expect(styles).toMatch(/borderBottomLeftRadius: 38/);
+  });
+
   it("dismisses the keyboard before opening the session drawer", () => {
     expect(screen).toMatch(
       /const openSidebar[\s\S]*?Keyboard\.dismiss\(\)[\s\S]*?setSidebarOpen\(true\)/,

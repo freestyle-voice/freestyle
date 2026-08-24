@@ -20,7 +20,7 @@ describe("connector proxy", () => {
     });
   });
 
-  it("forwards the stable chat thread id to Cloud", async () => {
+  it("forwards the stable chat thread id and trusted desktop capabilities to Cloud", async () => {
     setSession({
       token: "cloud-session",
       user: { id: "user-1", email: "user@example.com" },
@@ -47,6 +47,10 @@ describe("connector proxy", () => {
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(JSON.parse(request.body as string)).toMatchObject({
       threadId: "stable-thread-id",
+      client: {
+        platform: process.platform,
+        supportsDownloadsSave: true,
+      },
     });
   });
 });

@@ -126,7 +126,7 @@ const agentOsRoute = new Hono()
       try {
         const { command } = c.req.valid("json");
         const result = await runAgentBash(command);
-        return c.json({ ok: true, ...result });
+        return c.json(result);
       } catch (err) {
         return c.json(failure(err));
       }

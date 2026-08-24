@@ -45,6 +45,10 @@ const agentRoute = new Hono().post(
           messages,
           ...(threadId || id ? { threadId: threadId ?? id } : {}),
           ...(firstTurn ? { firstTurn: true } : {}),
+          client: {
+            platform: process.platform,
+            supportsDownloadsSave: true,
+          },
         }),
         signal: c.req.raw.signal,
       });

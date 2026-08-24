@@ -18,6 +18,7 @@ const TOOL_LABELS: Record<string, string> = {
   "tool-Edit": "Edited a file",
   "tool-Glob": "Listed files",
   "tool-Grep": "Searched files",
+  "tool-save_file": "Saved a file to Downloads",
   "tool-brain_read": "Recalled a memory",
   "tool-brain_write": "Saved a memory",
   "tool-brain_edit": "Updated a memory",
@@ -45,6 +46,7 @@ const RUNNING_LABELS: Record<string, string> = {
   "tool-Edit": "Editing a file",
   "tool-Glob": "Listing files",
   "tool-Grep": "Searching files",
+  "tool-save_file": "Saving a file to Downloads",
   "tool-brain_read": "Recalling a memory",
   "tool-brain_write": "Saving a memory",
   "tool-brain_edit": "Updating a memory",
@@ -62,6 +64,9 @@ const DECLINED_LABELS: Record<string, string> = {
   "tool-Write": "Didn't write that file — you declined",
   "tool-Edit": "Didn't edit that file — you declined",
   "tool-Read": "Didn't read that file — you declined",
+  "tool-Glob": "Didn't list those files — you declined",
+  "tool-Grep": "Didn't search those files — you declined",
+  "tool-save_file": "Didn't save that file — you declined",
 };
 
 const APP_NAMES: Record<string, string> = {
@@ -108,6 +113,7 @@ export function toolPresentation(
   partType: string,
   phase: ToolPhase = "done",
   input?: unknown,
+  output?: unknown,
 ): {
   title: string;
   detail: string | undefined;
@@ -143,8 +149,31 @@ export function toolPresentation(
     };
   }
   if (phase === "failed") {
+    const reason =
+      output && typeof output === "object"
+        ? ((output as { reason?: unknown; category?: unknown }).reason ??
+          (output as { category?: unknown }).category)
+        : undefined;
+    const specific =
+      reason === "shell-unavailable"
+        ? "Couldn't start the command shell"
+        : reason === "command-failed"
+          ? "Command failed"
+          : reason === "permission-denied"
+            ? "Permission denied"
+            : reason === "not-found"
+              ? "Couldn't find that file or command"
+              : reason === "timed-out"
+                ? "Command timed out"
+                : reason === "invalid-filename"
+                  ? "Couldn't save that filename"
+                  : reason === "write-failed"
+                    ? "Couldn't save that file"
+                    : undefined;
     return {
-      title: `${TOOL_LABELS[partType] ?? sentence(words(name))} — didn't work`,
+      title:
+        specific ??
+        `${TOOL_LABELS[partType] ?? sentence(words(name))} — didn't work`,
       detail: undefined,
     };
   }

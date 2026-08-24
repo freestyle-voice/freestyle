@@ -13,6 +13,28 @@ export interface AgentToolCall {
   input: unknown;
 }
 
+type ToolOutput = Record<string, unknown>;
+
+const SAFE_RESULT_CATEGORIES = new Set([
+  "bad-args",
+  "user-declined",
+  "shell-unavailable",
+  "command-failed",
+  "permission-denied",
+  "not-found",
+  "timed-out",
+  "invalid-filename",
+  "write-failed",
+  "fs-failed",
+  "is-a-directory",
+  "ambiguous",
+  "tool-failed",
+  "approval-required",
+  "approval-denied",
+  "approval-used",
+  "approval-expired",
+]);
+
 const str = (input: Record<string, unknown>, key: string): string =>
   typeof input[key] === "string" ? (input[key] as string) : "";
 
@@ -22,13 +44,15 @@ export async function agentToolTier(
   switch (call.toolName) {
     case "current_time":
     case "emote":
+      return "free";
     case "Bash":
     case "Read":
     case "Glob":
     case "Grep":
     case "Write":
     case "Edit":
-      return "free";
+    case "save_file":
+      return "confirmed";
     default:
       return null;
   }
@@ -62,6 +86,8 @@ export function describeAgentAction(call: AgentToolCall): string {
       return `List files under ${str(input, "path")}`;
     case "Grep":
       return `Search files under ${str(input, "path")}`;
+    case "save_file":
+      return `Save ${str(input, "filename")} to your Downloads folder`;
     default:
       return `Run ${call.toolName.replace(/_/g, " ")}.`;
   }
@@ -80,8 +106,38 @@ async function runOsTool(
   return (await res.json()) as Record<string, unknown>;
 }
 
+export interface AgentToolExecutionOptions {
+  saveFileGrant?: string;
+}
+
+function saveFileIntent(call: AgentToolCall): {
+  toolCallId: string;
+  filename: string;
+  content: string;
+} | null {
+  const input = (call.input ?? {}) as Record<string, unknown>;
+  if (!str(input, "filename") || typeof input.content !== "string") return null;
+  return {
+    toolCallId: call.toolCallId,
+    filename: str(input, "filename"),
+    content: input.content,
+  };
+}
+
+export async function requestAgentFileSaveGrant(
+  call: AgentToolCall,
+): Promise<Record<string, unknown>> {
+  const intent = saveFileIntent(call);
+  if (!intent) return { ok: false, reason: "bad-args" };
+  return (await window.api.requestAgentFileSaveGrant(intent)) as Record<
+    string,
+    unknown
+  >;
+}
+
 export async function executeAgentTool(
   call: AgentToolCall,
+  { saveFileGrant }: AgentToolExecutionOptions = {},
 ): Promise<Record<string, unknown>> {
   const input = (call.input ?? {}) as Record<string, unknown>;
   const badArgs = (expected: string): Record<string, unknown> => ({
@@ -144,6 +200,17 @@ export async function executeAgentTool(
           query: str(input, "query"),
           path: str(input, "path") || undefined,
         });
+      case "save_file":
+        if (!str(input, "filename") || typeof input.content !== "string") {
+          return badArgs("{ filename: string, content: string }");
+        }
+        if (!saveFileGrant) return { ok: false, reason: "approval-required" };
+        return (await window.api.saveAgentFile({
+          toolCallId: call.toolCallId,
+          filename: str(input, "filename"),
+          content: input.content,
+          grant: saveFileGrant,
+        })) as Record<string, unknown>;
       default:
         return { ok: false, reason: `unknown tool: ${call.toolName}` };
     }
@@ -160,3 +227,50 @@ export const DECLINED_OUTPUT: Record<string, unknown> = {
   ok: false,
   reason: "user-declined",
 };
+
+export function agentToolResultTelemetry({
+  tool,
+  platform,
+  appVersion,
+  durationMs,
+  output,
+}: {
+  tool: string;
+  platform: string;
+  appVersion: string;
+  durationMs: number;
+  output: ToolOutput;
+}): {
+  tool: string;
+  platform: string;
+  appVersion: string;
+  durationMs: number;
+  ok: boolean;
+  result: string;
+  exitCode?: number;
+} {
+  const ok = output.ok !== false;
+  const rawReason =
+    typeof output.reason === "string"
+      ? output.reason
+      : typeof output.category === "string"
+        ? output.category
+        : null;
+  const result = ok
+    ? "success"
+    : rawReason && SAFE_RESULT_CATEGORIES.has(rawReason)
+      ? rawReason
+      : "tool-failed";
+  const exitCode = output.exitCode;
+  return {
+    tool,
+    platform,
+    appVersion,
+    durationMs: Math.max(0, Math.round(durationMs)),
+    ok,
+    result,
+    ...(typeof exitCode === "number" && Number.isFinite(exitCode)
+      ? { exitCode }
+      : {}),
+  };
+}

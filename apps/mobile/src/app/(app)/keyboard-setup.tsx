@@ -93,7 +93,7 @@ export function KeyboardSetupScreen() {
           <ThemedText style={styles.rowLabel}>Microphone access</ThemedText>
           <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
             {micStatus === "granted"
-              ? "Granted — Freestyle can record your dictation."
+              ? "Freestyle can record your dictation."
               : micStatus === "denied"
                 ? "Denied — tap to open Settings and enable it."
                 : "Tap to grant microphone access."}

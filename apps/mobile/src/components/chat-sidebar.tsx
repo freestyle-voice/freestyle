@@ -18,7 +18,10 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -51,6 +54,7 @@ export function ChatSidebar({
   const theme = useTheme();
   const router = useRouter();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(360, Math.round(width * 0.88));
   const [mounted, setMounted] = useState(visible);
@@ -142,8 +146,17 @@ export function ChatSidebar({
           ]}
         >
           <SafeAreaView
-            style={styles.safeArea}
-            edges={["top", "bottom", "left"]}
+            // Draw edge-to-edge like a true sidebar. We retain only the minimum
+            // clearance for the status bar and home indicator instead of the
+            // full safe-area padding that made the panel feel vertically inset.
+            style={[
+              styles.safeArea,
+              {
+                paddingTop: Math.max(insets.top - Spacing.four, 0),
+                paddingBottom: Math.max(insets.bottom - Spacing.four, 0),
+              },
+            ]}
+            edges={["left"]}
           >
             <View style={styles.topRow}>
               <ThemedText type="title" style={styles.brand}>

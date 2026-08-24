@@ -39,6 +39,7 @@ import type { useSharedValue } from "react-native-reanimated";
 import { useResidentDictation } from "@/lib/audio/use-resident-dictation";
 import { resolveVoiceAgentResult } from "@/lib/keyboard/voice-agent";
 import { runRemixTurn } from "@/lib/remix/client";
+import { createMobileId } from "@/lib/remix/ids";
 import {
   addCommandListener,
   clearCommand,
@@ -97,7 +98,7 @@ export function useKeyboardDictationBridge(
   const pendingInsertRef = useRef("");
   const modeRef = useRef<KeyboardMode>("dictate");
   const agentMessagesRef = useRef<import("ai").UIMessage[]>([]);
-  const agentThreadIdRef = useRef(`keyboard-${crypto.randomUUID()}`);
+  const agentThreadIdRef = useRef(createMobileId("keyboard"));
   const agentAbortRef = useRef<AbortController | null>(null);
   const agentFinalRef = useRef<(text: string) => void>(() => {});
   // Fallback timer that re-arms if the keyboard never acks a `ready` insert.
@@ -222,7 +223,7 @@ export function useKeyboardDictationBridge(
       const nextMessages: import("ai").UIMessage[] = [
         ...prior,
         {
-          id: `voice-user-${crypto.randomUUID()}`,
+          id: createMobileId("voice-user"),
           role: "user",
           parts: [{ type: "text", text: userText }],
         },
@@ -271,7 +272,7 @@ export function useKeyboardDictationBridge(
           agentMessagesRef.current = [
             ...nextMessages,
             {
-              id: `voice-remix-${crypto.randomUUID()}`,
+              id: createMobileId("voice-remix"),
               role: "assistant",
               parts: [{ type: "text", text: result.text }],
             },

@@ -2,12 +2,13 @@ import type { UIMessage } from "ai";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getLatestThread, getThread, runRemixTurn } from "./client";
+import { createMobileId } from "./ids";
 import { appendAssistantDelta, latestThreadState } from "./thread";
 
 export type RemixRunStatus = "idle" | "streaming" | "failed";
 
 function newId(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}`;
+  return createMobileId(prefix);
 }
 
 export function useRemixThread() {

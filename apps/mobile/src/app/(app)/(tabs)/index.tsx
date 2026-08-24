@@ -4,6 +4,7 @@ import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowUp, Menu, Mic, Square } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -75,6 +76,11 @@ export default function VoiceScreen() {
     setMode("remix");
   }, [remixThread, router]);
 
+  const openSidebar = useCallback(() => {
+    Keyboard.dismiss();
+    setSidebarOpen(true);
+  }, []);
+
   const status =
     micState === "recording"
       ? "Listening"
@@ -86,88 +92,97 @@ export default function VoiceScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <View style={styles.column}>
-          <View style={styles.header}>
-            <Pressable
-              onPress={() => setSidebarOpen(true)}
-              hitSlop={12}
-              accessibilityRole="button"
-              accessibilityLabel="Open sessions"
-              style={[styles.menuButton, { borderColor: theme.border }]}
-            >
-              <Menu color={theme.foreground} size={20} />
-            </Pressable>
-            <View style={styles.menuSpacer} />
-          </View>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        style={styles.keyboardAvoiding}
+      >
+        <SafeAreaView style={styles.safeArea}>
+          <View style={styles.column}>
+            <View style={styles.header}>
+              <Pressable
+                onPress={openSidebar}
+                hitSlop={12}
+                accessibilityRole="button"
+                accessibilityLabel="Open sessions"
+                style={[styles.menuButton, { borderColor: theme.border }]}
+              >
+                <Menu color={theme.foreground} size={20} />
+              </Pressable>
+              <ModeSwitch mode={mode} onChange={setMode} />
+            </View>
 
-          <ModeSwitch mode={mode} onChange={setMode} />
-
-          {mode === "remix" ? (
-            <RemixHome
-              thread={remixThread}
-              onSwitchToDictate={() => setMode("dictate")}
-            />
-          ) : (
-            <>
-              <TranscriptView
-                text={text}
-                partial={partial}
-                placeholder="Start speaking and your words will appear here."
+            {mode === "remix" ? (
+              <RemixHome
+                thread={remixThread}
+                onSwitchToDictate={() => setMode("dictate")}
               />
+            ) : (
+              <>
+                <TranscriptView
+                  text={text}
+                  partial={partial}
+                  placeholder="Start speaking and your words will appear here."
+                />
 
-              {text && micState === "idle" ? (
-                <View style={styles.actions}>
-                  <Pressable
-                    onPress={copy}
-                    style={[styles.action, { backgroundColor: theme.primary }]}
-                  >
-                    <ThemedText
+                {text && micState === "idle" ? (
+                  <View style={styles.actions}>
+                    <Pressable
+                      onPress={copy}
                       style={[
-                        styles.actionText,
-                        { color: theme.primaryForeground },
+                        styles.action,
+                        { backgroundColor: theme.primary },
                       ]}
                     >
-                      {copied ? "Copied" : "Copy"}
-                    </ThemedText>
-                  </Pressable>
-                  <Pressable
-                    onPress={share}
-                    style={[
-                      styles.actionOutline,
-                      { borderColor: theme.border },
-                    ]}
-                  >
-                    <ThemedText style={styles.actionText}>Share</ThemedText>
-                  </Pressable>
-                  <Pressable
-                    onPress={clear}
-                    style={[
-                      styles.actionOutline,
-                      { borderColor: theme.border },
-                    ]}
-                  >
-                    <ThemedText style={styles.actionText}>Clear</ThemedText>
-                  </Pressable>
-                </View>
-              ) : null}
+                      <ThemedText
+                        style={[
+                          styles.actionText,
+                          { color: theme.primaryForeground },
+                        ]}
+                      >
+                        {copied ? "Copied" : "Copy"}
+                      </ThemedText>
+                    </Pressable>
+                    <Pressable
+                      onPress={share}
+                      style={[
+                        styles.actionOutline,
+                        { borderColor: theme.border },
+                      ]}
+                    >
+                      <ThemedText style={styles.actionText}>Share</ThemedText>
+                    </Pressable>
+                    <Pressable
+                      onPress={clear}
+                      style={[
+                        styles.actionOutline,
+                        { borderColor: theme.border },
+                      ]}
+                    >
+                      <ThemedText style={styles.actionText}>Clear</ThemedText>
+                    </Pressable>
+                  </View>
+                ) : null}
 
-              <View style={styles.footer}>
-                <Waveform level={level} active={micState === "recording"} />
-                <ThemedText themeColor="mutedForeground" style={styles.status}>
-                  {status}
-                </ThemedText>
-                <MicButton
-                  state={micState}
-                  level={level}
-                  onPressIn={onPressIn}
-                  onPressOut={onPressOut}
-                />
-              </View>
-            </>
-          )}
-        </View>
-      </SafeAreaView>
+                <View style={styles.footer}>
+                  <Waveform level={level} active={micState === "recording"} />
+                  <ThemedText
+                    themeColor="mutedForeground"
+                    style={styles.status}
+                  >
+                    {status}
+                  </ThemedText>
+                  <MicButton
+                    state={micState}
+                    level={level}
+                    onPressIn={onPressIn}
+                    onPressOut={onPressOut}
+                  />
+                </View>
+              </>
+            )}
+          </View>
+        </SafeAreaView>
+      </KeyboardAvoidingView>
       <ChatSidebar
         visible={sidebarOpen}
         currentThreadId={remixThread.threadId}
@@ -259,10 +274,7 @@ function RemixHome({
   }, [draft, send]);
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.remixHome}
-    >
+    <View style={styles.remixHome}>
       <ScrollView
         style={styles.remixScrollArea}
         contentContainerStyle={styles.remixScroll}
@@ -313,7 +325,6 @@ function RemixHome({
           value={draft}
           onChangeText={setDraft}
           editable={!busy}
-          autoFocus={messages.length === 0}
           autoCapitalize="sentences"
           placeholder="Message Remix"
           placeholderTextColor={theme.mutedForeground}
@@ -357,12 +368,13 @@ function RemixHome({
           )}
         </Pressable>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  keyboardAvoiding: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four },
   column: {
     flex: 1,
@@ -371,14 +383,15 @@ const styles = StyleSheet.create({
     alignSelf: "center" as const,
   },
   header: {
-    flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    minHeight: 52,
+    justifyContent: "center",
+    minHeight: 60,
     paddingTop: Spacing.one,
-    paddingBottom: Spacing.one,
+    paddingBottom: Spacing.two,
   },
   menuButton: {
+    position: "absolute",
+    left: 0,
     width: 40,
     height: 40,
     alignItems: "center",
@@ -386,18 +399,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.full,
   },
-  menuSpacer: { width: 40, height: 40 },
   modeSwitch: {
     flexDirection: "row",
-    alignSelf: "center",
-    position: "absolute",
-    top: Spacing.one,
-    left: 0,
-    right: 0,
     width: 218,
     padding: Spacing.half,
     borderRadius: Radius.full,
-    marginBottom: 0,
   },
   modeOption: {
     flex: 1,

@@ -3,7 +3,7 @@ import {
   CloudRequestError,
   CloudUsageError,
 } from "@freestyle-voice/utils/cloud";
-import { DefaultChatTransport, type UIMessage } from "ai";
+import type { UIMessage } from "ai";
 import { Platform } from "react-native";
 
 import { cloud } from "@/lib/cloud/client";
@@ -59,50 +59,119 @@ export async function listThreads({
   return cloud.json<RemixThreadPage>(`/v2/threads?${params.toString()}`);
 }
 
-function remixTransport(
-  threadId: string,
-  firstTurn: boolean,
-  keyboardInsertion: boolean,
-): DefaultChatTransport<UIMessage> {
-  return new DefaultChatTransport({
-    api: "/v2/agent",
-    body: {
+type AgentStreamChunk = {
+  type: string;
+  delta?: unknown;
+  toolCallId?: unknown;
+  toolName?: unknown;
+  input?: unknown;
+  errorText?: unknown;
+};
+
+function eventFromFrame(frame: string): AgentStreamChunk | null {
+  const data = frame
+    .split("\n")
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.replace(/^data:\s?/, ""))
+    .join("\n");
+  if (!data || data === "[DONE]") return null;
+
+  try {
+    return JSON.parse(data) as AgentStreamChunk;
+  } catch {
+    throw new Error("Remix returned an invalid stream response.");
+  }
+}
+
+/**
+ * The Cloud endpoint speaks the AI SDK's newline-delimited SSE protocol. The
+ * SDK's DefaultChatTransport pulls Node-only provider utilities into Metro,
+ * so decode only the few events that the mobile UI consumes here instead.
+ */
+async function* remixStream(
+  response: Response,
+): AsyncGenerator<AgentStreamChunk> {
+  if (!response.body)
+    throw new Error("Remix returned an empty stream response.");
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder
+        .decode(value, { stream: !done })
+        .replaceAll("\r\n", "\n");
+
+      const frames = buffer.split("\n\n");
+      buffer = frames.pop() ?? "";
+      for (const frame of frames) {
+        const event = eventFromFrame(frame);
+        if (event) yield event;
+      }
+
+      if (done) break;
+    }
+
+    const event = eventFromFrame(buffer);
+    if (event) yield event;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function requestRemixTurn({
+  messages,
+  threadId,
+  firstTurn,
+  keyboardInsertion,
+  signal,
+}: {
+  messages: UIMessage[];
+  threadId: string;
+  firstTurn: boolean;
+  keyboardInsertion: boolean;
+  signal: AbortSignal;
+}): Promise<Response> {
+  const response = await cloud.request("/v2/agent", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id: "mobile-remix",
+      messages,
+      trigger: "submit-message",
+      messageId: undefined,
       threadId,
       firstTurn,
       client: {
         ...MOBILE_AGENT_CLIENT,
         ...(keyboardInsertion ? { supportsKeyboardInsertion: true } : {}),
       },
-    },
-    fetch: async (_input, init) => {
-      const response = await cloud.request("/v2/agent", {
-        method: init?.method ?? "POST",
-        headers: init?.headers,
-        body: init?.body,
-        signal: init?.signal,
-      });
-      if (response.status === 401) throw new CloudAuthError();
-      if (response.status === 429) {
-        const payload = (await response.json().catch(() => null)) as {
-          code?: unknown;
-          resetsAt?: unknown;
-        } | null;
-        if (payload?.code === "rate_limited") {
-          throw new CloudRequestError(429, "Too many requests");
-        }
-        throw new CloudUsageError(
-          typeof payload?.resetsAt === "string" ? payload.resetsAt : null,
-        );
-      }
-      if (!response.ok) {
-        throw new CloudRequestError(
-          response.status,
-          await response.text().catch(() => ""),
-        );
-      }
-      return response;
-    },
+    }),
+    signal,
   });
+  if (response.status === 401) throw new CloudAuthError();
+  if (response.status === 429) {
+    const payload = (await response.json().catch(() => null)) as {
+      code?: unknown;
+      resetsAt?: unknown;
+    } | null;
+    if (payload?.code === "rate_limited") {
+      throw new CloudRequestError(429, "Too many requests");
+    }
+    throw new CloudUsageError(
+      typeof payload?.resetsAt === "string" ? payload.resetsAt : null,
+    );
+  }
+  if (!response.ok) {
+    throw new CloudRequestError(
+      response.status,
+      await response.text().catch(() => ""),
+    );
+  }
+  return response;
 }
 
 export async function runRemixTurn({
@@ -121,25 +190,29 @@ export async function runRemixTurn({
   signal: AbortSignal;
   onEvent: (event: RemixStreamEvent) => void;
 }): Promise<void> {
-  const stream = await remixTransport(
+  const response = await requestRemixTurn({
+    messages,
     threadId,
     firstTurn,
     keyboardInsertion,
-  ).sendMessages({
-    chatId: "mobile-remix",
-    messages,
-    abortSignal: signal,
-    trigger: "submit-message",
-    messageId: undefined,
+    signal,
   });
   let completed = false;
 
-  for await (const chunk of stream) {
+  for await (const chunk of remixStream(response)) {
     switch (chunk.type) {
       case "text-delta":
-        onEvent({ type: "text", text: chunk.delta });
+        if (typeof chunk.delta === "string") {
+          onEvent({ type: "text", text: chunk.delta });
+        }
         break;
       case "tool-input-available":
+        if (
+          typeof chunk.toolCallId !== "string" ||
+          typeof chunk.toolName !== "string"
+        ) {
+          break;
+        }
         if (chunk.toolName === "insert_at_cursor") {
           onEvent({
             type: "tool-result-needed",

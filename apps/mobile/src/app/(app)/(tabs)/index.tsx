@@ -23,6 +23,7 @@ import {
 
 import { ChatSidebar } from "@/components/chat-sidebar";
 import { MicButton } from "@/components/mic-button";
+import { MobileMarkdown } from "@/components/mobile-markdown";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { TranscriptView } from "@/components/transcript-view";
@@ -439,12 +440,12 @@ function RemixHome({
             <ThemedText type="eyebrow" themeColor="mutedForeground">
               {message.role === "user" ? "YOU" : "REMIX"}
             </ThemedText>
-            <ThemedText style={styles.turnText}>
-              {message.parts
+            <MobileMarkdown
+              text={message.parts
                 .filter((part) => part.type === "text")
                 .map((part) => part.text)
                 .join("")}
-            </ThemedText>
+            />
           </View>
         ))}
         {activeTool ? (
@@ -602,7 +603,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xl,
     padding: Spacing.three,
   },
-  turnText: { fontSize: 15, lineHeight: 22 },
   toolStatus: {
     fontFamily: Fonts.mono,
     fontSize: 11,

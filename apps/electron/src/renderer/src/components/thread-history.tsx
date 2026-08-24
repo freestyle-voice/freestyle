@@ -31,12 +31,15 @@ function dateGroup(ts: number): string {
 export function ThreadHistory({
   onPick,
   currentId,
+  initialOrigin = "user",
 }: {
   onPick: (thread: ThreadState) => void;
   currentId: string;
+  /** Lets the Activity drawer start on scheduled briefs without a tab hop. */
+  initialOrigin?: ThreadOrigin;
 }): React.JSX.Element {
   const queryClient = useQueryClient();
-  const [origin, setOrigin] = useState<ThreadOrigin>("user");
+  const [origin, setOrigin] = useState<ThreadOrigin>(initialOrigin);
   const historyQuery = useInfiniteQuery(
     threadHistoryInfiniteQueryOptions(origin),
   );
@@ -64,7 +67,9 @@ export function ThreadHistory({
     return (
       <>
         {filter}
-        <div className="tavern-empty">Loading conversations…</div>
+        <div className="tavern-empty">
+          {origin === "user" ? "Loading conversations…" : "Loading activity…"}
+        </div>
       </>
     );
   if (threads.length === 0)

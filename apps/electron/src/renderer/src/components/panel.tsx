@@ -46,6 +46,10 @@ import {
   type ToolPhase,
   toolPresentation,
 } from "@renderer/lib/tool-presentation";
+import {
+  compactActivitySummary,
+  workspaceNavigationMode,
+} from "@renderer/lib/workspace-navigation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
 import {
@@ -87,6 +91,102 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
     "Everything Freestyle knows lives here — scheduled tasks, memories, notes, skills, todos.",
   apps: "Connect the apps you live in, and Freestyle can work them for you.",
 };
+
+const SECONDARY_TABS = PANEL_TABS.filter(
+  (tab): tab is Exclude<PanelTab, "chat" | "history"> =>
+    tab !== "chat" && tab !== "history",
+);
+
+function useWorkspaceNavigationMode(): "rail" | "drawer" {
+  const [mode, setMode] = useState(() =>
+    workspaceNavigationMode(window.innerWidth),
+  );
+
+  useEffect(() => {
+    const update = (): void =>
+      setMode(workspaceNavigationMode(window.innerWidth));
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  return mode;
+}
+
+function WorkspaceDrawer({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    closeRef.current?.focus();
+  }, []);
+
+  return (
+    <div className="tavern-workspace-drawer-layer">
+      <button
+        type="button"
+        className="tavern-workspace-drawer-scrim"
+        aria-label={`Close ${title.toLowerCase()}`}
+        onClick={onClose}
+      />
+      <aside
+        className="tavern-workspace-drawer"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.stopPropagation();
+          onClose();
+        }}
+      >
+        <div className="tavern-workspace-drawer-head">
+          <span>{title}</span>
+          <button
+            ref={closeRef}
+            type="button"
+            className="tavern-close"
+            aria-label={`Close ${title.toLowerCase()}`}
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </div>
+        <div className="tavern-workspace-drawer-body">{children}</div>
+      </aside>
+    </div>
+  );
+}
+
+function SecondaryNavigation({
+  active,
+  onSelect,
+}: {
+  active: PanelTab;
+  onSelect: (tab: Exclude<PanelTab, "chat" | "history">) => void;
+}): React.JSX.Element {
+  return (
+    <nav className="tavern-secondary-nav" aria-label="Workspace tools">
+      <span className="tavern-label">Workspace</span>
+      {SECONDARY_TABS.map((tab) => (
+        <button
+          key={tab}
+          type="button"
+          className={`tavern-secondary-nav-item${active === tab ? " is-active" : ""}`}
+          onClick={() => onSelect(tab)}
+        >
+          {TAB_LABELS[tab]}
+        </button>
+      ))}
+    </nav>
+  );
+}
 
 function reportAgentToolResult(
   call: AgentToolCall,
@@ -254,6 +354,76 @@ function ToolChip({
         </div>
       ) : null}
     </div>
+  );
+}
+
+function ToolActivity({
+  parts,
+}: {
+  parts: UIMessage["parts"];
+}): React.JSX.Element | null {
+  const tools = parts.filter(
+    (part) =>
+      part.type.startsWith("tool-") && part.type !== "tool-suggest_connections",
+  );
+  if (tools.length === 0) return null;
+
+  const items = tools.map((part) => {
+    const tool = part as {
+      state?: string;
+      input?: unknown;
+      output?: { ok?: boolean; reason?: string };
+    };
+    const phase: ToolPhase =
+      tool.state === "input-streaming" || tool.state === "input-available"
+        ? "running"
+        : tool.state === "output-error"
+          ? "failed"
+          : tool.output?.ok === false
+            ? tool.output.reason === "user-declined"
+              ? "declined"
+              : "failed"
+            : "done";
+    return {
+      part,
+      input: tool.input,
+      output: tool.output,
+      phase,
+      title: toolPresentation(part.type, phase, tool.input, tool.output).title,
+    };
+  });
+  const summary = compactActivitySummary(items);
+
+  return (
+    <details className="tavern-tool-activity" open={summary.running}>
+      <summary>
+        <span className="tavern-tool-mark" aria-hidden="true">
+          ✦
+        </span>
+        <span>
+          {summary.running ? "Working · " : "Activity · "}
+          {summary.label}
+        </span>
+        {summary.running ? (
+          <span
+            className="tavern-tool-spinner"
+            role="status"
+            aria-label="Working"
+          />
+        ) : null}
+      </summary>
+      <div className="tavern-tool-activity-list">
+        {items.map(({ part, input, output, phase }, index) => (
+          <ToolChip
+            key={`${part.type}-${index}`}
+            partType={part.type}
+            input={input}
+            output={output}
+            phase={phase}
+          />
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -434,55 +604,22 @@ function ChatMessage({
             );
           }
           if (part.type.startsWith("tool-")) {
-            const tool = part as {
-              state?: string;
-              input?: unknown;
-              output?: { ok?: boolean; reason?: string };
-            };
-            // Rendering only completed calls left a 16-step run looking like
-            // one pulsing dot, and hid every refusal from the transcript.
+            const previous = message.parts[i - 1];
             if (
-              tool.state === "input-streaming" ||
-              tool.state === "input-available"
-            ) {
-              return (
-                <ToolChip
-                  key={`${message.id}-${i}`}
-                  partType={part.type}
-                  input={tool.input}
-                  output={undefined}
-                  phase="running"
-                />
-              );
+              previous?.type.startsWith("tool-") &&
+              previous.type !== "tool-suggest_connections"
+            )
+              return null;
+            const group: UIMessage["parts"] = [];
+            for (const candidate of message.parts.slice(i)) {
+              if (
+                !candidate.type.startsWith("tool-") ||
+                candidate.type === "tool-suggest_connections"
+              )
+                break;
+              group.push(candidate);
             }
-            if (tool.state === "output-error") {
-              return (
-                <ToolChip
-                  key={`${message.id}-${i}`}
-                  partType={part.type}
-                  input={tool.input}
-                  output={tool.output}
-                  phase="failed"
-                />
-              );
-            }
-            if (tool.state !== "output-available") return null;
-            const failed = tool.output?.ok === false;
-            return (
-              <ToolChip
-                key={`${message.id}-${i}`}
-                partType={part.type}
-                input={tool.input}
-                output={tool.output}
-                phase={
-                  failed
-                    ? tool.output?.reason === "user-declined"
-                      ? "declined"
-                      : "failed"
-                    : "done"
-                }
-              />
-            );
+            return <ToolActivity key={`${message.id}-${i}`} parts={group} />;
           }
           return null;
         })}
@@ -747,6 +884,11 @@ function PanelInner({
   onSwitchThread: (thread: ThreadState) => void;
 }): React.JSX.Element {
   const [tab, setTab] = useState<PanelTab>("chat");
+  const navigationMode = useWorkspaceNavigationMode();
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
+  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
+  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
   const queryClient = useQueryClient();
   const auth = useCloudAuth();
   const onboarding = useOnboarding(!!auth.user);
@@ -1100,6 +1242,22 @@ function PanelInner({
 
   const chatActive = tab === "chat";
   const showChat = chatActive && messages.length > 0;
+  const selectSecondary = (
+    next: Exclude<PanelTab, "chat" | "history">,
+  ): void => {
+    capture("panel_tab_opened", { tab: next });
+    setSettingsOpen(false);
+    setCapabilitiesOpen(false);
+    setWorkspaceDrawerOpen(false);
+    setTab(next);
+  };
+  const openHistory = (): void => {
+    if (navigationMode === "rail") {
+      setRailCollapsed((collapsed) => !collapsed);
+      return;
+    }
+    setHistoryDrawerOpen(true);
+  };
 
   // Signed out, the gate is the entire panel — no head, no tabs, no way to
   // reach the agent. While auth status resolves, show nothing rather than
@@ -1154,7 +1312,24 @@ function PanelInner({
   return (
     <div className="tavern-shell">
       <div className="tavern tavern-panel">
-        <div className="tavern-head">
+        <div className="tavern-head tavern-workspace-head">
+          <button
+            type="button"
+            className="tavern-workspace-icon-btn"
+            aria-label={
+              navigationMode === "rail"
+                ? railCollapsed
+                  ? "Show conversation history"
+                  : "Collapse conversation history"
+                : "Open conversation history"
+            }
+            aria-expanded={
+              navigationMode === "rail" ? !railCollapsed : historyDrawerOpen
+            }
+            onClick={openHistory}
+          >
+            ☰
+          </button>
           <SpriteBadge form={spriteForm} working={busy} size={22} />
           <span className="tavern-head-name">
             freestyle<i>.</i>
@@ -1196,7 +1371,28 @@ function PanelInner({
             disabled={pinned}
             onClick={() => onSwitchThread(newThread())}
           >
-            ＋ New
+            ＋ New chat
+          </button>
+          <button
+            type="button"
+            className="tavern-workspace-icon-btn"
+            aria-label="Open activity"
+            aria-expanded={activityDrawerOpen}
+            onClick={() => setActivityDrawerOpen(true)}
+          >
+            ◷
+          </button>
+          <button
+            type="button"
+            className={`tavern-workspace-icon-btn${settingsOpen ? " is-active" : ""}`}
+            aria-label="Settings"
+            aria-pressed={settingsOpen}
+            onClick={() => {
+              setCapabilitiesOpen(false);
+              setSettingsOpen((open) => !open);
+            }}
+          >
+            ⚙
           </button>
           <button
             type="button"
@@ -1207,217 +1403,274 @@ function PanelInner({
             ×
           </button>
         </div>
-
-        <div className="tavern-tabs" role="tablist">
-          {PANEL_TABS.map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={!settingsOpen && tab === id}
-              className="tavern-tab"
-              onClick={() => {
-                capture("panel_tab_opened", { tab: id });
-                setSettingsOpen(false);
-                setCapabilitiesOpen(false);
-                setTab(id);
-              }}
+        <div className="tavern-workspace">
+          {navigationMode === "rail" && !railCollapsed ? (
+            <aside
+              className="tavern-history-rail"
+              aria-label="Conversation history"
             >
-              {TAB_LABELS[id]}
-            </button>
-          ))}
-          <span className="tavern-head-spacer" />
-          <button
-            type="button"
-            role="tab"
-            aria-selected={settingsOpen}
-            aria-label="Settings"
-            title="Settings"
-            className="tavern-tab tavern-tab-gear"
-            onClick={() => setSettingsOpen((v) => !v)}
-          >
-            ⚙
-          </button>
-        </div>
-
-        <div className="tavern-body" role="tabpanel" ref={bodyRef}>
-          {capabilitiesOpen ? (
-            <>
               <button
                 type="button"
-                className="tavern-file-back"
-                onClick={() => setCapabilitiesOpen(false)}
+                className="tavern-history-new"
+                disabled={pinned}
+                onClick={() => onSwitchThread(newThread())}
               >
-                ← What Freestyle can do
+                ＋ New chat
               </button>
-              <Capabilities
-                onPrompt={(text) => {
-                  setCapabilitiesOpen(false);
-                  setNotice(null);
-                  void sendMessage({ text });
-                }}
-                onOpenApps={() => {
-                  setCapabilitiesOpen(false);
-                  setTab("apps");
-                }}
-              />
-            </>
-          ) : settingsOpen ? (
-            <SettingsView
-              onClose={() => setSettingsOpen(false)}
-              onOpenThread={(threadId) => {
-                setSettingsOpen(false);
-                setTab("chat");
-                void openThreadById(threadId).then((picked) => {
-                  if (picked) onSwitchThread(picked);
-                });
-              }}
-              onThreadsCleared={() => {
-                void invalidateThreads(queryClient);
-                onSwitchThread(newThread());
-              }}
-              onReplayIntro={() => {
-                setSettingsOpen(false);
-                onboarding.replay();
-              }}
-            />
-          ) : tab === "history" ? (
-            <ThreadHistory
-              currentId={thread.id}
-              onPick={(picked) => {
-                if (picked.id === thread.id) setTab("chat");
-                else onSwitchThread(picked);
-              }}
-            />
-          ) : tab === "apps" ? (
-            <ConnectedApps
-              onUseWorkflow={(prompt) => {
-                setTab("chat");
-                // Sending past a pending approval strands the tool call, which
-                // leaves an unanswerable tool_use in the thread forever.
-                if (pinned) return;
-                setNotice(null);
-                void sendMessage({ text: prompt });
-              }}
-            />
-          ) : showChat ? (
-            <>
-              {messages.map((m) => (
-                <ChatMessage
-                  key={m.id}
-                  message={m}
-                  copied={copiedMessageId === m.id}
-                  disabled={pinned}
-                  editing={editingMessageId === m.id}
-                  editDraft={editDraft}
-                  onCopy={() => copyMessage(m)}
-                  onEdit={() => startEditingMessage(m)}
-                  onEditDraftChange={setEditDraft}
-                  onCancelEdit={cancelEditingMessage}
-                  onResendEdit={resendEditedMessage}
-                  onRegenerate={() => regenerateMessage(m)}
+              <div className="tavern-history-rail-list">
+                <ThreadHistory
+                  currentId={thread.id}
+                  onPick={(picked) => {
+                    setTab("chat");
+                    if (picked.id !== thread.id) onSwitchThread(picked);
+                  }}
                 />
-              ))}
-              {approvals.map((call) => (
-                <div key={call.toolCallId} className="tavern-approve">
-                  <span className="tavern-approve-title">
-                    {SPRITES_INFO[spriteForm].label.toLowerCase()} wants to act
-                  </span>
-                  <div className="tavern-approve-text">
-                    {describeAgentAction(call)}
-                  </div>
-                  <div className="tavern-approve-actions">
-                    <button
-                      type="button"
-                      className="tavern-approve-btn tavern-approve-allow"
-                      onClick={() => resolveApproval(call, true)}
-                    >
-                      Allow
-                    </button>
-                    <button
-                      type="button"
-                      className="tavern-approve-btn"
-                      onClick={() => resolveApproval(call, false)}
-                    >
-                      Don't allow
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {awaitingText ? (
-                <div
-                  className="tavern-stream-wait"
-                  role="status"
-                  aria-label="Thinking"
-                >
-                  <Spark state="idle" size={11} />
-                </div>
-              ) : null}
-            </>
-          ) : tab === "todos" ? (
-            <TodosTab mascot={SPRITES_INFO[spriteForm].label} />
-          ) : tab === "notes" ? (
-            <NotesTab />
-          ) : tab === "brain" ? (
-            <BrainFiles
-              root=""
-              emptyText={TAB_PLACEHOLDER.brain}
-              newLabel="New file"
-              onOpenThread={(threadId) => {
-                setTab("chat");
-                void openThreadById(threadId).then((picked) => {
-                  if (picked) onSwitchThread(picked);
-                });
-              }}
-            />
-          ) : chatActive ? (
-            <OpenerCards
-              busy={busy}
-              onShowAll={() => setCapabilitiesOpen(true)}
-              onPrompt={(text) => {
-                setNotice(null);
-                void sendMessage({ text });
-              }}
-            />
-          ) : (
-            <div className="tavern-empty">{TAB_PLACEHOLDER[tab]}</div>
-          )}
-          {notice ? <p className="tavern-notice">{notice}</p> : null}
-        </div>
-
-        {chatActive && !settingsOpen && !capabilitiesOpen ? (
-          <div className="tavern-composer">
-            <textarea
-              id="panel-composer"
-              className="tavern-input"
-              value={draft}
-              rows={1}
-              placeholder="Ask anything"
-              onMouseDown={() => window.api.panelRequestFocus()}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={(e) => {
-                if (
-                  e.key === "Enter" &&
-                  !e.shiftKey &&
-                  !e.nativeEvent.isComposing
-                ) {
-                  e.preventDefault();
-                  send();
-                }
-              }}
-            />
-            <button
-              type="button"
-              className={`tavern-btn tavern-btn-send${action === "stop" ? " is-stop" : ""}`}
-              aria-label={action === "stop" ? "Stop generating" : "Send"}
-              title={action === "stop" ? "Stop generating" : "Send"}
-              onClick={action === "stop" ? stopGeneration : send}
+              </div>
+              <SecondaryNavigation active={tab} onSelect={selectSecondary} />
+            </aside>
+          ) : null}
+          <div className="tavern-workspace-main">
+            <div className="tavern-workspace-mobile-tools">
+              <button type="button" onClick={openHistory}>
+                Conversations
+              </button>
+              <button type="button" onClick={() => setActivityDrawerOpen(true)}>
+                Activity
+              </button>
+              <button
+                type="button"
+                onClick={() => setWorkspaceDrawerOpen(true)}
+              >
+                Workspace
+              </button>
+            </div>
+            <div
+              className="tavern-body tavern-conversation"
+              role="tabpanel"
+              ref={bodyRef}
             >
-              {action === "stop" ? "■" : "↑"}
-            </button>
+              {capabilitiesOpen ? (
+                <>
+                  <button
+                    type="button"
+                    className="tavern-file-back"
+                    onClick={() => setCapabilitiesOpen(false)}
+                  >
+                    ← What Freestyle can do
+                  </button>
+                  <Capabilities
+                    onPrompt={(text) => {
+                      setCapabilitiesOpen(false);
+                      setNotice(null);
+                      void sendMessage({ text });
+                    }}
+                    onOpenApps={() => {
+                      setCapabilitiesOpen(false);
+                      setTab("apps");
+                    }}
+                  />
+                </>
+              ) : settingsOpen ? (
+                <SettingsView
+                  onClose={() => setSettingsOpen(false)}
+                  onOpenThread={(threadId) => {
+                    setSettingsOpen(false);
+                    setTab("chat");
+                    void openThreadById(threadId).then((picked) => {
+                      if (picked) onSwitchThread(picked);
+                    });
+                  }}
+                  onThreadsCleared={() => {
+                    void invalidateThreads(queryClient);
+                    onSwitchThread(newThread());
+                  }}
+                  onReplayIntro={() => {
+                    setSettingsOpen(false);
+                    onboarding.replay();
+                  }}
+                />
+              ) : tab === "apps" ? (
+                <ConnectedApps
+                  onUseWorkflow={(prompt) => {
+                    setTab("chat");
+                    // Sending past a pending approval strands the tool call, which
+                    // leaves an unanswerable tool_use in the thread forever.
+                    if (pinned) return;
+                    setNotice(null);
+                    void sendMessage({ text: prompt });
+                  }}
+                />
+              ) : showChat ? (
+                <>
+                  {messages.map((m) => (
+                    <ChatMessage
+                      key={m.id}
+                      message={m}
+                      copied={copiedMessageId === m.id}
+                      disabled={pinned}
+                      editing={editingMessageId === m.id}
+                      editDraft={editDraft}
+                      onCopy={() => copyMessage(m)}
+                      onEdit={() => startEditingMessage(m)}
+                      onEditDraftChange={setEditDraft}
+                      onCancelEdit={cancelEditingMessage}
+                      onResendEdit={resendEditedMessage}
+                      onRegenerate={() => regenerateMessage(m)}
+                    />
+                  ))}
+                  {approvals.map((call) => (
+                    <div key={call.toolCallId} className="tavern-approve">
+                      <span className="tavern-approve-title">
+                        {SPRITES_INFO[spriteForm].label.toLowerCase()} wants to
+                        act
+                      </span>
+                      <div className="tavern-approve-text">
+                        {describeAgentAction(call)}
+                      </div>
+                      <div className="tavern-approve-actions">
+                        <button
+                          type="button"
+                          className="tavern-approve-btn tavern-approve-allow"
+                          onClick={() => resolveApproval(call, true)}
+                        >
+                          Allow
+                        </button>
+                        <button
+                          type="button"
+                          className="tavern-approve-btn"
+                          onClick={() => resolveApproval(call, false)}
+                        >
+                          Don't allow
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {awaitingText ? (
+                    <div
+                      className="tavern-stream-wait"
+                      role="status"
+                      aria-label="Thinking"
+                    >
+                      <Spark state="idle" size={11} />
+                    </div>
+                  ) : null}
+                </>
+              ) : tab === "todos" ? (
+                <TodosTab mascot={SPRITES_INFO[spriteForm].label} />
+              ) : tab === "notes" ? (
+                <NotesTab />
+              ) : tab === "brain" ? (
+                <BrainFiles
+                  root=""
+                  emptyText={TAB_PLACEHOLDER.brain}
+                  newLabel="New file"
+                  onOpenThread={(threadId) => {
+                    setTab("chat");
+                    void openThreadById(threadId).then((picked) => {
+                      if (picked) onSwitchThread(picked);
+                    });
+                  }}
+                />
+              ) : chatActive ? (
+                <OpenerCards
+                  busy={busy}
+                  onShowAll={() => setCapabilitiesOpen(true)}
+                  onPrompt={(text) => {
+                    setNotice(null);
+                    void sendMessage({ text });
+                  }}
+                />
+              ) : (
+                <div className="tavern-empty">{TAB_PLACEHOLDER[tab]}</div>
+              )}
+              {notice ? <p className="tavern-notice">{notice}</p> : null}
+            </div>
+
+            {chatActive && !settingsOpen && !capabilitiesOpen ? (
+              <div className="tavern-composer">
+                <textarea
+                  id="panel-composer"
+                  className="tavern-input"
+                  value={draft}
+                  rows={1}
+                  placeholder="Message Freestyle"
+                  onMouseDown={() => window.api.panelRequestFocus()}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Enter" &&
+                      !e.shiftKey &&
+                      !e.nativeEvent.isComposing
+                    ) {
+                      e.preventDefault();
+                      send();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className={`tavern-btn tavern-btn-send${action === "stop" ? " is-stop" : ""}`}
+                  aria-label={action === "stop" ? "Stop generating" : "Send"}
+                  title={action === "stop" ? "Stop generating" : "Send"}
+                  onClick={action === "stop" ? stopGeneration : send}
+                >
+                  {action === "stop" ? "■" : "↑"}
+                </button>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
       </div>
+      {navigationMode === "drawer" && historyDrawerOpen ? (
+        <WorkspaceDrawer
+          title="Conversations"
+          onClose={() => setHistoryDrawerOpen(false)}
+        >
+          <button
+            type="button"
+            className="tavern-history-new"
+            disabled={pinned}
+            onClick={() => {
+              setHistoryDrawerOpen(false);
+              onSwitchThread(newThread());
+            }}
+          >
+            ＋ New chat
+          </button>
+          <ThreadHistory
+            currentId={thread.id}
+            onPick={(picked) => {
+              setHistoryDrawerOpen(false);
+              setTab("chat");
+              if (picked.id !== thread.id) onSwitchThread(picked);
+            }}
+          />
+        </WorkspaceDrawer>
+      ) : null}
+      {activityDrawerOpen ? (
+        <WorkspaceDrawer
+          title="Activity"
+          onClose={() => setActivityDrawerOpen(false)}
+        >
+          <ThreadHistory
+            currentId={thread.id}
+            initialOrigin="scheduled"
+            onPick={(picked) => {
+              setActivityDrawerOpen(false);
+              setTab("chat");
+              if (picked.id !== thread.id) onSwitchThread(picked);
+            }}
+          />
+        </WorkspaceDrawer>
+      ) : null}
+      {workspaceDrawerOpen ? (
+        <WorkspaceDrawer
+          title="Workspace"
+          onClose={() => setWorkspaceDrawerOpen(false)}
+        >
+          <SecondaryNavigation active={tab} onSelect={selectSecondary} />
+        </WorkspaceDrawer>
+      ) : null}
       <PanelTail />
       <PanelResizeHandle />
     </div>

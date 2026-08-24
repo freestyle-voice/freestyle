@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
-import { Menu } from "lucide-react-native";
+import { ArrowUpRight, Menu } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -39,7 +39,7 @@ export default function VoiceScreen() {
   const theme = useTheme();
   const { signedIn } = useAuth();
   const router = useRouter();
-  // This tab stays mounted while the resident keyboard session runs in the
+  // This home screen stays mounted while the resident keyboard session runs in the
   // background provider. Gate its mic on focus so the Home recorder can't fight
   // the resident session for the audio session (two active recorders = "Could
   // not start the microphone").
@@ -105,7 +105,7 @@ export default function VoiceScreen() {
               <Menu color={theme.foreground} size={20} />
             </Pressable>
             <ThemedText type="eyebrow" themeColor="mutedForeground">
-              REMIX
+              {mode === "remix" ? "REMIX" : "DICTATE"}
             </ThemedText>
             <View style={styles.menuSpacer} />
           </View>
@@ -119,7 +119,7 @@ export default function VoiceScreen() {
               <TranscriptView
                 text={text}
                 partial={partial}
-                placeholder="Your words will appear here."
+                placeholder="Start speaking and your words will appear here."
               />
 
               {text && micState === "idle" ? (
@@ -269,15 +269,14 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
                 { backgroundColor: theme.card, borderColor: theme.border },
               ]}
             >
-              <ThemedText style={styles.remixEyebrow}>REMIX</ThemedText>
               <ThemedText style={styles.remixStateTitle}>
-                Your focused writing partner.
+                Start with the outcome you want.
               </ThemedText>
               <ThemedText
                 themeColor="mutedForeground"
                 style={styles.remixDetail}
               >
-                Ask for a draft, a plan, or help working through a task.
+                Remix can draft, reshape, or help you think through the work.
               </ThemedText>
             </View>
             <View style={styles.starterSection}>
@@ -286,7 +285,7 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
                 themeColor="mutedForeground"
                 style={styles.starterLabel}
               >
-                START WITH
+                TRY A PROMPT
               </ThemedText>
               <View style={styles.starterGrid}>
                 {REMIX_STARTERS.map((starter) => (
@@ -304,6 +303,7 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
                     <ThemedText style={styles.starterText}>
                       {starter.label}
                     </ThemedText>
+                    <ArrowUpRight color={theme.mutedForeground} size={16} />
                   </Pressable>
                 ))}
               </View>
@@ -387,8 +387,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.two,
+    paddingTop: Spacing.one,
+    paddingBottom: Spacing.three,
   },
   menuButton: {
     width: 40,
@@ -406,8 +406,7 @@ const styles = StyleSheet.create({
     maxWidth: 320,
     padding: Spacing.half,
     borderRadius: Radius.full,
-    marginTop: Spacing.two,
-    marginBottom: Spacing.four,
+    marginBottom: Spacing.five,
   },
   modeOption: {
     flex: 1,
@@ -420,8 +419,8 @@ const styles = StyleSheet.create({
   remixHome: {
     flex: 1,
     minHeight: 0,
-    gap: Spacing.three,
-    paddingBottom: Spacing.two,
+    gap: Spacing.four,
+    paddingBottom: Spacing.three,
   },
   remixScrollArea: { flex: 1, minHeight: 0 },
   remixScroll: { gap: Spacing.two, paddingBottom: Spacing.two },
@@ -443,9 +442,9 @@ const styles = StyleSheet.create({
     alignItems: "flex-end",
     gap: Spacing.two,
     borderWidth: 1,
-    borderRadius: Radius.xl,
+    borderRadius: Radius["2xl"],
     padding: Spacing.two,
-    minHeight: 56,
+    minHeight: 64,
   },
   input: {
     flex: 1,
@@ -459,36 +458,33 @@ const styles = StyleSheet.create({
     textAlignVertical: "center",
   },
   send: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: Radius.full,
     alignItems: "center",
     justifyContent: "center",
   },
   remixHeading: { gap: Spacing.two, paddingTop: Spacing.two },
-  remixTitle: { fontSize: 42, lineHeight: 46 },
+  remixTitle: { fontSize: 40, lineHeight: 44, letterSpacing: -0.6 },
   remixCopy: { fontSize: 16, lineHeight: 24, maxWidth: 350 },
   remixState: {
-    gap: Spacing.three,
+    gap: Spacing.two,
     borderRadius: Radius.xl,
     borderWidth: 1,
-    padding: Spacing.four,
+    padding: Spacing.three,
   },
-  remixEyebrow: {
-    fontFamily: Fonts.mono,
-    fontSize: 11,
-    letterSpacing: 1.2,
-  },
-  remixStateTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 19 },
+  remixStateTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 20 },
   remixDetail: { fontSize: 14, lineHeight: 21 },
   starterSection: { gap: Spacing.two, paddingHorizontal: Spacing.one },
   starterLabel: { fontSize: 10 },
-  starterGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.two },
+  starterGrid: { gap: Spacing.two },
   starter: {
-    minHeight: 36,
-    justifyContent: "center",
+    minHeight: 46,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     borderWidth: 1,
-    borderRadius: Radius.full,
+    borderRadius: Radius.lg,
     paddingHorizontal: Spacing.three,
   },
   starterText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
@@ -513,8 +509,10 @@ const styles = StyleSheet.create({
   footer: {
     alignItems: "center",
     gap: Spacing.three,
-    // Clear the native tab dock and the resident keyboard status strip.
-    paddingBottom: 96,
+    // The home screen owns no tab dock. Keep the control close to the bottom
+    // safe area so Dictate reads as a deliberate voice surface, not a floating
+    // control stranded above an obsolete navigation bar.
+    paddingBottom: Spacing.four,
   },
   status: {
     fontFamily: Fonts.mono,

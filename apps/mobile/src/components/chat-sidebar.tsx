@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import {
+  ChevronRight,
   Clock3,
   MessageSquarePlus,
   Settings,
-  UserRound,
   X,
 } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
@@ -180,7 +180,7 @@ export function ChatSidebar({
 
             <View style={styles.sessionsLabel}>
               <ThemedText type="eyebrow" themeColor="mutedForeground">
-                RECENT
+                RECENT CHATS
               </ThemedText>
             </View>
             <ScrollView
@@ -221,9 +221,25 @@ export function ChatSidebar({
                   );
                 })
               ) : (
-                <ThemedText themeColor="mutedForeground" style={styles.empty}>
-                  Your conversations will appear here.
-                </ThemedText>
+                <View style={styles.emptyState}>
+                  <View
+                    style={[
+                      styles.emptyIcon,
+                      { backgroundColor: theme.secondary },
+                    ]}
+                  >
+                    <MessageSquarePlus
+                      color={theme.mutedForeground}
+                      size={19}
+                    />
+                  </View>
+                  <ThemedText style={styles.emptyTitle}>
+                    No chats yet
+                  </ThemedText>
+                  <ThemedText themeColor="mutedForeground" style={styles.empty}>
+                    Start a chat and it will stay here for next time.
+                  </ThemedText>
+                </View>
               )}
             </ScrollView>
 
@@ -275,7 +291,7 @@ export function ChatSidebar({
                     </ThemedText>
                   ) : null}
                 </View>
-                <UserRound color={theme.mutedForeground} size={18} />
+                <ChevronRight color={theme.mutedForeground} size={18} />
               </Pressable>
             </View>
           </SafeAreaView>
@@ -325,7 +341,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingVertical: Spacing.two,
+    paddingTop: Spacing.one,
+    paddingBottom: Spacing.two,
   },
   brand: { fontSize: 30, lineHeight: 36 },
   close: {
@@ -357,11 +374,25 @@ const styles = StyleSheet.create({
   },
   sessionTitle: { fontFamily: Fonts.sansMedium, fontSize: 14 },
   empty: {
+    textAlign: "center",
     fontSize: 14,
     lineHeight: 20,
-    paddingHorizontal: Spacing.two,
-    paddingVertical: Spacing.one,
   },
+  emptyState: {
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.five,
+    paddingTop: Spacing.six,
+  },
+  emptyIcon: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Radius.full,
+    marginBottom: Spacing.one,
+  },
+  emptyTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 16 },
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingTop: Spacing.two,

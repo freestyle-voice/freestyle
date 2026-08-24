@@ -32,6 +32,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useDictation } from "@/lib/audio/use-dictation";
 import { composerBottomPadding } from "@/lib/composer-spacing";
+import {
+  appendVoiceTranscript,
+  remixComposerVoiceState,
+} from "@/lib/remix/composer-voice-state";
 import { DEFAULT_HOME_MODE } from "@/lib/remix/home-mode";
 import type { RemixMode } from "@/lib/remix/types";
 import { useRemixThread } from "@/lib/remix/use-remix-thread";
@@ -160,9 +164,9 @@ export default function VoiceScreen() {
               {mode === "remix" ? (
                 <RemixHome
                   thread={remixThread}
+                  signedIn={signedIn && focused}
                   keyboardVisible={keyboardVisible}
                   bottomInset={insets.bottom}
-                  onSwitchToDictate={() => setMode("dictate")}
                 />
               ) : (
                 <>
@@ -295,14 +299,14 @@ function ModeSwitch({
 
 function RemixHome({
   thread,
+  signedIn,
   keyboardVisible,
   bottomInset,
-  onSwitchToDictate,
 }: {
   thread: ReturnType<typeof useRemixThread>;
+  signedIn: boolean;
   keyboardVisible: boolean;
   bottomInset: number;
-  onSwitchToDictate: () => void;
 }) {
   const theme = useTheme();
   const { threadId: selectedThreadId } = useLocalSearchParams<{
@@ -314,6 +318,23 @@ function RemixHome({
   const inputRef = useRef<TextInput>(null);
   const busy = status === "streaming";
   const hasDraft = draft.trim().length > 0;
+  const {
+    micState: voiceState,
+    partial: voicePartial,
+    toggle: toggleVoiceInput,
+  } = useDictation({
+    signedIn,
+    onFinal: (transcript) => {
+      setDraft((current) => appendVoiceTranscript(current, transcript));
+      requestAnimationFrame(() => inputRef.current?.focus());
+    },
+  });
+  const voiceControl = remixComposerVoiceState({
+    draft,
+    partial: voicePartial,
+    micState: voiceState,
+    remixBusy: busy,
+  });
 
   useEffect(() => {
     if (selectedThreadId) void loadThread(selectedThreadId);
@@ -331,6 +352,24 @@ function RemixHome({
     const sent = await send(draft);
     if (sent) setDraft("");
   }, [draft, send]);
+
+  const handleComposerAction = useCallback(() => {
+    switch (voiceControl.action) {
+      case "stop-remix":
+        stop();
+        break;
+      case "send":
+        void submit();
+        break;
+      case "listen":
+      case "finish-listening":
+        Keyboard.dismiss();
+        toggleVoiceInput();
+        break;
+      case "waiting-for-transcript":
+        break;
+    }
+  }, [stop, submit, toggleVoiceInput, voiceControl.action]);
 
   return (
     <View
@@ -386,14 +425,18 @@ function RemixHome({
       <View
         style={[
           styles.composer,
-          { backgroundColor: theme.card, borderColor: theme.border },
+          {
+            backgroundColor: theme.card,
+            borderColor:
+              voiceState === "recording" ? theme.destructive : theme.border,
+          },
         ]}
       >
         <TextInput
           ref={inputRef}
-          value={draft}
+          value={voiceControl.value}
           onChangeText={setDraft}
-          editable={!busy}
+          editable={!busy && voiceState === "idle"}
           autoCapitalize="sentences"
           placeholder="Message Remix"
           placeholderTextColor={theme.mutedForeground}
@@ -402,28 +445,33 @@ function RemixHome({
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={
-            busy
-              ? "Stop Remix"
-              : hasDraft
-                ? "Send to Remix"
-                : "Switch to Dictate"
-          }
-          onPress={
-            busy ? stop : hasDraft ? () => void submit() : onSwitchToDictate
-          }
+          accessibilityLabel={voiceControl.label}
+          disabled={voiceControl.action === "waiting-for-transcript"}
+          onPress={handleComposerAction}
           style={[
             styles.send,
             {
               backgroundColor:
-                hasDraft || busy ? theme.primary : theme.secondary,
+                voiceState === "recording"
+                  ? theme.destructive
+                  : hasDraft || busy
+                    ? theme.primary
+                    : theme.secondary,
             },
           ]}
         >
-          {busy ? (
+          {busy || voiceState === "recording" ? (
             <Square
-              color={theme.primaryForeground}
-              fill={theme.primaryForeground}
+              color={
+                voiceState === "recording"
+                  ? theme.foreground
+                  : theme.primaryForeground
+              }
+              fill={
+                voiceState === "recording"
+                  ? theme.foreground
+                  : theme.primaryForeground
+              }
               size={15}
             />
           ) : hasDraft ? (
@@ -433,7 +481,14 @@ function RemixHome({
               strokeWidth={2.5}
             />
           ) : (
-            <Mic color={theme.foreground} size={20} />
+            <Mic
+              color={
+                voiceState === "finalizing"
+                  ? theme.mutedForeground
+                  : theme.foreground
+              }
+              size={20}
+            />
           )}
         </Pressable>
       </View>

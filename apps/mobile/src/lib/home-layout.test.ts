@@ -1,7 +1,10 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const screen = readFileSync(new URL("./index.tsx", import.meta.url), "utf8");
+const screen = readFileSync(
+  new URL("../app/(app)/(tabs)/index.tsx", import.meta.url),
+  "utf8",
+);
 const styles = screen.slice(screen.indexOf("const styles"));
 
 describe("Remix home layout", () => {

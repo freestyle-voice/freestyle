@@ -12,10 +12,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from "react-native-safe-area-context";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -48,7 +45,6 @@ export function ChatSidebar({
   const theme = useTheme();
   const router = useRouter();
   const { user } = useAuth();
-  const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const panelWidth = Math.min(360, Math.round(width * 0.88));
   const [mounted, setMounted] = useState(visible);
@@ -87,9 +83,7 @@ export function ChatSidebar({
 
   if (!mounted) return null;
 
-  const navigate = (
-    path: "/(app)/history" | "/(app)/settings" | "/(app)/profile",
-  ) => {
+  const navigate = (path: "/(app)/history" | "/(app)/profile") => {
     onClose();
     router.push(path);
   };
@@ -140,17 +134,8 @@ export function ChatSidebar({
           ]}
         >
           <SafeAreaView
-            // Draw edge-to-edge like a true sidebar. We retain only the minimum
-            // clearance for the status bar and home indicator instead of the
-            // full safe-area padding that made the panel feel vertically inset.
-            style={[
-              styles.safeArea,
-              {
-                paddingTop: Math.max(insets.top - Spacing.four, 0),
-                paddingBottom: Math.max(insets.bottom - Spacing.four, 0),
-              },
-            ]}
-            edges={["left"]}
+            style={styles.safeArea}
+            edges={["top", "bottom", "left"]}
           >
             <View style={styles.topRow}>
               <ThemedText type="title" style={styles.brand}>
@@ -260,50 +245,61 @@ export function ChatSidebar({
                   New chat
                 </ThemedText>
               </Pressable>
-              <Pressable
-                onPress={() => navigate("/(app)/settings")}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Settings"
-                style={({ pressed }) => [
-                  styles.footerIcon,
-                  { backgroundColor: theme.secondary },
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Settings color={theme.foreground} size={20} />
-              </Pressable>
-              <Pressable
+              <AccountButton
+                user={user}
                 onPress={() => navigate("/(app)/profile")}
-                hitSlop={8}
-                accessibilityRole="button"
-                accessibilityLabel="Profile"
-                style={({ pressed }) => [
-                  styles.footerIcon,
-                  { backgroundColor: theme.secondary },
-                  pressed && styles.pressed,
-                ]}
-              >
-                {user?.image ? (
-                  <Image
-                    source={{ uri: user.image }}
-                    style={styles.avatarImage}
-                  />
-                ) : (
-                  <View
-                    style={[styles.avatar, { backgroundColor: theme.accent }]}
-                  >
-                    <ThemedText style={{ color: theme.accentForeground }}>
-                      {user ? initialsFor(user) : "?"}
-                    </ThemedText>
-                  </View>
-                )}
-              </Pressable>
+              />
             </View>
           </SafeAreaView>
         </Animated.View>
       </View>
     </Modal>
+  );
+}
+
+function AccountButton({
+  user,
+  onPress,
+}: {
+  user: ReturnType<typeof useAuth>["user"];
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel="Account and settings"
+      style={({ pressed }) => [
+        styles.accountButton,
+        { backgroundColor: theme.secondary },
+        pressed && styles.pressed,
+      ]}
+    >
+      {user?.image ? (
+        <Image source={{ uri: user.image }} style={styles.avatarImage} />
+      ) : (
+        <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
+          <ThemedText style={{ color: theme.accentForeground }}>
+            {user ? initialsFor(user) : "?"}
+          </ThemedText>
+        </View>
+      )}
+      <View style={styles.accountCopy}>
+        <ThemedText numberOfLines={1} style={styles.accountName}>
+          {user?.name ?? "Account"}
+        </ThemedText>
+        <ThemedText
+          numberOfLines={1}
+          themeColor="mutedForeground"
+          style={styles.accountEmail}
+        >
+          {user?.email ?? "Profile and settings"}
+        </ThemedText>
+      </View>
+      <Settings color={theme.mutedForeground} size={19} />
+    </Pressable>
   );
 }
 
@@ -342,13 +338,17 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 8, height: 0 },
     elevation: 10,
   },
-  safeArea: { flex: 1, paddingHorizontal: Spacing.three },
+  safeArea: {
+    flex: 1,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.two,
+  },
   topRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    paddingTop: Spacing.one,
-    paddingBottom: Spacing.two,
+    paddingBottom: Spacing.three,
   },
   brand: { fontSize: 30, lineHeight: 36 },
   close: {
@@ -359,8 +359,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.full,
   },
-  quickLinks: { paddingTop: Spacing.three },
-  sessionsLabel: { paddingTop: Spacing.four, paddingBottom: Spacing.two },
+  quickLinks: { paddingTop: Spacing.two },
+  sessionsLabel: { paddingTop: Spacing.five, paddingBottom: Spacing.three },
   sessionScroll: { flex: 1, minHeight: 0 },
   sessionList: { gap: Spacing.half, paddingBottom: Spacing.two },
   session: {
@@ -391,10 +391,8 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 16 },
   footer: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: Spacing.two,
-    paddingTop: Spacing.two,
+    paddingTop: Spacing.three,
   },
   footerRow: {
     minHeight: 42,
@@ -406,7 +404,6 @@ const styles = StyleSheet.create({
   },
   footerLabel: { fontFamily: Fonts.sansMedium, fontSize: 14 },
   newChat: {
-    flex: 1,
     minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
@@ -415,13 +412,17 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   newChatText: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
-  footerIcon: {
-    width: 48,
-    height: 48,
+  accountButton: {
+    minHeight: 58,
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
-    borderRadius: Radius.full,
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.two + 2,
+    borderRadius: Radius.xl,
   },
+  accountCopy: { flex: 1, gap: 2 },
+  accountName: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
+  accountEmail: { fontSize: 12 },
   avatar: {
     width: 30,
     height: 30,

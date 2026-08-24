@@ -14,7 +14,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 import { ChatSidebar } from "@/components/chat-sidebar";
 import { MicButton } from "@/components/mic-button";
@@ -26,12 +29,14 @@ import { Fonts, Layout, Radius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import { useDictation } from "@/lib/audio/use-dictation";
+import { composerBottomPadding } from "@/lib/composer-spacing";
 import { DEFAULT_HOME_MODE } from "@/lib/remix/home-mode";
 import type { RemixMode } from "@/lib/remix/types";
 import { useRemixThread } from "@/lib/remix/use-remix-thread";
 
 export default function VoiceScreen() {
   const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { signedIn } = useAuth();
   const router = useRouter();
   // This home screen stays mounted while the resident keyboard session runs in the
@@ -44,6 +49,7 @@ export default function VoiceScreen() {
   const [text, setText] = useState("");
   const [copied, setCopied] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
   // Keep this mounted across the Home switch. In particular, switching to
   // Dictate must not discard a running Remix turn or its durable thread.
   const remixThread = useRemixThread();
@@ -81,6 +87,24 @@ export default function VoiceScreen() {
     setSidebarOpen(true);
   }, []);
 
+  useEffect(() => {
+    const showEvent =
+      Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
+    const hideEvent =
+      Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
+    const showSubscription = Keyboard.addListener(showEvent, () =>
+      setKeyboardVisible(true),
+    );
+    const hideSubscription = Keyboard.addListener(hideEvent, () =>
+      setKeyboardVisible(false),
+    );
+
+    return () => {
+      showSubscription.remove();
+      hideSubscription.remove();
+    };
+  }, []);
+
   const status =
     micState === "recording"
       ? "Listening"
@@ -96,7 +120,7 @@ export default function VoiceScreen() {
         behavior={Platform.OS === "ios" ? "padding" : undefined}
         style={styles.keyboardAvoiding}
       >
-        <SafeAreaView style={styles.safeArea}>
+        <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
           <View style={styles.column}>
             <View style={styles.header}>
               <Pressable
@@ -114,6 +138,8 @@ export default function VoiceScreen() {
             {mode === "remix" ? (
               <RemixHome
                 thread={remixThread}
+                keyboardVisible={keyboardVisible}
+                bottomInset={insets.bottom}
                 onSwitchToDictate={() => setMode("dictate")}
               />
             ) : (
@@ -163,7 +189,12 @@ export default function VoiceScreen() {
                   </View>
                 ) : null}
 
-                <View style={styles.footer}>
+                <View
+                  style={[
+                    styles.footer,
+                    { paddingBottom: insets.bottom + Spacing.four },
+                  ]}
+                >
                   <Waveform level={level} active={micState === "recording"} />
                   <ThemedText
                     themeColor="mutedForeground"
@@ -240,9 +271,13 @@ function ModeSwitch({
 
 function RemixHome({
   thread,
+  keyboardVisible,
+  bottomInset,
   onSwitchToDictate,
 }: {
   thread: ReturnType<typeof useRemixThread>;
+  keyboardVisible: boolean;
+  bottomInset: number;
   onSwitchToDictate: () => void;
 }) {
   const theme = useTheme();
@@ -274,7 +309,17 @@ function RemixHome({
   }, [draft, send]);
 
   return (
-    <View style={styles.remixHome}>
+    <View
+      style={[
+        styles.remixHome,
+        {
+          paddingBottom: composerBottomPadding({
+            keyboardVisible,
+            bottomInset,
+          }),
+        },
+      ]}
+    >
       <ScrollView
         style={styles.remixScrollArea}
         contentContainerStyle={styles.remixScroll}
@@ -417,7 +462,6 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     gap: Spacing.two,
-    paddingBottom: Spacing.three,
   },
   remixScrollArea: { flex: 1, minHeight: 0 },
   remixScroll: { gap: Spacing.two, paddingBottom: Spacing.two },
@@ -485,7 +529,6 @@ const styles = StyleSheet.create({
     // The home screen owns no tab dock. Keep the control close to the bottom
     // safe area so Dictate reads as a deliberate voice surface, not a floating
     // control stranded above an obsolete navigation bar.
-    paddingBottom: Spacing.four,
   },
   status: {
     fontFamily: Fonts.mono,

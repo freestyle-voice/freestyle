@@ -333,7 +333,7 @@ export function ProfileContent() {
   );
 
   return (
-    <SettingsScreenScaffold title="Profile">{content}</SettingsScreenScaffold>
+    <SettingsScreenScaffold title="Account">{content}</SettingsScreenScaffold>
   );
 }
 

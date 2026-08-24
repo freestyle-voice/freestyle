@@ -3,5 +3,4 @@ export const MOBILE_TABS = [
   { name: "activity", label: "Activity" },
   { name: "keyboard", label: "Keyboard" },
   { name: "words", label: "Words" },
-  { name: "account", label: "Profile" },
 ] as const;

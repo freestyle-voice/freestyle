@@ -10,6 +10,7 @@ import {
   Building2,
   CalendarClock,
   Check,
+  ChevronDown,
   Keyboard,
   LogOut,
   PlugZap,
@@ -28,9 +29,9 @@ import {
   View,
 } from "react-native";
 import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
+import { SelectSheet } from "@/components/select-sheet";
 import {
   Card,
-  OptionCard,
   SettingsNavRow,
   SettingsScreenScaffold,
   TabScreenScaffold,
@@ -444,6 +445,7 @@ function ProfileDetailsCard() {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [industry, setIndustry] = useState<Industry | undefined>(undefined);
+  const [industryPickerOpen, setIndustryPickerOpen] = useState(false);
   const [jobTitle, setJobTitle] = useState("");
   const [company, setCompany] = useState("");
   // Re-seed tone + vocabulary defaults for the new industry (opt-out). Only
@@ -540,14 +542,47 @@ function ProfileDetailsCard() {
       <ThemedText type="eyebrow" themeColor="mutedForeground">
         INDUSTRY
       </ThemedText>
-      {industrySchema.options.map((value) => (
-        <OptionCard
-          key={value}
-          label={INDUSTRY_LABELS[value]}
-          selected={industry === value}
-          onPress={() => setIndustry(industry === value ? undefined : value)}
-        />
-      ))}
+      <Pressable
+        onPress={() => setIndustryPickerOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Choose industry"
+        accessibilityValue={{
+          text: industry ? INDUSTRY_LABELS[industry] : "Not set",
+        }}
+        style={({ pressed }) => [
+          styles.selectField,
+          { borderColor: theme.border },
+          pressed && { backgroundColor: theme.secondary },
+        ]}
+      >
+        <ThemedText
+          style={[
+            styles.selectFieldLabel,
+            !industry && { color: theme.mutedForeground },
+          ]}
+        >
+          {industry ? INDUSTRY_LABELS[industry] : "Choose an industry"}
+        </ThemedText>
+        <ChevronDown color={theme.mutedForeground} size={18} />
+      </Pressable>
+      <SelectSheet
+        visible={industryPickerOpen}
+        title="Industry"
+        options={industrySchema.options.map((value) => ({
+          value,
+          label: INDUSTRY_LABELS[value],
+        }))}
+        selectedValue={industry}
+        onSelect={(value) => {
+          setIndustry(value as Industry);
+          setIndustryPickerOpen(false);
+        }}
+        onClear={() => {
+          setIndustry(undefined);
+          setIndustryPickerOpen(false);
+        }}
+        onClose={() => setIndustryPickerOpen(false)}
+      />
 
       {industryWillChange ? (
         <View style={[styles.reseedRow, { borderColor: theme.border }]}>
@@ -774,6 +809,7 @@ function OrganizationCard() {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [switching, setSwitching] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const { data: orgs, isLoading: orgsLoading } = useQuery({
     queryKey: ["cloud-orgs"],
@@ -825,52 +861,45 @@ function OrganizationCard() {
       {orgsLoading || activeLoading ? (
         <Skeleton width={160} height={20} />
       ) : hasMultiple ? (
-        orgs?.map((org) => {
-          const isActive = org.id === activeOrg?.id;
-          return (
-            <Pressable
-              key={org.id}
-              onPress={() => void onSwitch(org.id)}
-              disabled={switching !== null || isActive}
-              style={[
-                styles.orgRow,
-                {
-                  borderColor: isActive ? theme.primary : theme.border,
-                  backgroundColor: isActive ? theme.accent : "transparent",
-                },
-              ]}
-            >
-              <Building2
-                size={18}
-                color={isActive ? theme.accentForeground : theme.foreground}
-              />
-              <ThemedText
-                style={[
-                  styles.orgName,
-                  {
-                    color: isActive ? theme.accentForeground : theme.foreground,
-                  },
-                ]}
-                numberOfLines={1}
-              >
-                {org.name}
-              </ThemedText>
-              {switching === org.id ? (
-                <ActivityIndicator
-                  color={theme.foreground}
-                  size="small"
-                  style={styles.orgTrailing}
-                />
-              ) : isActive ? (
-                <Check
-                  size={18}
-                  color={theme.accentForeground}
-                  style={styles.orgTrailing}
-                />
-              ) : null}
-            </Pressable>
-          );
-        })
+        <>
+          <Pressable
+            onPress={() => setPickerOpen(true)}
+            disabled={switching !== null}
+            accessibilityRole="button"
+            accessibilityLabel="Choose organization"
+            accessibilityValue={{ text: activeOrg?.name ?? "Not set" }}
+            style={({ pressed }) => [
+              styles.orgRow,
+              { borderColor: theme.border },
+              pressed &&
+                switching === null && { backgroundColor: theme.secondary },
+            ]}
+          >
+            <Building2 size={18} color={theme.foreground} />
+            <ThemedText style={styles.orgName} numberOfLines={1}>
+              {activeOrg?.name ?? "Choose organization"}
+            </ThemedText>
+            {switching ? (
+              <ActivityIndicator color={theme.foreground} size="small" />
+            ) : (
+              <ChevronDown color={theme.mutedForeground} size={18} />
+            )}
+          </Pressable>
+          <SelectSheet
+            visible={pickerOpen}
+            title="Organization"
+            options={(orgs ?? []).map((org) => ({
+              value: org.id,
+              label: org.name,
+            }))}
+            selectedValue={activeOrg?.id}
+            onSelect={(organizationId) => {
+              setPickerOpen(false);
+              void onSwitch(organizationId);
+            }}
+            onClose={() => setPickerOpen(false)}
+          />
+        </>
       ) : (
         <View style={[styles.orgRow, { borderColor: theme.border }]}>
           <Building2 size={18} color={theme.foreground} />
@@ -954,6 +983,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: Spacing.two,
   },
+  selectField: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  selectFieldLabel: { flex: 1, fontFamily: Fonts.sans, fontSize: 15 },
   detailsLabel: { marginTop: Spacing.four },
   reseedRow: {
     flexDirection: "row",

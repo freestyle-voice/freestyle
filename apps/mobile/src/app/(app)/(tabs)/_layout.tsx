@@ -2,7 +2,7 @@ import { NativeTabs } from "expo-router/unstable-native-tabs";
 
 import { useTheme } from "@/hooks/use-theme";
 
-/** The five primary places in the Remix-first mobile experience. */
+/** The four primary places in the Remix-first mobile experience. */
 export default function TabsLayout() {
   const theme = useTheme();
 
@@ -48,17 +48,6 @@ export default function TabsLayout() {
             selected: "text.book.closed.fill",
           }}
           md={{ default: "dictionary", selected: "dictionary" }}
-        />
-      </NativeTabs.Trigger>
-
-      <NativeTabs.Trigger name="account">
-        <NativeTabs.Trigger.Label>Profile</NativeTabs.Trigger.Label>
-        <NativeTabs.Trigger.Icon
-          sf={{
-            default: "person.crop.circle",
-            selected: "person.crop.circle.fill",
-          }}
-          md={{ default: "person", selected: "account_circle" }}
         />
       </NativeTabs.Trigger>
     </NativeTabs>

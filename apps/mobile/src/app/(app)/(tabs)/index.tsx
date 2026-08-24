@@ -3,6 +3,8 @@ import * as Haptics from "expo-haptics";
 import { useIsFocused, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   Share,
@@ -26,6 +28,12 @@ import { useDictation } from "@/lib/audio/use-dictation";
 import { DEFAULT_HOME_MODE } from "@/lib/remix/home-mode";
 import type { RemixMode } from "@/lib/remix/types";
 import { useRemixThread } from "@/lib/remix/use-remix-thread";
+
+const REMIX_STARTERS = [
+  { label: "Draft a reply", prompt: "Draft a clear, friendly reply to " },
+  { label: "Make a plan", prompt: "Help me make a practical plan for " },
+  { label: "Think it through", prompt: "Help me think through " },
+] as const;
 
 export default function VoiceScreen() {
   const theme = useTheme();
@@ -233,7 +241,10 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
   }, [draft, send]);
 
   return (
-    <View style={styles.remixHome}>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      style={styles.remixHome}
+    >
       <View style={styles.remixTopline}>
         <ThemedText type="title" style={styles.remixTitle}>
           Make the next move.
@@ -248,24 +259,58 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
         </Pressable>
       </View>
       <ScrollView
+        style={styles.remixScrollArea}
         contentContainerStyle={styles.remixScroll}
         keyboardShouldPersistTaps="handled"
       >
         {messages.length === 0 ? (
-          <View
-            style={[
-              styles.remixState,
-              { backgroundColor: theme.card, borderColor: theme.border },
-            ]}
-          >
-            <ThemedText style={styles.remixEyebrow}>REMIX</ThemedText>
-            <ThemedText style={styles.remixStateTitle}>
-              Your focused writing partner.
-            </ThemedText>
-            <ThemedText themeColor="mutedForeground" style={styles.remixDetail}>
-              Ask for a draft, a plan, or help working through a task.
-            </ThemedText>
-          </View>
+          <>
+            <View
+              style={[
+                styles.remixState,
+                { backgroundColor: theme.card, borderColor: theme.border },
+              ]}
+            >
+              <ThemedText style={styles.remixEyebrow}>REMIX</ThemedText>
+              <ThemedText style={styles.remixStateTitle}>
+                Your focused writing partner.
+              </ThemedText>
+              <ThemedText
+                themeColor="mutedForeground"
+                style={styles.remixDetail}
+              >
+                Ask for a draft, a plan, or help working through a task.
+              </ThemedText>
+            </View>
+            <View style={styles.starterSection}>
+              <ThemedText
+                type="eyebrow"
+                themeColor="mutedForeground"
+                style={styles.starterLabel}
+              >
+                START WITH
+              </ThemedText>
+              <View style={styles.starterGrid}>
+                {REMIX_STARTERS.map((starter) => (
+                  <Pressable
+                    key={starter.label}
+                    onPress={() => setDraft(starter.prompt)}
+                    accessibilityRole="button"
+                    accessibilityLabel={starter.label}
+                    style={({ pressed }) => [
+                      styles.starter,
+                      { borderColor: theme.border },
+                      pressed && { backgroundColor: theme.secondary },
+                    ]}
+                  >
+                    <ThemedText style={styles.starterText}>
+                      {starter.label}
+                    </ThemedText>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          </>
         ) : null}
         {messages.map((message) => (
           <View
@@ -327,7 +372,7 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
           </ThemedText>
         </Pressable>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -369,7 +414,7 @@ const styles = StyleSheet.create({
     flex: 1,
     minHeight: 0,
     gap: Spacing.three,
-    paddingBottom: 96,
+    paddingBottom: Spacing.two,
   },
   remixTopline: {
     flexDirection: "row",
@@ -385,6 +430,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   newThreadText: { fontFamily: Fonts.sansSemiBold, fontSize: 13 },
+  remixScrollArea: { flex: 1, minHeight: 0 },
   remixScroll: { gap: Spacing.two, paddingBottom: Spacing.two },
   turn: {
     gap: Spacing.one,
@@ -406,6 +452,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.xl,
     padding: Spacing.two,
+    minHeight: 56,
   },
   input: {
     flex: 1,
@@ -416,6 +463,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     paddingHorizontal: Spacing.one,
     paddingVertical: Spacing.one,
+    textAlignVertical: "center",
   },
   send: {
     width: 40,
@@ -440,6 +488,17 @@ const styles = StyleSheet.create({
   },
   remixStateTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 19 },
   remixDetail: { fontSize: 14, lineHeight: 21 },
+  starterSection: { gap: Spacing.two, paddingHorizontal: Spacing.one },
+  starterLabel: { fontSize: 10 },
+  starterGrid: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.two },
+  starter: {
+    minHeight: 36,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three,
+  },
+  starterText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
   brand: {},
   actions: {
     flexDirection: "row",

@@ -58,7 +58,10 @@ describe("safe Downloads saves", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("passes a main-issued grant bound to the tool call to the Downloads IPC", async () => {
-    saveAgentFile.mockResolvedValue({ ok: true, filename: "plan.md" });
+    saveAgentFile.mockResolvedValue({
+      ok: true,
+      path: "/safe/downloads/plan.md",
+    });
 
     await expect(
       executeAgentTool(
@@ -69,7 +72,7 @@ describe("safe Downloads saves", () => {
         },
         { saveFileGrant: "main-grant" },
       ),
-    ).resolves.toEqual({ ok: true, filename: "plan.md" });
+    ).resolves.toEqual({ ok: true, path: "/safe/downloads/plan.md" });
 
     expect(saveAgentFile).toHaveBeenCalledWith({
       toolCallId: "call-1",

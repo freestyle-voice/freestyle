@@ -27,7 +27,7 @@ declare global {
         filename: string;
         content: string;
         grant: string;
-      }) => Promise<{ ok: boolean; filename?: string; reason?: string }>;
+      }) => Promise<{ ok: boolean; path?: string; reason?: string }>;
       prepareSystemAudio: (mode: ActiveAudioPlaybackMode) => Promise<void>;
       restoreSystemAudio: () => Promise<void>;
       getServerPort: () => Promise<number>;

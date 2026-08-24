@@ -24,7 +24,10 @@ describe("agent Downloads saves", () => {
         { filename: "plan.md", content: "\u00a1Hola, Freestyle!" },
         { downloadsDir },
       ),
-    ).resolves.toEqual({ ok: true, filename: "plan.md" });
+    ).resolves.toEqual({
+      ok: true,
+      path: path.join(downloadsDir, "plan.md"),
+    });
 
     expect(readFileSync(path.join(downloadsDir, "plan.md"), "utf8")).toBe(
       "\u00a1Hola, Freestyle!",
@@ -51,7 +54,10 @@ describe("agent Downloads saves", () => {
         { filename: "plan.md", content: "new plan" },
         { downloadsDir },
       ),
-    ).resolves.toEqual({ ok: true, filename: "plan (1).md" });
+    ).resolves.toEqual({
+      ok: true,
+      path: path.join(downloadsDir, "plan (1).md"),
+    });
 
     expect(readFileSync(path.join(downloadsDir, "plan.md"), "utf8")).toBe(
       "existing",
@@ -171,7 +177,10 @@ describe("agent Downloads saves", () => {
         { sender: panel },
         { ...input, grant: granted.grant },
       ),
-    ).resolves.toEqual({ ok: true, filename: "report.txt" });
+    ).resolves.toEqual({
+      ok: true,
+      path: "/safe/downloads/report.txt",
+    });
     await expect(
       handlers.get("agent:save-file")!(
         { sender: panel },

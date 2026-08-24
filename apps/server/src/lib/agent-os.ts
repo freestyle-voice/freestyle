@@ -68,6 +68,13 @@ export interface AgentCommandOptions {
   execFile?: FileExecutor;
 }
 
+function powerShellCommand(command: string): string {
+  // A native executable's failure only updates `$LASTEXITCODE`; PowerShell
+  // itself otherwise exits successfully (or with the generic code 1). Carry
+  // that status through so the agent gets the actual Windows command result.
+  return `$ErrorActionPreference = 'Stop'; & { ${command} }; if ($null -ne $LASTEXITCODE) { exit $LASTEXITCODE }; exit 0`;
+}
+
 export function resolveAgentPath(input: string): { full: string } {
   const expanded =
     input === "~"
@@ -285,7 +292,12 @@ export function runAgentBash(
       const run = (options.execFile ?? execFile) as FileExecutor;
       run(
         "powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-Command", command],
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          powerShellCommand(command),
+        ],
         common,
         complete,
       );

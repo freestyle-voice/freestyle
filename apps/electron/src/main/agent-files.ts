@@ -12,7 +12,7 @@ type AgentFileWrite = (
 ) => Promise<void>;
 
 export type AgentDownloadResult =
-  | { ok: true; filename: string }
+  | { ok: true; path: string }
   | {
       ok: false;
       reason:
@@ -205,7 +205,7 @@ export async function saveAgentDownload(
         encoding: "utf8",
         flag: "wx",
       });
-      return { ok: true, filename: finalFilename };
+      return { ok: true, path: path.join(downloadsDir, finalFilename) };
     } catch (err) {
       const code = (err as NodeJS.ErrnoException)?.code;
       if (code === "EEXIST") continue;

@@ -81,7 +81,12 @@ describe("bash", () => {
 
     expect(powershell).toHaveBeenCalledWith(
       "powershell.exe",
-      ["-NoProfile", "-NonInteractive", "-Command", "Get-Location"],
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        expect.stringContaining("Get-Location"),
+      ],
       expect.objectContaining({ cwd: homedir(), timeout: 30_000 }),
       expect.any(Function),
     );

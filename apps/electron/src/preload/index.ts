@@ -31,7 +31,7 @@ const api = {
     filename: string;
     content: string;
     grant: string;
-  }): Promise<{ ok: boolean; filename?: string; reason?: string }> =>
+  }): Promise<{ ok: boolean; path?: string; reason?: string }> =>
     ipcRenderer.invoke("agent:save-file", input),
   prepareSystemAudio: (mode: ActiveAudioPlaybackMode): Promise<void> =>
     ipcRenderer.invoke("audio:prepare", mode),

@@ -1,4 +1,4 @@
-import { Check } from "lucide-react-native";
+import { Check, Keyboard, Mic } from "lucide-react-native";
 import { useCallback } from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 
@@ -47,13 +47,10 @@ export function KeyboardSetupScreen() {
             },
           ]}
         >
-          {keyboardReady ? (
-            <Check color={theme.primary} size={18} />
-          ) : (
-            <View
-              style={[styles.pendingDot, { backgroundColor: theme.border }]}
-            />
-          )}
+          <Keyboard
+            color={keyboardReady ? theme.primary : theme.mutedForeground}
+            size={20}
+          />
           <View style={styles.switchLabel}>
             <ThemedText style={styles.rowLabel}>
               {keyboardReady
@@ -66,6 +63,13 @@ export function KeyboardSetupScreen() {
                 : "After enabling Full Access, open Freestyle in any text field once, then return here."}
             </ThemedText>
           </View>
+          {keyboardReady ? (
+            <Check color={theme.primary} size={18} />
+          ) : (
+            <View
+              style={[styles.pendingDot, { backgroundColor: theme.border }]}
+            />
+          )}
         </View>
       ) : null}
 
@@ -79,6 +83,12 @@ export function KeyboardSetupScreen() {
           },
         ]}
       >
+        <Mic
+          color={
+            micStatus === "granted" ? theme.primary : theme.mutedForeground
+          }
+          size={20}
+        />
         <View style={styles.switchLabel}>
           <ThemedText style={styles.rowLabel}>Microphone access</ThemedText>
           <ThemedText themeColor="mutedForeground" style={styles.rowHint}>

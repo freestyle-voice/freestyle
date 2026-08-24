@@ -142,6 +142,10 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         hasDictationKey = true
+        // Full Access can be enabled after this controller has already loaded.
+        // Re-stamp on each appearance so setup verifies without requiring iOS
+        // to tear down and recreate the keyboard extension process.
+        bridge.markKeyboardActive()
         syncSharedState()
     }
 

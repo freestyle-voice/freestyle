@@ -178,6 +178,12 @@ function StepPermissions({
           },
         ]}
       >
+        <Mic
+          color={
+            micStatus === "granted" ? theme.primary : theme.mutedForeground
+          }
+          size={18}
+        />
         <View style={styles.switchLabel}>
           <ThemedText style={styles.rowLabel}>Microphone access</ThemedText>
           <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
@@ -440,7 +446,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 6,
   },
-  footer: { paddingBottom: Spacing.five },
+  footer: { paddingBottom: Spacing.two },
   topAction: {
     position: "absolute",
     minWidth: 56,

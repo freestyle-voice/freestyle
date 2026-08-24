@@ -12,7 +12,7 @@ import {
   Mic,
   Sparkles,
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -21,17 +21,15 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  checkMicPermission,
-  type MicPermission,
-  requestMicPermission,
-} from "@/lib/audio/recorder";
+import type { MicPermission } from "@/lib/audio/recorder";
+import { useMicPermission } from "@/lib/audio/use-mic-permission";
 import { fetchCloudConfig } from "@/lib/cloud/cloud-config";
 import {
   type KeyboardStatus,
   useKeyboardStatus,
 } from "@/lib/keyboard/use-keyboard-status";
 import { useOnboarding } from "@/lib/onboarding";
+import { canCompleteOnboardingWithoutVoiceSetup } from "@/lib/onboarding-flow";
 import { LANGUAGES, useSettings } from "@/lib/settings";
 
 const TUTORIAL_STEPS = [
@@ -50,29 +48,21 @@ export default function OnboardingScreen() {
   const { settings, setLanguages } = useSettings();
 
   const [step, setStep] = useState<0 | 1 | 2>(0);
-  const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
+  const { status: micStatus, request: requestMic } = useMicPermission();
   const { status: keyboardStatus } = useKeyboardStatus();
 
-  useEffect(() => {
-    void checkMicPermission().then(setMicStatus);
-  }, []);
-
   const grantMic = useCallback(async () => {
-    const status =
-      (await checkMicPermission()) === "granted"
-        ? "granted"
-        : await requestMicPermission();
-    setMicStatus(status);
+    const status = await requestMic();
     // If already denied, the prompt won't show again — send them to Settings.
     if (status === "denied") void Linking.openSettings();
-  }, []);
+  }, [requestMic]);
 
   const complete = useCallback(() => {
     finish();
     router.replace("/(app)/(tabs)");
   }, [finish, router]);
 
-  const canContinueStep0 = micStatus === "granted";
+  const canContinueStep0 = canCompleteOnboardingWithoutVoiceSetup();
 
   return (
     <ThemedView style={styles.container}>
@@ -125,27 +115,22 @@ export default function OnboardingScreen() {
             ) : (
               <View style={styles.backButton} />
             )}
-            {step > 0 ? (
-              <Pressable onPress={complete} style={styles.skipButton}>
-                <ThemedText
-                  themeColor="mutedForeground"
-                  style={styles.backText}
-                >
-                  Skip
-                </ThemedText>
-              </Pressable>
-            ) : null}
+            <Pressable onPress={complete} style={styles.skipButton}>
+              <ThemedText themeColor="mutedForeground" style={styles.backText}>
+                {step === 0 ? "Skip for now" : "Skip"}
+              </ThemedText>
+            </Pressable>
           </View>
 
           <Pressable
             onPress={
               step === 2 ? complete : () => setStep((s) => (s === 0 ? 1 : 2))
             }
-            disabled={step === 0 && !canContinueStep0}
+            disabled={!canContinueStep0}
             style={[
               styles.cta,
               { backgroundColor: theme.primary },
-              step === 0 && !canContinueStep0 ? styles.ctaDisabled : null,
+              !canContinueStep0 ? styles.ctaDisabled : null,
             ]}
           >
             <ThemedText
@@ -234,7 +219,7 @@ function StepPermissions({
             <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
               {keyboardReady
                 ? "Enabled with Full Access — dictate in any app."
-                : "Enable the Freestyle keyboard + Full Access in Settings."}
+                : "Enable Full Access, then open Freestyle once in any text field to verify it."}
             </ThemedText>
           </View>
           {keyboardReady ? (

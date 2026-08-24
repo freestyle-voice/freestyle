@@ -1,5 +1,5 @@
 import { Check } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback } from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 
 import {
@@ -10,11 +10,7 @@ import {
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  checkMicPermission,
-  type MicPermission,
-  requestMicPermission,
-} from "@/lib/audio/recorder";
+import { useMicPermission } from "@/lib/audio/use-mic-permission";
 import { useKeyboardStatus } from "@/lib/keyboard/use-keyboard-status";
 import { useSettings } from "@/lib/settings";
 
@@ -27,28 +23,20 @@ const STEPS = [
 
 export function KeyboardSetupScreen() {
   const theme = useTheme();
-  const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
+  const { status: micStatus, request: requestMic } = useMicPermission();
   const { status: keyboardStatus, ready: keyboardReady } = useKeyboardStatus();
   const { settings, setAutoListenAfterRemixQuestion } = useSettings();
 
-  useEffect(() => {
-    void checkMicPermission().then(setMicStatus);
-  }, []);
-
   const grantMic = useCallback(async () => {
-    const status =
-      (await checkMicPermission()) === "granted"
-        ? "granted"
-        : await requestMicPermission();
-    setMicStatus(status);
+    const status = await requestMic();
     // If already denied, the prompt won't show again — send them to Settings.
     if (status === "denied") void Linking.openSettings();
-  }, []);
+  }, [requestMic]);
 
   const content = (
     <>
-      {/* Live status — flips to a confirmed state the moment the keyboard runs
-          with Full Access (detected via the shared App Group handshake). */}
+      {/* The extension must be opened once after Full Access is enabled before
+          it can stamp the App Group handshake that verifies this screen. */}
       {keyboardStatus !== "unsupported" ? (
         <View
           style={[
@@ -69,13 +57,13 @@ export function KeyboardSetupScreen() {
           <View style={styles.switchLabel}>
             <ThemedText style={styles.rowLabel}>
               {keyboardReady
-                ? "Freestyle keyboard is ready"
-                : "Keyboard not set up yet"}
+                ? "Freestyle keyboard is verified"
+                : "Keyboard not verified yet"}
             </ThemedText>
             <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
               {keyboardReady
                 ? "Enabled with Full Access — dictate from any app."
-                : "Follow the steps below, then return here."}
+                : "After enabling Full Access, open Freestyle in any text field once, then return here."}
             </ThemedText>
           </View>
         </View>
@@ -172,7 +160,7 @@ export function KeyboardSetupScreen() {
           <ThemedText
             style={[styles.ctaText, { color: theme.primaryForeground }]}
           >
-            Open Settings
+            Open Keyboard Settings
           </ThemedText>
         </Pressable>
       ) : null}

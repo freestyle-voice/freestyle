@@ -118,8 +118,9 @@ public class FreestyleSharedStoreModule: Module {
         /// the App Group. Keeping it outside the dictation wire struct lets us
         /// evolve keyboard affordances without breaking the paired protocol.
         Function("keyboardMode") { () -> String in
-            let value = UserDefaults(suiteName: FreestyleDictationBridge.appGroupID)
-                ?.string(forKey: self.keyboardModeKey)
+            let value = UserDefaults(suiteName: FreestyleDictationBridge.appGroupID)?.string(
+                forKey: self.keyboardModeKey
+            )
             return value == "remix" ? "remix" : "dictate"
         }
 

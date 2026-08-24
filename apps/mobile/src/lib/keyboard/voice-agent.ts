@@ -7,8 +7,9 @@ export type VoiceAgentResult =
  * visible for a spoken answer; every other completed reply is treated as the
  * cursor-ready result.
  */
-export function resolveVoiceAgentResult(text: string): VoiceAgentResult {
+export function resolveVoiceAgentResult(text: string): VoiceAgentResult | null {
   const normalized = text.trim();
+  if (!normalized) return null;
   if (/^clarify:\s*/i.test(normalized)) {
     return {
       kind: "question",

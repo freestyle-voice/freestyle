@@ -258,8 +258,16 @@ export function useKeyboardDictationBridge(
         },
       })
         .then(() => {
-          if (controller.signal.aborted || !response.trim()) return;
+          if (controller.signal.aborted) return;
           const result = resolveVoiceAgentResult(response);
+          if (!result) {
+            // A terminal stream without text or a valid final-insertion tool
+            // must not strand the keyboard in its compact "thinking" state.
+            publish("armed", {
+              statusMessage: "Remix didn't return a result. Tap and try again.",
+            });
+            return;
+          }
           agentMessagesRef.current = [
             ...nextMessages,
             {

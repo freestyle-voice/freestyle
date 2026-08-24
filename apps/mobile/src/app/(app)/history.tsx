@@ -31,6 +31,7 @@ import {
 import { confirmClearHistory } from "@/lib/history-alerts";
 import { mergeActivity } from "@/lib/remix/activity";
 import { listThreads } from "@/lib/remix/client";
+import { remixQueryKeys } from "@/lib/remix/query";
 
 interface DateGroup {
   key: string;
@@ -98,7 +99,7 @@ export default function HistoryScreen() {
   const [now, setNow] = useState(Date.now);
 
   const conversations = useInfiniteQuery({
-    queryKey: ["agent-threads", "user"],
+    queryKey: remixQueryKeys.threadList("user"),
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       listThreads({ origin: "user", cursor: pageParam }),
@@ -106,7 +107,7 @@ export default function HistoryScreen() {
     retry: 1,
   });
   const briefs = useInfiniteQuery({
-    queryKey: ["agent-threads", "scheduled"],
+    queryKey: remixQueryKeys.threadList("scheduled"),
     initialPageParam: undefined as number | undefined,
     queryFn: ({ pageParam }) =>
       listThreads({ origin: "scheduled", cursor: pageParam }),

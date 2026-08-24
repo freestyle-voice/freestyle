@@ -33,11 +33,20 @@ import { canCompleteOnboardingWithoutVoiceSetup } from "@/lib/onboarding-flow";
 import { LANGUAGES, useSettings } from "@/lib/settings";
 
 const TUTORIAL_STEPS = [
-  { Icon: Mic, text: "Hold or tap the mic to start recording." },
-  { Icon: Sparkles, text: "Speak naturally — Freestyle cleans it up." },
+  {
+    Icon: Mic,
+    title: "Dictate",
+    text: "Speak naturally to turn your words into clean text.",
+  },
+  {
+    Icon: Sparkles,
+    title: "Remix",
+    text: "Ask by voice for a draft, rewrite, reply, or plan.",
+  },
   {
     Icon: ClipboardCheck,
-    text: "Copy, share, or paste your text anywhere.",
+    title: "Finish the thought",
+    text: "If Remix needs context, answer a quick follow-up—then copy, share, or paste the result.",
   },
 ] as const;
 
@@ -368,20 +377,25 @@ function StepTutorial() {
   return (
     <View style={styles.stepContent}>
       <ThemedText type="display" style={styles.title}>
-        How it{" "}
+        Your voice,{" "}
         <ThemedText type="displayItalic" themeColor="primary">
-          works
+          two ways
         </ThemedText>
         <ThemedText type="display">.</ThemedText>
       </ThemedText>
 
       <View style={styles.steps}>
-        {TUTORIAL_STEPS.map(({ Icon, text }) => (
-          <View key={text} style={styles.step}>
+        {TUTORIAL_STEPS.map(({ Icon, title, text }) => (
+          <View key={title} style={styles.step}>
             <View style={[styles.badge, { backgroundColor: theme.accent }]}>
               <Icon color={theme.accentForeground} size={18} />
             </View>
-            <ThemedText style={styles.stepText}>{text}</ThemedText>
+            <View style={styles.stepCopy}>
+              <ThemedText style={styles.stepTitle}>{title}</ThemedText>
+              <ThemedText themeColor="mutedForeground" style={styles.stepText}>
+                {text}
+              </ThemedText>
+            </View>
           </View>
         ))}
       </View>
@@ -450,12 +464,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  stepCopy: { flex: 1, gap: 2 },
+  stepTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
   stepText: {
-    flex: 1,
     fontFamily: Fonts.sans,
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
   },
   footer: { paddingBottom: Spacing.two },
   topAction: {

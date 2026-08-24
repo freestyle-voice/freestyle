@@ -7,9 +7,14 @@ const sidebar = readFileSync(
 );
 
 describe("chat sidebar layout", () => {
-  it("keeps top and bottom safe-area clearance and exposes one account entry", () => {
-    expect(sidebar).toMatch(/edges=\{\["top", "bottom", "left"\]\}/);
-    expect(sidebar).toMatch(/<AccountButton[\s\S]*?\/>/);
-    expect(sidebar).not.toMatch(/navigate\("\/\(app\)\/settings"\)/);
+  it("keeps the drawer clear of device edges and exposes a compact action row", () => {
+    expect(sidebar).toMatch(/paddingTop: Math\.max\(insets\.top/);
+    expect(sidebar).toMatch(/paddingBottom:\s*\n?\s*Math\.max\(insets\.bottom/);
+    expect(sidebar).toMatch(/mode === "dictate"/);
+    expect(sidebar).toMatch(/RECENT DICTATIONS/);
+    expect(sidebar).toMatch(/RECENT CHATS/);
+    expect(sidebar).toMatch(/accessibilityLabel="Open account and settings"/);
+    expect(sidebar).not.toMatch(/Dictation history/);
+    expect(sidebar).not.toMatch(/AccountButton/);
   });
 });

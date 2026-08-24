@@ -4,6 +4,7 @@ import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
 import { ArrowUp, Menu, Mic, Square } from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Animated,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -12,6 +13,7 @@ import {
   Share,
   StyleSheet,
   TextInput,
+  useWindowDimensions,
   View,
 } from "react-native";
 import {
@@ -39,6 +41,7 @@ export default function VoiceScreen() {
   const insets = useSafeAreaInsets();
   const { signedIn } = useAuth();
   const router = useRouter();
+  const { width } = useWindowDimensions();
   // This home screen stays mounted while the resident keyboard session runs in the
   // background provider. Gate its mic on focus so the Home recorder can't fight
   // the resident session for the audio session (two active recorders = "Could
@@ -50,6 +53,7 @@ export default function VoiceScreen() {
   const [copied, setCopied] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const sidebarProgress = useRef(new Animated.Value(0)).current;
   // Keep this mounted across the Home switch. In particular, switching to
   // Dictate must not discard a running Remix turn or its durable thread.
   const remixThread = useRemixThread();
@@ -105,6 +109,15 @@ export default function VoiceScreen() {
     };
   }, []);
 
+  const sidebarPanelWidth = Math.min(360, Math.round(width * 0.88));
+  useEffect(() => {
+    Animated.timing(sidebarProgress, {
+      toValue: sidebarOpen ? sidebarPanelWidth - Spacing.two : 0,
+      duration: sidebarOpen ? 220 : 180,
+      useNativeDriver: true,
+    }).start();
+  }, [sidebarOpen, sidebarPanelWidth, sidebarProgress]);
+
   const status =
     micState === "recording"
       ? "Listening"
@@ -116,106 +129,117 @@ export default function VoiceScreen() {
 
   return (
     <ThemedView style={styles.container}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        style={styles.keyboardAvoiding}
+      <Animated.View
+        style={[
+          styles.appCanvas,
+          { transform: [{ translateX: sidebarProgress }] },
+        ]}
       >
-        <SafeAreaView edges={["top", "left", "right"]} style={styles.safeArea}>
-          <View style={styles.column}>
-            <View style={styles.header}>
-              <Pressable
-                onPress={openSidebar}
-                hitSlop={12}
-                accessibilityRole="button"
-                accessibilityLabel="Open sessions"
-                style={[styles.menuButton, { borderColor: theme.border }]}
-              >
-                <Menu color={theme.foreground} size={20} />
-              </Pressable>
-              <ModeSwitch mode={mode} onChange={setMode} />
-            </View>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.keyboardAvoiding}
+        >
+          <SafeAreaView
+            edges={["top", "left", "right"]}
+            style={styles.safeArea}
+          >
+            <View style={styles.column}>
+              <View style={styles.header}>
+                <Pressable
+                  onPress={openSidebar}
+                  hitSlop={12}
+                  accessibilityRole="button"
+                  accessibilityLabel="Open sessions"
+                  style={[styles.menuButton, { borderColor: theme.border }]}
+                >
+                  <Menu color={theme.foreground} size={20} />
+                </Pressable>
+                <ModeSwitch mode={mode} onChange={setMode} />
+              </View>
 
-            {mode === "remix" ? (
-              <RemixHome
-                thread={remixThread}
-                keyboardVisible={keyboardVisible}
-                bottomInset={insets.bottom}
-                onSwitchToDictate={() => setMode("dictate")}
-              />
-            ) : (
-              <>
-                <TranscriptView
-                  text={text}
-                  partial={partial}
-                  placeholder="Start speaking and your words will appear here."
+              {mode === "remix" ? (
+                <RemixHome
+                  thread={remixThread}
+                  keyboardVisible={keyboardVisible}
+                  bottomInset={insets.bottom}
+                  onSwitchToDictate={() => setMode("dictate")}
                 />
+              ) : (
+                <>
+                  <TranscriptView
+                    text={text}
+                    partial={partial}
+                    placeholder="Start speaking and your words will appear here."
+                  />
 
-                {text && micState === "idle" ? (
-                  <View style={styles.actions}>
-                    <Pressable
-                      onPress={copy}
-                      style={[
-                        styles.action,
-                        { backgroundColor: theme.primary },
-                      ]}
-                    >
-                      <ThemedText
+                  {text && micState === "idle" ? (
+                    <View style={styles.actions}>
+                      <Pressable
+                        onPress={copy}
                         style={[
-                          styles.actionText,
-                          { color: theme.primaryForeground },
+                          styles.action,
+                          { backgroundColor: theme.primary },
                         ]}
                       >
-                        {copied ? "Copied" : "Copy"}
-                      </ThemedText>
-                    </Pressable>
-                    <Pressable
-                      onPress={share}
-                      style={[
-                        styles.actionOutline,
-                        { borderColor: theme.border },
-                      ]}
-                    >
-                      <ThemedText style={styles.actionText}>Share</ThemedText>
-                    </Pressable>
-                    <Pressable
-                      onPress={clear}
-                      style={[
-                        styles.actionOutline,
-                        { borderColor: theme.border },
-                      ]}
-                    >
-                      <ThemedText style={styles.actionText}>Clear</ThemedText>
-                    </Pressable>
-                  </View>
-                ) : null}
+                        <ThemedText
+                          style={[
+                            styles.actionText,
+                            { color: theme.primaryForeground },
+                          ]}
+                        >
+                          {copied ? "Copied" : "Copy"}
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable
+                        onPress={share}
+                        style={[
+                          styles.actionOutline,
+                          { borderColor: theme.border },
+                        ]}
+                      >
+                        <ThemedText style={styles.actionText}>Share</ThemedText>
+                      </Pressable>
+                      <Pressable
+                        onPress={clear}
+                        style={[
+                          styles.actionOutline,
+                          { borderColor: theme.border },
+                        ]}
+                      >
+                        <ThemedText style={styles.actionText}>Clear</ThemedText>
+                      </Pressable>
+                    </View>
+                  ) : null}
 
-                <View
-                  style={[
-                    styles.footer,
-                    { paddingBottom: insets.bottom + Spacing.four },
-                  ]}
-                >
-                  <Waveform level={level} active={micState === "recording"} />
-                  <ThemedText
-                    themeColor="mutedForeground"
-                    style={styles.status}
+                  <View
+                    style={[
+                      styles.footer,
+                      { paddingBottom: insets.bottom + Spacing.four },
+                    ]}
                   >
-                    {status}
-                  </ThemedText>
-                  <MicButton
-                    state={micState}
-                    level={level}
-                    onPressIn={onPressIn}
-                    onPressOut={onPressOut}
-                  />
-                </View>
-              </>
-            )}
-          </View>
-        </SafeAreaView>
-      </KeyboardAvoidingView>
+                    <Waveform level={level} active={micState === "recording"} />
+                    <ThemedText
+                      themeColor="mutedForeground"
+                      style={styles.status}
+                    >
+                      {status}
+                    </ThemedText>
+                    <MicButton
+                      state={micState}
+                      level={level}
+                      onPressIn={onPressIn}
+                      onPressOut={onPressOut}
+                    />
+                  </View>
+                </>
+              )}
+            </View>
+          </SafeAreaView>
+        </KeyboardAvoidingView>
+      </Animated.View>
       <ChatSidebar
         visible={sidebarOpen}
+        mode={mode}
         currentThreadId={remixThread.threadId}
         onClose={() => setSidebarOpen(false)}
         onNewChat={startNewChat}
@@ -419,6 +443,11 @@ function RemixHome({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  appCanvas: {
+    flex: 1,
+    overflow: "hidden",
+    borderRadius: Radius["2xl"],
+  },
   keyboardAvoiding: { flex: 1 },
   safeArea: { flex: 1, paddingHorizontal: Spacing.four },
   column: {

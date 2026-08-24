@@ -1,10 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Clock3, MessageSquarePlus, Settings, X } from "lucide-react-native";
+import { MessageSquarePlus, Settings, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
-  Image,
   Modal,
   Pressable,
   ScrollView,
@@ -12,20 +11,21 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
-import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
-import { initialsFor } from "@/lib/initials";
+import { useHistory } from "@/lib/history";
 import { listThreads } from "@/lib/remix/client";
 import { remixQueryKeys } from "@/lib/remix/query";
+import type { RemixMode } from "@/lib/remix/types";
 
 const MAX_RECENT_SESSIONS = 24;
 
 type ChatSidebarProps = {
   visible: boolean;
+  mode: RemixMode;
   currentThreadId: string;
   onClose: () => void;
   onNewChat: () => void;
@@ -38,14 +38,16 @@ type ChatSidebarProps = {
  */
 export function ChatSidebar({
   visible,
+  mode,
   currentThreadId,
   onClose,
   onNewChat,
 }: ChatSidebarProps) {
   const theme = useTheme();
   const router = useRouter();
-  const { user } = useAuth();
+  const { history } = useHistory();
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const panelWidth = Math.min(360, Math.round(width * 0.88));
   const [mounted, setMounted] = useState(visible);
   const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
@@ -133,9 +135,15 @@ export function ChatSidebar({
             },
           ]}
         >
-          <SafeAreaView
-            style={styles.safeArea}
-            edges={["top", "bottom", "left"]}
+          <View
+            style={[
+              styles.safeArea,
+              {
+                paddingTop: Math.max(insets.top, Spacing.six) + Spacing.three,
+                paddingBottom:
+                  Math.max(insets.bottom, Spacing.three) + Spacing.three,
+              },
+            ]}
           >
             <View style={styles.topRow}>
               <ThemedText type="title" style={styles.brand}>
@@ -152,16 +160,9 @@ export function ChatSidebar({
               </Pressable>
             </View>
 
-            <View style={styles.quickLinks}>
-              <SidebarRow
-                icon={Clock3}
-                label="Dictation history"
-                onPress={() => navigate("/(app)/history")}
-              />
-            </View>
             <View style={styles.sessionsLabel}>
               <ThemedText type="eyebrow" themeColor="mutedForeground">
-                RECENTS
+                {mode === "dictate" ? "RECENT DICTATIONS" : "RECENT CHATS"}
               </ThemedText>
             </View>
             <ScrollView
@@ -169,11 +170,11 @@ export function ChatSidebar({
               contentContainerStyle={styles.sessionList}
               showsVerticalScrollIndicator={false}
             >
-              {isLoading ? (
+              {mode === "remix" && isLoading ? (
                 <ThemedText themeColor="mutedForeground" style={styles.empty}>
                   Loading conversations…
                 </ThemedText>
-              ) : data?.threads.length ? (
+              ) : mode === "remix" && data?.threads.length ? (
                 data.threads.slice(0, MAX_RECENT_SESSIONS).map((thread) => {
                   const selected = thread.id === currentThreadId;
                   return (
@@ -201,6 +202,23 @@ export function ChatSidebar({
                     </Pressable>
                   );
                 })
+              ) : mode === "dictate" && history.length ? (
+                history.slice(0, MAX_RECENT_SESSIONS).map((entry) => (
+                  <Pressable
+                    key={entry.id}
+                    onPress={() => navigate("/(app)/history")}
+                    accessibilityRole="button"
+                    accessibilityLabel={`View dictation: ${entry.text}`}
+                    style={({ pressed }) => [
+                      styles.session,
+                      pressed && styles.pressed,
+                    ]}
+                  >
+                    <ThemedText numberOfLines={2} style={styles.sessionTitle}>
+                      {entry.text}
+                    </ThemedText>
+                  </Pressable>
+                ))
               ) : (
                 <View style={styles.emptyState}>
                   <View
@@ -215,10 +233,12 @@ export function ChatSidebar({
                     />
                   </View>
                   <ThemedText style={styles.emptyTitle}>
-                    No chats yet
+                    {mode === "dictate" ? "No dictations yet" : "No chats yet"}
                   </ThemedText>
                   <ThemedText themeColor="mutedForeground" style={styles.empty}>
-                    Start a chat and it will stay here for next time.
+                    {mode === "dictate"
+                      ? "Your recent dictations will appear here."
+                      : "Start a chat and it will stay here for next time."}
                   </ThemedText>
                 </View>
               )}
@@ -245,84 +265,24 @@ export function ChatSidebar({
                   New chat
                 </ThemedText>
               </Pressable>
-              <AccountButton
-                user={user}
+              <Pressable
                 onPress={() => navigate("/(app)/profile")}
-              />
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Open account and settings"
+                style={({ pressed }) => [
+                  styles.settingsButton,
+                  { backgroundColor: theme.secondary },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Settings color={theme.foreground} size={21} />
+              </Pressable>
             </View>
-          </SafeAreaView>
+          </View>
         </Animated.View>
       </View>
     </Modal>
-  );
-}
-
-function AccountButton({
-  user,
-  onPress,
-}: {
-  user: ReturnType<typeof useAuth>["user"];
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel="Account and settings"
-      style={({ pressed }) => [
-        styles.accountButton,
-        { backgroundColor: theme.secondary },
-        pressed && styles.pressed,
-      ]}
-    >
-      {user?.image ? (
-        <Image source={{ uri: user.image }} style={styles.avatarImage} />
-      ) : (
-        <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
-          <ThemedText style={{ color: theme.accentForeground }}>
-            {user ? initialsFor(user) : "?"}
-          </ThemedText>
-        </View>
-      )}
-      <View style={styles.accountCopy}>
-        <ThemedText numberOfLines={1} style={styles.accountName}>
-          {user?.name ?? "Account"}
-        </ThemedText>
-        <ThemedText
-          numberOfLines={1}
-          themeColor="mutedForeground"
-          style={styles.accountEmail}
-        >
-          {user?.email ?? "Profile and settings"}
-        </ThemedText>
-      </View>
-      <Settings color={theme.mutedForeground} size={19} />
-    </Pressable>
-  );
-}
-
-function SidebarRow({
-  icon: Icon,
-  label,
-  onPress,
-}: {
-  icon: typeof Settings;
-  label: string;
-  onPress: () => void;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      style={({ pressed }) => [styles.footerRow, pressed && styles.pressed]}
-    >
-      <Icon color={theme.mutedForeground} size={19} />
-      <ThemedText style={styles.footerLabel}>{label}</ThemedText>
-    </Pressable>
   );
 }
 
@@ -341,8 +301,6 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.two,
   },
   topRow: {
     flexDirection: "row",
@@ -359,8 +317,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.full,
   },
-  quickLinks: { paddingTop: Spacing.two },
-  sessionsLabel: { paddingTop: Spacing.five, paddingBottom: Spacing.three },
+  sessionsLabel: { paddingTop: Spacing.three, paddingBottom: Spacing.three },
   sessionScroll: { flex: 1, minHeight: 0 },
   sessionList: { gap: Spacing.half, paddingBottom: Spacing.two },
   session: {
@@ -391,19 +348,13 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 16 },
   footer: {
-    gap: Spacing.two,
-    paddingTop: Spacing.three,
-  },
-  footerRow: {
-    minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.two,
-    paddingHorizontal: Spacing.two,
-    borderRadius: Radius.md,
+    paddingTop: Spacing.three,
   },
-  footerLabel: { fontFamily: Fonts.sansMedium, fontSize: 14 },
   newChat: {
+    flex: 1,
     minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
@@ -412,24 +363,12 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   newChatText: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
-  accountButton: {
-    minHeight: 58,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.two,
-    paddingHorizontal: Spacing.two + 2,
-    borderRadius: Radius.xl,
-  },
-  accountCopy: { flex: 1, gap: 2 },
-  accountName: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
-  accountEmail: { fontSize: 12 },
-  avatar: {
-    width: 30,
-    height: 30,
+  settingsButton: {
+    width: 48,
+    height: 48,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: Radius.full,
   },
-  avatarImage: { width: 30, height: 30, borderRadius: Radius.full },
   pressed: { opacity: 0.62 },
 });

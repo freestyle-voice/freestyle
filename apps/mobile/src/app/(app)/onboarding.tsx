@@ -67,16 +67,40 @@ export default function OnboardingScreen() {
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.progress}>
-          {[0, 1, 2].map((i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                { backgroundColor: i === step ? theme.primary : theme.border },
-              ]}
-            />
-          ))}
+        <View style={styles.topBar}>
+          {step > 0 ? (
+            <Pressable
+              onPress={() => setStep((s) => (s === 2 ? 1 : 0))}
+              style={[styles.topAction, styles.topBack]}
+            >
+              <ThemedText themeColor="mutedForeground" style={styles.backText}>
+                Back
+              </ThemedText>
+            </Pressable>
+          ) : (
+            <View style={[styles.topAction, styles.topBack]} />
+          )}
+          <View style={styles.progress}>
+            {[0, 1, 2].map((i) => (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  {
+                    backgroundColor: i === step ? theme.primary : theme.border,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+          <Pressable
+            onPress={complete}
+            style={[styles.topAction, styles.topSkip]}
+          >
+            <ThemedText themeColor="mutedForeground" style={styles.backText}>
+              Skip
+            </ThemedText>
+          </Pressable>
         </View>
 
         <View style={styles.body}>
@@ -99,29 +123,6 @@ export default function OnboardingScreen() {
         </View>
 
         <View style={styles.footer}>
-          <View style={styles.footerRow}>
-            {step > 0 ? (
-              <Pressable
-                onPress={() => setStep((s) => (s === 2 ? 1 : 0))}
-                style={styles.backButton}
-              >
-                <ThemedText
-                  themeColor="mutedForeground"
-                  style={styles.backText}
-                >
-                  Back
-                </ThemedText>
-              </Pressable>
-            ) : (
-              <View style={styles.backButton} />
-            )}
-            <Pressable onPress={complete} style={styles.skipButton}>
-              <ThemedText themeColor="mutedForeground" style={styles.backText}>
-                {step === 0 ? "Skip for now" : "Skip"}
-              </ThemedText>
-            </Pressable>
-          </View>
-
           <Pressable
             onPress={
               step === 2 ? complete : () => setStep((s) => (s === 0 ? 1 : 2))
@@ -385,11 +386,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     justifyContent: "space-between",
   },
+  topBar: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: Spacing.one,
+  },
   progress: {
     flexDirection: "row",
     justifyContent: "center",
     gap: Spacing.two,
-    marginTop: Spacing.two,
+    position: "absolute",
   },
   dot: { width: 8, height: 8, borderRadius: Radius.full },
   body: { flex: 1, justifyContent: "center" },
@@ -433,15 +440,14 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: 6,
   },
-  footer: { paddingBottom: Spacing.five, gap: Spacing.two },
-  footerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    minHeight: 32,
+  footer: { paddingBottom: Spacing.five },
+  topAction: {
+    position: "absolute",
+    minWidth: 56,
+    paddingVertical: Spacing.two,
   },
-  backButton: { paddingVertical: Spacing.one },
-  skipButton: { paddingVertical: Spacing.one },
+  topBack: { left: 0, alignItems: "flex-start" },
+  topSkip: { right: 0, alignItems: "flex-end" },
   backText: { fontFamily: Fonts.sansMedium, fontSize: 14 },
   cta: {
     height: 54,

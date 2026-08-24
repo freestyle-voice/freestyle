@@ -8,10 +8,12 @@ const { json, request } = vi.hoisted(() => ({
 vi.mock("./client", () => ({ cloud: { json, request } }));
 
 import {
+  createScheduledTask,
   deleteScheduledTask,
   listScheduledTasks,
   runScheduledTask,
   setScheduledTaskEnabled,
+  updateScheduledTask,
 } from "./scheduled";
 
 describe("mobile scheduled-task client", () => {
@@ -42,6 +44,40 @@ describe("mobile scheduled-task client", () => {
     });
   });
 
+  it("creates and edits a task with the same API contract as desktop", async () => {
+    json
+      .mockResolvedValueOnce({ task: { id: "task-1", name: "Morning" } })
+      .mockResolvedValueOnce({ task: { id: "task-1", name: "Daily" } });
+
+    await expect(
+      createScheduledTask({
+        name: "Morning",
+        instruction: "Check priorities",
+        schedule: "Every morning at 8",
+        cron: "0 8 * * *",
+        timezone: "Asia/Kolkata",
+      }),
+    ).resolves.toEqual({ id: "task-1", name: "Morning" });
+    await expect(
+      updateScheduledTask("task-1", { name: "Daily" }),
+    ).resolves.toEqual({ id: "task-1", name: "Daily" });
+
+    expect(json).toHaveBeenNthCalledWith(1, "/v2/scheduled/tasks", {
+      method: "POST",
+      json: {
+        name: "Morning",
+        instruction: "Check priorities",
+        schedule: "Every morning at 8",
+        cron: "0 8 * * *",
+        timezone: "Asia/Kolkata",
+      },
+    });
+    expect(json).toHaveBeenNthCalledWith(2, "/v2/scheduled/tasks/task-1", {
+      method: "PATCH",
+      json: { name: "Daily" },
+    });
+  });
+
   it("uses the no-content delete route", async () => {
     request.mockResolvedValueOnce(new Response(null, { status: 204 }));
 
@@ -58,12 +94,35 @@ describe("mobile scheduled-task client", () => {
       notificationId: null,
     });
     await expect(runScheduledTask("task-1")).resolves.toEqual({
-      ok: true,
       threadId: "thread-1",
       notificationId: null,
     });
     expect(json).toHaveBeenCalledWith("/v2/scheduled/tasks/task-1/run", {
       method: "POST",
     });
+  });
+
+  it("waits for an asynchronously queued run before opening its brief", async () => {
+    json
+      .mockResolvedValueOnce({ ok: true, runId: "run-1" })
+      .mockResolvedValueOnce({
+        run: {
+          id: "run-1",
+          status: "succeeded",
+          threadId: "thread-1",
+          notificationId: "notice-1",
+          error: null,
+          startedAt: 1,
+          completedAt: 2,
+        },
+      });
+
+    await expect(
+      runScheduledTask("task-1", { pollIntervalMs: 0 }),
+    ).resolves.toEqual({ threadId: "thread-1", notificationId: "notice-1" });
+    expect(json).toHaveBeenNthCalledWith(
+      2,
+      "/v2/scheduled/tasks/task-1/runs/run-1",
+    );
   });
 });

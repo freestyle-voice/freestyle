@@ -1,3 +1,4 @@
+import { CloudRequestError } from "@freestyle-voice/utils/cloud";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { request, json } = vi.hoisted(() => ({
@@ -6,6 +7,7 @@ const { request, json } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/cloud/client", () => ({ cloud: { json, request } }));
+vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 
 import {
   getLatestThread,
@@ -63,6 +65,12 @@ describe("mobile Remix cloud client", () => {
     expect(json).toHaveBeenCalledWith("/v2/threads/thread-1");
   });
 
+  it("treats a cleared thread as unavailable instead of a load failure", async () => {
+    json.mockRejectedValueOnce(new CloudRequestError(404, "Not found"));
+
+    await expect(getThread("cleared-thread")).resolves.toBeNull();
+  });
+
   it("streams generated text through the durable agent route", async () => {
     request.mockResolvedValueOnce(
       responseWithEvents([
@@ -95,6 +103,10 @@ describe("mobile Remix cloud client", () => {
       "/v2/agent",
       expect.objectContaining({ method: "POST" }),
     );
+    const body = JSON.parse(request.mock.calls[0]?.[1]?.body as string) as {
+      client?: { platform?: string };
+    };
+    expect(body.client?.platform).toMatch(/^(ios|android)$/);
   });
 
   it("holds an insert request for the keyboard instead of treating it as an app paste", async () => {
@@ -121,6 +133,7 @@ describe("mobile Remix cloud client", () => {
         },
       ],
       threadId: "thread-123",
+      keyboardInsertion: true,
       signal: new AbortController().signal,
       onEvent: (event) => events.push(event),
     });
@@ -131,5 +144,24 @@ describe("mobile Remix cloud client", () => {
       name: "insert_at_cursor",
       input: { text: "Ready to paste" },
     });
+    const body = JSON.parse(request.mock.calls[0]?.[1]?.body as string) as {
+      client?: { supportsKeyboardInsertion?: boolean };
+    };
+    expect(body.client?.supportsKeyboardInsertion).toBe(true);
+  });
+
+  it("keeps temporary request rate limits distinct from usage limits", async () => {
+    request.mockResolvedValueOnce(
+      new Response(JSON.stringify({ code: "rate_limited" }), { status: 429 }),
+    );
+
+    await expect(
+      runRemixTurn({
+        messages: [],
+        threadId: "thread-123",
+        signal: new AbortController().signal,
+        onEvent: () => undefined,
+      }),
+    ).rejects.toBeInstanceOf(CloudRequestError);
   });
 });

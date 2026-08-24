@@ -4,6 +4,7 @@ import {
   CloudUsageError,
 } from "@freestyle-voice/utils/cloud";
 import { DefaultChatTransport, type UIMessage } from "ai";
+import { Platform } from "react-native";
 
 import { cloud } from "@/lib/cloud/client";
 
@@ -14,6 +15,11 @@ import type {
 } from "./types";
 
 const THREAD_PAGE_SIZE = 24;
+const MOBILE_AGENT_CLIENT = {
+  // The Cloud agent must not advertise desktop-local tools or Brain storage to
+  // a mobile surface that cannot execute or expose either capability.
+  platform: Platform.OS === "android" ? "android" : "ios",
+} as const;
 
 export type RemixThread = { id: string; messages: UIMessage[] };
 
@@ -25,10 +31,17 @@ export async function getLatestThread(): Promise<RemixThread | null> {
 }
 
 export async function getThread(id: string): Promise<RemixThread | null> {
-  const result = await cloud.json<{ thread: RemixThread | null }>(
-    `/v2/threads/${encodeURIComponent(id)}`,
-  );
-  return result.thread;
+  try {
+    const result = await cloud.json<{ thread: RemixThread | null }>(
+      `/v2/threads/${encodeURIComponent(id)}`,
+    );
+    return result.thread;
+  } catch (error) {
+    // A thread can be cleared from another client while this screen is open.
+    // Treat the Cloud's 404 as an unavailable thread, not a failed request.
+    if (error instanceof CloudRequestError && error.status === 404) return null;
+    throw error;
+  }
 }
 
 export async function listThreads({
@@ -49,10 +62,18 @@ export async function listThreads({
 function remixTransport(
   threadId: string,
   firstTurn: boolean,
+  keyboardInsertion: boolean,
 ): DefaultChatTransport<UIMessage> {
   return new DefaultChatTransport({
     api: "/v2/agent",
-    body: { threadId, firstTurn },
+    body: {
+      threadId,
+      firstTurn,
+      client: {
+        ...MOBILE_AGENT_CLIENT,
+        ...(keyboardInsertion ? { supportsKeyboardInsertion: true } : {}),
+      },
+    },
     fetch: async (_input, init) => {
       const response = await cloud.request("/v2/agent", {
         method: init?.method ?? "POST",
@@ -63,8 +84,12 @@ function remixTransport(
       if (response.status === 401) throw new CloudAuthError();
       if (response.status === 429) {
         const payload = (await response.json().catch(() => null)) as {
+          code?: unknown;
           resetsAt?: unknown;
         } | null;
+        if (payload?.code === "rate_limited") {
+          throw new CloudRequestError(429, "Too many requests");
+        }
         throw new CloudUsageError(
           typeof payload?.resetsAt === "string" ? payload.resetsAt : null,
         );
@@ -84,16 +109,23 @@ export async function runRemixTurn({
   messages,
   threadId,
   firstTurn = false,
+  keyboardInsertion = false,
   signal,
   onEvent,
 }: {
   messages: UIMessage[];
   threadId: string;
   firstTurn?: boolean;
+  /** Only the keyboard can receive the final insertion tool. */
+  keyboardInsertion?: boolean;
   signal: AbortSignal;
   onEvent: (event: RemixStreamEvent) => void;
 }): Promise<void> {
-  const stream = await remixTransport(threadId, firstTurn).sendMessages({
+  const stream = await remixTransport(
+    threadId,
+    firstTurn,
+    keyboardInsertion,
+  ).sendMessages({
     chatId: "mobile-remix",
     messages,
     abortSignal: signal,

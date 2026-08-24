@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -97,22 +97,44 @@ export default function HistoryScreen() {
   const [search, setSearch] = useState("");
   const [now, setNow] = useState(Date.now);
 
-  const {
-    data: agentActivity = [],
-    isLoading: agentActivityLoading,
-    isError: agentActivityError,
-    refetch: refetchAgentActivity,
-  } = useQuery({
-    queryKey: ["agent-activity"],
-    queryFn: async () => {
-      const [conversations, briefs] = await Promise.all([
-        listThreads({ origin: "user" }),
-        listThreads({ origin: "scheduled" }),
-      ]);
-      return mergeActivity(conversations.threads, briefs.threads);
-    },
+  const conversations = useInfiniteQuery({
+    queryKey: ["agent-threads", "user"],
+    initialPageParam: undefined as number | undefined,
+    queryFn: ({ pageParam }) =>
+      listThreads({ origin: "user", cursor: pageParam }),
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
     retry: 1,
   });
+  const briefs = useInfiniteQuery({
+    queryKey: ["agent-threads", "scheduled"],
+    initialPageParam: undefined as number | undefined,
+    queryFn: ({ pageParam }) =>
+      listThreads({ origin: "scheduled", cursor: pageParam }),
+    getNextPageParam: (page) => page.nextCursor ?? undefined,
+    retry: 1,
+  });
+  const agentActivity = useMemo(
+    () =>
+      mergeActivity(
+        conversations.data?.pages.flatMap((page) => page.threads) ?? [],
+        briefs.data?.pages.flatMap((page) => page.threads) ?? [],
+      ),
+    [briefs.data?.pages, conversations.data?.pages],
+  );
+  const agentActivityLoading = conversations.isLoading || briefs.isLoading;
+  const agentActivityError = conversations.isError || briefs.isError;
+  const hasMoreActivity = conversations.hasNextPage || briefs.hasNextPage;
+  const loadingMoreActivity =
+    conversations.isFetchingNextPage || briefs.isFetchingNextPage;
+  const refetchAgentActivity = () =>
+    Promise.all([conversations.refetch(), briefs.refetch()]);
+  const loadMoreActivity = () =>
+    Promise.all([
+      conversations.hasNextPage
+        ? conversations.fetchNextPage()
+        : Promise.resolve(),
+      briefs.hasNextPage ? briefs.fetchNextPage() : Promise.resolve(),
+    ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -206,7 +228,7 @@ export default function HistoryScreen() {
           </Card>
         ) : (
           <Card style={styles.listCard}>
-            {agentActivity.slice(0, 12).map((entry, index) => {
+            {agentActivity.map((entry, index) => {
               const Icon = entry.kind === "brief" ? FileClock : Bot;
               return (
                 <View key={entry.id}>
@@ -252,6 +274,21 @@ export default function HistoryScreen() {
                 </View>
               );
             })}
+            {hasMoreActivity ? (
+              <Pressable
+                onPress={() => void loadMoreActivity()}
+                disabled={loadingMoreActivity}
+                style={[styles.loadMore, { borderColor: theme.border }]}
+                accessibilityRole="button"
+                accessibilityLabel="Load more Remix activity"
+              >
+                <ThemedText
+                  style={[styles.loadMoreText, { color: theme.primary }]}
+                >
+                  {loadingMoreActivity ? "Loading…" : "Show more"}
+                </ThemedText>
+              </Pressable>
+            ) : null}
           </Card>
         )}
       </View>
@@ -471,6 +508,15 @@ const styles = StyleSheet.create({
   agentRowCopy: { flex: 1, gap: 2 },
   agentTitle: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   agentMeta: { fontFamily: Fonts.mono, fontSize: 11 },
+  loadMore: {
+    alignSelf: "center",
+    minHeight: 36,
+    justifyContent: "center",
+    paddingHorizontal: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  loadMoreText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
   statsRow: {
     flexDirection: "row",
     justifyContent: "space-between",

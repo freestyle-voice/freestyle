@@ -1,11 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Bell, Check, X } from "lucide-react-native";
+import { Bell, Check, Clock, X } from "lucide-react-native";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
 
 import {
   Card,
   RetryLoadState,
+  SectionTitle,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
@@ -13,6 +14,7 @@ import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
   dismissNotification,
+  listNotificationHistory,
   listNotifications,
   openNotification,
 } from "@/lib/cloud/notifications";
@@ -31,8 +33,24 @@ export default function NotificationsScreen() {
     queryFn: listNotifications,
     retry: 1,
   });
+  const { data: history = [] } = useQuery({
+    queryKey: ["agent-notification-history"],
+    queryFn: listNotificationHistory,
+    retry: 1,
+  });
   const invalidate = () =>
-    void queryClient.invalidateQueries({ queryKey: ["agent-notifications"] });
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["agent-notifications"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["agent-notification-history"],
+      }),
+    ]);
+  const previous = history.filter(
+    (notification) =>
+      notification.dismissedAt !== null ||
+      notification.openedAt !== null ||
+      (notification.expiresAt !== null && notification.expiresAt <= Date.now()),
+  );
   const open = useMutation({
     mutationFn: openNotification,
     onSuccess: invalidate,
@@ -124,6 +142,64 @@ export default function NotificationsScreen() {
           </Card>
         ))
       )}
+
+      {previous.length > 0 ? (
+        <Card>
+          <SectionTitle icon={Clock} title="Earlier" />
+          <ThemedText themeColor="mutedForeground" style={styles.historyHint}>
+            Previously opened, dismissed, or expired updates. Open a brief to
+            revisit its conversation.
+          </ThemedText>
+          {previous.map((notification, index) => {
+            const threadId = notification.payload?.threadId;
+            return (
+              <Pressable
+                key={notification.id}
+                onPress={
+                  threadId
+                    ? () =>
+                        router.push({
+                          pathname: "/(app)/agent-thread/[id]",
+                          params: { id: threadId },
+                        })
+                    : undefined
+                }
+                disabled={!threadId}
+                accessibilityRole={threadId ? "button" : undefined}
+                accessibilityLabel={
+                  threadId
+                    ? `Open previous notification: ${notification.title}`
+                    : undefined
+                }
+                style={({ pressed }) => [
+                  styles.historyRow,
+                  index > 0 && {
+                    borderTopWidth: StyleSheet.hairlineWidth,
+                    borderColor: theme.border,
+                  },
+                  threadId && pressed && { opacity: 0.6 },
+                ]}
+              >
+                <View style={styles.copy}>
+                  <ThemedText style={styles.title} numberOfLines={1}>
+                    {notification.title}
+                  </ThemedText>
+                  <ThemedText
+                    themeColor="mutedForeground"
+                    style={styles.body}
+                    numberOfLines={2}
+                  >
+                    {notification.body}
+                  </ThemedText>
+                </View>
+                <ThemedText themeColor="mutedForeground" style={styles.state}>
+                  {notification.openedAt ? "Opened" : "Cleared"}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </Card>
+      ) : null}
     </SettingsScreenScaffold>
   );
 }
@@ -139,6 +215,15 @@ const styles = StyleSheet.create({
   copy: { flex: 1, gap: Spacing.one },
   title: { fontFamily: Fonts.sansMedium, fontSize: 16 },
   body: { fontSize: 14, lineHeight: 20 },
+  historyHint: { fontSize: 13, lineHeight: 19 },
+  historyRow: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
+  },
+  state: { fontFamily: Fonts.mono, fontSize: 10 },
   dismiss: {
     width: 30,
     height: 30,

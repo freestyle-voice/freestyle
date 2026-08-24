@@ -6,6 +6,7 @@ vi.mock("./client", () => ({ cloud: { json } }));
 
 import {
   dismissNotification,
+  listNotificationHistory,
   listNotifications,
   openNotification,
 } from "./notifications";
@@ -17,6 +18,15 @@ describe("mobile notification inbox client", () => {
     json.mockResolvedValueOnce({ notifications: [{ id: "notice-1" }] });
     await expect(listNotifications()).resolves.toEqual([{ id: "notice-1" }]);
     expect(json).toHaveBeenCalledWith("/v2/notifications");
+  });
+
+  it("loads the complete notification history for reopened briefs", async () => {
+    json.mockResolvedValueOnce({ notifications: [{ id: "notice-1" }] });
+
+    await expect(listNotificationHistory()).resolves.toEqual([
+      { id: "notice-1" },
+    ]);
+    expect(json).toHaveBeenCalledWith("/v2/notifications/history");
   });
 
   it("records open and dismiss actions separately", async () => {

@@ -1,7 +1,23 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { CirclePlay, Pause, Play, Sparkles, Trash2 } from "lucide-react-native";
-import { Alert, Pressable, StyleSheet, Switch, View } from "react-native";
+import {
+  CirclePlay,
+  Pause,
+  Pencil,
+  Play,
+  Plus,
+  Sparkles,
+  Trash2,
+} from "lucide-react-native";
+import { useState } from "react";
+import {
+  Alert,
+  Pressable,
+  StyleSheet,
+  Switch,
+  TextInput,
+  View,
+} from "react-native";
 
 import {
   Card,
@@ -13,16 +29,49 @@ import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
+  createScheduledTask,
   deleteScheduledTask,
   listScheduledTasks,
   runScheduledTask,
+  type ScheduledTask,
+  type ScheduledTaskInput,
   setScheduledTaskEnabled,
+  updateScheduledTask,
 } from "@/lib/cloud/scheduled";
+
+type AutomationEditor =
+  | { id: null; draft: ScheduledTaskInput }
+  | { id: string; draft: ScheduledTaskInput };
+
+function newAutomationDraft(): ScheduledTaskInput {
+  return {
+    name: "",
+    instruction: "",
+    schedule: "",
+    cron: null,
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  };
+}
+
+function draftFromTask(task: ScheduledTask): ScheduledTaskInput {
+  return {
+    name: task.name,
+    instruction: task.instruction,
+    schedule: task.schedule,
+    cron: task.cron,
+    timezone: task.timezone,
+  };
+}
 
 export default function AutomationsScreen() {
   const theme = useTheme();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const [editor, setEditor] = useState<AutomationEditor | null>(null);
+  const [lastRun, setLastRun] = useState<{
+    taskId: string;
+    threadId: string | null;
+  } | null>(null);
   const {
     data: tasks = [],
     isLoading,
@@ -44,15 +93,21 @@ export default function AutomationsScreen() {
     mutationFn: deleteScheduledTask,
     onSuccess: invalidate,
   });
-  const run = useMutation({
-    mutationFn: runScheduledTask,
-    onSuccess: (result) => {
+  const save = useMutation({
+    mutationFn: (next: AutomationEditor) =>
+      next.id
+        ? updateScheduledTask(next.id, next.draft)
+        : createScheduledTask(next.draft),
+    onSuccess: () => {
+      setEditor(null);
       invalidate();
-      if (result.threadId)
-        router.push({
-          pathname: "/(app)/agent-thread/[id]",
-          params: { id: result.threadId },
-        });
+    },
+  });
+  const run = useMutation({
+    mutationFn: (taskId: string) => runScheduledTask(taskId),
+    onSuccess: (result, taskId) => {
+      invalidate();
+      setLastRun({ taskId, threadId: result.threadId });
     },
   });
 
@@ -65,24 +120,51 @@ export default function AutomationsScreen() {
       subtitle="Remix can do recurring work even when the app is closed. It only notifies you when it finds something useful."
     >
       <Card>
-        <SectionTitle icon={Sparkles} title="Create with Remix" />
+        <SectionTitle icon={Sparkles} title="Create an automation" />
         <ThemedText themeColor="mutedForeground" style={styles.description}>
-          Ask Remix to create a recurring brief, follow-up, or research task. It
-          will confirm the schedule in the conversation.
+          Set up a recurring brief, follow-up, or research task here, or ask
+          Remix to create one in a conversation.
         </ThemedText>
-        <Pressable
-          onPress={() => router.push("/(app)/(tabs)")}
-          style={[styles.create, { backgroundColor: theme.primary }]}
-          accessibilityRole="button"
-        >
-          <Sparkles size={16} color={theme.primaryForeground} />
-          <ThemedText
-            style={[styles.createText, { color: theme.primaryForeground }]}
+        <View style={styles.createActions}>
+          <Pressable
+            onPress={() => setEditor({ id: null, draft: newAutomationDraft() })}
+            style={[styles.create, { backgroundColor: theme.primary }]}
+            accessibilityRole="button"
           >
-            Ask Remix
-          </ThemedText>
-        </Pressable>
+            <Plus size={16} color={theme.primaryForeground} />
+            <ThemedText
+              style={[styles.createText, { color: theme.primaryForeground }]}
+            >
+              New automation
+            </ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={() => router.push("/(app)/(tabs)")}
+            style={[styles.secondaryAction, { borderColor: theme.border }]}
+            accessibilityRole="button"
+          >
+            <Sparkles size={15} color={theme.primary} />
+            <ThemedText style={[styles.createText, { color: theme.primary }]}>
+              Ask Remix
+            </ThemedText>
+          </Pressable>
+        </View>
       </Card>
+
+      {editor ? (
+        <AutomationForm
+          editor={editor}
+          busy={save.isPending}
+          onChange={setEditor}
+          onCancel={() => setEditor(null)}
+          onSave={() =>
+            save.mutate(editor, {
+              onError: (error) =>
+                reportError("Couldn't save automation", error),
+            })
+          }
+        />
+      ) : null}
 
       <Card>
         <SectionTitle icon={CirclePlay} title="Your automations" />
@@ -144,6 +226,21 @@ export default function AutomationsScreen() {
               <View style={styles.actions}>
                 <Pressable
                   onPress={() =>
+                    setEditor({ id: task.id, draft: draftFromTask(task) })
+                  }
+                  disabled={save.isPending || run.isPending}
+                  style={[styles.action, { borderColor: theme.border }]}
+                  accessibilityRole="button"
+                >
+                  <Pencil size={14} color={theme.primary} />
+                  <ThemedText
+                    style={[styles.actionText, { color: theme.primary }]}
+                  >
+                    Edit
+                  </ThemedText>
+                </Pressable>
+                <Pressable
+                  onPress={() =>
                     run.mutate(task.id, {
                       onError: (error) =>
                         reportError("Couldn't run automation", error),
@@ -175,6 +272,24 @@ export default function AutomationsScreen() {
                     Run now
                   </ThemedText>
                 </Pressable>
+                {lastRun?.taskId === task.id && lastRun.threadId ? (
+                  <Pressable
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(app)/agent-thread/[id]",
+                        params: { id: lastRun.threadId ?? "" },
+                      })
+                    }
+                    style={[styles.action, { borderColor: theme.border }]}
+                    accessibilityRole="button"
+                  >
+                    <ThemedText
+                      style={[styles.actionText, { color: theme.primary }]}
+                    >
+                      View brief
+                    </ThemedText>
+                  </Pressable>
+                ) : null}
                 <Pressable
                   onPress={() =>
                     Alert.alert(
@@ -217,6 +332,141 @@ export default function AutomationsScreen() {
   );
 }
 
+function AutomationForm({
+  editor,
+  busy,
+  onChange,
+  onCancel,
+  onSave,
+}: {
+  editor: AutomationEditor;
+  busy: boolean;
+  onChange: (editor: AutomationEditor) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const theme = useTheme();
+  const valid =
+    editor.draft.name.trim().length > 0 &&
+    editor.draft.instruction.trim().length > 0 &&
+    editor.draft.schedule.trim().length > 0 &&
+    editor.draft.timezone.trim().length > 0;
+  const set = <K extends keyof ScheduledTaskInput>(
+    key: K,
+    value: ScheduledTaskInput[K],
+  ) => onChange({ ...editor, draft: { ...editor.draft, [key]: value } });
+
+  return (
+    <Card>
+      <SectionTitle
+        icon={Sparkles}
+        title={editor.id ? "Edit automation" : "New automation"}
+      />
+      <ThemedText themeColor="mutedForeground" style={styles.description}>
+        Freestyle will run this even when the app is closed. It only notifies
+        you when there is something useful to share.
+      </ThemedText>
+      <AutomationField
+        label="Name"
+        value={editor.draft.name}
+        placeholder="Morning brief"
+        onChangeText={(value) => set("name", value)}
+      />
+      <AutomationField
+        label="Schedule, in your words"
+        value={editor.draft.schedule}
+        placeholder="Every weekday at 8am"
+        onChangeText={(value) => set("schedule", value)}
+      />
+      <AutomationField
+        label="Cron (optional)"
+        value={editor.draft.cron ?? ""}
+        placeholder="0 8 * * 1-5"
+        onChangeText={(value) => set("cron", value.trim() || null)}
+        autoCapitalize="none"
+      />
+      <AutomationField
+        label="Timezone"
+        value={editor.draft.timezone}
+        placeholder="Asia/Kolkata"
+        onChangeText={(value) => set("timezone", value)}
+        autoCapitalize="none"
+      />
+      <AutomationField
+        label="What Freestyle does"
+        value={editor.draft.instruction}
+        placeholder="Check my calendar and priority email, then send a concise brief."
+        onChangeText={(value) => set("instruction", value)}
+        multiline
+      />
+      <View style={styles.formActions}>
+        <Pressable
+          onPress={onCancel}
+          disabled={busy}
+          style={[styles.secondaryAction, { borderColor: theme.border }]}
+          accessibilityRole="button"
+        >
+          <ThemedText>Cancel</ThemedText>
+        </Pressable>
+        <Pressable
+          onPress={onSave}
+          disabled={!valid || busy}
+          style={[
+            styles.create,
+            { backgroundColor: theme.primary },
+            (!valid || busy) && styles.disabled,
+          ]}
+          accessibilityRole="button"
+        >
+          <ThemedText
+            style={[styles.createText, { color: theme.primaryForeground }]}
+          >
+            {busy ? "Saving…" : "Save automation"}
+          </ThemedText>
+        </Pressable>
+      </View>
+    </Card>
+  );
+}
+
+function AutomationField({
+  label,
+  value,
+  placeholder,
+  onChangeText,
+  multiline = false,
+  autoCapitalize = "sentences",
+}: {
+  label: string;
+  value: string;
+  placeholder: string;
+  onChangeText: (value: string) => void;
+  multiline?: boolean;
+  autoCapitalize?: "none" | "sentences";
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.field}>
+      <ThemedText style={styles.fieldLabel}>{label}</ThemedText>
+      <TextInput
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={theme.mutedForeground}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={false}
+        multiline={multiline}
+        textAlignVertical={multiline ? "top" : "center"}
+        style={[
+          styles.input,
+          multiline && styles.multilineInput,
+          { borderColor: theme.border, color: theme.foreground },
+        ]}
+      />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   description: { fontSize: 14, lineHeight: 21 },
   create: {
@@ -229,6 +479,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   createText: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
+  createActions: { flexDirection: "row", flexWrap: "wrap", gap: Spacing.two },
+  secondaryAction: {
+    minHeight: 40,
+    paddingHorizontal: Spacing.three,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.one,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
   task: { gap: Spacing.two, paddingVertical: Spacing.two },
   taskTop: { flexDirection: "row", alignItems: "center", gap: Spacing.two },
   taskCopy: { flex: 1, gap: 3 },
@@ -247,4 +507,21 @@ const styles = StyleSheet.create({
   },
   actionText: { fontFamily: Fonts.sansMedium, fontSize: 12 },
   disabled: { opacity: 0.5 },
+  field: { gap: Spacing.one },
+  fieldLabel: { fontFamily: Fonts.sansMedium, fontSize: 13 },
+  input: {
+    minHeight: 42,
+    paddingHorizontal: Spacing.two,
+    borderWidth: 1,
+    borderRadius: Radius.md,
+    fontFamily: Fonts.sans,
+    fontSize: 14,
+  },
+  multilineInput: { minHeight: 90, paddingVertical: Spacing.two },
+  formActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    flexWrap: "wrap",
+    gap: Spacing.two,
+  },
 });

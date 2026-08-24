@@ -6,13 +6,28 @@ export type AgentNotification = {
   title: string;
   body: string;
   payload: { threadId?: string; url?: string } | null;
-  createdAt: string;
+  createdAt: number;
+  expiresAt: number | null;
+};
+
+export type AgentNotificationHistory = AgentNotification & {
+  dismissedAt: number | null;
+  openedAt: number | null;
 };
 
 export async function listNotifications(): Promise<AgentNotification[]> {
   const result = await cloud.json<{ notifications: AgentNotification[] }>(
     "/v2/notifications",
   );
+  return result.notifications;
+}
+
+export async function listNotificationHistory(): Promise<
+  AgentNotificationHistory[]
+> {
+  const result = await cloud.json<{
+    notifications: AgentNotificationHistory[];
+  }>("/v2/notifications/history");
   return result.notifications;
 }
 

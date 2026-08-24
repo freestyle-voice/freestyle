@@ -236,11 +236,25 @@ export function useKeyboardDictationBridge(
         messages: nextMessages,
         threadId: agentThreadIdRef.current,
         firstTurn,
+        keyboardInsertion: true,
         signal: controller.signal,
         onEvent: (event) => {
-          if (event.type !== "text") return;
-          response += event.text;
-          publish("transcribing", { partial: response });
+          if (event.type === "text") {
+            response += event.text;
+            publish("transcribing", { partial: response });
+            return;
+          }
+          if (event.type !== "tool-result-needed") return;
+          const text =
+            typeof event.input === "object" &&
+            event.input !== null &&
+            "text" in event.input &&
+            typeof event.input.text === "string"
+              ? event.input.text.trim()
+              : "";
+          if (!text) return;
+          response = `FINAL: ${text}`;
+          publish("transcribing", { partial: text });
         },
       })
         .then(() => {

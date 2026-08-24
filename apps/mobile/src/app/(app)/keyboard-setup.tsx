@@ -96,15 +96,17 @@ export function KeyboardSetupScreen() {
               ? "Freestyle can record your dictation."
               : micStatus === "denied"
                 ? "Denied — tap to open Settings and enable it."
-                : "Tap to grant microphone access."}
+                : "Set up microphone access to use voice dictation."}
           </ThemedText>
         </View>
         {micStatus === "granted" ? (
           <Check color={theme.primary} size={18} />
         ) : (
-          <ThemedText type="eyebrow" themeColor="primary">
-            Grant
-          </ThemedText>
+          <View style={[styles.setupPill, { borderColor: theme.primary }]}>
+            <ThemedText style={[styles.setupText, { color: theme.primary }]}>
+              Setup
+            </ThemedText>
+          </View>
         )}
       </Pressable>
 
@@ -210,6 +212,13 @@ const styles = StyleSheet.create({
   switchLabel: { flex: 1 },
   rowLabel: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
   rowHint: { fontSize: 13, lineHeight: 19, marginTop: 2 },
+  setupPill: {
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  setupText: { fontFamily: Fonts.sansSemiBold, fontSize: 12 },
   steps: { gap: Spacing.three, marginTop: Spacing.two },
   step: { flexDirection: "row", alignItems: "flex-start", gap: Spacing.three },
   badge: {

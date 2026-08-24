@@ -1,23 +1,22 @@
 import { Redirect } from "expo-router";
-import { ActivityIndicator } from "react-native";
 
-import { ThemedView } from "@/components/themed-view";
 import { useAuth } from "@/hooks/use-auth";
-import { useTheme } from "@/hooks/use-theme";
+import { useOnboarding } from "@/lib/onboarding";
+import { resolveStartupRoute } from "@/lib/startup-route";
 
 export default function Index() {
-  const theme = useTheme();
   const { signedIn, loading } = useAuth();
+  const { ready: onboardingReady, complete: onboardingComplete } =
+    useOnboarding();
+  const route = resolveStartupRoute({
+    authLoading: loading,
+    signedIn,
+    onboardingReady,
+    onboardingComplete,
+  });
 
-  if (loading) {
-    return (
-      <ThemedView
-        style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
-      >
-        <ActivityIndicator color={theme.primary} />
-      </ThemedView>
-    );
-  }
+  // RootNavigator keeps the launch screen visible while this is unresolved.
+  if (!route) return null;
 
-  return <Redirect href={signedIn ? "/(app)/(tabs)" : "/sign-in"} />;
+  return <Redirect href={route} />;
 }

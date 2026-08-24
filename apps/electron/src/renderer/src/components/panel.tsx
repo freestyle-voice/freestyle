@@ -21,6 +21,7 @@ import {
   DECLINED_OUTPUT,
   describeAgentAction,
   executeAgentTool,
+  requestAgentFileSaveGrant,
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
 import { apiFetch, initApiBase, refreshApiBase } from "@renderer/lib/api";
@@ -986,7 +987,20 @@ function PanelInner({
     );
     void (async () => {
       const startedAt = Date.now();
-      const output = allowed ? await executeAgentTool(call) : DECLINED_OUTPUT;
+      const grant =
+        allowed && call.toolName === "save_file"
+          ? await requestAgentFileSaveGrant(call)
+          : null;
+      const output = !allowed
+        ? DECLINED_OUTPUT
+        : grant && grant.ok !== true
+          ? grant
+          : await executeAgentTool(call, {
+              saveFileGrant:
+                grant && typeof grant.grant === "string"
+                  ? grant.grant
+                  : undefined,
+            });
       reportAgentToolResult(call, output, startedAt);
       addToolOutput({
         tool: call.toolName,

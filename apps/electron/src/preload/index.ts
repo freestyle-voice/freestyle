@@ -20,9 +20,17 @@ const api = {
     ipcRenderer.invoke("paste:text", text, appContext ?? null),
   copyText: (text: string, appContext?: string | null): Promise<void> =>
     ipcRenderer.invoke("copy:text", text, appContext ?? null),
-  saveAgentFile: (input: {
+  requestAgentFileSaveGrant: (input: {
+    toolCallId: string;
     filename: string;
     content: string;
+  }): Promise<{ ok: boolean; grant?: string; reason?: string }> =>
+    ipcRenderer.invoke("agent:grant-file-save", input),
+  saveAgentFile: (input: {
+    toolCallId: string;
+    filename: string;
+    content: string;
+    grant: string;
   }): Promise<{ ok: boolean; filename?: string; reason?: string }> =>
     ipcRenderer.invoke("agent:save-file", input),
   prepareSystemAudio: (mode: ActiveAudioPlaybackMode): Promise<void> =>

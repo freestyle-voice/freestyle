@@ -29,6 +29,10 @@ const SAFE_RESULT_CATEGORIES = new Set([
   "is-a-directory",
   "ambiguous",
   "tool-failed",
+  "approval-required",
+  "approval-denied",
+  "approval-used",
+  "approval-expired",
 ]);
 
 const str = (input: Record<string, unknown>, key: string): string =>
@@ -102,8 +106,38 @@ async function runOsTool(
   return (await res.json()) as Record<string, unknown>;
 }
 
+export interface AgentToolExecutionOptions {
+  saveFileGrant?: string;
+}
+
+function saveFileIntent(call: AgentToolCall): {
+  toolCallId: string;
+  filename: string;
+  content: string;
+} | null {
+  const input = (call.input ?? {}) as Record<string, unknown>;
+  if (!str(input, "filename") || typeof input.content !== "string") return null;
+  return {
+    toolCallId: call.toolCallId,
+    filename: str(input, "filename"),
+    content: input.content,
+  };
+}
+
+export async function requestAgentFileSaveGrant(
+  call: AgentToolCall,
+): Promise<Record<string, unknown>> {
+  const intent = saveFileIntent(call);
+  if (!intent) return { ok: false, reason: "bad-args" };
+  return (await window.api.requestAgentFileSaveGrant(intent)) as Record<
+    string,
+    unknown
+  >;
+}
+
 export async function executeAgentTool(
   call: AgentToolCall,
+  { saveFileGrant }: AgentToolExecutionOptions = {},
 ): Promise<Record<string, unknown>> {
   const input = (call.input ?? {}) as Record<string, unknown>;
   const badArgs = (expected: string): Record<string, unknown> => ({
@@ -170,9 +204,12 @@ export async function executeAgentTool(
         if (!str(input, "filename") || typeof input.content !== "string") {
           return badArgs("{ filename: string, content: string }");
         }
+        if (!saveFileGrant) return { ok: false, reason: "approval-required" };
         return (await window.api.saveAgentFile({
+          toolCallId: call.toolCallId,
           filename: str(input, "filename"),
           content: input.content,
+          grant: saveFileGrant,
         })) as Record<string, unknown>;
       default:
         return { ok: false, reason: `unknown tool: ${call.toolName}` };

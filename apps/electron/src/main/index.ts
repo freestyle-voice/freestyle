@@ -1653,7 +1653,25 @@ app.whenReady().then(async () => {
     },
   );
 
-  registerAgentFileIpc(ipcMain, () => app.getPath("downloads"));
+  registerAgentFileIpc(ipcMain, () => app.getPath("downloads"), {
+    isPanelSender: (sender) => sender === panelWindow?.webContents,
+    confirmSave: async ({ filename }) => {
+      const options = {
+        type: "question" as const,
+        title: "Save generated file",
+        message: `Save ${filename} to Downloads?`,
+        detail:
+          "Freestyle will save this generated file to your Downloads folder.",
+        buttons: ["Save", "Cancel"],
+        defaultId: 0,
+        cancelId: 1,
+      };
+      const response = panelWindow
+        ? await dialog.showMessageBox(panelWindow, options)
+        : await dialog.showMessageBox(options);
+      return response.response === 0;
+    },
+  });
 
   ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
     if (!isActiveAudioPlaybackMode(mode)) return;

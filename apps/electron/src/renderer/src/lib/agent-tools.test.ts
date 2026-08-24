@@ -8,6 +8,7 @@ import {
   agentToolResultTelemetry,
   agentToolTier,
   executeAgentTool,
+  requestAgentFileSaveGrant,
 } from "./agent-tools";
 
 describe("agent tool approval tiers", () => {
@@ -44,26 +45,56 @@ describe("agent tool approval tiers", () => {
 
 describe("safe Downloads saves", () => {
   const saveAgentFile = vi.fn();
+  const requestSaveGrant = vi.fn();
 
   beforeEach(() => {
     saveAgentFile.mockReset();
-    vi.stubGlobal("window", { api: { saveAgentFile } });
+    requestSaveGrant.mockReset();
+    vi.stubGlobal("window", {
+      api: { saveAgentFile, requestAgentFileSaveGrant: requestSaveGrant },
+    });
   });
 
   afterEach(() => vi.unstubAllGlobals());
 
-  it("passes an approved generated file to the Electron Downloads IPC", async () => {
+  it("passes a main-issued grant bound to the tool call to the Downloads IPC", async () => {
     saveAgentFile.mockResolvedValue({ ok: true, filename: "plan.md" });
 
     await expect(
-      executeAgentTool({
+      executeAgentTool(
+        {
+          toolName: "save_file",
+          toolCallId: "call-1",
+          input: { filename: "plan.md", content: "# Plan" },
+        },
+        { saveFileGrant: "main-grant" },
+      ),
+    ).resolves.toEqual({ ok: true, filename: "plan.md" });
+
+    expect(saveAgentFile).toHaveBeenCalledWith({
+      toolCallId: "call-1",
+      filename: "plan.md",
+      content: "# Plan",
+      grant: "main-grant",
+    });
+  });
+
+  it("asks main to grant the exact approved file operation", async () => {
+    requestSaveGrant.mockResolvedValue({
+      ok: true,
+      grant: "main-grant",
+    });
+
+    await expect(
+      requestAgentFileSaveGrant({
         toolName: "save_file",
         toolCallId: "call-1",
         input: { filename: "plan.md", content: "# Plan" },
       }),
-    ).resolves.toEqual({ ok: true, filename: "plan.md" });
+    ).resolves.toEqual({ ok: true, grant: "main-grant" });
 
-    expect(saveAgentFile).toHaveBeenCalledWith({
+    expect(requestSaveGrant).toHaveBeenCalledWith({
+      toolCallId: "call-1",
       filename: "plan.md",
       content: "# Plan",
     });

@@ -31,6 +31,7 @@ import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
 import { SelectSheet } from "@/components/select-sheet";
 import {
   Card,
+  SettingsGroup,
   SettingsNavRow,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
@@ -138,42 +139,39 @@ export function ProfileContent() {
 
   const content = (
     <>
-      {/* Account */}
-      <Card>
-        <View style={styles.accountHeader}>
-          {user?.image ? (
-            <Image
-              source={{ uri: user.image }}
-              style={styles.avatarImage}
-              accessibilityIgnoresInvertColors
-            />
-          ) : (
-            <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
-              <ThemedText
-                style={[styles.avatarText, { color: theme.accentForeground }]}
-              >
-                {user ? initialsFor(user) : "?"}
-              </ThemedText>
-            </View>
-          )}
-          <View style={styles.accountInfo}>
-            <ThemedText style={styles.accountName} numberOfLines={1}>
-              {user?.name ?? "Signed in"}
+      <View style={styles.accountHero}>
+        {user?.image ? (
+          <Image
+            source={{ uri: user.image }}
+            style={styles.avatarImage}
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
+            <ThemedText
+              style={[styles.avatarText, { color: theme.accentForeground }]}
+            >
+              {user ? initialsFor(user) : "?"}
             </ThemedText>
-            {user?.email ? (
-              <ThemedText
-                themeColor="mutedForeground"
-                style={styles.accountEmail}
-                numberOfLines={1}
-              >
-                {user.email}
-              </ThemedText>
-            ) : null}
           </View>
+        )}
+        <View style={styles.accountInfo}>
+          <ThemedText style={styles.accountName} numberOfLines={1}>
+            {user?.name ?? "Signed in"}
+          </ThemedText>
+          {user?.email ? (
+            <ThemedText
+              themeColor="mutedForeground"
+              style={styles.accountEmail}
+              numberOfLines={1}
+            >
+              {user.email}
+            </ThemedText>
+          ) : null}
         </View>
-      </Card>
+      </View>
 
-      <Card style={styles.workspaceCard}>
+      <SettingsGroup title="Freestyle">
         <SettingsNavRow
           icon={SlidersHorizontal}
           label="Dictation settings"
@@ -199,7 +197,7 @@ export function ProfileContent() {
           onPress={() => router.push("/(app)/notifications")}
           last
         />
-      </Card>
+      </SettingsGroup>
 
       {/* Personal information */}
       {signedIn ? <NameCard currentName={user?.name ?? ""} /> : null}
@@ -333,7 +331,7 @@ export function ProfileContent() {
   );
 
   return (
-    <SettingsScreenScaffold title="Account">{content}</SettingsScreenScaffold>
+    <SettingsScreenScaffold title="Settings">{content}</SettingsScreenScaffold>
   );
 }
 
@@ -897,28 +895,27 @@ function OrganizationCard() {
 }
 
 const styles = StyleSheet.create({
-  accountHeader: {
-    flexDirection: "row",
+  accountHero: {
     alignItems: "center",
-    gap: Spacing.three,
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
   },
   avatar: {
-    width: 48,
-    height: 48,
+    width: 76,
+    height: 76,
     borderRadius: Radius.full,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarImage: {
-    width: 48,
-    height: 48,
+    width: 76,
+    height: 76,
     borderRadius: Radius.full,
   },
-  avatarText: { fontFamily: Fonts.sansSemiBold, fontSize: 17 },
-  accountInfo: { flex: 1 },
-  accountName: { fontFamily: Fonts.serif, fontSize: 22, lineHeight: 24 },
-  accountEmail: { fontSize: 13, marginTop: 3 },
-  workspaceCard: { gap: 0, paddingVertical: Spacing.one },
+  avatarText: { fontFamily: Fonts.sansSemiBold, fontSize: 24 },
+  accountInfo: { alignItems: "center" },
+  accountName: { fontFamily: Fonts.sansSemiBold, fontSize: 22, lineHeight: 27 },
+  accountEmail: { fontSize: 14, marginTop: 2 },
   inlineRow: {
     flexDirection: "row",
     justifyContent: "space-between",

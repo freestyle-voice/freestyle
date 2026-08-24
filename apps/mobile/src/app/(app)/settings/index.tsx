@@ -23,6 +23,7 @@ import {
   Card,
   OptionCard,
   SectionTitle,
+  SettingsGroup,
   SettingsNavRow,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
@@ -164,7 +165,7 @@ export default function SettingsScreen() {
         />
       </Card>
 
-      <Card style={styles.navCard}>
+      <SettingsGroup title="More settings">
         <SettingsNavRow
           icon={Keyboard}
           label="Voice keyboard"
@@ -196,7 +197,7 @@ export default function SettingsScreen() {
           onPress={() => router.push("/(app)/help")}
           last
         />
-      </Card>
+      </SettingsGroup>
 
       <Card>
         <SectionTitle icon={Monitor} title="Appearance" />
@@ -357,7 +358,6 @@ const styles = StyleSheet.create({
   },
   clearLabel: { fontFamily: Fonts.sansMedium, fontSize: 15, flex: 1 },
   clearCount: { fontSize: 12 },
-  navCard: { gap: 0, paddingVertical: Spacing.one },
   toggleTrack: {
     flexDirection: "row",
     borderRadius: Radius.lg,

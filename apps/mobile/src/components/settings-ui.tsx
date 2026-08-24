@@ -1,9 +1,8 @@
 /**
- * Shared building blocks for the settings sub-pages (Profile, Tone,
- * Vocabulary, Dictionary, General). Keeps the visual language — cards with the
- * cloud's faint `ring-foreground/10` hairline, serif screen titles, icon+eyebrow
- * section headers, option cards with a left active marker — consistent across
- * every page.
+ * Shared building blocks for settings and account sub-pages. Their hierarchy is
+ * intentionally close to native mobile settings: a compact navigation bar,
+ * descriptive section labels, and soft grouped surfaces instead of a feed of
+ * bordered product cards.
  */
 
 import { useRouter } from "expo-router";
@@ -16,7 +15,6 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Layout, Radius, Spacing } from "@/constants/theme";
-import { useResponsive } from "@/hooks/use-responsive";
 import { useTheme } from "@/hooks/use-theme";
 
 /**
@@ -37,7 +35,6 @@ export function SettingsScreenScaffold({
 }) {
   const theme = useTheme();
   const router = useRouter();
-  const { navTitleSize } = useResponsive();
   return (
     <ThemedView style={styles.screen}>
       <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
@@ -55,11 +52,7 @@ export function SettingsScreenScaffold({
             </ThemedText>
           </Pressable>
           <ThemedText
-            type="title"
-            style={[
-              styles.navTitle,
-              { fontSize: navTitleSize, lineHeight: navTitleSize + 4 },
-            ]}
+            style={[styles.navTitle, { color: theme.foreground }]}
             numberOfLines={1}
           >
             {title}
@@ -91,7 +84,7 @@ export function SettingsScreenScaffold({
   );
 }
 
-/** A grouped panel with the cloud card treatment. */
+/** A soft filled surface for form controls and detailed settings. */
 export function Card({
   children,
   style,
@@ -101,14 +94,37 @@ export function Card({
 }) {
   const theme = useTheme();
   return (
-    <View
-      style={[
-        styles.card,
-        { backgroundColor: theme.card, borderColor: theme.cardRing },
-        style,
-      ]}
-    >
+    <View style={[styles.card, { backgroundColor: theme.secondary }, style]}>
       {children}
+    </View>
+  );
+}
+
+/** A native-style labelled group used for collections of navigation rows. */
+export function SettingsGroup({
+  title,
+  children,
+  style,
+}: {
+  title: string;
+  children: ReactNode;
+  style?: ViewStyle;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.group}>
+      <ThemedText themeColor="mutedForeground" style={styles.groupTitle}>
+        {title}
+      </ThemedText>
+      <View
+        style={[
+          styles.groupSurface,
+          { backgroundColor: theme.secondary },
+          style,
+        ]}
+      >
+        {children}
+      </View>
     </View>
   );
 }
@@ -307,6 +323,8 @@ const styles = StyleSheet.create({
   navTitle: {
     flex: 1,
     textAlign: "center",
+    fontFamily: Fonts.sansSemiBold,
+    fontSize: 20,
   },
   navAction: {
     minWidth: 76,
@@ -325,10 +343,20 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    borderRadius: Radius.xl,
-    borderWidth: 1,
+    borderRadius: 22,
     padding: Spacing.three,
     gap: Spacing.three,
+  },
+  group: { gap: Spacing.two },
+  groupTitle: {
+    fontFamily: Fonts.sansSemiBold,
+    fontSize: 17,
+    paddingHorizontal: Spacing.one,
+  },
+  groupSurface: {
+    borderRadius: 22,
+    paddingHorizontal: Spacing.three,
+    overflow: "hidden",
   },
   retryLoad: {
     alignItems: "center",

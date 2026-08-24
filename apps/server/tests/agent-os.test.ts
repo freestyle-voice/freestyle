@@ -116,15 +116,17 @@ describe("bash", () => {
   });
 
   it("runs in the home cwd and captures output", async () => {
-    const res = await runAgentBash("pwd");
+    const res = await runAgentBash('node -p "process.cwd()"');
     expect(res.exitCode).toBe(0);
     expect(res.stdout.trim()).toBe(homedir());
   });
 
   it("reports failures and caps output", async () => {
-    const fail = await runAgentBash("exit 3");
+    const fail = await runAgentBash('node -e "process.exit(3)"');
     expect(fail.exitCode).toBe(3);
-    const big = await runAgentBash("yes x | head -c 20000");
+    const big = await runAgentBash(
+      "node -e \"process.stdout.write('x'.repeat(20000))\"",
+    );
     expect(big.stdout.length).toBeLessThanOrEqual(8192);
     expect(big.truncated).toBe(true);
   });

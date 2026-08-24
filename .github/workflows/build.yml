@@ -418,6 +418,9 @@ jobs:
       - name: Build server
         run: pnpm turbo build --filter=@freestyle-voice/server
 
+      - name: Run focused agent OS tests
+        run: pnpm --filter @freestyle-voice/server exec vitest run tests/agent-os.test.ts
+
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1
 

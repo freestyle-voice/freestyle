@@ -33,8 +33,26 @@ const mirroredKeyboardController = readFileSync(
   ),
   "utf8",
 );
+const mobilePackage = JSON.parse(
+  readFileSync(new URL("../../../package.json", import.meta.url), "utf8"),
+) as { scripts: Record<string, string> };
 
 describe("keyboard readiness handshake", () => {
+  it("keeps keyboard preference optional chains valid Swift", () => {
+    expect(mirroredKeyboardController).toMatch(
+      /UserDefaults\(suiteName: FreestyleDictationBridge\.appGroupID\)\?\s*\.string/,
+    );
+    expect(mirroredKeyboardController).toMatch(
+      /UserDefaults\(suiteName: FreestyleDictationBridge\.appGroupID\)\?\s*\.set/,
+    );
+  });
+
+  it("syncs the generated extension source before an iOS build", () => {
+    expect(mobilePackage.scripts.ios).toContain(
+      "./scripts/sync-keyboard-extension.js",
+    );
+  });
+
   it("restamps after Full Access can change and synchronizes both processes", () => {
     for (const controller of [keyboardController, mirroredKeyboardController]) {
       expect(controller).toMatch(

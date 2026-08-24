@@ -167,8 +167,8 @@ final class KeyboardViewController: UIInputViewController {
 
     private var isDark: Bool { traitCollection.userInterfaceStyle == .dark }
     private var isRemixMode: Bool {
-        UserDefaults(suiteName: FreestyleDictationBridge.appGroupID)
-            ?.string(forKey: keyboardModeKey) == "remix"
+        UserDefaults(suiteName: FreestyleDictationBridge.appGroupID)?
+            .string(forKey: keyboardModeKey) == "remix"
     }
 
     // MARK: - Layout
@@ -442,8 +442,8 @@ final class KeyboardViewController: UIInputViewController {
 
     @objc private func handleModeChange() {
         let remix = modeControl?.selectedSegmentIndex == 0
-        UserDefaults(suiteName: FreestyleDictationBridge.appGroupID)
-            ?.set(remix ? "remix" : "dictate", forKey: keyboardModeKey)
+        UserDefaults(suiteName: FreestyleDictationBridge.appGroupID)?
+            .set(remix ? "remix" : "dictate", forKey: keyboardModeKey)
         // A mode change is deliberately a new turn. It prevents a half-finished
         // dictation from being mistaken for an agent instruction (or vice versa).
         bridge.sendCommand(.disarm)

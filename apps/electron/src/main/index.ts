@@ -119,6 +119,7 @@ import {
 import { bearerAuthHeaders } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
 import { SPRITES_INFO } from "../shared/sprites";
+import { registerAgentFileIpc } from "./agent-files";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { HotkeyRecorder } from "./hotkey-recorder";
@@ -1651,6 +1652,8 @@ app.whenReady().then(async () => {
       await deliverOutput(text, OutputMode.Clipboard);
     },
   );
+
+  registerAgentFileIpc(ipcMain, () => app.getPath("downloads"));
 
   ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
     if (!isActiveAudioPlaybackMode(mode)) return;

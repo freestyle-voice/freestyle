@@ -16,6 +16,7 @@ import { ThreadHistory } from "@renderer/components/thread-history";
 import { TodosTab } from "@renderer/components/todos-tab";
 import {
   type AgentToolCall,
+  agentToolResultTelemetry,
   agentToolTier,
   DECLINED_OUTPUT,
   describeAgentAction,
@@ -85,6 +86,29 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
     "Everything Freestyle knows lives here — scheduled tasks, memories, notes, skills, todos.",
   apps: "Connect the apps you live in, and Freestyle can work them for you.",
 };
+
+function reportAgentToolResult(
+  call: AgentToolCall,
+  output: Record<string, unknown>,
+  startedAt: number,
+): void {
+  const send = (appVersion: string): void => {
+    capture(
+      "agent_tool_result",
+      agentToolResultTelemetry({
+        tool: call.toolName,
+        platform: window.api.platform,
+        appVersion,
+        durationMs: Date.now() - startedAt,
+        output,
+      }),
+    );
+  };
+  void window.api
+    .getAppVersion()
+    .then(send)
+    .catch(() => send("unknown"));
+}
 
 function ShikiJson({ value }: { value: unknown }): React.JSX.Element {
   const source = toolJson(value);
@@ -161,7 +185,7 @@ function ToolChip({
   phase?: ToolPhase;
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
-  const presentation = toolPresentation(partType, phase, input);
+  const presentation = toolPresentation(partType, phase, input, output);
   const running = phase === "running";
   const hasInput =
     input !== undefined &&
@@ -818,6 +842,7 @@ function PanelInner({
       });
     },
     onToolCall: async ({ toolCall }) => {
+      const startedAt = Date.now();
       const call: AgentToolCall = {
         toolName: toolCall.toolName,
         toolCallId: toolCall.toolCallId,
@@ -832,6 +857,7 @@ function PanelInner({
         tier === "free"
           ? await executeAgentTool(call)
           : { ok: false, reason: `unknown tool: ${call.toolName}` };
+      reportAgentToolResult(call, output, startedAt);
       addToolOutput({
         tool: toolCall.toolName,
         toolCallId: toolCall.toolCallId,
@@ -959,7 +985,9 @@ function PanelInner({
       prev.filter((a) => a.toolCallId !== call.toolCallId),
     );
     void (async () => {
+      const startedAt = Date.now();
       const output = allowed ? await executeAgentTool(call) : DECLINED_OUTPUT;
+      reportAgentToolResult(call, output, startedAt);
       addToolOutput({
         tool: call.toolName,
         toolCallId: call.toolCallId,

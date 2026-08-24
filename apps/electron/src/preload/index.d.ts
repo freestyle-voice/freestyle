@@ -17,6 +17,10 @@ declare global {
       platform: string;
       pasteText: (text: string, appContext?: string | null) => Promise<void>;
       copyText: (text: string, appContext?: string | null) => Promise<void>;
+      saveAgentFile: (input: {
+        filename: string;
+        content: string;
+      }) => Promise<{ ok: boolean; filename?: string; reason?: string }>;
       prepareSystemAudio: (mode: ActiveAudioPlaybackMode) => Promise<void>;
       restoreSystemAudio: () => Promise<void>;
       getServerPort: () => Promise<number>;

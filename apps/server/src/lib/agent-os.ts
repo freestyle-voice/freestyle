@@ -1,4 +1,4 @@
-import { exec } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import {
   mkdirSync,
   readdirSync,
@@ -17,10 +17,67 @@ const GREP_MAX_MATCHES = 60;
 const GREP_FILE_MAX_BYTES = 262_144;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".Trash", "Library"]);
 
+export type AgentCommandCategory =
+  | "success"
+  | "shell-unavailable"
+  | "command-failed"
+  | "permission-denied"
+  | "not-found"
+  | "timed-out";
+
+export interface AgentCommandResult {
+  ok: boolean;
+  category: AgentCommandCategory;
+  reason?: AgentCommandCategory;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  truncated: boolean;
+  timedOut: boolean;
+}
+
+type AgentCommandError = NodeJS.ErrnoException & {
+  killed?: boolean;
+  signal?: string;
+};
+type AgentCommandCallback = (
+  error: AgentCommandError | null,
+  stdout: string,
+  stderr: string,
+) => void;
+type ShellExecutor = (
+  command: string,
+  options: {
+    cwd: string;
+    timeout: number;
+    maxBuffer: number;
+    shell: string;
+  },
+  callback: AgentCommandCallback,
+) => unknown;
+type FileExecutor = (
+  file: string,
+  args: string[],
+  options: { cwd: string; timeout: number; maxBuffer: number },
+  callback: AgentCommandCallback,
+) => unknown;
+
+export interface AgentCommandOptions {
+  platform?: NodeJS.Platform;
+  exec?: ShellExecutor;
+  execFile?: FileExecutor;
+}
+
 export function resolveAgentPath(input: string): { full: string } {
-  const full = path.isAbsolute(input)
-    ? path.resolve(input)
-    : path.resolve(homedir(), input);
+  const expanded =
+    input === "~"
+      ? homedir()
+      : input.startsWith("~/") || input.startsWith("~\\")
+        ? path.join(homedir(), input.slice(2))
+        : input;
+  const full = path.isAbsolute(expanded)
+    ? path.resolve(expanded)
+    : path.resolve(homedir(), expanded);
   return { full };
 }
 
@@ -176,43 +233,70 @@ export function grepAgentFiles(
   return matches;
 }
 
-export function runAgentBash(command: string): Promise<{
-  stdout: string;
-  stderr: string;
-  exitCode: number;
-  truncated: boolean;
-  timedOut: boolean;
-}> {
+export function runAgentBash(
+  command: string,
+  options: AgentCommandOptions = {},
+): Promise<AgentCommandResult> {
   return new Promise((resolve) => {
-    exec(
+    const platform = options.platform ?? process.platform;
+    const complete: AgentCommandCallback = (err, stdout, stderr) => {
+      const timedOut =
+        !!err &&
+        (err.code === "ETIMEDOUT" ||
+          (err.killed === true && !/maxBuffer/i.test(err.message)));
+      const errorCode = err?.code;
+      const category: AgentCommandCategory = !err
+        ? "success"
+        : timedOut
+          ? "timed-out"
+          : errorCode === "ENOENT"
+            ? platform === "win32"
+              ? "shell-unavailable"
+              : "not-found"
+            : errorCode === "EACCES" || errorCode === "EPERM"
+              ? "permission-denied"
+              : "command-failed";
+      const exitCode = !err
+        ? 0
+        : timedOut
+          ? 124
+          : typeof errorCode === "number"
+            ? errorCode
+            : 1;
+      resolve({
+        ok: !err,
+        category,
+        ...(err ? { reason: category } : {}),
+        stdout: stdout.slice(0, BASH_OUTPUT_CAP),
+        stderr: stderr.slice(0, BASH_OUTPUT_CAP),
+        exitCode,
+        truncated:
+          stdout.length > BASH_OUTPUT_CAP || stderr.length > BASH_OUTPUT_CAP,
+        timedOut,
+      });
+    };
+    const common = {
+      cwd: homedir(),
+      timeout: BASH_TIMEOUT_MS,
+      maxBuffer: 4 * 1024 * 1024,
+    };
+
+    if (platform === "win32") {
+      const run = (options.execFile ?? execFile) as FileExecutor;
+      run(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-Command", command],
+        common,
+        complete,
+      );
+      return;
+    }
+
+    const run = (options.exec ?? exec) as ShellExecutor;
+    run(
       command,
-      {
-        cwd: homedir(),
-        timeout: BASH_TIMEOUT_MS,
-        maxBuffer: 4 * 1024 * 1024,
-        shell: process.env.SHELL || "/bin/sh",
-      },
-      (err, stdout, stderr) => {
-        const timedOut =
-          !!err &&
-          (err as { killed?: boolean }).killed === true &&
-          (err as { signal?: string }).signal === "SIGTERM" &&
-          !/maxBuffer/i.test(err.message);
-        const code =
-          err && typeof (err as { code?: number }).code === "number"
-            ? ((err as { code?: number }).code as number)
-            : err
-              ? 1
-              : 0;
-        resolve({
-          stdout: stdout.slice(0, BASH_OUTPUT_CAP),
-          stderr: stderr.slice(0, BASH_OUTPUT_CAP),
-          exitCode: timedOut ? 124 : code,
-          truncated:
-            stdout.length > BASH_OUTPUT_CAP || stderr.length > BASH_OUTPUT_CAP,
-          timedOut,
-        });
-      },
+      { ...common, shell: process.env.SHELL || "/bin/sh" },
+      complete,
     );
   });
 }

@@ -35,9 +35,17 @@ describe("tool phases", () => {
     expect(toolPresentation("tool-paste", "declined").title).toBe(
       "Didn't paste — you declined",
     );
-    expect(toolPresentation("tool-Bash", "failed").title).toContain(
-      "didn't work",
-    );
+  });
+
+  it("uses a specific collapsed label for a local tool failure", () => {
+    expect(
+      toolPresentation(
+        "tool-Bash",
+        "failed",
+        { command: "Get-Location" },
+        { ok: false, reason: "shell-unavailable", stderr: "private detail" },
+      ).title,
+    ).toBe("Couldn't start the command shell");
   });
 
   it("carries the phase through connector tools", () => {

@@ -20,6 +20,11 @@ const api = {
     ipcRenderer.invoke("paste:text", text, appContext ?? null),
   copyText: (text: string, appContext?: string | null): Promise<void> =>
     ipcRenderer.invoke("copy:text", text, appContext ?? null),
+  saveAgentFile: (input: {
+    filename: string;
+    content: string;
+  }): Promise<{ ok: boolean; filename?: string; reason?: string }> =>
+    ipcRenderer.invoke("agent:save-file", input),
   prepareSystemAudio: (mode: ActiveAudioPlaybackMode): Promise<void> =>
     ipcRenderer.invoke("audio:prepare", mode),
   restoreSystemAudio: (): Promise<void> => ipcRenderer.invoke("audio:restore"),

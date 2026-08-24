@@ -23,7 +23,7 @@ import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import type { MicPermission } from "@/lib/audio/recorder";
 import { useMicPermission } from "@/lib/audio/use-mic-permission";
-import { fetchCloudConfig } from "@/lib/cloud/cloud-config";
+import { type CloudConfig, fetchCloudConfig } from "@/lib/cloud/cloud-config";
 import {
   type KeyboardStatus,
   useKeyboardStatus,
@@ -59,6 +59,14 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const { status: micStatus, request: requestMic } = useMicPermission();
   const { status: keyboardStatus } = useKeyboardStatus();
+  // Warm the regional language suggestions while the permission screen is
+  // visible so the picker does not reshuffle after the user reaches it.
+  const { data: cloudConfig } = useQuery({
+    queryKey: ["cloud-config"],
+    queryFn: () => fetchCloudConfig(),
+    staleTime: 6 * 60 * 60 * 1000,
+    retry: 1,
+  });
 
   const grantMic = useCallback(async () => {
     const status = await requestMic();
@@ -124,6 +132,7 @@ export default function OnboardingScreen() {
             <StepLanguage
               selected={settings.languages}
               onChange={setLanguages}
+              cloudConfig={cloudConfig}
               theme={theme}
             />
           ) : (
@@ -258,21 +267,15 @@ function StepPermissions({
 function StepLanguage({
   selected,
   onChange,
+  cloudConfig,
   theme,
 }: {
   selected: string[];
   onChange: (codes: string[]) => void;
+  cloudConfig: CloudConfig | undefined;
   theme: ReturnType<typeof useTheme>;
 }) {
   const [showAll, setShowAll] = useState(false);
-
-  // Public config — works pre-sign-in — for region-based language ordering.
-  const { data: cloudConfig } = useQuery({
-    queryKey: ["cloud-config"],
-    queryFn: () => fetchCloudConfig(),
-    staleTime: 6 * 60 * 60 * 1000,
-    retry: 1,
-  });
 
   const options = useMemo(
     () =>

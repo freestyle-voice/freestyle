@@ -6,7 +6,6 @@ import {
   Card,
   SectionTitle,
   SettingsScreenScaffold,
-  TabScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -18,7 +17,7 @@ import {
   type VocabEntry,
 } from "@/lib/entries";
 
-export function VocabularyScreen({ isTab = false }: { isTab?: boolean }) {
+export function VocabularyScreen() {
   const theme = useTheme();
   const { vocabulary, addVocab, updateVocab, removeVocab, removeVocabMany } =
     useEntries();
@@ -320,22 +319,11 @@ export function VocabularyScreen({ isTab = false }: { isTab?: boolean }) {
     </>
   );
 
-  if (isTab) {
-    return (
-      <TabScreenScaffold
-        title="Words"
-        subtitle="Names, jargon, and phrases Freestyle should recognize. These bias speech recognition so tricky words come out right."
-        action={headerAction}
-      >
-        {content}
-      </TabScreenScaffold>
-    );
-  }
-
   return (
     <SettingsScreenScaffold
-      title="Vocabulary"
+      title="Words"
       subtitle="Names, jargon, and phrases Freestyle should recognize. These bias speech recognition so tricky words come out right."
+      action={headerAction}
     >
       {content}
     </SettingsScreenScaffold>

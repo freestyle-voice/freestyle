@@ -8,4 +8,10 @@ describe("Remix query keys", () => {
       remixQueryKeys.threadList("user"),
     );
   });
+
+  it("keeps the sidebar's single-page recent sessions cache separate", () => {
+    expect(remixQueryKeys.recentSessions).not.toEqual(
+      remixQueryKeys.threadList("user"),
+    );
+  });
 });

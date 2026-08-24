@@ -179,7 +179,7 @@ export default function SettingsScreen() {
         />
         <SettingsNavRow
           icon={BookOpen}
-          label="Vocabulary"
+          label="Words"
           value="Names and phrases to recognize"
           onPress={() => router.push("/(app)/vocabulary")}
         />

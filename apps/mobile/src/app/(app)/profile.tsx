@@ -11,7 +11,6 @@ import {
   CalendarClock,
   Check,
   ChevronDown,
-  Keyboard,
   LogOut,
   PlugZap,
   SlidersHorizontal,
@@ -34,7 +33,6 @@ import {
   Card,
   SettingsNavRow,
   SettingsScreenScaffold,
-  TabScreenScaffold,
 } from "@/components/settings-ui";
 import { Skeleton } from "@/components/skeleton";
 import { ThemedText } from "@/components/themed-text";
@@ -64,7 +62,7 @@ export default function ProfileScreen() {
   return <ProfileContent />;
 }
 
-export function ProfileContent({ isTab = false }: { isTab?: boolean }) {
+export function ProfileContent() {
   const theme = useTheme();
   const router = useRouter();
   const { user, signedIn, signOut } = useAuth();
@@ -176,12 +174,6 @@ export function ProfileContent({ isTab = false }: { isTab?: boolean }) {
       </Card>
 
       <Card style={styles.workspaceCard}>
-        <SettingsNavRow
-          icon={Keyboard}
-          label="Keyboard"
-          value="Dictate and Remix anywhere"
-          onPress={() => router.push("/(app)/keyboard-setup")}
-        />
         <SettingsNavRow
           icon={SlidersHorizontal}
           label="Dictation settings"
@@ -339,14 +331,6 @@ export function ProfileContent({ isTab = false }: { isTab?: boolean }) {
       </Pressable>
     </>
   );
-
-  if (isTab) {
-    return (
-      <TabScreenScaffold title="Profile" showHeaderActions={false}>
-        {content}
-      </TabScreenScaffold>
-    );
-  }
 
   return (
     <SettingsScreenScaffold title="Profile">{content}</SettingsScreenScaffold>

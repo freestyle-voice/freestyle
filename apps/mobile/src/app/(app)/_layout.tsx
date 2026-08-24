@@ -11,7 +11,7 @@ import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
 import { SettingsProvider } from "@/lib/settings";
 
 /**
- * Authenticated area. A Stack hosts the bottom-tab group `(tabs)` plus the
+ * Authenticated area. A Stack hosts the chat-home group `(tabs)` plus the
  * pushed pages (settings, profile, keyboard setup). The resident keyboard
  * dictation session lives in a provider here (not on any one screen) so it
  * survives across navigation — the whole point is that after the first

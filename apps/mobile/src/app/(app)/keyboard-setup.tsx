@@ -6,7 +6,6 @@ import {
   Card,
   OptionCard,
   SettingsScreenScaffold,
-  TabScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -26,7 +25,7 @@ const STEPS = [
   "In any app, choose Dictate for instant transcription or Remix for a voice-only request.",
 ];
 
-export function KeyboardSetupScreen({ isTab = false }: { isTab?: boolean }) {
+export function KeyboardSetupScreen() {
   const theme = useTheme();
   const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
   const { status: keyboardStatus, ready: keyboardReady } = useKeyboardStatus();
@@ -182,14 +181,6 @@ export function KeyboardSetupScreen({ isTab = false }: { isTab?: boolean }) {
 
   const subtitle =
     "Add the Freestyle keyboard once, then use it in any app. Choose Dictate to paste what you say, or Remix to give the agent a voice-only request. Full Access lets the keyboard talk to Freestyle and insert the finished text.";
-
-  if (isTab) {
-    return (
-      <TabScreenScaffold title="Keyboard" subtitle={subtitle}>
-        {content}
-      </TabScreenScaffold>
-    );
-  }
 
   return (
     <SettingsScreenScaffold title="Voice keyboard" subtitle={subtitle}>

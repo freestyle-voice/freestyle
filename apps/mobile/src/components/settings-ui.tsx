@@ -13,7 +13,6 @@ import type { ReactNode } from "react";
 import type { AccessibilityRole, ViewStyle } from "react-native";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { HeaderActions } from "@/components/header-actions";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Layout, Radius, Spacing } from "@/constants/theme";
@@ -28,10 +27,12 @@ import { useTheme } from "@/hooks/use-theme";
 export function SettingsScreenScaffold({
   title,
   subtitle,
+  action,
   children,
 }: {
   title: string;
   subtitle?: string;
+  action?: ReactNode;
   children: ReactNode;
 }) {
   const theme = useTheme();
@@ -64,7 +65,11 @@ export function SettingsScreenScaffold({
             {title}
           </ThemedText>
           {/* Balances the back button so the title stays centered. */}
-          <View style={styles.navBack} />
+          {action ? (
+            <View style={styles.navAction}>{action}</View>
+          ) : (
+            <View style={styles.navBack} />
+          )}
         </View>
         <ScrollView
           contentContainerStyle={[styles.body, styles.centerColumn]}
@@ -76,66 +81,6 @@ export function SettingsScreenScaffold({
               themeColor="mutedForeground"
               style={styles.leadSubtitle}
             >
-              {subtitle}
-            </ThemedText>
-          ) : null}
-          {children}
-        </ScrollView>
-      </SafeAreaView>
-    </ThemedView>
-  );
-}
-
-/**
- * Tab-root scaffold: the page title sits in the top nav bar (left) with the
- * Settings + Profile actions (right) — matching the pushed-page header so the
- * whole app reads consistently. An optional `action` renders just left of the
- * header actions (e.g. History's clear button).
- */
-export function TabScreenScaffold({
-  title,
-  subtitle,
-  action,
-  showHeaderActions = true,
-  children,
-}: {
-  title: string;
-  subtitle?: string;
-  action?: ReactNode;
-  showHeaderActions?: boolean;
-  children: ReactNode;
-}) {
-  const { tabTitleSize } = useResponsive();
-  return (
-    <ThemedView style={styles.screen}>
-      <SafeAreaView style={styles.safeArea} edges={["top", "left", "right"]}>
-        <View style={[styles.tabHeader, styles.centerColumn]}>
-          <ThemedText
-            type="title"
-            style={[
-              styles.tabHeaderTitle,
-              { fontSize: tabTitleSize, lineHeight: tabTitleSize + 4 },
-            ]}
-            numberOfLines={1}
-          >
-            {title}
-          </ThemedText>
-          <View style={styles.tabHeaderActions}>
-            {action}
-            {showHeaderActions ? <HeaderActions /> : null}
-          </View>
-        </View>
-        <ScrollView
-          contentContainerStyle={[
-            styles.body,
-            styles.tabBody,
-            styles.centerColumn,
-          ]}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-        >
-          {subtitle ? (
-            <ThemedText themeColor="mutedForeground" style={styles.subtitle}>
               {subtitle}
             </ThemedText>
           ) : null}
@@ -363,34 +308,14 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: "center",
   },
+  navAction: {
+    minWidth: 76,
+    alignItems: "flex-end",
+  },
   backText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  // Pushed pages have no tab bar, but the dictation strip can slide down into
-  // that space, so leave room for it at the end of the scroll.
+  // Leave room for the floating keyboard dictation status strip at the end of
+  // a long settings page.
   body: { paddingBottom: 100, gap: Spacing.four },
-  // Native tabs reserve their own dock. Leave breathing room for the keyboard
-  // status strip without carrying the old floating-pill spacing forward.
-  tabBody: { paddingBottom: 96 },
-  tabHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingTop: Spacing.three,
-    paddingBottom: Spacing.two,
-  },
-  tabHeaderTitle: {
-    flex: 1,
-  },
-  tabHeaderActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.two,
-  },
-  subtitle: {
-    fontSize: 14,
-    lineHeight: 20,
-    marginTop: Spacing.one,
-    marginBottom: Spacing.two,
-  },
   // Subtitle at the top of a pushed page (no big serif title above it).
   leadSubtitle: {
     fontSize: 14,

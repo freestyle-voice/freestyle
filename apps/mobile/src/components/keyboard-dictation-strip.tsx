@@ -12,13 +12,11 @@
  * the body toggles capture (start/stop); the trailing close button dismisses
  * the session (releases the mic) and hides the strip.
  *
- * Anchored to the BOTTOM, floating just above the tab bar — not the top, where
- * it would cover each screen's header. On pushed pages that have no tab bar
- * (Settings, Profile, Keyboard setup) it slides down to where the tab bar
- * would be, and slides back up over the tab bar when you return to a tab.
+ * Anchored to the BOTTOM, floating above the safe area — not the top, where it
+ * would cover each screen's header. The chat-first app no longer reserves a
+ * permanent tab dock, so it has one consistent position on every screen.
  */
 
-import { usePathname } from "expo-router";
 import { Loader, Mic, X } from "lucide-react-native";
 import { useEffect, useRef } from "react";
 import { Animated, Easing, Pressable, StyleSheet, View } from "react-native";
@@ -30,12 +28,6 @@ import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import type { Phase } from "@/lib/keyboard/dictation-bridge";
 import { useKeyboardDictation } from "@/lib/keyboard/keyboard-dictation-provider";
-
-/**
- * Space the tab bar occupies at the bottom edge, so the strip can sit just
- * above it. Native tabs reserve the same compact 52-point dock region.
- */
-const TAB_BAR_HEIGHT = 52;
 
 /** Show the strip whenever the session is live — warm mic, active capture, or
  *  processing. Hidden only for `idle` (no session) and `failed` (already reset). */
@@ -49,33 +41,15 @@ function isVisiblePhase(phase: Phase): boolean {
   );
 }
 
-/** Pushed (non-tab) routes have no floating tab bar underneath. */
-function isTabRoute(pathname: string): boolean {
-  return !(
-    pathname.startsWith("/settings") ||
-    pathname.startsWith("/profile") ||
-    pathname.startsWith("/keyboard-setup")
-  );
-}
-
 export function KeyboardDictationStrip() {
   const session = useKeyboardDictation();
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const reduceMotion = useReducedMotion();
-  const pathname = usePathname();
   const opacity = useRef(new Animated.Value(0)).current;
-  // Vertical offset used to slide the strip down (into the tab-bar gap) on
-  // pushed pages and back up over the tab bar on tab pages.
-  const drop = useRef(new Animated.Value(0)).current;
 
   const phase: Phase = session?.phase ?? "idle";
   const visible = (session?.active ?? false) && isVisiblePhase(phase);
-
-  // On tab pages the strip sits ABOVE the tab bar; on pushed pages there's no
-  // tab bar, so it drops down into that space.
-  const onTab = isTabRoute(pathname);
-  const tabGap = TAB_BAR_HEIGHT + Math.max(insets.bottom - 10, 4);
 
   useEffect(() => {
     Animated.timing(opacity, {
@@ -85,33 +59,18 @@ export function KeyboardDictationStrip() {
     }).start();
   }, [visible, opacity, reduceMotion]);
 
-  useEffect(() => {
-    Animated.timing(drop, {
-      // Slide down by the tab-bar gap when there's no tab bar beneath us.
-      toValue: onTab ? 0 : tabGap,
-      duration: reduceMotion ? 0 : 240,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start();
-  }, [onTab, tabGap, drop, reduceMotion]);
-
   if (!session || !visible) return null;
 
   const { partial } = session;
   const iconColor =
     phase === "capturing" ? theme.primary : theme.mutedForeground;
 
-  // Base offset: sit just above the tab bar (on tab pages). The `drop`
-  // translate then pushes it into the gap on pushed pages.
-  const bottom = tabGap + Spacing.two;
+  const bottom = Math.max(insets.bottom, Spacing.two) + Spacing.two;
 
   return (
     <Animated.View
       pointerEvents="box-none"
-      style={[
-        styles.wrap,
-        { bottom, opacity, transform: [{ translateY: drop }] },
-      ]}
+      style={[styles.wrap, { bottom, opacity }]}
     >
       <View
         style={[

@@ -42,7 +42,7 @@ export function useRemixThread() {
     };
   }, []);
 
-  // A tab switch or navigation change must stop the underlying fetch as well
+  // A screen unmount or navigation change must stop the underlying fetch as well
   // as discard its UI. Otherwise a late stream chunk can resurrect an assistant
   // message in a different conversation.
   useEffect(

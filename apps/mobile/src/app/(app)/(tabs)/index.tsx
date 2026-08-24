@@ -1,6 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { useIsFocused, useLocalSearchParams } from "expo-router";
+import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
+import { Menu } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -14,7 +15,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { HeaderActions } from "@/components/header-actions";
+import { ChatSidebar } from "@/components/chat-sidebar";
 import { MicButton } from "@/components/mic-button";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -22,7 +23,6 @@ import { TranscriptView } from "@/components/transcript-view";
 import { Waveform } from "@/components/waveform";
 import { Fonts, Layout, Radius, Spacing } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
-import { useResponsive } from "@/hooks/use-responsive";
 import { useTheme } from "@/hooks/use-theme";
 import { useDictation } from "@/lib/audio/use-dictation";
 import { DEFAULT_HOME_MODE } from "@/lib/remix/home-mode";
@@ -38,7 +38,7 @@ const REMIX_STARTERS = [
 export default function VoiceScreen() {
   const theme = useTheme();
   const { signedIn } = useAuth();
-  const { brandSize } = useResponsive();
+  const router = useRouter();
   // This tab stays mounted while the resident keyboard session runs in the
   // background provider. Gate its mic on focus so the Home recorder can't fight
   // the resident session for the audio session (two active recorders = "Could
@@ -48,6 +48,7 @@ export default function VoiceScreen() {
   const [mode, setMode] = useState<RemixMode>(DEFAULT_HOME_MODE);
   const [text, setText] = useState("");
   const [copied, setCopied] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   // Keep this mounted across the Home switch. In particular, switching to
   // Dictate must not discard a running Remix turn or its durable thread.
   const remixThread = useRemixThread();
@@ -74,6 +75,12 @@ export default function VoiceScreen() {
     void Share.share({ message: text });
   }, [text]);
 
+  const startNewChat = useCallback(() => {
+    router.setParams({ threadId: undefined });
+    remixThread.newThread();
+    setMode("remix");
+  }, [remixThread, router]);
+
   const status =
     micState === "recording"
       ? "Listening"
@@ -88,16 +95,19 @@ export default function VoiceScreen() {
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.column}>
           <View style={styles.header}>
-            <ThemedText
-              type="title"
-              style={[
-                styles.brand,
-                { fontSize: brandSize, lineHeight: brandSize + 4 },
-              ]}
+            <Pressable
+              onPress={() => setSidebarOpen(true)}
+              hitSlop={12}
+              accessibilityRole="button"
+              accessibilityLabel="Open sessions"
+              style={[styles.menuButton, { borderColor: theme.border }]}
             >
-              Freestyle
+              <Menu color={theme.foreground} size={20} />
+            </Pressable>
+            <ThemedText type="eyebrow" themeColor="mutedForeground">
+              REMIX
             </ThemedText>
-            <HeaderActions />
+            <View style={styles.menuSpacer} />
           </View>
 
           <ModeSwitch mode={mode} onChange={setMode} />
@@ -164,6 +174,12 @@ export default function VoiceScreen() {
           )}
         </View>
       </SafeAreaView>
+      <ChatSidebar
+        visible={sidebarOpen}
+        currentThreadId={remixThread.threadId}
+        onClose={() => setSidebarOpen(false)}
+        onNewChat={startNewChat}
+      />
     </ThemedView>
   );
 }
@@ -218,16 +234,8 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
   const { threadId: selectedThreadId } = useLocalSearchParams<{
     threadId?: string;
   }>();
-  const {
-    messages,
-    status,
-    error,
-    activeTool,
-    send,
-    stop,
-    newThread,
-    loadThread,
-  } = thread;
+  const { messages, status, error, activeTool, send, stop, loadThread } =
+    thread;
   const [draft, setDraft] = useState("");
   const busy = status === "streaming";
 
@@ -245,19 +253,9 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.remixHome}
     >
-      <View style={styles.remixTopline}>
-        <ThemedText type="title" style={styles.remixTitle}>
-          Make the next move.
-        </ThemedText>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="New conversation"
-          onPress={newThread}
-          style={[styles.newThread, { borderColor: theme.border }]}
-        >
-          <ThemedText style={styles.newThreadText}>New</ThemedText>
-        </Pressable>
-      </View>
+      <ThemedText type="title" style={styles.remixTitle}>
+        Make the next move.
+      </ThemedText>
       <ScrollView
         style={styles.remixScrollArea}
         contentContainerStyle={styles.remixScroll}
@@ -389,9 +387,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
-    paddingTop: Spacing.three,
+    paddingTop: Spacing.two,
     paddingBottom: Spacing.two,
   },
+  menuButton: {
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: Radius.full,
+  },
+  menuSpacer: { width: 40, height: 40 },
   modeSwitch: {
     flexDirection: "row",
     alignSelf: "center",
@@ -416,20 +423,6 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingBottom: Spacing.two,
   },
-  remixTopline: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: Spacing.three,
-  },
-  newThread: {
-    minHeight: 40,
-    paddingHorizontal: Spacing.three,
-    justifyContent: "center",
-    borderWidth: 1,
-    borderRadius: Radius.full,
-  },
-  newThreadText: { fontFamily: Fonts.sansSemiBold, fontSize: 13 },
   remixScrollArea: { flex: 1, minHeight: 0 },
   remixScroll: { gap: Spacing.two, paddingBottom: Spacing.two },
   turn: {
@@ -499,7 +492,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
   },
   starterText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
-  brand: {},
   actions: {
     flexDirection: "row",
     justifyContent: "center",

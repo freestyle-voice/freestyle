@@ -18,7 +18,7 @@ import { Pressable, StyleSheet, TextInput, View } from "react-native";
 import {
   Card,
   RetryLoadState,
-  TabScreenScaffold,
+  SettingsScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -174,7 +174,7 @@ export default function HistoryScreen() {
   }, []);
 
   return (
-    <TabScreenScaffold
+    <SettingsScreenScaffold
       title="Activity"
       subtitle="Your recent dictations, kept on this device. Tap any entry to copy it."
       action={
@@ -459,7 +459,7 @@ export default function HistoryScreen() {
           </View>
         ))
       )}
-    </TabScreenScaffold>
+    </SettingsScreenScaffold>
   );
 }
 

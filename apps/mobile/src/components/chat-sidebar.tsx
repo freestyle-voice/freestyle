@@ -1,12 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import {
-  ChevronRight,
-  Clock3,
-  MessageSquarePlus,
-  Settings,
-  X,
-} from "lucide-react-native";
+import { Clock3, MessageSquarePlus, Settings, X } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -173,27 +167,16 @@ export function ChatSidebar({
               </Pressable>
             </View>
 
-            <Pressable
-              onPress={startNewChat}
-              accessibilityRole="button"
-              accessibilityLabel="New chat"
-              style={({ pressed }) => [
-                styles.newChat,
-                { backgroundColor: theme.primary },
-                pressed && styles.pressed,
-              ]}
-            >
-              <MessageSquarePlus color={theme.primaryForeground} size={19} />
-              <ThemedText
-                style={[styles.newChatText, { color: theme.primaryForeground }]}
-              >
-                New chat
-              </ThemedText>
-            </Pressable>
-
+            <View style={styles.quickLinks}>
+              <SidebarRow
+                icon={Clock3}
+                label="Dictation history"
+                onPress={() => navigate("/(app)/history")}
+              />
+            </View>
             <View style={styles.sessionsLabel}>
               <ThemedText type="eyebrow" themeColor="mutedForeground">
-                RECENT CHATS
+                RECENTS
               </ThemedText>
             </View>
             <ScrollView
@@ -256,23 +239,48 @@ export function ChatSidebar({
               )}
             </ScrollView>
 
-            <View style={[styles.footer, { borderTopColor: theme.border }]}>
-              <SidebarRow
-                icon={Clock3}
-                label="Dictation history"
-                onPress={() => navigate("/(app)/history")}
-              />
-              <SidebarRow
-                icon={Settings}
-                label="Settings"
+            <View style={styles.footer}>
+              <Pressable
+                onPress={startNewChat}
+                accessibilityRole="button"
+                accessibilityLabel="New chat"
+                style={({ pressed }) => [
+                  styles.newChat,
+                  { backgroundColor: theme.primary },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <MessageSquarePlus color={theme.primaryForeground} size={20} />
+                <ThemedText
+                  style={[
+                    styles.newChatText,
+                    { color: theme.primaryForeground },
+                  ]}
+                >
+                  New chat
+                </ThemedText>
+              </Pressable>
+              <Pressable
                 onPress={() => navigate("/(app)/settings")}
-              />
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Settings"
+                style={({ pressed }) => [
+                  styles.footerIcon,
+                  { backgroundColor: theme.secondary },
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Settings color={theme.foreground} size={20} />
+              </Pressable>
               <Pressable
                 onPress={() => navigate("/(app)/profile")}
+                hitSlop={8}
                 accessibilityRole="button"
                 accessibilityLabel="Profile"
                 style={({ pressed }) => [
-                  styles.profileRow,
+                  styles.footerIcon,
+                  { backgroundColor: theme.secondary },
                   pressed && styles.pressed,
                 ]}
               >
@@ -290,21 +298,6 @@ export function ChatSidebar({
                     </ThemedText>
                   </View>
                 )}
-                <View style={styles.profileCopy}>
-                  <ThemedText numberOfLines={1} style={styles.profileName}>
-                    {user?.name || "Profile"}
-                  </ThemedText>
-                  {user?.email ? (
-                    <ThemedText
-                      numberOfLines={1}
-                      themeColor="mutedForeground"
-                      style={styles.profileEmail}
-                    >
-                      {user.email}
-                    </ThemedText>
-                  ) : null}
-                </View>
-                <ChevronRight color={theme.mutedForeground} size={18} />
               </Pressable>
             </View>
           </SafeAreaView>
@@ -366,16 +359,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.full,
   },
-  newChat: {
-    minHeight: 48,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: Spacing.two,
-    borderRadius: Radius.lg,
-    marginTop: Spacing.two,
-  },
-  newChatText: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
+  quickLinks: { paddingTop: Spacing.three },
   sessionsLabel: { paddingTop: Spacing.four, paddingBottom: Spacing.two },
   sessionScroll: { flex: 1, minHeight: 0 },
   sessionList: { gap: Spacing.half, paddingBottom: Spacing.two },
@@ -407,9 +391,10 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 16 },
   footer: {
-    borderTopWidth: StyleSheet.hairlineWidth,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
     paddingTop: Spacing.two,
-    gap: Spacing.half,
   },
   footerRow: {
     minHeight: 42,
@@ -420,19 +405,23 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   footerLabel: { fontFamily: Fonts.sansMedium, fontSize: 14 },
-  profileRow: {
-    minHeight: 50,
+  newChat: {
+    flex: 1,
+    minHeight: 48,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: Spacing.two,
-    paddingHorizontal: Spacing.two,
-    marginTop: Spacing.half,
-    marginBottom: Spacing.one,
-    borderRadius: Radius.md,
+    borderRadius: Radius.full,
   },
-  profileCopy: { flex: 1, minWidth: 0 },
-  profileName: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
-  profileEmail: { fontSize: 12, marginTop: 1 },
+  newChatText: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
+  footerIcon: {
+    width: 48,
+    height: 48,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Radius.full,
+  },
   avatar: {
     width: 30,
     height: 30,

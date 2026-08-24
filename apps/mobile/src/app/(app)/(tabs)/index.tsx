@@ -1,8 +1,8 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowUpRight, Menu } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { ArrowUp, Menu, Mic, Square } from "lucide-react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -28,12 +28,6 @@ import { useDictation } from "@/lib/audio/use-dictation";
 import { DEFAULT_HOME_MODE } from "@/lib/remix/home-mode";
 import type { RemixMode } from "@/lib/remix/types";
 import { useRemixThread } from "@/lib/remix/use-remix-thread";
-
-const REMIX_STARTERS = [
-  { label: "Draft a reply", prompt: "Draft a clear, friendly reply to " },
-  { label: "Make a plan", prompt: "Help me make a practical plan for " },
-  { label: "Think it through", prompt: "Help me think through " },
-] as const;
 
 export default function VoiceScreen() {
   const theme = useTheme();
@@ -104,16 +98,16 @@ export default function VoiceScreen() {
             >
               <Menu color={theme.foreground} size={20} />
             </Pressable>
-            <ThemedText type="eyebrow" themeColor="mutedForeground">
-              {mode === "remix" ? "REMIX" : "DICTATE"}
-            </ThemedText>
             <View style={styles.menuSpacer} />
           </View>
 
           <ModeSwitch mode={mode} onChange={setMode} />
 
           {mode === "remix" ? (
-            <RemixHome thread={remixThread} />
+            <RemixHome
+              thread={remixThread}
+              onSwitchToDictate={() => setMode("dictate")}
+            />
           ) : (
             <>
               <TranscriptView
@@ -229,7 +223,13 @@ function ModeSwitch({
   );
 }
 
-function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
+function RemixHome({
+  thread,
+  onSwitchToDictate,
+}: {
+  thread: ReturnType<typeof useRemixThread>;
+  onSwitchToDictate: () => void;
+}) {
   const theme = useTheme();
   const { threadId: selectedThreadId } = useLocalSearchParams<{
     threadId?: string;
@@ -237,11 +237,21 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
   const { messages, status, error, activeTool, send, stop, loadThread } =
     thread;
   const [draft, setDraft] = useState("");
+  const inputRef = useRef<TextInput>(null);
   const busy = status === "streaming";
+  const hasDraft = draft.trim().length > 0;
 
   useEffect(() => {
     if (selectedThreadId) void loadThread(selectedThreadId);
   }, [loadThread, selectedThreadId]);
+
+  // A fresh session is an input-first surface: focus both on first launch and
+  // after creating a new chat, even though the existing TextInput stays mounted.
+  useEffect(() => {
+    if (messages.length > 0) return;
+    const frame = requestAnimationFrame(() => inputRef.current?.focus());
+    return () => cancelAnimationFrame(frame);
+  }, [messages.length]);
 
   const submit = useCallback(async () => {
     const sent = await send(draft);
@@ -253,63 +263,11 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
       style={styles.remixHome}
     >
-      <ThemedText type="title" style={styles.remixTitle}>
-        Make the next move.
-      </ThemedText>
       <ScrollView
         style={styles.remixScrollArea}
         contentContainerStyle={styles.remixScroll}
         keyboardShouldPersistTaps="handled"
       >
-        {messages.length === 0 ? (
-          <>
-            <View
-              style={[
-                styles.remixState,
-                { backgroundColor: theme.card, borderColor: theme.border },
-              ]}
-            >
-              <ThemedText style={styles.remixStateTitle}>
-                Start with the outcome you want.
-              </ThemedText>
-              <ThemedText
-                themeColor="mutedForeground"
-                style={styles.remixDetail}
-              >
-                Remix can draft, reshape, or help you think through the work.
-              </ThemedText>
-            </View>
-            <View style={styles.starterSection}>
-              <ThemedText
-                type="eyebrow"
-                themeColor="mutedForeground"
-                style={styles.starterLabel}
-              >
-                TRY A PROMPT
-              </ThemedText>
-              <View style={styles.starterGrid}>
-                {REMIX_STARTERS.map((starter) => (
-                  <Pressable
-                    key={starter.label}
-                    onPress={() => setDraft(starter.prompt)}
-                    accessibilityRole="button"
-                    accessibilityLabel={starter.label}
-                    style={({ pressed }) => [
-                      styles.starter,
-                      { borderColor: theme.border },
-                      pressed && { backgroundColor: theme.secondary },
-                    ]}
-                  >
-                    <ThemedText style={styles.starterText}>
-                      {starter.label}
-                    </ThemedText>
-                    <ArrowUpRight color={theme.mutedForeground} size={16} />
-                  </Pressable>
-                ))}
-              </View>
-            </View>
-          </>
-        ) : null}
         {messages.map((message) => (
           <View
             key={message.id}
@@ -351,23 +309,52 @@ function RemixHome({ thread }: { thread: ReturnType<typeof useRemixThread> }) {
         ]}
       >
         <TextInput
+          ref={inputRef}
           value={draft}
           onChangeText={setDraft}
           editable={!busy}
-          placeholder="Ask Remix anything"
+          autoFocus={messages.length === 0}
+          autoCapitalize="sentences"
+          placeholder="Message Remix"
           placeholderTextColor={theme.mutedForeground}
           multiline
           style={[styles.input, { color: theme.foreground }]}
         />
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={busy ? "Stop Remix" : "Send to Remix"}
-          onPress={busy ? stop : () => void submit()}
-          style={[styles.send, { backgroundColor: theme.primary }]}
+          accessibilityLabel={
+            busy
+              ? "Stop Remix"
+              : hasDraft
+                ? "Send to Remix"
+                : "Switch to Dictate"
+          }
+          onPress={
+            busy ? stop : hasDraft ? () => void submit() : onSwitchToDictate
+          }
+          style={[
+            styles.send,
+            {
+              backgroundColor:
+                hasDraft || busy ? theme.primary : theme.secondary,
+            },
+          ]}
         >
-          <ThemedText style={{ color: theme.primaryForeground }}>
-            {busy ? "■" : "↑"}
-          </ThemedText>
+          {busy ? (
+            <Square
+              color={theme.primaryForeground}
+              fill={theme.primaryForeground}
+              size={15}
+            />
+          ) : hasDraft ? (
+            <ArrowUp
+              color={theme.primaryForeground}
+              size={19}
+              strokeWidth={2.5}
+            />
+          ) : (
+            <Mic color={theme.foreground} size={20} />
+          )}
         </Pressable>
       </View>
     </KeyboardAvoidingView>
@@ -387,8 +374,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    minHeight: 52,
     paddingTop: Spacing.one,
-    paddingBottom: Spacing.three,
+    paddingBottom: Spacing.one,
   },
   menuButton: {
     width: 40,
@@ -402,11 +390,14 @@ const styles = StyleSheet.create({
   modeSwitch: {
     flexDirection: "row",
     alignSelf: "center",
-    width: "100%",
-    maxWidth: 320,
+    position: "absolute",
+    top: Spacing.one,
+    left: 0,
+    right: 0,
+    width: 218,
     padding: Spacing.half,
     borderRadius: Radius.full,
-    marginBottom: Spacing.five,
+    marginBottom: 0,
   },
   modeOption: {
     flex: 1,
@@ -419,7 +410,7 @@ const styles = StyleSheet.create({
   remixHome: {
     flex: 1,
     minHeight: 0,
-    gap: Spacing.four,
+    gap: Spacing.two,
     paddingBottom: Spacing.three,
   },
   remixScrollArea: { flex: 1, minHeight: 0 },
@@ -464,30 +455,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  remixHeading: { gap: Spacing.two, paddingTop: Spacing.two },
-  remixTitle: { fontSize: 40, lineHeight: 44, letterSpacing: -0.6 },
-  remixCopy: { fontSize: 16, lineHeight: 24, maxWidth: 350 },
-  remixState: {
-    gap: Spacing.two,
-    borderRadius: Radius.xl,
-    borderWidth: 1,
-    padding: Spacing.three,
-  },
-  remixStateTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 20 },
-  remixDetail: { fontSize: 14, lineHeight: 21 },
-  starterSection: { gap: Spacing.two, paddingHorizontal: Spacing.one },
-  starterLabel: { fontSize: 10 },
-  starterGrid: { gap: Spacing.two },
-  starter: {
-    minHeight: 46,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-  },
-  starterText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
   actions: {
     flexDirection: "row",
     justifyContent: "center",

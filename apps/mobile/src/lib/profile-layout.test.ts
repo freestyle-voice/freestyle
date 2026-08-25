@@ -9,7 +9,9 @@ const screen = readFileSync(
 describe("Profile settings layout", () => {
   it("uses a compact account editor instead of an always-open name form", () => {
     expect(screen).toContain("NameEditorSheet");
-    expect(screen).toContain('accessibilityLabel="Edit name"');
+    expect(screen).toContain('label="Name"');
+    expect(screen).not.toContain('accessibilityLabel="Edit name"');
+    expect(screen).not.toContain("nameEditBadge");
     expect(screen).not.toContain("function NameCard");
   });
 
@@ -29,6 +31,8 @@ describe("Profile settings layout", () => {
     expect(screen).toContain(
       "if (orgsLoading || activeLoading || !hasMultiple) return null;",
     );
-    expect(screen).toContain("ActionSheetIOS.showActionSheetWithOptions");
+    expect(screen).toContain("WorkspacePickerSheet");
+    expect(screen).toContain("snapToInterval={WORKSPACE_WHEEL_ITEM_HEIGHT}");
+    expect(screen).not.toContain("ActionSheetIOS.showActionSheetWithOptions");
   });
 });

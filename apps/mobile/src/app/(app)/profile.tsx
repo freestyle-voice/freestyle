@@ -12,26 +12,28 @@ import {
   CalendarClock,
   Check,
   LogOut,
-  Pencil,
   PlugZap,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
   Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
 import { SelectSheet } from "@/components/select-sheet";
 import {
@@ -147,17 +149,7 @@ export function ProfileContent() {
   const content = (
     <>
       <View style={styles.accountHero}>
-        <Pressable
-          onPress={() => setNameEditorOpen(true)}
-          disabled={!signedIn}
-          accessibilityRole="button"
-          accessibilityLabel="Edit name"
-          accessibilityState={{ disabled: !signedIn }}
-          style={({ pressed }) => [
-            styles.avatarWrap,
-            pressed && signedIn && styles.accountHeroPressed,
-          ]}
-        >
+        <View style={styles.avatarWrap}>
           {user?.image ? (
             <Image
               source={{ uri: user.image }}
@@ -173,17 +165,7 @@ export function ProfileContent() {
               </ThemedText>
             </View>
           )}
-          {signedIn ? (
-            <View
-              style={[
-                styles.nameEditBadge,
-                { backgroundColor: theme.secondary },
-              ]}
-            >
-              <Pencil color={theme.mutedForeground} size={14} />
-            </View>
-          ) : null}
-        </Pressable>
+        </View>
         <View style={styles.accountInfo}>
           <ThemedText style={styles.accountName} numberOfLines={1}>
             {user?.name ?? "Signed in"}
@@ -746,7 +728,7 @@ function ConnectedAccountsCard() {
   );
 }
 
-/** A native workspace menu, only visible when the person has a real choice. */
+/** A native-style workspace wheel, only visible when the person has a real choice. */
 function OrganizationCard() {
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -796,25 +778,6 @@ function OrganizationCard() {
     [activeOrg?.id, orgs, queryClient],
   );
 
-  const showWorkspacePicker = useCallback(() => {
-    if (Platform.OS !== "ios") {
-      setPickerOpen(true);
-      return;
-    }
-    const choices = orgs ?? [];
-    ActionSheetIOS.showActionSheetWithOptions(
-      {
-        title: "Choose workspace",
-        message: "Your profile, preferences, and plan follow this workspace.",
-        options: ["Cancel", ...choices.map((org) => org.name)],
-        cancelButtonIndex: 0,
-      },
-      (index) => {
-        if (index > 0) void onSwitch(choices[index - 1].id);
-      },
-    );
-  }, [onSwitch, orgs]);
-
   // A default personal organization is an implementation detail. Surface a
   // workspace switcher only when it gives the person a real choice.
   if (orgsLoading || activeLoading || !hasMultiple) return null;
@@ -825,7 +788,7 @@ function OrganizationCard() {
         icon={Building2}
         label="Current workspace"
         value={activeOrg?.name ?? "Choose workspace"}
-        onPress={showWorkspacePicker}
+        onPress={() => setPickerOpen(true)}
         disabled={switching !== null}
         last
         trailing={
@@ -834,23 +797,225 @@ function OrganizationCard() {
           ) : undefined
         }
       />
-      {Platform.OS !== "ios" ? (
-        <SelectSheet
-          visible={pickerOpen}
-          title="Workspace"
-          options={(orgs ?? []).map((org) => ({
-            value: org.id,
-            label: org.name,
-          }))}
-          selectedValue={activeOrg?.id}
-          onSelect={(organizationId) => {
-            setPickerOpen(false);
-            void onSwitch(organizationId);
-          }}
-          onClose={() => setPickerOpen(false)}
-        />
-      ) : null}
+      <WorkspacePickerSheet
+        visible={pickerOpen}
+        organizations={orgs ?? []}
+        selectedOrganizationId={activeOrg?.id}
+        onSelect={(organizationId) => {
+          setPickerOpen(false);
+          void onSwitch(organizationId);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
     </SettingsGroup>
+  );
+}
+
+const WORKSPACE_WHEEL_ITEM_HEIGHT = 52;
+const WORKSPACE_WHEEL_VISIBLE_ITEMS = 5;
+type Organization = Awaited<ReturnType<typeof listOrganizations>>[number];
+
+/**
+ * The operating-system picker visual is important here: a workspace is a
+ * durable context change, so choosing it happens in an explicit bottom sheet
+ * rather than the transient iOS action sheet used for one-off commands.
+ */
+function WorkspacePickerSheet({
+  visible,
+  organizations,
+  selectedOrganizationId,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  organizations: Organization[];
+  selectedOrganizationId?: string;
+  onSelect: (organizationId: string) => void;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const [pendingOrganizationId, setPendingOrganizationId] = useState(
+    selectedOrganizationId ?? organizations[0]?.id ?? "",
+  );
+  const selectedIndex = Math.max(
+    0,
+    organizations.findIndex((org) => org.id === pendingOrganizationId),
+  );
+
+  useEffect(() => {
+    if (!visible) return;
+    const initialId = selectedOrganizationId ?? organizations[0]?.id ?? "";
+    setPendingOrganizationId(initialId);
+    const initialIndex = Math.max(
+      0,
+      organizations.findIndex((org) => org.id === initialId),
+    );
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: initialIndex * WORKSPACE_WHEEL_ITEM_HEIGHT,
+        animated: false,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [organizations, selectedOrganizationId, visible]);
+
+  const settleAtOffset = useCallback(
+    (offsetY: number) => {
+      const index = Math.max(
+        0,
+        Math.min(
+          organizations.length - 1,
+          Math.round(offsetY / WORKSPACE_WHEEL_ITEM_HEIGHT),
+        ),
+      );
+      const next = organizations[index];
+      if (next) setPendingOrganizationId(next.id);
+    },
+    [organizations],
+  );
+
+  const onScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      settleAtOffset(event.nativeEvent.contentOffset.y);
+    },
+    [settleAtOffset],
+  );
+
+  const selectOrganization = useCallback(
+    (organization: Organization, index: number) => {
+      setPendingOrganizationId(organization.id);
+      scrollRef.current?.scrollTo({
+        y: index * WORKSPACE_WHEEL_ITEM_HEIGHT,
+        animated: true,
+      });
+    },
+    [],
+  );
+
+  const confirm = useCallback(() => {
+    if (pendingOrganizationId) onSelect(pendingOrganizationId);
+  }, [onSelect, pendingOrganizationId]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      presentationStyle="overFullScreen"
+      onRequestClose={onClose}
+    >
+      <View style={styles.workspacePickerOverlay}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close workspace picker"
+        />
+        <View
+          style={[
+            styles.workspacePickerSheet,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.cardRing,
+              paddingBottom: Math.max(insets.bottom, Spacing.five),
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.workspacePickerHandle,
+              { backgroundColor: theme.border },
+            ]}
+          />
+          <View style={styles.workspacePickerNav}>
+            <Pressable
+              onPress={onClose}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel workspace selection"
+            >
+              <ThemedText
+                style={[styles.workspacePickerAction, { color: theme.primary }]}
+              >
+                Cancel
+              </ThemedText>
+            </Pressable>
+            <ThemedText style={styles.workspacePickerTitle}>
+              Workspace
+            </ThemedText>
+            <Pressable
+              onPress={confirm}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Confirm workspace selection"
+            >
+              <ThemedText
+                style={[styles.workspacePickerAction, { color: theme.primary }]}
+              >
+                Done
+              </ThemedText>
+            </Pressable>
+          </View>
+          <View style={styles.workspaceWheel}>
+            <View
+              pointerEvents="none"
+              style={[
+                styles.workspaceWheelSelection,
+                { backgroundColor: theme.secondary, borderColor: theme.border },
+              ]}
+            />
+            <ScrollView
+              ref={scrollRef}
+              showsVerticalScrollIndicator={false}
+              snapToInterval={WORKSPACE_WHEEL_ITEM_HEIGHT}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              disableIntervalMomentum
+              onMomentumScrollEnd={onScrollEnd}
+              onScrollEndDrag={onScrollEnd}
+              contentContainerStyle={styles.workspaceWheelContent}
+            >
+              {organizations.map((organization, index) => {
+                const selected = index === selectedIndex;
+                return (
+                  <Pressable
+                    key={organization.id}
+                    onPress={() => selectOrganization(organization, index)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={organization.name}
+                    style={styles.workspaceWheelRow}
+                  >
+                    <ThemedText
+                      numberOfLines={1}
+                      style={[
+                        styles.workspaceWheelLabel,
+                        {
+                          color: selected
+                            ? theme.foreground
+                            : theme.mutedForeground,
+                        },
+                        !selected && styles.workspaceWheelLabelMuted,
+                      ]}
+                    >
+                      {organization.name}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+          <ThemedText
+            themeColor="mutedForeground"
+            style={styles.workspacePickerHint}
+          >
+            Your profile, preferences, and plan follow this workspace.
+          </ThemedText>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -860,7 +1025,6 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingVertical: Spacing.three,
   },
-  accountHeroPressed: { opacity: 0.7 },
   avatarWrap: { position: "relative" },
   avatar: {
     width: 76,
@@ -875,16 +1039,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   avatarText: { fontFamily: Fonts.sansSemiBold, fontSize: 24 },
-  nameEditBadge: {
-    position: "absolute",
-    right: -5,
-    bottom: -4,
-    width: 28,
-    height: 28,
-    borderRadius: Radius.full,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   accountInfo: { alignItems: "center" },
   accountName: { fontFamily: Fonts.sansSemiBold, fontSize: 22, lineHeight: 27 },
   accountEmail: { fontSize: 14, marginTop: 2 },
@@ -947,6 +1101,71 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.sans,
     fontSize: 16,
     marginTop: Spacing.three,
+  },
+  workspacePickerOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.44)",
+  },
+  workspacePickerSheet: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: Radius["2xl"],
+    borderTopRightRadius: Radius["2xl"],
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.five,
+  },
+  workspacePickerHandle: {
+    alignSelf: "center",
+    width: 36,
+    height: 4,
+    borderRadius: Radius.full,
+    marginBottom: Spacing.two,
+  },
+  workspacePickerNav: {
+    minHeight: 40,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  workspacePickerTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 17 },
+  workspacePickerAction: { fontFamily: Fonts.sansMedium, fontSize: 16 },
+  workspaceWheel: {
+    height: WORKSPACE_WHEEL_ITEM_HEIGHT * WORKSPACE_WHEEL_VISIBLE_ITEMS,
+    marginTop: Spacing.two,
+    overflow: "hidden",
+  },
+  workspaceWheelSelection: {
+    position: "absolute",
+    top: WORKSPACE_WHEEL_ITEM_HEIGHT * 2,
+    left: 0,
+    right: 0,
+    height: WORKSPACE_WHEEL_ITEM_HEIGHT,
+    borderRadius: Radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  workspaceWheelContent: {
+    paddingVertical: WORKSPACE_WHEEL_ITEM_HEIGHT * 2,
+  },
+  workspaceWheelRow: {
+    height: WORKSPACE_WHEEL_ITEM_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.three,
+  },
+  workspaceWheelLabel: {
+    fontFamily: Fonts.sansMedium,
+    fontSize: 17,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  workspaceWheelLabelMuted: { opacity: 0.42, transform: [{ scale: 0.92 }] },
+  workspacePickerHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: Spacing.two,
+    marginBottom: Spacing.one,
   },
   signOutCard: {
     flexDirection: "row",

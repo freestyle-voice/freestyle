@@ -471,6 +471,14 @@ function RemixHome({
     return () => cancelAnimationFrame(frame);
   }, [messages.length]);
 
+  // iOS does not always emit another content-size event after a controlled
+  // multiline field is cleared (for example after Send or a voice final). Keep
+  // the next empty draft compact instead of leaving an invisible, stale
+  // multi-line input height in the composer.
+  useEffect(() => {
+    if (!draft) setInputHeight(REMIX_COMPOSER_MIN_INPUT_HEIGHT);
+  }, [draft]);
+
   const submit = useCallback(async () => {
     const sent =
       editingCurrentThread && editingMessage
@@ -510,7 +518,15 @@ function RemixHome({
 
   const onInputContentSizeChange = useCallback(
     ({ nativeEvent }: { nativeEvent: { contentSize: { height: number } } }) => {
-      setInputHeight(remixComposerInputHeight(nativeEvent.contentSize.height));
+      const nextHeight = remixComposerInputHeight(
+        nativeEvent.contentSize.height,
+      );
+      // A rendered height can itself trigger another content-size event on iOS.
+      // Avoid turning that feedback into a resize loop that makes long drafts
+      // jump while the keyboard is open.
+      setInputHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      );
     },
     [],
   );

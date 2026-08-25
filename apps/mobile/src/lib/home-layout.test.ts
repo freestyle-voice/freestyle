@@ -68,6 +68,15 @@ describe("Remix home layout", () => {
     expect(styles).toMatch(/textAlignVertical: "top"/);
   });
 
+  it("resets a cleared controlled draft and ignores redundant resize events", () => {
+    expect(screen).toContain(
+      "if (!draft) setInputHeight(REMIX_COMPOSER_MIN_INPUT_HEIGHT);",
+    );
+    expect(screen).toContain(
+      "currentHeight === nextHeight ? currentHeight : nextHeight",
+    );
+  });
+
   it("keeps live dictation inside the composer flow instead of covering the draft", () => {
     expect(screen).toContain("<View style={styles.composerInputRow}>");
     expect(styles).not.toMatch(/voiceStatus:[\\s\\S]*?position: "absolute"/);

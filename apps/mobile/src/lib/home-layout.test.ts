@@ -34,6 +34,16 @@ describe("Remix home layout", () => {
     expect(styles).toMatch(/borderBottomLeftRadius: 38/);
   });
 
+  it("keeps Dictate as a quiet, chat-adjacent voice surface rather than another card stack", () => {
+    expect(screen).toMatch(
+      /Speak naturally\. Freestyle keeps the words clear and\s+ready to use\./,
+    );
+    expect(screen).toContain('placeholder="Your words will appear here."');
+    expect(styles).toMatch(
+      /dictationDock:[\s\S]*?borderTopWidth: StyleSheet\.hairlineWidth/,
+    );
+  });
+
   it("dismisses the keyboard before opening the session drawer", () => {
     expect(screen).toMatch(
       /const openSidebar[\s\S]*?Keyboard\.dismiss\(\)[\s\S]*?setSidebarOpen\(true\)/,

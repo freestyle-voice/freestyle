@@ -185,26 +185,25 @@ export default function VoiceScreen() {
                 />
               ) : (
                 <>
-                  <View
-                    style={[
-                      styles.dictationStage,
-                      {
-                        backgroundColor: theme.card,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                  >
-                    <ThemedText
-                      type="eyebrow"
-                      themeColor="mutedForeground"
-                      style={styles.dictationEyebrow}
-                    >
-                      DICTATE
-                    </ThemedText>
+                  <View style={[styles.dictationStage]}>
+                    <View style={styles.dictationLead}>
+                      <ThemedText type="eyebrow" themeColor="mutedForeground">
+                        DICTATE
+                      </ThemedText>
+                      {!text && !partial ? (
+                        <ThemedText
+                          themeColor="mutedForeground"
+                          style={styles.dictationPrompt}
+                        >
+                          Speak naturally. Freestyle keeps the words clear and
+                          ready to use.
+                        </ThemedText>
+                      ) : null}
+                    </View>
                     <TranscriptView
                       text={text}
                       partial={partial}
-                      placeholder="Tap the mic, then speak naturally. Your words will appear here."
+                      placeholder="Your words will appear here."
                     />
                   </View>
 
@@ -251,26 +250,30 @@ export default function VoiceScreen() {
                     style={[
                       styles.dictationDock,
                       {
-                        backgroundColor: theme.card,
                         borderColor: theme.border,
                         paddingBottom: insets.bottom + Spacing.three,
                       },
                     ]}
                   >
-                    <Waveform level={level} active={micState === "recording"} />
-                    <ThemedText
-                      themeColor="mutedForeground"
-                      style={styles.status}
-                    >
-                      {status}
-                    </ThemedText>
                     <MicButton
                       state={micState}
-                      size={76}
+                      size={72}
                       level={level}
                       onPressIn={onPressIn}
                       onPressOut={onPressOut}
                     />
+                    <View style={styles.dictationStatus}>
+                      <Waveform
+                        level={level}
+                        active={micState === "recording"}
+                      />
+                      <ThemedText
+                        themeColor="mutedForeground"
+                        style={styles.status}
+                      >
+                        {status}
+                      </ThemedText>
+                    </View>
                   </View>
                 </>
               )}
@@ -657,18 +660,24 @@ const styles = StyleSheet.create({
   dictationStage: {
     flex: 1,
     minHeight: 0,
-    borderWidth: 1,
-    borderRadius: Radius["2xl"],
     paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.four,
   },
-  dictationEyebrow: { paddingTop: Spacing.three },
+  dictationLead: { gap: Spacing.two, paddingBottom: Spacing.three },
+  dictationPrompt: { fontSize: 16, lineHeight: 23, maxWidth: 290 },
   dictationDock: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.two,
-    marginTop: Spacing.two,
-    borderWidth: 1,
-    borderRadius: Radius["2xl"],
-    paddingTop: Spacing.two,
+    justifyContent: "center",
+    gap: Spacing.three,
+    marginTop: Spacing.one,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: Spacing.three,
+  },
+  dictationStatus: {
+    alignItems: "flex-start",
+    gap: Spacing.one,
+    minWidth: 132,
   },
   status: {
     fontFamily: Fonts.mono,

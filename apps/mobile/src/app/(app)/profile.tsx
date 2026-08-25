@@ -11,7 +11,9 @@ import {
   CalendarClock,
   Check,
   ChevronDown,
+  ChevronRight,
   LogOut,
+  Pencil,
   PlugZap,
   SlidersHorizontal,
   Sparkles,
@@ -21,6 +23,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  Modal,
   Pressable,
   StyleSheet,
   Switch,
@@ -69,6 +72,7 @@ export function ProfileContent() {
   const { user, signedIn, signOut } = useAuth();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const [nameEditorOpen, setNameEditorOpen] = useState(false);
 
   const { data: usage, isLoading: usageLoading } = useQuery({
     queryKey: ["cloud-usage"],
@@ -139,22 +143,44 @@ export function ProfileContent() {
 
   const content = (
     <>
-      <View style={styles.accountHero}>
-        {user?.image ? (
-          <Image
-            source={{ uri: user.image }}
-            style={styles.avatarImage}
-            accessibilityIgnoresInvertColors
-          />
-        ) : (
-          <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
-            <ThemedText
-              style={[styles.avatarText, { color: theme.accentForeground }]}
+      <Pressable
+        onPress={() => setNameEditorOpen(true)}
+        disabled={!signedIn}
+        accessibilityRole="button"
+        accessibilityLabel="Edit name"
+        accessibilityState={{ disabled: !signedIn }}
+        style={({ pressed }) => [
+          styles.accountHero,
+          pressed && signedIn && styles.accountHeroPressed,
+        ]}
+      >
+        <View style={styles.avatarWrap}>
+          {user?.image ? (
+            <Image
+              source={{ uri: user.image }}
+              style={styles.avatarImage}
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
+              <ThemedText
+                style={[styles.avatarText, { color: theme.accentForeground }]}
+              >
+                {user ? initialsFor(user) : "?"}
+              </ThemedText>
+            </View>
+          )}
+          {signedIn ? (
+            <View
+              style={[
+                styles.nameEditBadge,
+                { backgroundColor: theme.secondary },
+              ]}
             >
-              {user ? initialsFor(user) : "?"}
-            </ThemedText>
-          </View>
-        )}
+              <Pencil color={theme.mutedForeground} size={14} />
+            </View>
+          ) : null}
+        </View>
         <View style={styles.accountInfo}>
           <ThemedText style={styles.accountName} numberOfLines={1}>
             {user?.name ?? "Signed in"}
@@ -169,9 +195,9 @@ export function ProfileContent() {
             </ThemedText>
           ) : null}
         </View>
-      </View>
+      </Pressable>
 
-      <SettingsGroup title="Freestyle">
+      <SettingsGroup>
         <SettingsNavRow
           icon={SlidersHorizontal}
           label="Dictation settings"
@@ -198,9 +224,6 @@ export function ProfileContent() {
           last
         />
       </SettingsGroup>
-
-      {/* Personal information */}
-      {signedIn ? <NameCard currentName={user?.name ?? ""} /> : null}
 
       {/* Professional details */}
       {signedIn ? <ProfileDetailsCard /> : null}
@@ -327,6 +350,12 @@ export function ProfileContent() {
           Sign out
         </ThemedText>
       </Pressable>
+
+      <NameEditorSheet
+        visible={nameEditorOpen}
+        currentName={user?.name ?? ""}
+        onClose={() => setNameEditorOpen(false)}
+      />
     </>
   );
 
@@ -345,8 +374,16 @@ const PROVIDER_META: {
   { id: "apple", label: "Apple", Icon: AppleIcon },
 ];
 
-/** Editable display-name card. */
-function NameCard({ currentName }: { currentName: string }) {
+/** A small native sheet keeps editing out of the everyday account surface. */
+function NameEditorSheet({
+  visible,
+  currentName,
+  onClose,
+}: {
+  visible: boolean;
+  currentName: string;
+  onClose: () => void;
+}) {
   const theme = useTheme();
   const [name, setName] = useState(currentName);
   const [saving, setSaving] = useState(false);
@@ -371,54 +408,77 @@ function NameCard({ currentName }: { currentName: string }) {
       return;
     }
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }, [canSave, trimmed]);
+    setTimeout(() => {
+      setSaved(false);
+      onClose();
+    }, 550);
+  }, [canSave, onClose, trimmed]);
 
   return (
-    <Card>
-      <ThemedText type="eyebrow" themeColor="mutedForeground">
-        NAME
-      </ThemedText>
-      <TextInput
-        value={name}
-        onChangeText={setName}
-        placeholder="Your name"
-        placeholderTextColor={theme.mutedForeground}
-        maxLength={120}
-        returnKeyType="done"
-        onSubmitEditing={() => void onSave()}
-        style={[
-          styles.input,
-          { borderColor: theme.border, color: theme.foreground },
-        ]}
-      />
-      <Pressable
-        onPress={() => void onSave()}
-        disabled={!canSave}
-        style={({ pressed }) => [
-          styles.primaryButton,
-          { backgroundColor: theme.primary },
-          pressed && canSave ? { opacity: 0.9 } : null,
-          !canSave ? styles.buttonDisabled : null,
-        ]}
-      >
-        {saving ? (
-          <ActivityIndicator color={theme.primaryForeground} />
-        ) : (
-          <>
-            {saved ? <Check color={theme.primaryForeground} size={16} /> : null}
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      onRequestClose={onClose}
+      statusBarTranslucent
+    >
+      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
+      <View style={[styles.nameSheet, { backgroundColor: theme.card }]}>
+        <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
+        <View style={styles.nameSheetHeader}>
+          <ThemedText style={styles.nameSheetTitle}>Edit name</ThemedText>
+          <Pressable onPress={onClose} accessibilityLabel="Close name editor">
             <ThemedText
-              style={[
-                styles.primaryButtonText,
-                { color: theme.primaryForeground },
-              ]}
+              style={[styles.nameSheetDone, { color: theme.primary }]}
             >
-              {saved ? "Saved" : "Save changes"}
+              Cancel
             </ThemedText>
-          </>
-        )}
-      </Pressable>
-    </Card>
+          </Pressable>
+        </View>
+        <TextInput
+          value={name}
+          onChangeText={setName}
+          placeholder="Your name"
+          placeholderTextColor={theme.mutedForeground}
+          maxLength={120}
+          autoFocus
+          returnKeyType="done"
+          onSubmitEditing={() => void onSave()}
+          style={[
+            styles.input,
+            { borderColor: theme.border, color: theme.foreground },
+          ]}
+        />
+        <Pressable
+          onPress={() => void onSave()}
+          disabled={!canSave}
+          style={({ pressed }) => [
+            styles.primaryButton,
+            { backgroundColor: theme.primary },
+            pressed && canSave ? { opacity: 0.9 } : null,
+            !canSave ? styles.buttonDisabled : null,
+          ]}
+        >
+          {saving ? (
+            <ActivityIndicator color={theme.primaryForeground} />
+          ) : (
+            <>
+              {saved ? (
+                <Check color={theme.primaryForeground} size={16} />
+              ) : null}
+              <ThemedText
+                style={[
+                  styles.primaryButtonText,
+                  { color: theme.primaryForeground },
+                ]}
+              >
+                {saved ? "Saved" : "Save"}
+              </ThemedText>
+            </>
+          )}
+        </Pressable>
+      </View>
+    </Modal>
   );
 }
 
@@ -435,6 +495,7 @@ function ProfileDetailsCard() {
   const [updatePreferences, setUpdatePreferences] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const { data: profile, isLoading } = useQuery({
     queryKey: ["cloud-profile-fields"],
@@ -464,8 +525,8 @@ function ProfileDetailsCard() {
     company.trim() !== (profile?.company ?? "");
   const canSave = dirty && !saving;
 
-  const onSave = useCallback(async () => {
-    if (!canSave) return;
+  const onSave = useCallback(async (): Promise<boolean> => {
+    if (!canSave) return false;
     setSaving(true);
     setSaved(false);
     try {
@@ -490,11 +551,13 @@ function ProfileDetailsCard() {
       }
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
+      return true;
     } catch (e) {
       Alert.alert(
         "Couldn't update profile",
         e instanceof Error ? e.message : "Try again.",
       );
+      return false;
     } finally {
       setSaving(false);
     }
@@ -510,20 +573,34 @@ function ProfileDetailsCard() {
 
   if (isLoading) {
     return (
-      <Card>
-        <ThemedText type="eyebrow" themeColor="mutedForeground">
-          PROFESSIONAL DETAILS
-        </ThemedText>
+      <SettingsGroup title="Personalization">
         <Skeleton width={180} height={20} />
-      </Card>
+      </SettingsGroup>
+    );
+  }
+
+  if (!editing) {
+    return (
+      <SettingsGroup title="Personalization">
+        <SettingsNavRow
+          icon={SlidersHorizontal}
+          label="Work profile"
+          value={
+            industry
+              ? INDUSTRY_LABELS[industry]
+              : jobTitle || company
+                ? "Details added"
+                : "Optional"
+          }
+          onPress={() => setEditing(true)}
+          last
+        />
+      </SettingsGroup>
     );
   }
 
   return (
-    <Card>
-      <ThemedText type="eyebrow" themeColor="mutedForeground">
-        INDUSTRY
-      </ThemedText>
+    <SettingsGroup title="Work profile">
       <Pressable
         onPress={() => setIndustryPickerOpen(true)}
         accessibilityRole="button"
@@ -618,7 +695,11 @@ function ProfileDetailsCard() {
       />
 
       <Pressable
-        onPress={() => void onSave()}
+        onPress={() => {
+          void onSave().then((didSave) => {
+            if (didSave) setEditing(false);
+          });
+        }}
         disabled={!canSave}
         style={({ pressed }) => [
           styles.primaryButton,
@@ -643,7 +724,16 @@ function ProfileDetailsCard() {
           </>
         )}
       </Pressable>
-    </Card>
+      <Pressable
+        onPress={() => setEditing(false)}
+        accessibilityRole="button"
+        style={styles.cancelEditButton}
+      >
+        <ThemedText themeColor="mutedForeground" style={styles.cancelEditText}>
+          Cancel
+        </ThemedText>
+      </Pressable>
+    </SettingsGroup>
   );
 }
 
@@ -708,76 +798,64 @@ function ConnectedAccountsCard() {
   const busy = linking !== null || unlinking !== null;
 
   return (
-    <Card>
-      <ThemedText type="eyebrow" themeColor="mutedForeground">
-        CONNECTED ACCOUNTS
-      </ThemedText>
+    <SettingsGroup title="Sign-in methods">
       {isLoading ? (
         <Skeleton width={160} height={20} />
       ) : (
-        PROVIDER_META.map(({ id, label, Icon }) => {
+        PROVIDER_META.map(({ id, label, Icon }, index) => {
           const isConnected = linked?.includes(id) ?? false;
           const isOnlyMethod = isConnected && connectedCount <= 1;
           return (
-            <View
+            <Pressable
               key={id}
-              style={[styles.providerRow, { borderColor: theme.border }]}
+              onPress={() =>
+                isConnected ? onUnlink(id, label) : void onLink(id)
+              }
+              disabled={busy || isOnlyMethod}
+              accessibilityRole="button"
+              accessibilityLabel={
+                isOnlyMethod
+                  ? `${label} is your primary sign-in method`
+                  : `${isConnected ? "Manage" : "Connect"} ${label}`
+              }
+              style={({ pressed }) => [
+                styles.providerRow,
+                index < PROVIDER_META.length - 1 && {
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                  borderBottomColor: theme.border,
+                },
+                pressed && !busy && !isOnlyMethod
+                  ? styles.providerPressed
+                  : null,
+                (busy || isOnlyMethod) && styles.buttonDisabled,
+              ]}
             >
               <Icon size={20} color={theme.foreground} />
-              <ThemedText style={styles.providerLabel}>{label}</ThemedText>
-              {isConnected ? (
-                <Pressable
-                  onPress={() => onUnlink(id, label)}
-                  disabled={busy || isOnlyMethod}
-                  style={({ pressed }) => [
-                    styles.connectButton,
-                    { borderColor: theme.border },
-                    pressed && !busy && !isOnlyMethod
-                      ? { backgroundColor: theme.secondary }
-                      : null,
-                    busy || isOnlyMethod ? styles.buttonDisabled : null,
-                  ]}
+              <View style={styles.providerContent}>
+                <ThemedText style={styles.providerLabel}>{label}</ThemedText>
+                <ThemedText
+                  themeColor="mutedForeground"
+                  style={styles.providerState}
                 >
-                  {unlinking === id ? (
-                    <ActivityIndicator color={theme.foreground} size="small" />
-                  ) : (
-                    <ThemedText
-                      style={[
-                        styles.connectButtonText,
-                        { color: theme.mutedForeground },
-                      ]}
-                    >
-                      Disconnect
-                    </ThemedText>
-                  )}
-                </Pressable>
+                  {isConnected
+                    ? isOnlyMethod
+                      ? "Primary sign-in"
+                      : "Connected"
+                    : "Not connected"}
+                </ThemedText>
+              </View>
+              {linking === id || unlinking === id ? (
+                <ActivityIndicator color={theme.foreground} size="small" />
+              ) : isOnlyMethod ? (
+                <Check color={theme.primary} size={18} />
               ) : (
-                <Pressable
-                  onPress={() => void onLink(id)}
-                  disabled={busy}
-                  style={({ pressed }) => [
-                    styles.connectButton,
-                    { borderColor: theme.border },
-                    pressed && !busy
-                      ? { backgroundColor: theme.secondary }
-                      : null,
-                    busy ? styles.buttonDisabled : null,
-                  ]}
-                >
-                  {linking === id ? (
-                    <ActivityIndicator color={theme.foreground} size="small" />
-                  ) : (
-                    <ThemedText style={styles.connectButtonText}>
-                      Connect
-                    </ThemedText>
-                  )}
-                </Pressable>
+                <ChevronRight color={theme.mutedForeground} size={18} />
               )}
-            </View>
+            </Pressable>
           );
         })
       )}
-    </Card>
+    </SettingsGroup>
   );
 }
 
@@ -798,9 +876,11 @@ function OrganizationCard() {
     queryFn: listOrganizations,
     retry: 1,
   });
+  const hasMultiple = (orgs?.length ?? 0) > 1;
   const { data: activeOrg, isLoading: activeLoading } = useQuery({
     queryKey: ["cloud-active-org"],
     queryFn: getActiveOrganization,
+    enabled: hasMultiple,
     retry: 1,
   });
 
@@ -830,67 +910,48 @@ function OrganizationCard() {
     [activeOrg?.id, queryClient],
   );
 
-  // Nothing to show until we know the user belongs to at least one org.
-  if (!orgsLoading && (orgs?.length ?? 0) === 0) return null;
-
-  const hasMultiple = (orgs?.length ?? 0) > 1;
+  // A default personal organization is an implementation detail. Surface a
+  // workspace switcher only when it gives the person a real choice.
+  if (orgsLoading || activeLoading || !hasMultiple) return null;
 
   return (
-    <Card>
-      <ThemedText type="eyebrow" themeColor="mutedForeground">
-        ORGANIZATION
-      </ThemedText>
-      {orgsLoading || activeLoading ? (
-        <Skeleton width={160} height={20} />
-      ) : hasMultiple ? (
-        <>
-          <Pressable
-            onPress={() => setPickerOpen(true)}
-            disabled={switching !== null}
-            accessibilityRole="button"
-            accessibilityLabel="Choose organization"
-            accessibilityValue={{ text: activeOrg?.name ?? "Not set" }}
-            style={({ pressed }) => [
-              styles.orgRow,
-              { borderColor: theme.border },
-              pressed &&
-                switching === null && { backgroundColor: theme.secondary },
-            ]}
-          >
-            <Building2 size={18} color={theme.foreground} />
-            <ThemedText style={styles.orgName} numberOfLines={1}>
-              {activeOrg?.name ?? "Choose organization"}
-            </ThemedText>
-            {switching ? (
-              <ActivityIndicator color={theme.foreground} size="small" />
-            ) : (
-              <ChevronDown color={theme.mutedForeground} size={18} />
-            )}
-          </Pressable>
-          <SelectSheet
-            visible={pickerOpen}
-            title="Organization"
-            options={(orgs ?? []).map((org) => ({
-              value: org.id,
-              label: org.name,
-            }))}
-            selectedValue={activeOrg?.id}
-            onSelect={(organizationId) => {
-              setPickerOpen(false);
-              void onSwitch(organizationId);
-            }}
-            onClose={() => setPickerOpen(false)}
-          />
-        </>
-      ) : (
-        <View style={[styles.orgRow, { borderColor: theme.border }]}>
-          <Building2 size={18} color={theme.foreground} />
-          <ThemedText style={styles.orgName} numberOfLines={1}>
-            {activeOrg?.name ?? orgs?.[0]?.name ?? "—"}
-          </ThemedText>
-        </View>
-      )}
-    </Card>
+    <SettingsGroup title="Workspace">
+      <Pressable
+        onPress={() => setPickerOpen(true)}
+        disabled={switching !== null}
+        accessibilityRole="button"
+        accessibilityLabel="Choose organization"
+        accessibilityValue={{ text: activeOrg?.name ?? "Not set" }}
+        style={({ pressed }) => [
+          styles.orgRow,
+          pressed && switching === null && styles.providerPressed,
+        ]}
+      >
+        <Building2 size={20} color={theme.foreground} />
+        <ThemedText style={styles.orgName} numberOfLines={1}>
+          {activeOrg?.name ?? "Choose organization"}
+        </ThemedText>
+        {switching ? (
+          <ActivityIndicator color={theme.foreground} size="small" />
+        ) : (
+          <ChevronRight color={theme.mutedForeground} size={18} />
+        )}
+      </Pressable>
+      <SelectSheet
+        visible={pickerOpen}
+        title="Organization"
+        options={(orgs ?? []).map((org) => ({
+          value: org.id,
+          label: org.name,
+        }))}
+        selectedValue={activeOrg?.id}
+        onSelect={(organizationId) => {
+          setPickerOpen(false);
+          void onSwitch(organizationId);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
+    </SettingsGroup>
   );
 }
 
@@ -898,8 +959,10 @@ const styles = StyleSheet.create({
   accountHero: {
     alignItems: "center",
     gap: Spacing.two,
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.three,
   },
+  accountHeroPressed: { opacity: 0.7 },
+  avatarWrap: { position: "relative" },
   avatar: {
     width: 76,
     height: 76,
@@ -913,6 +976,16 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   avatarText: { fontFamily: Fonts.sansSemiBold, fontSize: 24 },
+  nameEditBadge: {
+    position: "absolute",
+    right: -5,
+    bottom: -4,
+    width: 28,
+    height: 28,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   accountInfo: { alignItems: "center" },
   accountName: { fontFamily: Fonts.sansSemiBold, fontSize: 22, lineHeight: 27 },
   accountEmail: { fontSize: 14, marginTop: 2 },
@@ -964,6 +1037,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: Spacing.two,
   },
+  sheetBackdrop: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+  },
+  nameSheet: {
+    marginTop: "auto",
+    borderTopLeftRadius: Radius["2xl"],
+    borderTopRightRadius: Radius["2xl"],
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.four,
+  },
+  sheetHandle: {
+    width: 36,
+    height: 4,
+    borderRadius: Radius.full,
+    alignSelf: "center",
+  },
+  nameSheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginTop: Spacing.three,
+  },
+  nameSheetTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 18 },
+  nameSheetDone: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   selectField: {
     minHeight: 52,
     flexDirection: "row",
@@ -997,35 +1096,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.three,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  providerLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  connectButton: {
-    marginLeft: "auto",
-    borderWidth: 1,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.three,
+    minHeight: 60,
     paddingVertical: Spacing.two,
-    minWidth: 84,
-    alignItems: "center",
   },
-  connectButtonText: { fontFamily: Fonts.sansMedium, fontSize: 14 },
+  providerPressed: { opacity: 0.6 },
+  providerContent: { flex: 1 },
+  providerLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
+  providerState: { fontSize: 13, marginTop: 1 },
   orgRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.three,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    marginTop: Spacing.two,
+    minHeight: 60,
+    paddingVertical: Spacing.two,
   },
   orgName: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 15 },
-  orgTrailing: { marginLeft: "auto" },
+  cancelEditButton: {
+    minHeight: 40,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  cancelEditText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   signOutCard: {
     flexDirection: "row",
     alignItems: "center",

@@ -106,16 +106,18 @@ export function SettingsGroup({
   children,
   style,
 }: {
-  title: string;
+  title?: string;
   children: ReactNode;
   style?: ViewStyle;
 }) {
   const theme = useTheme();
   return (
     <View style={styles.group}>
-      <ThemedText themeColor="mutedForeground" style={styles.groupTitle}>
-        {title}
-      </ThemedText>
+      {title ? (
+        <ThemedText themeColor="mutedForeground" style={styles.groupTitle}>
+          {title}
+        </ThemedText>
+      ) : null}
       <View
         style={[
           styles.groupSurface,

@@ -18,7 +18,8 @@ describe("native settings layout", () => {
   });
 
   it("uses the grouped navigation and centered account identity on the account hub", () => {
-    expect(profile).toMatch(/<SettingsGroup title="Freestyle">/);
+    expect(profile).toMatch(/<SettingsGroup>/);
+    expect(profile).not.toMatch(/<SettingsGroup title="Freestyle">/);
     expect(profile).toMatch(/styles\.accountHero/);
     expect(profile).toMatch(/title="Settings"/);
   });

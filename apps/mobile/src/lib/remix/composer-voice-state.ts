@@ -2,7 +2,6 @@ type ComposerMicState = "idle" | "recording" | "finalizing";
 
 type RemixComposerVoiceInput = {
   draft: string;
-  partial: string;
   micState: ComposerMicState;
   remixBusy: boolean;
 };
@@ -13,7 +12,6 @@ export function appendVoiceTranscript(draft: string, transcript: string) {
 
 export function remixComposerVoiceState({
   draft,
-  partial,
   micState,
   remixBusy,
 }: RemixComposerVoiceInput) {
@@ -30,9 +28,10 @@ export function remixComposerVoiceState({
     return {
       action: "finish-listening" as const,
       label: "Stop listening",
-      // Keep the real input value stable so focus stays on the same native
-      // field while the microphone streams.
-      placeholder: partial || "Listening…",
+      // Keep the native field stable while the live transcript is shown in the
+      // composer's status row. Replacing the placeholder with it hides the
+      // draft and makes the control look like a second, unrelated surface.
+      placeholder: "Message Remix",
       value: draft,
     };
   }

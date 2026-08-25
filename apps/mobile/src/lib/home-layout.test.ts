@@ -65,6 +65,13 @@ describe("Remix home layout", () => {
     expect(screen).toContain(
       "scrollEnabled={inputHeight >= REMIX_COMPOSER_MAX_INPUT_HEIGHT}",
     );
+    expect(styles).toMatch(/textAlignVertical: "top"/);
+  });
+
+  it("keeps live dictation inside the composer flow instead of covering the draft", () => {
+    expect(screen).toContain("<View style={styles.composerInputRow}>");
+    expect(styles).not.toMatch(/voiceStatus:[\\s\\S]*?position: "absolute"/);
+    expect(styles).not.toMatch(/voiceStatus:[\\s\\S]*?zIndex:/);
   });
 
   it("keeps an interrupted thread recoverable with durable drafts and retry", () => {

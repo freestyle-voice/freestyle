@@ -410,7 +410,6 @@ function RemixHome({
   const {
     micState: voiceState,
     partial: voicePartial,
-    level: voiceLevel,
     toggle: toggleVoiceInput,
   } = useDictation({
     signedIn,
@@ -421,7 +420,6 @@ function RemixHome({
   });
   const voiceControl = remixComposerVoiceState({
     draft,
-    partial: voicePartial,
     micState: voiceState,
     remixBusy: busy,
   });
@@ -637,17 +635,19 @@ function RemixHome({
           {
             backgroundColor: theme.card,
             borderColor:
-              voiceState === "recording" ? theme.destructive : theme.border,
+              voiceState === "recording" ? theme.primary : theme.border,
           },
         ]}
       >
         {voiceState !== "idle" ? (
-          <View
-            accessibilityLiveRegion="polite"
-            style={[styles.voiceStatus, { backgroundColor: theme.secondary }]}
-          >
+          <View accessibilityLiveRegion="polite" style={styles.voiceStatus}>
             {voiceState === "recording" ? (
-              <Waveform level={voiceLevel} active compact />
+              <View
+                style={[
+                  styles.voiceStatusDot,
+                  { backgroundColor: theme.primary },
+                ]}
+              />
             ) : (
               <ActivityIndicator color={theme.primary} size="small" />
             )}
@@ -657,86 +657,78 @@ function RemixHome({
               numberOfLines={1}
             >
               {voiceState === "recording"
-                ? voicePartial || "Listening — keep typing or tap stop"
-                : "Adding your voice…"}
+                ? voicePartial || "Listening"
+                : "Adding your voice"}
             </ThemedText>
           </View>
         ) : null}
-        <TextInput
-          ref={inputRef}
-          value={voiceControl.value}
-          onChangeText={setDraft}
-          editable={
-            !busy &&
-            !(
-              pendingApproval &&
-              !["approved", "declined"].includes(approvalState)
-            )
-          }
-          autoCapitalize="sentences"
-          placeholder={voiceControl.placeholder}
-          placeholderTextColor={theme.mutedForeground}
-          multiline
-          scrollEnabled={inputHeight >= REMIX_COMPOSER_MAX_INPUT_HEIGHT}
-          onContentSizeChange={onInputContentSizeChange}
-          style={[
-            styles.input,
-            { color: theme.foreground, height: inputHeight },
-          ]}
-        />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={voiceControl.label}
-          disabled={
-            Boolean(
-              pendingApproval &&
-                !["approved", "declined"].includes(approvalState),
-            ) || voiceControl.action === "waiting-for-transcript"
-          }
-          onPress={handleComposerAction}
-          style={[
-            styles.send,
-            {
-              backgroundColor:
-                voiceState === "recording"
-                  ? theme.destructive
-                  : hasDraft || busy
+        <View style={styles.composerInputRow}>
+          <TextInput
+            ref={inputRef}
+            value={voiceControl.value}
+            onChangeText={setDraft}
+            editable={
+              !busy &&
+              !(
+                pendingApproval &&
+                !["approved", "declined"].includes(approvalState)
+              )
+            }
+            autoCapitalize="sentences"
+            placeholder={voiceControl.placeholder}
+            placeholderTextColor={theme.mutedForeground}
+            multiline
+            scrollEnabled={inputHeight >= REMIX_COMPOSER_MAX_INPUT_HEIGHT}
+            onContentSizeChange={onInputContentSizeChange}
+            style={[
+              styles.input,
+              { color: theme.foreground, height: inputHeight },
+            ]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={voiceControl.label}
+            disabled={
+              Boolean(
+                pendingApproval &&
+                  !["approved", "declined"].includes(approvalState),
+              ) || voiceControl.action === "waiting-for-transcript"
+            }
+            onPress={handleComposerAction}
+            style={[
+              styles.send,
+              {
+                backgroundColor:
+                  voiceState === "recording" || hasDraft || busy
                     ? theme.primary
                     : theme.secondary,
-            },
-          ]}
-        >
-          {busy || voiceState === "recording" ? (
-            <Square
-              color={
-                voiceState === "recording"
-                  ? theme.foreground
-                  : theme.primaryForeground
-              }
-              fill={
-                voiceState === "recording"
-                  ? theme.foreground
-                  : theme.primaryForeground
-              }
-              size={15}
-            />
-          ) : hasDraft ? (
-            <ArrowUp
-              color={theme.primaryForeground}
-              size={19}
-              strokeWidth={2.5}
-            />
-          ) : (
-            <Mic
-              color={
-                voiceState === "finalizing"
-                  ? theme.mutedForeground
-                  : theme.foreground
-              }
-              size={20}
-            />
-          )}
-        </Pressable>
+              },
+            ]}
+          >
+            {busy || voiceState === "recording" ? (
+              <Square
+                color={theme.primaryForeground}
+                fill={theme.primaryForeground}
+                size={15}
+              />
+            ) : hasDraft ? (
+              <ArrowUp
+                color={theme.primaryForeground}
+                size={19}
+                strokeWidth={2.5}
+              />
+            ) : (
+              <Mic
+                color={
+                  voiceState === "finalizing"
+                    ? theme.mutedForeground
+                    : theme.foreground
+                }
+                size={20}
+              />
+            )}
+          </Pressable>
+        </View>
       </View>
     </View>
   );
@@ -1051,38 +1043,37 @@ const styles = StyleSheet.create({
   },
   editingCopy: { flex: 1, fontSize: 12, lineHeight: 17 },
   composer: {
-    flexDirection: "row",
-    alignItems: "flex-end",
     gap: Spacing.two,
     borderWidth: 1,
     borderRadius: Radius["2xl"],
     padding: Spacing.two,
-    minHeight: 64,
+    minHeight: 60,
   },
   voiceStatus: {
-    position: "absolute",
-    left: Spacing.three,
-    right: 58,
-    top: Spacing.two,
-    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.two,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.two,
-    zIndex: 1,
+    minHeight: 24,
+    paddingHorizontal: Spacing.one,
   },
+  voiceStatusDot: { width: 8, height: 8, borderRadius: Radius.full },
   voiceStatusText: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 13 },
+  composerInputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: Spacing.two,
+  },
   input: {
     flex: 1,
-    minHeight: 38,
-    maxHeight: 104,
+    minHeight: REMIX_COMPOSER_MIN_INPUT_HEIGHT,
+    maxHeight: REMIX_COMPOSER_MAX_INPUT_HEIGHT,
     fontFamily: Fonts.sans,
     fontSize: 15,
     lineHeight: 21,
     paddingHorizontal: Spacing.one,
-    paddingVertical: Spacing.one,
-    textAlignVertical: "center",
+    paddingTop: Spacing.one + 2,
+    paddingBottom: Spacing.one + 1,
+    textAlignVertical: "top",
   },
   send: {
     width: 44,

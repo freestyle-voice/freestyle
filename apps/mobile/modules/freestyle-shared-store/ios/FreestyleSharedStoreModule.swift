@@ -48,15 +48,18 @@ public class FreestyleSharedStoreModule: Module {
         /// Refresh only the mic level + heartbeat. Called frequently while
         /// capturing (per audio frame), so it avoids rewriting the whole state.
         Function("updateLevel") { (level: Double) -> Void in
-            self.bridge.writeState { state in
+            self.bridge.writeState({ state in
                 state.level = level
                 state.heartbeat = Date().timeIntervalSince1970
-            }
+            }, notifyKeyboard: false)
         }
 
         /// Refresh only the heartbeat (cheap keep-alive between full writes).
         Function("touchHeartbeat") { () -> Void in
-            self.bridge.writeState { $0.heartbeat = Date().timeIntervalSince1970 }
+            self.bridge.writeState(
+                { $0.heartbeat = Date().timeIntervalSince1970 },
+                notifyKeyboard: false
+            )
         }
 
         Function("resetState") { () -> Void in

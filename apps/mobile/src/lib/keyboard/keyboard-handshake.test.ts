@@ -23,6 +23,13 @@ const mirroredBridge = readFileSync(
   new URL("../../../ios-keyboard/DictationBridge.swift", import.meta.url),
   "utf8",
 );
+const sharedStoreModule = readFileSync(
+  new URL(
+    "../../../modules/freestyle-shared-store/ios/FreestyleSharedStoreModule.swift",
+    import.meta.url,
+  ),
+  "utf8",
+);
 const generatedController = new URL(
   "../../../ios/FreestyleKeyboard/KeyboardViewController.swift",
   import.meta.url,
@@ -42,6 +49,11 @@ const mobilePackage = JSON.parse(
 ) as { scripts: Record<string, string> };
 
 describe("keyboard readiness handshake", () => {
+  it("keeps the app and keyboard copies of the wire protocol identical", () => {
+    expect(moduleBridge).toBe(mirroredBridge);
+    if (extensionBridge) expect(extensionBridge).toBe(mirroredBridge);
+  });
+
   it("keeps keyboard preference optional chains valid Swift", () => {
     expect(mirroredKeyboardController).toMatch(
       /UserDefaults\(suiteName: FreestyleDictationBridge\.appGroupID\)\?\s*\.string/,
@@ -76,5 +88,31 @@ describe("keyboard readiness handshake", () => {
         /func keyboardLastActive[\s\S]*?return defaults\.double\(forKey: Self\.keyboardActiveKey\)/,
       );
     }
+  });
+
+  it("delivers a final transcript immediately instead of waiting for the keyboard poll", () => {
+    for (const source of [moduleBridge, mirroredBridge, extensionBridge]) {
+      if (!source) continue;
+      expect(source).toMatch(
+        /static let stateDarwinName = "com\.freestylevoice\.dictation\.state" as CFString/,
+      );
+      expect(source).toMatch(
+        /func writeState\([\s\S]*?defaults\.synchronize\(\)[\s\S]*?Self\.postStateNotification\(\)/,
+      );
+    }
+
+    for (const controller of [mirroredKeyboardController, keyboardController]) {
+      if (!controller) continue;
+      expect(controller).toMatch(
+        /override func viewDidAppear[\s\S]*?startObservingSharedState\(\)/,
+      );
+      expect(controller).toMatch(
+        /func startObservingSharedState\(\)[\s\S]*?CFNotificationCenterAddObserver[\s\S]*?FreestyleDictationBridge\.stateDarwinName/,
+      );
+    }
+
+    expect(sharedStoreModule).toMatch(
+      /Function\("updateLevel"\)[\s\S]*?notifyKeyboard: false/,
+    );
   });
 });

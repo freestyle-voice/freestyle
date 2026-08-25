@@ -19,4 +19,10 @@ describe("chat sidebar layout", () => {
     expect(sidebar).not.toMatch(/Dictation history/);
     expect(sidebar).not.toMatch(/AccountButton/);
   });
+
+  it("curves the drawer's exposed edge to match the sliding chat canvas", () => {
+    expect(sidebar).toMatch(/borderTopRightRadius: 38/);
+    expect(sidebar).toMatch(/borderBottomRightRadius: 38/);
+    expect(sidebar).toMatch(/overflow: "hidden"/);
+  });
 });

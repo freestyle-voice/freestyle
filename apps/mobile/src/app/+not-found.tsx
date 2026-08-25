@@ -93,7 +93,13 @@ export default function NotFound() {
           <View style={styles.actions}>
             <Link href="/(app)/(tabs)" replace asChild>
               <Pressable
-                style={[styles.action, { backgroundColor: theme.primary }]}
+                // Expo Router forwards Link styles through a Slot. Flatten this
+                // before it reaches the Pressable so the Slot never receives an
+                // array-valued child style.
+                style={StyleSheet.flatten([
+                  styles.action,
+                  { backgroundColor: theme.primary },
+                ])}
               >
                 <ThemedText
                   style={[

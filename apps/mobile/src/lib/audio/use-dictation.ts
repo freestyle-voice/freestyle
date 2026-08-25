@@ -23,6 +23,7 @@ import { useHistory } from "@/lib/history";
 import { useSettings } from "@/lib/settings";
 import {
   checkMicPermission,
+  prepareRecordingAudioSession,
   requestMicPermission,
   useRecorder,
 } from "./recorder";
@@ -81,6 +82,10 @@ export function useDictation({
   // so the saved history entry records how long the dictation actually was.
   const committedDurationRef = useRef(0);
   const recordingRef = useRef(false);
+  // Audio received while the start cue is playing is intentionally discarded,
+  // so recorder + WebSocket startup can proceed in parallel without sending
+  // the cue (or any clipped lead-in) to speech recognition.
+  const forwardAudioRef = useRef(false);
   // Set synchronously on press-in so a rapid double-tap can't kick off two
   // recordings before the async permission check flips `recordingRef`.
   const startingRef = useRef(false);
@@ -113,7 +118,9 @@ export function useDictation({
   });
 
   const recorder = useRecorder({
-    onFrame: (frame) => sessionRef.current?.sendAudio(frame),
+    onFrame: (frame) => {
+      if (forwardAudioRef.current) sessionRef.current?.sendAudio(frame);
+    },
     onLevel: (v) => {
       level.value = v;
     },
@@ -132,6 +139,7 @@ export function useDictation({
     () => () => {
       releaseDuringStartRef.current = true;
       recordingRef.current = false;
+      forwardAudioRef.current = false;
       startingRef.current = false;
       try {
         recorderRef.current.stop();
@@ -140,6 +148,18 @@ export function useDictation({
     },
     [teardownSession],
   );
+
+  // Preconfigure the audio session once permission has already been granted.
+  // This is intentionally best-effort: the real start path still configures
+  // it, so a background failure can never block recording.
+  useEffect(() => {
+    if (!signedIn) return;
+    void checkMicPermission()
+      .then((permission) => {
+        if (permission === "granted") return prepareRecordingAudioSession();
+      })
+      .catch(() => {});
+  }, [signedIn]);
 
   const beginRecording = useCallback(async () => {
     if (
@@ -154,6 +174,10 @@ export function useDictation({
     const headers = authHeaders();
     if (!headers) return;
     startingRef.current = true;
+    forwardAudioRef.current = false;
+    setMicState("starting");
+    // Give immediate physical feedback while native audio is being prepared.
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
     const perm =
       (await checkMicPermission()) === "granted"
@@ -161,6 +185,7 @@ export function useDictation({
         : await requestMicPermission();
     if (perm !== "granted") {
       startingRef.current = false;
+      setMicState("idle");
       Alert.alert(
         "Microphone needed",
         "Enable microphone access in Settings to dictate.",
@@ -170,14 +195,7 @@ export function useDictation({
 
     if (releaseDuringStartRef.current) {
       startingRef.current = false;
-      return;
-    }
-    // Finish the cue before forwarding microphone frames so the chime itself
-    // is never transcribed. `startingRef` remains set during this short wait,
-    // preventing a second tap from opening another session.
-    await playStartChime();
-    if (releaseDuringStartRef.current) {
-      startingRef.current = false;
+      setMicState("idle");
       return;
     }
     const s = settingsRef.current;
@@ -212,6 +230,7 @@ export function useDictation({
         onError: (message, code) => {
           recordingRef.current = false;
           startingRef.current = false;
+          forwardAudioRef.current = false;
           recorder.stop();
           level.value = 0;
           setMicState("idle");
@@ -242,6 +261,7 @@ export function useDictation({
           sessionRef.current = null;
           recordingRef.current = false;
           startingRef.current = false;
+          forwardAudioRef.current = false;
           recorder.stop();
           level.value = 0;
           setMicState("idle");
@@ -254,18 +274,23 @@ export function useDictation({
     });
 
     try {
-      await recorder.start();
+      // The microphone, cloud WebSocket, and short start cue no longer wait on
+      // one another. Frames remain gated until the cue's fixed duration ends.
+      await Promise.all([recorder.start(), playStartChime()]);
       // A hold may have been released (or the socket may have closed) while
       // native mic startup was pending. Stop the just-opened stream rather than
       // allowing an orphaned recording to continue.
       if (releaseDuringStartRef.current || !sessionRef.current) {
+        forwardAudioRef.current = false;
         recorder.stop();
         teardownSession();
         startingRef.current = false;
+        setMicState("idle");
         return;
       }
       recordingRef.current = true;
       startingRef.current = false;
+      forwardAudioRef.current = true;
       startedAt.current = Date.now();
       setPartial("");
       onStartRef.current?.();
@@ -274,6 +299,7 @@ export function useDictation({
     } catch {
       recordingRef.current = false;
       startingRef.current = false;
+      forwardAudioRef.current = false;
       setMicState("idle");
       teardownSession();
       Alert.alert("Recording failed", "Could not start the microphone.");
@@ -293,6 +319,7 @@ export function useDictation({
   const finishRecording = useCallback(() => {
     if (!recordingRef.current) return;
     recordingRef.current = false;
+    forwardAudioRef.current = false;
     level.value = 0;
     recorder.stop();
 

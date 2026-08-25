@@ -4,8 +4,9 @@
  * fire haptics independently.
  *
  * `useAudioPlayer` owns and releases the native players with the calling hook.
- * The start helper resolves after the short asset has finished so callers can
- * keep those frames out of the microphone stream.
+ * The start helper only waits for the known audio duration. Waiting for the
+ * native player's initial seek can take noticeably longer on a cold app and
+ * must never delay the microphone or streaming connection.
  */
 
 import { type AudioPlayer, useAudioPlayer } from "expo-audio";
@@ -16,17 +17,13 @@ import successWav from "@/assets/sounds/success.wav";
 
 const CHIME_DURATION_MS = 150;
 
-async function play(player: AudioPlayer, waitForEnd: boolean): Promise<void> {
-  try {
-    // Restart from the top so a second tap mid-chime still sounds clean.
-    await player.seekTo(0);
-    player.play();
-    if (waitForEnd) {
-      await new Promise((resolve) => setTimeout(resolve, CHIME_DURATION_MS));
-    }
-  } catch {
-    // Chimes are best-effort — never break dictation if audio fails.
-  }
+function play(player: AudioPlayer): void {
+  // Best-effort playback deliberately stays off the critical recording path.
+  // On a cold start `seekTo` may wait for the audio asset to hydrate.
+  void player
+    .seekTo(0)
+    .then(() => player.play())
+    .catch(() => {});
 }
 
 export function useChimes(enabled: boolean): {
@@ -44,12 +41,15 @@ export function useChimes(enabled: boolean): {
 
   const playStartChime = useCallback(async () => {
     if (!enabled) return;
-    await play(startPlayer, true);
+    play(startPlayer);
+    // Keep the chime out of the first forwarded speech frames without waiting
+    // for an unpredictable native player round-trip.
+    await new Promise((resolve) => setTimeout(resolve, CHIME_DURATION_MS));
   }, [enabled, startPlayer]);
 
   const playSuccessChime = useCallback(async () => {
     if (!enabled) return;
-    await play(successPlayer, false);
+    play(successPlayer);
   }, [enabled, successPlayer]);
 
   return { playStartChime, playSuccessChime };

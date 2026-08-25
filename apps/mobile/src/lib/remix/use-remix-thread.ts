@@ -4,15 +4,10 @@ import {
   commandDurableTurn,
   getDurableThreadRuntime,
   getDurableTurn,
-  getLatestThread,
   sendDurableRemixTurn,
 } from "./client";
 import { createMobileId } from "./ids";
-import {
-  latestThreadState,
-  messagesForResend,
-  messagesForRetry,
-} from "./thread";
+import { messagesForResend, messagesForRetry } from "./thread";
 import type { PendingConnectorApproval } from "./types";
 
 export type RemixRunStatus = "idle" | "streaming" | "failed";
@@ -41,6 +36,8 @@ function approvalNeedsDecision(
 }
 
 export function useRemixThread() {
+  // Home is always a new, unsaved draft. The first accepted turn makes this
+  // local id durable; prior conversations are opened explicitly.
   const initialThreadId = useRef(newId("thread"));
   const [threadId, setThreadId] = useState(initialThreadId.current);
   const [messages, setMessages] = useState<UIMessage[]>([]);
@@ -58,7 +55,6 @@ export function useRemixThread() {
     null,
   );
   const statusRef = useRef<RemixRunStatus>(status);
-  const hydratedRef = useRef(false);
   statusRef.current = status;
 
   const applyRuntime = useCallback(
@@ -184,33 +180,6 @@ export function useRemixThread() {
     [waitForDurableTurn],
   );
 
-  useEffect(() => {
-    let cancelled = false;
-    void getLatestThread()
-      .then((latest) => {
-        if (cancelled || hydratedRef.current) return;
-        hydratedRef.current = true;
-        const next = latestThreadState(latest, initialThreadId.current);
-        setThreadId(next.threadId);
-        setMessages(next.messages);
-        if (latest) {
-          void getDurableThreadRuntime(latest.id).then((runtime) => {
-            if (!cancelled && runtime) {
-              applyRuntime(runtime);
-              observeActiveTurn(runtime);
-            }
-          });
-        }
-      })
-      .catch(() => {
-        // Home is still useful offline or before sign-in recovers. The next
-        // sent turn will create a durable thread with the fallback id.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [applyRuntime, observeActiveTurn]);
-
   // Leaving a screen stops only this device's observer. The accepted turn stays
   // on the server; coming back reloads its canonical D1 snapshot instead of
   // silently cancelling work because a view unmounted.
@@ -234,7 +203,6 @@ export function useRemixThread() {
     setStatus("idle");
     activeTurnIdRef.current = null;
     retryRequestRef.current = null;
-    hydratedRef.current = true;
   }, []);
 
   const loadThread = useCallback(
@@ -242,7 +210,6 @@ export function useRemixThread() {
       if (!id || statusRef.current === "streaming") return false;
       abortRef.current?.abort();
       abortRef.current = null;
-      hydratedRef.current = true;
       setStatus("idle");
       setError(null);
       setActiveTool(null);
@@ -274,13 +241,19 @@ export function useRemixThread() {
     abortRef.current?.abort();
     abortRef.current = null;
     activeTurnIdRef.current = null;
-    if (turnId) void commandDurableTurn(turnId, { type: "cancel" });
+    if (turnId) {
+      void commandDurableTurn(turnId, { type: "cancel" }).catch(() => {
+        setError(
+          "Stopped on this device, but couldn't cancel Remix on the server. Check this conversation when you're back online.",
+        );
+      });
+    }
     setStatus("idle");
     setActiveTool(null);
   }, []);
 
   const run = useCallback(
-    async (nextMessages: UIMessage[]) => {
+    async (nextMessages: UIMessage[], onTurnAccepted?: () => void) => {
       if (abortRef.current) return false;
       const controller = new AbortController();
       abortRef.current = controller;
@@ -303,6 +276,7 @@ export function useRemixThread() {
           clientRequestId,
         });
         turnAccepted = true;
+        onTurnAccepted?.();
         activeTurnIdRef.current = turn.id;
         const completed = await waitForDurableTurn(
           turn.id,
@@ -345,7 +319,7 @@ export function useRemixThread() {
   );
 
   const send = useCallback(
-    async (text: string) => {
+    async (text: string, onTurnAccepted?: () => void) => {
       const trimmed = text.trim();
       const approvalPending = approvalNeedsDecision(
         pendingApproval,
@@ -358,7 +332,7 @@ export function useRemixThread() {
         parts: [{ type: "text", text: trimmed }],
       };
       const nextMessages = [...messages, userMessage];
-      return run(nextMessages);
+      return run(nextMessages, onTurnAccepted);
     },
     [approvalState, messages, pendingApproval, run, status],
   );
@@ -374,14 +348,14 @@ export function useRemixThread() {
   }, [approvalState, messages, pendingApproval, run, status]);
 
   const resend = useCallback(
-    async (messageId: string, text: string) => {
+    async (messageId: string, text: string, onTurnAccepted?: () => void) => {
       if (
         status === "streaming" ||
         approvalNeedsDecision(pendingApproval, approvalState)
       )
         return false;
       const nextMessages = messagesForResend(messages, messageId, text);
-      return nextMessages ? run(nextMessages) : false;
+      return nextMessages ? run(nextMessages, onTurnAccepted) : false;
     },
     [approvalState, messages, pendingApproval, run, status],
   );

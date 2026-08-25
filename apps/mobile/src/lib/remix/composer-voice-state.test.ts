@@ -31,6 +31,19 @@ describe("Remix composer voice state", () => {
     });
   });
 
+  it("acknowledges microphone startup without accepting another tap", () => {
+    expect(
+      remixComposerVoiceState({
+        draft: "",
+        micState: "starting" as never,
+        remixBusy: false,
+      }),
+    ).toMatchObject({
+      action: "waiting-for-microphone",
+      label: "Starting microphone",
+    });
+  });
+
   it("appends a final voice transcript to the existing draft", () => {
     expect(appendVoiceTranscript("Draft a reply", "with a warm tone")).toBe(
       "Draft a reply with a warm tone",

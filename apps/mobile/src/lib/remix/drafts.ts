@@ -21,6 +21,17 @@ export async function saveRemixDrafts(
   await setJsonPref(remixDraftStorageKey(userId), drafts);
 }
 
+/**
+ * Saved drafts hydrate asynchronously. If a user starts dictating before that
+ * read returns, the in-memory value is newer and must win over storage.
+ */
+export function mergeHydratedRemixDrafts(
+  persisted: RemixDrafts,
+  inMemory: RemixDrafts,
+): RemixDrafts {
+  return { ...persisted, ...inMemory };
+}
+
 /** A blank draft removes its entry, keeping the account-scoped preference small. */
 export function updateRemixDraft(
   drafts: RemixDrafts,

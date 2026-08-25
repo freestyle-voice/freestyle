@@ -169,6 +169,7 @@ import {
   resolveSpriteImpact,
   resolveSpritePerformDone,
 } from "./sprite-travel";
+import { createTrayImage } from "./tray-image";
 
 // Test isolation: E2E/probe runs in the unpackaged dev binary would otherwise
 // share the real "Electron" userData (settings.json included) with a running
@@ -1488,13 +1489,7 @@ function buildTrayContextMenu(): Menu {
 }
 
 function createTray(): void {
-  // Give the Freestyle mark enough presence in system trays while staying
-  // within the standard macOS menu-bar icon height.
-  const trayImage = nativeImage
-    .createFromPath(trayIconPath)
-    .resize({ width: 20, height: 20, quality: "best" });
-  // Mark as template so macOS adapts to menu bar light/dark
-  trayImage.setTemplateImage(true);
+  const trayImage = createTrayImage(nativeImage, trayIconPath);
 
   tray = new Tray(trayImage);
   tray.setToolTip("Freestyle");

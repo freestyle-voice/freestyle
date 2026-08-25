@@ -43,6 +43,7 @@ export default function AppLayout() {
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="onboarding" />
                 <Stack.Screen name="settings" />
+                <Stack.Screen name="settings/approvals" />
                 <Stack.Screen name="profile" />
                 <Stack.Screen name="history" />
                 <Stack.Screen name="vocabulary" />

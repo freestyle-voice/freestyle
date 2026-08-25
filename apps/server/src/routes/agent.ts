@@ -24,10 +24,8 @@ const agentRequestSchema = z.object({
  * this route is a streaming proxy — the renderer never holds the cloud
  * token, so the Bearer header is injected here from the server-side session.
  */
-const agentRoute = new Hono().post(
-  "/",
-  zValidator("json", agentRequestSchema),
-  async (c) => {
+const agentRoute = new Hono()
+  .post("/", zValidator("json", agentRequestSchema), async (c) => {
     const { messages, firstTurn, id, threadId } = c.req.valid("json");
 
     const token = getSessionToken();
@@ -99,7 +97,72 @@ const agentRoute = new Hono().post(
         "x-vercel-ai-ui-message-stream": "v1",
       },
     });
-  },
-);
+  })
+  // Durable turns are an opt-in protocol. This narrow proxy lets the renderer
+  // observe, claim, and complete a cloud-paused action without ever receiving
+  // the Cloud bearer token or a direct Durable Object binding.
+  .get("/thread/:threadId", async (c) => {
+    const threadId = c.req.param("threadId");
+    if (!z.string().min(1).max(100).safeParse(threadId).success)
+      return c.json({ error: "invalid_thread" }, 400);
+    const token = getSessionToken();
+    if (!token) return c.json({ error: "cloud_auth_required" }, 401);
+    let upstream: Response;
+    try {
+      upstream = await fetch(
+        `${freestyleCloudUrl()}/v2/threads/${encodeURIComponent(threadId)}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+    } catch (err) {
+      log.error(`Durable thread snapshot failed: ${err}`);
+      return c.json({ error: "cloud_unreachable" }, 502);
+    }
+    if (upstream.status === 401) invalidateSession();
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type":
+          upstream.headers.get("Content-Type") ?? "application/json",
+      },
+    });
+  })
+  .post("/turn/:turnId/commands", async (c) => {
+    const turnId = c.req.param("turnId");
+    if (!z.string().uuid().safeParse(turnId).success)
+      return c.json({ error: "invalid_turn" }, 400);
+    const token = getSessionToken();
+    if (!token) return c.json({ error: "cloud_auth_required" }, 401);
+    let upstream: Response;
+    try {
+      upstream = await fetch(
+        `${freestyleCloudUrl()}/v2/turns/${encodeURIComponent(turnId)}/commands`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: await c.req.text(),
+          // The command is durable after Cloud accepts it. The renderer may
+          // close without cancelling the server-owned turn.
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+    } catch (err) {
+      log.error(`Durable turn command failed: ${err}`);
+      return c.json({ error: "cloud_unreachable" }, 502);
+    }
+    if (upstream.status === 401) invalidateSession();
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type":
+          upstream.headers.get("Content-Type") ?? "application/json",
+      },
+    });
+  });
 
 export default agentRoute;

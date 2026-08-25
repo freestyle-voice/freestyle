@@ -21,8 +21,8 @@ describe("Remix home layout", () => {
     expect(screen).toMatch(
       /<View style=\{styles\.header\}>[\s\S]*?<ModeSwitch/,
     );
-    expect(styles).not.toMatch(
-      /modeSwitch:\s*\{[\s\S]*?position:\s*"absolute"/,
+    expect(styles).toMatch(
+      /modeSwitch:\s*\{[\s\S]*?flexDirection:\s*"row"[\s\S]*?\n {2}\},\n {2}modeOption:/,
     );
   });
 
@@ -34,10 +34,58 @@ describe("Remix home layout", () => {
     expect(styles).toMatch(/borderBottomLeftRadius: 38/);
   });
 
+  it("keeps Dictate as a quiet, chat-adjacent voice surface rather than another card stack", () => {
+    expect(screen).toMatch(
+      /Speak naturally\. Freestyle keeps the words clear and\s+ready to use\./,
+    );
+    expect(screen).toContain('placeholder="Your words will appear here."');
+    expect(styles).toMatch(
+      /dictationDock:[\s\S]*?borderTopWidth: StyleSheet\.hairlineWidth/,
+    );
+  });
+
   it("dismisses the keyboard before opening the session drawer", () => {
     expect(screen).toMatch(
       /const openSidebar[\s\S]*?Keyboard\.dismiss\(\)[\s\S]*?setSidebarOpen\(true\)/,
     );
     expect(screen).toMatch(/onPress=\{openSidebar\}/);
+  });
+
+  it("keeps the system keyboard up while inline voice listening begins", () => {
+    expect(screen).toMatch(
+      /case "listen":[\s\S]*?toggleVoiceInput\(\);[\s\S]*?inputRef\.current\?\.focus\(\)/,
+    );
+    expect(screen).not.toMatch(
+      /function RemixHome[\s\S]*?case "listen":[\s\S]*?Keyboard\.dismiss\(\)/,
+    );
+  });
+
+  it("grows the composer through four lines before enabling its input scroll", () => {
+    expect(screen).toContain("onContentSizeChange={onInputContentSizeChange}");
+    expect(screen).toContain(
+      "scrollEnabled={inputHeight >= REMIX_COMPOSER_MAX_INPUT_HEIGHT}",
+    );
+    expect(styles).toMatch(/textAlignVertical: "top"/);
+  });
+
+  it("resets a cleared controlled draft and ignores redundant resize events", () => {
+    expect(screen).toContain(
+      "if (!draft) setInputHeight(REMIX_COMPOSER_MIN_INPUT_HEIGHT);",
+    );
+    expect(screen).toContain(
+      "currentHeight === nextHeight ? currentHeight : nextHeight",
+    );
+  });
+
+  it("keeps live dictation inside the composer flow instead of covering the draft", () => {
+    expect(screen).toContain("<View style={styles.composerInputRow}>");
+    expect(styles).not.toMatch(/voiceStatus:[\\s\\S]*?position: "absolute"/);
+    expect(styles).not.toMatch(/voiceStatus:[\\s\\S]*?zIndex:/);
+  });
+
+  it("keeps an interrupted thread recoverable with durable drafts and retry", () => {
+    expect(screen).toContain("loadRemixDrafts(userId)");
+    expect(screen).toContain("Retry last Remix message");
+    expect(screen).toContain("retryLastTurn()");
   });
 });

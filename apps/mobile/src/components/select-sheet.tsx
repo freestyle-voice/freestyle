@@ -1,5 +1,12 @@
 import { Check } from "lucide-react-native";
-import { Modal, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import {
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ThemedText } from "@/components/themed-text";
@@ -8,7 +15,7 @@ import { useTheme } from "@/hooks/use-theme";
 
 export type SelectSheetOption = { value: string; label: string };
 
-/** A compact single-choice picker for long profile and workspace option lists. */
+/** A native iOS sheet with a compact cross-platform fallback for long lists. */
 export function SelectSheet({
   visible,
   title,
@@ -34,20 +41,23 @@ export function SelectSheet({
   return (
     <Modal
       visible={visible}
-      transparent
+      transparent={Platform.OS !== "ios"}
       animationType="slide"
+      presentationStyle={Platform.OS === "ios" ? "formSheet" : "fullScreen"}
       onRequestClose={onClose}
-      statusBarTranslucent
     >
-      <Pressable
-        style={styles.backdrop}
-        onPress={onClose}
-        accessibilityRole="button"
-        accessibilityLabel={`Close ${title} picker`}
-      />
+      {Platform.OS !== "ios" ? (
+        <Pressable
+          style={styles.backdrop}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel={`Close ${title} picker`}
+        />
+      ) : null}
       <View
         style={[
           styles.sheet,
+          Platform.OS === "ios" && styles.iosSheet,
           {
             backgroundColor: theme.card,
             borderColor: theme.cardRing,
@@ -149,6 +159,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingTop: Spacing.two,
     paddingHorizontal: Spacing.four,
+  },
+  iosSheet: {
+    position: "relative",
+    flex: 1,
+    maxHeight: undefined,
+    borderRadius: 0,
+    borderWidth: 0,
   },
   handle: {
     alignSelf: "center",

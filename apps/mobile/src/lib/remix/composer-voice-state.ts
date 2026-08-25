@@ -2,7 +2,6 @@ type ComposerMicState = "idle" | "recording" | "finalizing";
 
 type RemixComposerVoiceInput = {
   draft: string;
-  partial: string;
   micState: ComposerMicState;
   remixBusy: boolean;
 };
@@ -13,19 +12,27 @@ export function appendVoiceTranscript(draft: string, transcript: string) {
 
 export function remixComposerVoiceState({
   draft,
-  partial,
   micState,
   remixBusy,
 }: RemixComposerVoiceInput) {
   if (remixBusy) {
-    return { action: "stop-remix" as const, label: "Stop Remix", value: draft };
+    return {
+      action: "stop-remix" as const,
+      label: "Stop Remix",
+      placeholder: "Message Remix",
+      value: draft,
+    };
   }
 
   if (micState === "recording") {
     return {
       action: "finish-listening" as const,
       label: "Stop listening",
-      value: partial || "Listening…",
+      // Keep the native field stable while the live transcript is shown in the
+      // composer's status row. Replacing the placeholder with it hides the
+      // draft and makes the control look like a second, unrelated surface.
+      placeholder: "Message Remix",
+      value: draft,
     };
   }
 
@@ -33,13 +40,24 @@ export function remixComposerVoiceState({
     return {
       action: "waiting-for-transcript" as const,
       label: "Transcribing voice input",
-      value: "Transcribing…",
+      placeholder: "Transcribing…",
+      value: draft,
     };
   }
 
   if (draft.trim()) {
-    return { action: "send" as const, label: "Send to Remix", value: draft };
+    return {
+      action: "send" as const,
+      label: "Send to Remix",
+      placeholder: "Message Remix",
+      value: draft,
+    };
   }
 
-  return { action: "listen" as const, label: "Start listening", value: "" };
+  return {
+    action: "listen" as const,
+    label: "Start listening",
+    placeholder: "Message Remix",
+    value: "",
+  };
 }

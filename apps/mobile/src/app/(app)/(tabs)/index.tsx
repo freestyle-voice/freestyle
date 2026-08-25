@@ -1,9 +1,19 @@
+import type { UIMessage } from "ai";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowUp, Menu, Mic, Settings, Square } from "lucide-react-native";
+import {
+  ArrowUp,
+  Check,
+  Menu,
+  Mic,
+  Settings,
+  Square,
+  X,
+} from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Keyboard,
   KeyboardAvoidingView,
@@ -23,6 +33,7 @@ import {
 
 import { ChatSidebar } from "@/components/chat-sidebar";
 import { MicButton } from "@/components/mic-button";
+import { MobileMarkdown } from "@/components/mobile-markdown";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { TranscriptView } from "@/components/transcript-view";
@@ -33,17 +44,29 @@ import { useTheme } from "@/hooks/use-theme";
 import { useDictation } from "@/lib/audio/use-dictation";
 import { composerBottomPadding } from "@/lib/composer-spacing";
 import {
+  REMIX_COMPOSER_MAX_INPUT_HEIGHT,
+  REMIX_COMPOSER_MIN_INPUT_HEIGHT,
+  remixComposerInputHeight,
+} from "@/lib/remix/composer-sizing";
+import {
   appendVoiceTranscript,
   remixComposerVoiceState,
 } from "@/lib/remix/composer-voice-state";
+import {
+  loadRemixDrafts,
+  type RemixDrafts,
+  saveRemixDrafts,
+  updateRemixDraft,
+} from "@/lib/remix/drafts";
 import { DEFAULT_HOME_MODE } from "@/lib/remix/home-mode";
+import { messageText } from "@/lib/remix/thread";
 import type { RemixMode } from "@/lib/remix/types";
 import { useRemixThread } from "@/lib/remix/use-remix-thread";
 
 export default function VoiceScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { signedIn } = useAuth();
+  const { signedIn, user } = useAuth();
   const router = useRouter();
   const { width } = useWindowDimensions();
   // This home screen stays mounted while the resident keyboard session runs in the
@@ -179,31 +202,31 @@ export default function VoiceScreen() {
                 <RemixHome
                   thread={remixThread}
                   signedIn={signedIn && focused}
+                  userId={user?.id}
                   keyboardVisible={keyboardVisible}
                   bottomInset={insets.bottom}
                 />
               ) : (
                 <>
-                  <View
-                    style={[
-                      styles.dictationStage,
-                      {
-                        backgroundColor: theme.card,
-                        borderColor: theme.border,
-                      },
-                    ]}
-                  >
-                    <ThemedText
-                      type="eyebrow"
-                      themeColor="mutedForeground"
-                      style={styles.dictationEyebrow}
-                    >
-                      DICTATE
-                    </ThemedText>
+                  <View style={[styles.dictationStage]}>
+                    <View style={styles.dictationLead}>
+                      <ThemedText type="eyebrow" themeColor="mutedForeground">
+                        DICTATE
+                      </ThemedText>
+                      {!text && !partial ? (
+                        <ThemedText
+                          themeColor="mutedForeground"
+                          style={styles.dictationPrompt}
+                        >
+                          Speak naturally. Freestyle keeps the words clear and
+                          ready to use.
+                        </ThemedText>
+                      ) : null}
+                    </View>
                     <TranscriptView
                       text={text}
                       partial={partial}
-                      placeholder="Tap the mic, then speak naturally. Your words will appear here."
+                      placeholder="Your words will appear here."
                     />
                   </View>
 
@@ -250,26 +273,30 @@ export default function VoiceScreen() {
                     style={[
                       styles.dictationDock,
                       {
-                        backgroundColor: theme.card,
                         borderColor: theme.border,
                         paddingBottom: insets.bottom + Spacing.three,
                       },
                     ]}
                   >
-                    <Waveform level={level} active={micState === "recording"} />
-                    <ThemedText
-                      themeColor="mutedForeground"
-                      style={styles.status}
-                    >
-                      {status}
-                    </ThemedText>
                     <MicButton
                       state={micState}
-                      size={76}
+                      size={72}
                       level={level}
                       onPressIn={onPressIn}
                       onPressOut={onPressOut}
                     />
+                    <View style={styles.dictationStatus}>
+                      <Waveform
+                        level={level}
+                        active={micState === "recording"}
+                      />
+                      <ThemedText
+                        themeColor="mutedForeground"
+                        style={styles.status}
+                      >
+                        {status}
+                      </ThemedText>
+                    </View>
                   </View>
                 </>
               )}
@@ -336,11 +363,13 @@ function ModeSwitch({
 function RemixHome({
   thread,
   signedIn,
+  userId,
   keyboardVisible,
   bottomInset,
 }: {
   thread: ReturnType<typeof useRemixThread>;
   signedIn: boolean;
+  userId: string | undefined;
   keyboardVisible: boolean;
   bottomInset: number;
 }) {
@@ -348,10 +377,34 @@ function RemixHome({
   const { threadId: selectedThreadId } = useLocalSearchParams<{
     threadId?: string;
   }>();
-  const { messages, status, error, activeTool, send, stop, loadThread } =
-    thread;
-  const [draft, setDraft] = useState("");
+  const {
+    messages,
+    status,
+    error,
+    activeTool,
+    pendingApproval,
+    approvalState,
+    decideApproval,
+    send,
+    resend,
+    retryLastTurn,
+    stop,
+    loadThread,
+  } = thread;
+  const [drafts, setDrafts] = useState<RemixDrafts>({});
+  const draftsRef = useRef<RemixDrafts>({});
+  const draftWriteQueue = useRef<Promise<void>>(Promise.resolve());
+  const [editingMessage, setEditingMessage] = useState<{
+    id: string;
+    text: string;
+    threadId: string;
+  } | null>(null);
+  const [inputHeight, setInputHeight] = useState(
+    REMIX_COMPOSER_MIN_INPUT_HEIGHT,
+  );
   const inputRef = useRef<TextInput>(null);
+  const draft = drafts[thread.threadId] ?? "";
+  const editingCurrentThread = editingMessage?.threadId === thread.threadId;
   const busy = status === "streaming";
   const hasDraft = draft.trim().length > 0;
   const {
@@ -367,10 +420,44 @@ function RemixHome({
   });
   const voiceControl = remixComposerVoiceState({
     draft,
-    partial: voicePartial,
     micState: voiceState,
     remixBusy: busy,
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadRemixDrafts(userId)
+      .then((stored) => {
+        if (cancelled) return;
+        draftsRef.current = stored;
+        setDrafts(stored);
+      })
+      .catch(() => {
+        // Draft recovery is best-effort. Storage should never block chat.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const setDraft = useCallback(
+    (value: string | ((current: string) => string)) => {
+      const current = draftsRef.current[thread.threadId] ?? "";
+      const nextValue = typeof value === "function" ? value(current) : value;
+      const next = updateRemixDraft(
+        draftsRef.current,
+        thread.threadId,
+        nextValue,
+      );
+      draftsRef.current = next;
+      setDrafts(next);
+      draftWriteQueue.current = draftWriteQueue.current
+        .catch(() => {})
+        .then(() => saveRemixDrafts(userId, next))
+        .catch(() => {});
+    },
+    [thread.threadId, userId],
+  );
 
   useEffect(() => {
     if (selectedThreadId) void loadThread(selectedThreadId);
@@ -384,10 +471,29 @@ function RemixHome({
     return () => cancelAnimationFrame(frame);
   }, [messages.length]);
 
+  // iOS does not always emit another content-size event after a controlled
+  // multiline field is cleared (for example after Send or a voice final). Keep
+  // the next empty draft compact instead of leaving an invisible, stale
+  // multi-line input height in the composer.
+  useEffect(() => {
+    if (!draft) setInputHeight(REMIX_COMPOSER_MIN_INPUT_HEIGHT);
+  }, [draft]);
+
   const submit = useCallback(async () => {
-    const sent = await send(draft);
-    if (sent) setDraft("");
-  }, [draft, send]);
+    const sent =
+      editingCurrentThread && editingMessage
+        ? await resend(editingMessage.id, draft)
+        : await send(draft);
+    if (sent) {
+      setDraft("");
+      setEditingMessage(null);
+    }
+  }, [draft, editingCurrentThread, editingMessage, resend, send, setDraft]);
+
+  const copyMessage = useCallback(async (text: string) => {
+    await Clipboard.setStringAsync(text);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
   const handleComposerAction = useCallback(() => {
     switch (voiceControl.action) {
@@ -399,13 +505,31 @@ function RemixHome({
         break;
       case "listen":
       case "finish-listening":
-        Keyboard.dismiss();
         toggleVoiceInput();
+        // Do not dismiss or swap out the field here. The keyboard remains
+        // available while the microphone streams, just like a native chat
+        // composer, and dictated text appends to the same draft when ready.
+        requestAnimationFrame(() => inputRef.current?.focus());
         break;
       case "waiting-for-transcript":
         break;
     }
   }, [stop, submit, toggleVoiceInput, voiceControl.action]);
+
+  const onInputContentSizeChange = useCallback(
+    ({ nativeEvent }: { nativeEvent: { contentSize: { height: number } } }) => {
+      const nextHeight = remixComposerInputHeight(
+        nativeEvent.contentSize.height,
+      );
+      // A rendered height can itself trigger another content-size event on iOS.
+      // Avoid turning that feedback into a resize loop that makes long drafts
+      // jump while the keyboard is open.
+      setInputHeight((currentHeight) =>
+        currentHeight === nextHeight ? currentHeight : nextHeight,
+      );
+    },
+    [],
+  );
 
   return (
     <View
@@ -424,7 +548,7 @@ function RemixHome({
         contentContainerStyle={styles.remixScroll}
         keyboardShouldPersistTaps="handled"
       >
-        {messages.map((message) => (
+        {messages.map((message, index) => (
           <View
             key={message.id}
             style={[
@@ -439,95 +563,347 @@ function RemixHome({
             <ThemedText type="eyebrow" themeColor="mutedForeground">
               {message.role === "user" ? "YOU" : "REMIX"}
             </ThemedText>
-            <ThemedText style={styles.turnText}>
-              {message.parts
-                .filter((part) => part.type === "text")
-                .map((part) => part.text)
-                .join("")}
-            </ThemedText>
+            <MobileMarkdown text={messageText(message)} />
+            <MessageActions
+              message={message}
+              isLatest={index === messages.length - 1}
+              onCopy={copyMessage}
+              onEdit={(text) => {
+                setEditingMessage({
+                  id: message.id,
+                  text,
+                  threadId: thread.threadId,
+                });
+                setDraft(text);
+                requestAnimationFrame(() => inputRef.current?.focus());
+              }}
+              onRegenerate={() => void retryLastTurn()}
+            />
           </View>
         ))}
         {activeTool ? (
-          <ThemedText themeColor="mutedForeground" style={styles.toolStatus}>
-            {activeTool}…
-          </ThemedText>
+          <View
+            style={[styles.toolStatus, { backgroundColor: theme.secondary }]}
+          >
+            <ActivityIndicator color={theme.primary} size="small" />
+            <ThemedText
+              themeColor="mutedForeground"
+              style={styles.toolStatusText}
+            >
+              {activeTool}
+            </ThemedText>
+          </View>
+        ) : null}
+        {pendingApproval ? (
+          <ConnectorApprovalCard
+            approval={pendingApproval}
+            state={approvalState}
+            onDecide={decideApproval}
+          />
         ) : null}
         {error ? (
-          <ThemedText style={[styles.error, { color: theme.destructive }]}>
-            {error}
-          </ThemedText>
+          <View
+            style={[
+              styles.recovery,
+              { backgroundColor: theme.secondary, borderColor: theme.border },
+            ]}
+          >
+            <ThemedText style={[styles.error, { color: theme.destructive }]}>
+              {error}
+            </ThemedText>
+            <Pressable
+              onPress={() => void retryLastTurn()}
+              accessibilityRole="button"
+              accessibilityLabel="Retry last Remix message"
+              style={[styles.retry, { backgroundColor: theme.primary }]}
+            >
+              <ThemedText
+                style={[styles.retryText, { color: theme.primaryForeground }]}
+              >
+                Retry
+              </ThemedText>
+            </Pressable>
+          </View>
         ) : null}
       </ScrollView>
+      {editingCurrentThread ? (
+        <View
+          style={[styles.editingBanner, { backgroundColor: theme.secondary }]}
+        >
+          <ThemedText themeColor="mutedForeground" style={styles.editingCopy}>
+            Editing an earlier message. Sending will replace the reply after it.
+          </ThemedText>
+          <Pressable
+            onPress={() => {
+              setEditingMessage(null);
+              setDraft("");
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel editing message"
+          >
+            <X color={theme.mutedForeground} size={16} />
+          </Pressable>
+        </View>
+      ) : null}
       <View
         style={[
           styles.composer,
           {
             backgroundColor: theme.card,
             borderColor:
-              voiceState === "recording" ? theme.destructive : theme.border,
+              voiceState === "recording" ? theme.primary : theme.border,
           },
         ]}
       >
-        <TextInput
-          ref={inputRef}
-          value={voiceControl.value}
-          onChangeText={setDraft}
-          editable={!busy && voiceState === "idle"}
-          autoCapitalize="sentences"
-          placeholder="Message Remix"
-          placeholderTextColor={theme.mutedForeground}
-          multiline
-          style={[styles.input, { color: theme.foreground }]}
-        />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={voiceControl.label}
-          disabled={voiceControl.action === "waiting-for-transcript"}
-          onPress={handleComposerAction}
-          style={[
-            styles.send,
-            {
-              backgroundColor:
-                voiceState === "recording"
-                  ? theme.destructive
-                  : hasDraft || busy
+        {voiceState !== "idle" ? (
+          <View accessibilityLiveRegion="polite" style={styles.voiceStatus}>
+            {voiceState === "recording" ? (
+              <View
+                style={[
+                  styles.voiceStatusDot,
+                  { backgroundColor: theme.primary },
+                ]}
+              />
+            ) : (
+              <ActivityIndicator color={theme.primary} size="small" />
+            )}
+            <ThemedText
+              themeColor="mutedForeground"
+              style={styles.voiceStatusText}
+              numberOfLines={1}
+            >
+              {voiceState === "recording"
+                ? voicePartial || "Listening"
+                : "Adding your voice"}
+            </ThemedText>
+          </View>
+        ) : null}
+        <View style={styles.composerInputRow}>
+          <TextInput
+            ref={inputRef}
+            value={voiceControl.value}
+            onChangeText={setDraft}
+            editable={
+              !busy &&
+              !(
+                pendingApproval &&
+                !["approved", "declined"].includes(approvalState)
+              )
+            }
+            autoCapitalize="sentences"
+            placeholder={voiceControl.placeholder}
+            placeholderTextColor={theme.mutedForeground}
+            multiline
+            scrollEnabled={inputHeight >= REMIX_COMPOSER_MAX_INPUT_HEIGHT}
+            onContentSizeChange={onInputContentSizeChange}
+            style={[
+              styles.input,
+              { color: theme.foreground, height: inputHeight },
+            ]}
+          />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={voiceControl.label}
+            disabled={
+              Boolean(
+                pendingApproval &&
+                  !["approved", "declined"].includes(approvalState),
+              ) || voiceControl.action === "waiting-for-transcript"
+            }
+            onPress={handleComposerAction}
+            style={[
+              styles.send,
+              {
+                backgroundColor:
+                  voiceState === "recording" || hasDraft || busy
                     ? theme.primary
                     : theme.secondary,
-            },
+              },
+            ]}
+          >
+            {busy || voiceState === "recording" ? (
+              <Square
+                color={theme.primaryForeground}
+                fill={theme.primaryForeground}
+                size={15}
+              />
+            ) : hasDraft ? (
+              <ArrowUp
+                color={theme.primaryForeground}
+                size={19}
+                strokeWidth={2.5}
+              />
+            ) : (
+              <Mic
+                color={
+                  voiceState === "finalizing"
+                    ? theme.mutedForeground
+                    : theme.foreground
+                }
+                size={20}
+              />
+            )}
+          </Pressable>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function MessageActions({
+  message,
+  isLatest,
+  onCopy,
+  onEdit,
+  onRegenerate,
+}: {
+  message: UIMessage;
+  isLatest: boolean;
+  onCopy: (text: string) => Promise<void>;
+  onEdit: (text: string) => void;
+  onRegenerate: () => void;
+}) {
+  const theme = useTheme();
+  const text = messageText(message);
+  if (!text) return null;
+  return (
+    <View style={styles.messageActions}>
+      <Pressable
+        onPress={() => void onCopy(text)}
+        accessibilityRole="button"
+        accessibilityLabel="Copy message"
+        style={({ pressed }) => [
+          styles.messageAction,
+          { borderColor: theme.border },
+          pressed && styles.pressed,
+        ]}
+      >
+        <ThemedText
+          themeColor="mutedForeground"
+          style={styles.messageActionText}
+        >
+          Copy
+        </ThemedText>
+      </Pressable>
+      {message.role === "user" ? (
+        <Pressable
+          onPress={() => onEdit(text)}
+          accessibilityRole="button"
+          accessibilityLabel="Edit and resend message"
+          style={({ pressed }) => [
+            styles.messageAction,
+            { borderColor: theme.border },
+            pressed && styles.pressed,
           ]}
         >
-          {busy || voiceState === "recording" ? (
-            <Square
-              color={
-                voiceState === "recording"
-                  ? theme.foreground
-                  : theme.primaryForeground
-              }
-              fill={
-                voiceState === "recording"
-                  ? theme.foreground
-                  : theme.primaryForeground
-              }
-              size={15}
-            />
-          ) : hasDraft ? (
-            <ArrowUp
-              color={theme.primaryForeground}
-              size={19}
-              strokeWidth={2.5}
-            />
-          ) : (
-            <Mic
-              color={
-                voiceState === "finalizing"
-                  ? theme.mutedForeground
-                  : theme.foreground
-              }
-              size={20}
-            />
-          )}
+          <ThemedText
+            themeColor="mutedForeground"
+            style={styles.messageActionText}
+          >
+            Edit
+          </ThemedText>
         </Pressable>
-      </View>
+      ) : isLatest ? (
+        <Pressable
+          onPress={onRegenerate}
+          accessibilityRole="button"
+          accessibilityLabel="Regenerate last Remix response"
+          style={({ pressed }) => [
+            styles.messageAction,
+            { borderColor: theme.border },
+            pressed && styles.pressed,
+          ]}
+        >
+          <ThemedText
+            themeColor="mutedForeground"
+            style={styles.messageActionText}
+          >
+            Regenerate
+          </ThemedText>
+        </Pressable>
+      ) : null}
+    </View>
+  );
+}
+
+function ConnectorApprovalCard({
+  approval,
+  state,
+  onDecide,
+}: {
+  approval: import("@/lib/remix/types").PendingConnectorApproval;
+  state:
+    | "idle"
+    | "approving"
+    | "approved"
+    | "declining"
+    | "declined"
+    | "failed";
+  onDecide: (approved: boolean) => Promise<boolean>;
+}) {
+  const theme = useTheme();
+  const resolved = state === "approved" || state === "declined";
+  return (
+    <View
+      style={[
+        styles.approvalCard,
+        { backgroundColor: theme.secondary, borderColor: theme.border },
+      ]}
+    >
+      <ThemedText type="eyebrow" themeColor="mutedForeground">
+        CONNECTED APP ACTION
+      </ThemedText>
+      <ThemedText style={styles.approvalTitle}>
+        {state === "approved"
+          ? "Action approved"
+          : state === "declined"
+            ? "Action declined"
+            : `Allow ${approval.toolkitName}?`}
+      </ThemedText>
+      <ThemedText themeColor="mutedForeground" style={styles.approvalHint}>
+        {state === "approved"
+          ? "Freestyle sent this action to your connected account."
+          : state === "declined"
+            ? "Nothing was changed."
+            : `Review this action before Freestyle sends it: ${approval.actionDescription}.`}
+      </ThemedText>
+      {resolved ? (
+        <View style={styles.approvalResolved}>
+          {state === "approved" ? (
+            <Check color={theme.primary} size={18} />
+          ) : (
+            <X color={theme.mutedForeground} size={18} />
+          )}
+        </View>
+      ) : (
+        <View style={styles.approvalActions}>
+          <Pressable
+            onPress={() => void onDecide(false)}
+            disabled={state !== "idle" && state !== "failed"}
+            style={[styles.approvalDecline, { borderColor: theme.border }]}
+          >
+            <ThemedText style={styles.approvalDeclineText}>Decline</ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={() => void onDecide(true)}
+            disabled={state !== "idle" && state !== "failed"}
+            style={[styles.approvalAllow, { backgroundColor: theme.primary }]}
+          >
+            {state === "approving" ? (
+              <ActivityIndicator color={theme.primaryForeground} size="small" />
+            ) : (
+              <ThemedText
+                style={[
+                  styles.approvalAllowText,
+                  { color: theme.primaryForeground },
+                ]}
+              >
+                Allow
+              </ThemedText>
+            )}
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -602,32 +978,118 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xl,
     padding: Spacing.three,
   },
-  turnText: { fontSize: 15, lineHeight: 22 },
-  toolStatus: {
-    fontFamily: Fonts.mono,
-    fontSize: 11,
-    paddingHorizontal: Spacing.one,
-  },
-  error: { fontSize: 13, lineHeight: 19, paddingHorizontal: Spacing.one },
-  composer: {
+  messageActions: {
     flexDirection: "row",
-    alignItems: "flex-end",
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingTop: Spacing.one,
+  },
+  messageAction: {
+    minHeight: 28,
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.two,
+  },
+  messageActionText: { fontFamily: Fonts.sansMedium, fontSize: 12 },
+  toolStatus: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  toolStatusText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
+  approvalCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.xl,
+    marginTop: Spacing.two,
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  approvalTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 17 },
+  approvalHint: { fontSize: 14, lineHeight: 20 },
+  approvalActions: {
+    flexDirection: "row",
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  approvalDecline: {
+    flex: 1,
+    height: 42,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  approvalDeclineText: { fontFamily: Fonts.sansMedium, fontSize: 14 },
+  approvalAllow: {
+    flex: 1,
+    height: 42,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  approvalAllowText: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
+  approvalResolved: { alignItems: "flex-start", paddingTop: Spacing.one },
+  recovery: {
+    gap: Spacing.two,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
+  },
+  error: { fontSize: 13, lineHeight: 19 },
+  retry: {
+    alignSelf: "flex-start",
+    minHeight: 34,
+    justifyContent: "center",
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three,
+  },
+  retryText: { fontFamily: Fonts.sansSemiBold, fontSize: 13 },
+  editingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  editingCopy: { flex: 1, fontSize: 12, lineHeight: 17 },
+  composer: {
     gap: Spacing.two,
     borderWidth: 1,
     borderRadius: Radius["2xl"],
     padding: Spacing.two,
-    minHeight: 64,
+    minHeight: 60,
+  },
+  voiceStatus: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    minHeight: 24,
+    paddingHorizontal: Spacing.one,
+  },
+  voiceStatusDot: { width: 8, height: 8, borderRadius: Radius.full },
+  voiceStatusText: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 13 },
+  composerInputRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: Spacing.two,
   },
   input: {
     flex: 1,
-    minHeight: 38,
-    maxHeight: 104,
+    minHeight: REMIX_COMPOSER_MIN_INPUT_HEIGHT,
+    maxHeight: REMIX_COMPOSER_MAX_INPUT_HEIGHT,
     fontFamily: Fonts.sans,
     fontSize: 15,
     lineHeight: 21,
     paddingHorizontal: Spacing.one,
-    paddingVertical: Spacing.one,
-    textAlignVertical: "center",
+    paddingTop: Spacing.one + 2,
+    paddingBottom: Spacing.one + 1,
+    textAlignVertical: "top",
   },
   send: {
     width: 44,
@@ -636,6 +1098,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  pressed: { opacity: 0.62 },
   actions: {
     flexDirection: "row",
     justifyContent: "center",
@@ -657,18 +1120,24 @@ const styles = StyleSheet.create({
   dictationStage: {
     flex: 1,
     minHeight: 0,
-    borderWidth: 1,
-    borderRadius: Radius["2xl"],
     paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.four,
   },
-  dictationEyebrow: { paddingTop: Spacing.three },
+  dictationLead: { gap: Spacing.two, paddingBottom: Spacing.three },
+  dictationPrompt: { fontSize: 16, lineHeight: 23, maxWidth: 290 },
   dictationDock: {
+    flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.two,
-    marginTop: Spacing.two,
-    borderWidth: 1,
-    borderRadius: Radius["2xl"],
-    paddingTop: Spacing.two,
+    justifyContent: "center",
+    gap: Spacing.three,
+    marginTop: Spacing.one,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: Spacing.three,
+  },
+  dictationStatus: {
+    alignItems: "flex-start",
+    gap: Spacing.one,
+    minWidth: 132,
   },
   status: {
     fontFamily: Fonts.mono,

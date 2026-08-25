@@ -5,6 +5,7 @@ import Animated, {
   type SharedValue,
   useAnimatedStyle,
   useDerivedValue,
+  useReducedMotion,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
@@ -12,9 +13,9 @@ import Animated, {
 import { Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
-const BAR_COUNT = 27;
-const MIN_HEIGHT = 4;
-const MAX_HEIGHT = 40;
+const DEFAULT_BAR_COUNT = 27;
+const DEFAULT_MIN_HEIGHT = 4;
+const DEFAULT_MAX_HEIGHT = 40;
 
 // Asymmetric smoothing (mirrors the desktop pill): bars snap up quickly toward
 // a louder level and fall back gently — the classic "fast attack, slow decay"
@@ -27,22 +28,30 @@ interface WaveformProps {
   /** Live input level [0, 1], shared for smooth UI-thread animation. */
   level: SharedValue<number>;
   active: boolean;
+  /** A compact meter for the live chat composer. */
+  compact?: boolean;
 }
 
 function Bar({
   level,
   active,
   index,
+  barCount,
+  minHeight,
+  maxHeight,
 }: {
   level: SharedValue<number>;
   active: SharedValue<number>;
   index: number;
+  barCount: number;
+  minHeight: number;
+  maxHeight: number;
 }) {
   const theme = useTheme();
 
   // A bell curve so the middle bars are tallest, tapering to the edges — the
   // silhouette matches the desktop pill's Gaussian shape.
-  const center = (BAR_COUNT - 1) / 2;
+  const center = (barCount - 1) / 2;
   const falloff = 1 - Math.abs(index - center) / center;
   const shape = 0.35 + 0.65 * falloff;
 
@@ -54,8 +63,8 @@ function Bar({
     // Height is driven purely by loudness (× the bar's static shape). When the
     // user is silent the level is ~0, so bars sit at MIN_HEIGHT — no motion.
     const energy = level.value * shape * jitter;
-    const target = MIN_HEIGHT + energy * (MAX_HEIGHT - MIN_HEIGHT);
-    const height = interpolate(active.value, [0, 1], [MIN_HEIGHT, target]);
+    const target = minHeight + energy * (maxHeight - minHeight);
+    const height = interpolate(active.value, [0, 1], [minHeight, target]);
     return {
       height,
       // Louder → more opaque, so intensity reads even at a glance.
@@ -81,8 +90,9 @@ function Bar({
  * flat when silent. Mirrors the desktop pill's level-driven, fast-attack /
  * slow-decay behavior.
  */
-export function Waveform({ level, active }: WaveformProps) {
+export function Waveform({ level, active, compact = false }: WaveformProps) {
   const activeSv = useSharedValue(0);
+  const reduceMotion = useReducedMotion();
   // Smoothed loudness with asymmetric attack/decay. Kept in its own shared
   // value (rather than reading a derived value's own prior output) so the UI
   // thread has a stable, well-typed accumulator.
@@ -95,13 +105,28 @@ export function Waveform({ level, active }: WaveformProps) {
   });
 
   useEffect(() => {
-    activeSv.value = withTiming(active ? 1 : 0, { duration: 260 });
-  }, [active, activeSv]);
+    activeSv.value = reduceMotion
+      ? active
+        ? 1
+        : 0
+      : withTiming(active ? 1 : 0, { duration: 260 });
+  }, [active, activeSv, reduceMotion]);
 
+  const barCount = compact ? 12 : DEFAULT_BAR_COUNT;
+  const minHeight = compact ? 3 : DEFAULT_MIN_HEIGHT;
+  const maxHeight = compact ? 18 : DEFAULT_MAX_HEIGHT;
   return (
-    <View style={styles.row}>
-      {Array.from({ length: BAR_COUNT }).map((_, i) => (
-        <Bar key={i} level={smoothed} active={activeSv} index={i} />
+    <View style={[styles.row, { height: maxHeight + 8, gap: compact ? 2 : 4 }]}>
+      {Array.from({ length: barCount }).map((_, i) => (
+        <Bar
+          key={i}
+          level={smoothed}
+          active={activeSv}
+          index={i}
+          barCount={barCount}
+          minHeight={minHeight}
+          maxHeight={maxHeight}
+        />
       ))}
     </View>
   );
@@ -112,8 +137,6 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: 4,
-    height: MAX_HEIGHT + 8,
   },
   bar: { width: 3.5, borderRadius: Radius.full },
 });

@@ -39,3 +39,32 @@ export function appendAssistantDelta(
     },
   ];
 }
+
+export function messageText(message: UIMessage): string {
+  return message.parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join("");
+}
+
+/** Keeps the edited user message and its preceding context for a clean resend. */
+export function messagesForResend(
+  messages: UIMessage[],
+  messageId: string,
+  text: string,
+): UIMessage[] | null {
+  const index = messages.findIndex(
+    (message) => message.id === messageId && message.role === "user",
+  );
+  if (index < 0 || !text.trim()) return null;
+  return [
+    ...messages.slice(0, index),
+    { ...messages[index], parts: [{ type: "text", text: text.trim() }] },
+  ];
+}
+
+/** Re-runs the latest user turn after a failed/interrupted response. */
+export function messagesForRetry(messages: UIMessage[]): UIMessage[] | null {
+  const index = messages.findLastIndex((message) => message.role === "user");
+  return index < 0 ? null : messages.slice(0, index + 1);
+}

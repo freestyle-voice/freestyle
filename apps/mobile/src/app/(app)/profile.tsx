@@ -2,6 +2,7 @@ import {
   INDUSTRY_LABELS,
   type Industry,
   industrySchema,
+  type ProfileInput,
 } from "@freestyle-voice/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -10,23 +11,29 @@ import {
   Building2,
   CalendarClock,
   Check,
-  ChevronDown,
   LogOut,
   PlugZap,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Modal,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
-  Switch,
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
 import { SelectSheet } from "@/components/select-sheet";
 import {
@@ -34,6 +41,7 @@ import {
   SettingsGroup,
   SettingsNavRow,
   SettingsScreenScaffold,
+  SettingsValueRow,
 } from "@/components/settings-ui";
 import { Skeleton } from "@/components/skeleton";
 import { ThemedText } from "@/components/themed-text";
@@ -69,6 +77,7 @@ export function ProfileContent() {
   const { user, signedIn, signOut } = useAuth();
   const queryClient = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const [nameEditorOpen, setNameEditorOpen] = useState(false);
 
   const { data: usage, isLoading: usageLoading } = useQuery({
     queryKey: ["cloud-usage"],
@@ -140,21 +149,23 @@ export function ProfileContent() {
   const content = (
     <>
       <View style={styles.accountHero}>
-        {user?.image ? (
-          <Image
-            source={{ uri: user.image }}
-            style={styles.avatarImage}
-            accessibilityIgnoresInvertColors
-          />
-        ) : (
-          <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
-            <ThemedText
-              style={[styles.avatarText, { color: theme.accentForeground }]}
-            >
-              {user ? initialsFor(user) : "?"}
-            </ThemedText>
-          </View>
-        )}
+        <View style={styles.avatarWrap}>
+          {user?.image ? (
+            <Image
+              source={{ uri: user.image }}
+              style={styles.avatarImage}
+              accessibilityIgnoresInvertColors
+            />
+          ) : (
+            <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
+              <ThemedText
+                style={[styles.avatarText, { color: theme.accentForeground }]}
+              >
+                {user ? initialsFor(user) : "?"}
+              </ThemedText>
+            </View>
+          )}
+        </View>
         <View style={styles.accountInfo}>
           <ThemedText style={styles.accountName} numberOfLines={1}>
             {user?.name ?? "Signed in"}
@@ -171,7 +182,20 @@ export function ProfileContent() {
         </View>
       </View>
 
-      <SettingsGroup title="Freestyle">
+      <SettingsGroup title="Account">
+        <SettingsValueRow
+          label="Name"
+          value={user?.name ?? "Not set"}
+          onPress={() => setNameEditorOpen(true)}
+        />
+        <SettingsValueRow
+          label="Email"
+          value={user?.email ?? "Not available"}
+          last
+        />
+      </SettingsGroup>
+
+      <SettingsGroup>
         <SettingsNavRow
           icon={SlidersHorizontal}
           label="Dictation settings"
@@ -183,6 +207,14 @@ export function ProfileContent() {
           label="Connected apps & MCPs"
           value="Give Remix access to your tools"
           onPress={() => router.push("/(app)/connected-apps")}
+        />
+        <SettingsNavRow
+          icon={ShieldCheck}
+          label="Action approvals"
+          value="Confirm connected-app changes"
+          // Expo's generated route declarations refresh when Metro starts; keep
+          // this new nested settings route usable in a clean typecheck too.
+          onPress={() => router.push("/(app)/settings/approvals" as never)}
         />
         <SettingsNavRow
           icon={CalendarClock}
@@ -198,9 +230,6 @@ export function ProfileContent() {
           last
         />
       </SettingsGroup>
-
-      {/* Personal information */}
-      {signedIn ? <NameCard currentName={user?.name ?? ""} /> : null}
 
       {/* Professional details */}
       {signedIn ? <ProfileDetailsCard /> : null}
@@ -327,6 +356,12 @@ export function ProfileContent() {
           Sign out
         </ThemedText>
       </Pressable>
+
+      <NameEditorSheet
+        visible={nameEditorOpen}
+        currentName={user?.name ?? ""}
+        onClose={() => setNameEditorOpen(false)}
+      />
     </>
   );
 
@@ -345,208 +380,228 @@ const PROVIDER_META: {
   { id: "apple", label: "Apple", Icon: AppleIcon },
 ];
 
-/** Editable display-name card. */
-function NameCard({ currentName }: { currentName: string }) {
-  const theme = useTheme();
-  const [name, setName] = useState(currentName);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-
-  useEffect(() => {
-    setName(currentName);
-  }, [currentName]);
-
-  const trimmed = name.trim();
-  const dirty = trimmed !== currentName.trim();
-  const canSave = dirty && trimmed.length > 0 && !saving;
-
-  const onSave = useCallback(async () => {
-    if (!canSave) return;
-    setSaving(true);
-    setSaved(false);
-    const { error } = await updateName(trimmed);
-    setSaving(false);
-    if (error) {
-      Alert.alert("Couldn't update name", error);
-      return;
-    }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-  }, [canSave, trimmed]);
-
+/** Keyboard-safe native sheet used for the small, focused account edits. */
+function NameEditorSheet({
+  visible,
+  currentName,
+  onClose,
+}: {
+  visible: boolean;
+  currentName: string;
+  onClose: () => void;
+}) {
   return (
-    <Card>
-      <ThemedText type="eyebrow" themeColor="mutedForeground">
-        NAME
-      </ThemedText>
-      <TextInput
-        value={name}
-        onChangeText={setName}
-        placeholder="Your name"
-        placeholderTextColor={theme.mutedForeground}
-        maxLength={120}
-        returnKeyType="done"
-        onSubmitEditing={() => void onSave()}
-        style={[
-          styles.input,
-          { borderColor: theme.border, color: theme.foreground },
-        ]}
-      />
-      <Pressable
-        onPress={() => void onSave()}
-        disabled={!canSave}
-        style={({ pressed }) => [
-          styles.primaryButton,
-          { backgroundColor: theme.primary },
-          pressed && canSave ? { opacity: 0.9 } : null,
-          !canSave ? styles.buttonDisabled : null,
-        ]}
-      >
-        {saving ? (
-          <ActivityIndicator color={theme.primaryForeground} />
-        ) : (
-          <>
-            {saved ? <Check color={theme.primaryForeground} size={16} /> : null}
-            <ThemedText
-              style={[
-                styles.primaryButtonText,
-                { color: theme.primaryForeground },
-              ]}
-            >
-              {saved ? "Saved" : "Save changes"}
-            </ThemedText>
-          </>
-        )}
-      </Pressable>
-    </Card>
+    <TextEditorSheet
+      visible={visible}
+      title="Edit name"
+      value={currentName}
+      placeholder="Your name"
+      onClose={onClose}
+      onSave={async (name) => {
+        const { error } = await updateName(name);
+        if (error) throw new Error(error);
+      }}
+    />
   );
 }
 
-/** Professional details: industry, job title, company + detected location. */
-function ProfileDetailsCard() {
+function TextEditorSheet({
+  visible,
+  title,
+  value,
+  placeholder,
+  allowEmpty = false,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+  title: string;
+  value: string;
+  placeholder: string;
+  allowEmpty?: boolean;
+  onClose: () => void;
+  onSave: (value: string) => Promise<void>;
+}) {
   const theme = useTheme();
-  const queryClient = useQueryClient();
-  const [industry, setIndustry] = useState<Industry | undefined>(undefined);
-  const [industryPickerOpen, setIndustryPickerOpen] = useState(false);
-  const [jobTitle, setJobTitle] = useState("");
-  const [company, setCompany] = useState("");
-  // Re-seed tone + vocabulary defaults for the new industry (opt-out). Only
-  // surfaced while the industry is actually changing. Mirrors the dashboard.
-  const [updatePreferences, setUpdatePreferences] = useState(true);
+  const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
+  useEffect(() => {
+    if (visible) setDraft(value);
+  }, [value, visible]);
+
+  const trimmed = draft.trim();
+  const canSave =
+    !saving && trimmed !== value.trim() && (allowEmpty || trimmed.length > 0);
+  const save = useCallback(async () => {
+    if (!canSave) return;
+    setSaving(true);
+    try {
+      await onSave(trimmed);
+      onClose();
+    } catch (error) {
+      Alert.alert(
+        `Couldn't update ${title.toLowerCase()}`,
+        error instanceof Error ? error.message : "Try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [canSave, onClose, onSave, title, trimmed]);
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      presentationStyle="formSheet"
+      onRequestClose={onClose}
+    >
+      <KeyboardAvoidingView
+        // iOS form sheets already track the software keyboard. Let the
+        // native presentation own that transition; Android still needs the
+        // standard height adjustment for its full-screen modal fallback.
+        enabled={Platform.OS !== "ios"}
+        behavior="height"
+        style={[styles.editorSheet, { backgroundColor: theme.background }]}
+      >
+        <View style={styles.editorNav}>
+          <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Cancel">
+            <ThemedText
+              style={[styles.editorNavAction, { color: theme.primary }]}
+            >
+              Cancel
+            </ThemedText>
+          </Pressable>
+          <ThemedText style={styles.editorTitle}>{title}</ThemedText>
+          <Pressable
+            onPress={() => void save()}
+            disabled={!canSave}
+            hitSlop={10}
+            accessibilityLabel={`Save ${title.toLowerCase()}`}
+          >
+            {saving ? (
+              <ActivityIndicator color={theme.primary} size="small" />
+            ) : (
+              <ThemedText
+                style={[
+                  styles.editorNavAction,
+                  { color: canSave ? theme.primary : theme.mutedForeground },
+                ]}
+              >
+                Save
+              </ThemedText>
+            )}
+          </Pressable>
+        </View>
+        <TextInput
+          value={draft}
+          onChangeText={setDraft}
+          placeholder={placeholder}
+          placeholderTextColor={theme.mutedForeground}
+          maxLength={120}
+          autoFocus
+          returnKeyType="done"
+          onSubmitEditing={() => void save()}
+          style={[
+            styles.editorInput,
+            { backgroundColor: theme.secondary, color: theme.foreground },
+          ]}
+        />
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+/** Small, focused account details instead of one large legacy profile form. */
+function ProfileDetailsCard() {
+  const queryClient = useQueryClient();
+  const [industryPickerOpen, setIndustryPickerOpen] = useState(false);
+  const [editingField, setEditingField] = useState<
+    "jobTitle" | "company" | null
+  >(null);
   const { data: profile, isLoading } = useQuery({
     queryKey: ["cloud-profile-fields"],
     queryFn: getProfileFields,
     retry: 1,
   });
-
-  useEffect(() => {
-    if (!profile) return;
-    const parsed = industrySchema.safeParse(profile.industry);
-    setIndustry(parsed.success ? parsed.data : undefined);
-    setJobTitle(profile.jobTitle ?? "");
-    setCompany(profile.company ?? "");
-    setUpdatePreferences(true);
-  }, [profile]);
-
-  const savedIndustry = industrySchema.safeParse(profile?.industry).success
+  const industry = industrySchema.safeParse(profile?.industry).success
     ? (profile?.industry as Industry)
     : undefined;
-  // Show the re-seed toggle only when switching to a real industry (clearing it
-  // never reseeds).
-  const industryWillChange =
-    industry !== savedIndustry && industry !== undefined;
-  const dirty =
-    industry !== savedIndustry ||
-    jobTitle.trim() !== (profile?.jobTitle ?? "") ||
-    company.trim() !== (profile?.company ?? "");
-  const canSave = dirty && !saving;
 
-  const onSave = useCallback(async () => {
-    if (!canSave) return;
-    setSaving(true);
-    setSaved(false);
-    try {
-      const updated = await updateProfileFields({
-        // Send `null` (not `undefined`) to clear a field — `undefined` is
-        // dropped by JSON serialization, which the server reads as "unchanged".
-        industry: industry ?? null,
-        jobTitle: jobTitle.trim() || null,
-        company: company.trim() || null,
-        // Only meaningful on an industry change; harmless otherwise.
-        updatePreferences,
-      });
+  const saveProfile = useCallback(
+    async (input: ProfileInput) => {
+      const updated = await updateProfileFields(input);
       queryClient.setQueryData(["cloud-profile-fields"], updated);
-      // The cloud re-seeds tone/vocabulary defaults into member_preferences on
-      // ANY industry change (unless opted out). Invalidate the preferences query
-      // so the seeded values are pulled in immediately.
-      const industryChanged = (savedIndustry ?? null) !== (industry ?? null);
-      if (industryChanged && industry && updatePreferences) {
-        void queryClient.invalidateQueries({
-          queryKey: ["cloud-preferences"],
-        });
+      if (input.industry && input.updatePreferences !== false) {
+        void queryClient.invalidateQueries({ queryKey: ["cloud-preferences"] });
       }
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-    } catch (e) {
+    },
+    [queryClient],
+  );
+
+  const selectIndustry = useCallback(
+    (next?: Industry) => {
+      setIndustryPickerOpen(false);
+      if (next === industry) return;
+      const update = (updatePreferences: boolean) => {
+        void saveProfile({ industry: next ?? null, updatePreferences }).catch(
+          (error) =>
+            Alert.alert(
+              "Couldn't update industry",
+              error instanceof Error ? error.message : "Try again.",
+            ),
+        );
+      };
+      if (!next) {
+        update(false);
+        return;
+      }
       Alert.alert(
-        "Couldn't update profile",
-        e instanceof Error ? e.message : "Try again.",
+        "Update writing defaults?",
+        "You can also update your default tone and vocabulary for this industry.",
+        [
+          { text: "Keep current", onPress: () => update(false) },
+          { text: "Update defaults", onPress: () => update(true) },
+        ],
       );
-    } finally {
-      setSaving(false);
-    }
-  }, [
-    canSave,
-    industry,
-    savedIndustry,
-    jobTitle,
-    company,
-    updatePreferences,
-    queryClient,
-  ]);
+    },
+    [industry, saveProfile],
+  );
 
   if (isLoading) {
     return (
-      <Card>
-        <ThemedText type="eyebrow" themeColor="mutedForeground">
-          PROFESSIONAL DETAILS
-        </ThemedText>
+      <SettingsGroup title="Work profile">
         <Skeleton width={180} height={20} />
-      </Card>
+      </SettingsGroup>
     );
   }
 
+  const fieldValue = editingField ? (profile?.[editingField] ?? "") : "";
+  const fieldTitle =
+    editingField === "company" ? "Edit company" : "Edit job title";
+  const fieldPlaceholder =
+    editingField === "company" ? "e.g. Acme Inc." : "e.g. Product Manager";
+
   return (
-    <Card>
-      <ThemedText type="eyebrow" themeColor="mutedForeground">
-        INDUSTRY
-      </ThemedText>
-      <Pressable
-        onPress={() => setIndustryPickerOpen(true)}
-        accessibilityRole="button"
-        accessibilityLabel="Choose industry"
-        accessibilityValue={{
-          text: industry ? INDUSTRY_LABELS[industry] : "Not set",
-        }}
-        style={({ pressed }) => [
-          styles.selectField,
-          { borderColor: theme.border },
-          pressed && { backgroundColor: theme.secondary },
-        ]}
-      >
-        <ThemedText
-          style={[
-            styles.selectFieldLabel,
-            !industry && { color: theme.mutedForeground },
-          ]}
-        >
-          {industry ? INDUSTRY_LABELS[industry] : "Choose an industry"}
-        </ThemedText>
-        <ChevronDown color={theme.mutedForeground} size={18} />
-      </Pressable>
+    <>
+      <SettingsGroup title="Work profile">
+        <SettingsValueRow
+          label="Industry"
+          value={industry ? INDUSTRY_LABELS[industry] : "Not set"}
+          onPress={() => setIndustryPickerOpen(true)}
+        />
+        <SettingsValueRow
+          label="Job title"
+          value={profile?.jobTitle || "Not set"}
+          onPress={() => setEditingField("jobTitle")}
+        />
+        <SettingsValueRow
+          label="Company"
+          value={profile?.company || "Not set"}
+          onPress={() => setEditingField("company")}
+          last
+        />
+      </SettingsGroup>
       <SelectSheet
         visible={industryPickerOpen}
         title="Industry"
@@ -555,95 +610,23 @@ function ProfileDetailsCard() {
           label: INDUSTRY_LABELS[value],
         }))}
         selectedValue={industry}
-        onSelect={(value) => {
-          setIndustry(value as Industry);
-          setIndustryPickerOpen(false);
-        }}
-        onClear={() => {
-          setIndustry(undefined);
-          setIndustryPickerOpen(false);
-        }}
+        onSelect={(value) => selectIndustry(value as Industry)}
+        onClear={() => selectIndustry(undefined)}
         onClose={() => setIndustryPickerOpen(false)}
       />
-
-      {industryWillChange ? (
-        <View style={[styles.reseedRow, { borderColor: theme.border }]}>
-          <ThemedText style={styles.reseedLabel}>
-            Update tone and vocabulary to match the new industry's defaults
-          </ThemedText>
-          <Switch
-            value={updatePreferences}
-            onValueChange={setUpdatePreferences}
-            trackColor={{ true: theme.primary, false: theme.secondary }}
-          />
-        </View>
-      ) : null}
-
-      <ThemedText
-        type="eyebrow"
-        themeColor="mutedForeground"
-        style={styles.detailsLabel}
-      >
-        JOB TITLE
-      </ThemedText>
-      <TextInput
-        value={jobTitle}
-        onChangeText={setJobTitle}
-        placeholder="e.g. Product Manager"
-        placeholderTextColor={theme.mutedForeground}
-        maxLength={120}
-        style={[
-          styles.input,
-          { borderColor: theme.border, color: theme.foreground },
-        ]}
+      <TextEditorSheet
+        visible={editingField !== null}
+        title={fieldTitle}
+        value={fieldValue}
+        placeholder={fieldPlaceholder}
+        allowEmpty
+        onClose={() => setEditingField(null)}
+        onSave={async (value) => {
+          if (!editingField) return;
+          await saveProfile({ [editingField]: value || null });
+        }}
       />
-
-      <ThemedText
-        type="eyebrow"
-        themeColor="mutedForeground"
-        style={styles.detailsLabel}
-      >
-        COMPANY
-      </ThemedText>
-      <TextInput
-        value={company}
-        onChangeText={setCompany}
-        placeholder="e.g. Acme Inc."
-        placeholderTextColor={theme.mutedForeground}
-        maxLength={120}
-        style={[
-          styles.input,
-          { borderColor: theme.border, color: theme.foreground },
-        ]}
-      />
-
-      <Pressable
-        onPress={() => void onSave()}
-        disabled={!canSave}
-        style={({ pressed }) => [
-          styles.primaryButton,
-          { backgroundColor: theme.primary },
-          pressed && canSave ? { opacity: 0.9 } : null,
-          !canSave ? styles.buttonDisabled : null,
-        ]}
-      >
-        {saving ? (
-          <ActivityIndicator color={theme.primaryForeground} />
-        ) : (
-          <>
-            {saved ? <Check color={theme.primaryForeground} size={16} /> : null}
-            <ThemedText
-              style={[
-                styles.primaryButtonText,
-                { color: theme.primaryForeground },
-              ]}
-            >
-              {saved ? "Saved" : "Save changes"}
-            </ThemedText>
-          </>
-        )}
-      </Pressable>
-    </Card>
+    </>
   );
 }
 
@@ -708,85 +691,44 @@ function ConnectedAccountsCard() {
   const busy = linking !== null || unlinking !== null;
 
   return (
-    <Card>
-      <ThemedText type="eyebrow" themeColor="mutedForeground">
-        CONNECTED ACCOUNTS
-      </ThemedText>
+    <SettingsGroup title="Sign-in methods">
       {isLoading ? (
         <Skeleton width={160} height={20} />
       ) : (
-        PROVIDER_META.map(({ id, label, Icon }) => {
+        PROVIDER_META.map(({ id, label, Icon }, index) => {
           const isConnected = linked?.includes(id) ?? false;
           const isOnlyMethod = isConnected && connectedCount <= 1;
           return (
-            <View
+            <SettingsValueRow
               key={id}
-              style={[styles.providerRow, { borderColor: theme.border }]}
-            >
-              <Icon size={20} color={theme.foreground} />
-              <ThemedText style={styles.providerLabel}>{label}</ThemedText>
-              {isConnected ? (
-                <Pressable
-                  onPress={() => onUnlink(id, label)}
-                  disabled={busy || isOnlyMethod}
-                  style={({ pressed }) => [
-                    styles.connectButton,
-                    { borderColor: theme.border },
-                    pressed && !busy && !isOnlyMethod
-                      ? { backgroundColor: theme.secondary }
-                      : null,
-                    busy || isOnlyMethod ? styles.buttonDisabled : null,
-                  ]}
-                >
-                  {unlinking === id ? (
-                    <ActivityIndicator color={theme.foreground} size="small" />
-                  ) : (
-                    <ThemedText
-                      style={[
-                        styles.connectButtonText,
-                        { color: theme.mutedForeground },
-                      ]}
-                    >
-                      Disconnect
-                    </ThemedText>
-                  )}
-                </Pressable>
-              ) : (
-                <Pressable
-                  onPress={() => void onLink(id)}
-                  disabled={busy}
-                  style={({ pressed }) => [
-                    styles.connectButton,
-                    { borderColor: theme.border },
-                    pressed && !busy
-                      ? { backgroundColor: theme.secondary }
-                      : null,
-                    busy ? styles.buttonDisabled : null,
-                  ]}
-                >
-                  {linking === id ? (
-                    <ActivityIndicator color={theme.foreground} size="small" />
-                  ) : (
-                    <ThemedText style={styles.connectButtonText}>
-                      Connect
-                    </ThemedText>
-                  )}
-                </Pressable>
-              )}
-            </View>
+              icon={Icon}
+              label={label}
+              value={
+                isConnected ? (isOnlyMethod ? "Primary" : "Connected") : "Add"
+              }
+              onPress={
+                isOnlyMethod
+                  ? undefined
+                  : () => (isConnected ? onUnlink(id, label) : void onLink(id))
+              }
+              disabled={busy}
+              last={index === PROVIDER_META.length - 1}
+              trailing={
+                linking === id || unlinking === id ? (
+                  <ActivityIndicator color={theme.foreground} size="small" />
+                ) : isOnlyMethod ? (
+                  <Check color={theme.primary} size={18} />
+                ) : undefined
+              }
+            />
           );
         })
       )}
-    </Card>
+    </SettingsGroup>
   );
 }
 
-/**
- * Active-organization card with an inline switcher. Every signed-in user has a
- * default org set active by the cloud, so the active row always shows; the
- * other orgs are only listed (tappable to switch) when the user belongs to
- * more than one.
- */
+/** A native-style workspace wheel, only visible when the person has a real choice. */
 function OrganizationCard() {
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -798,9 +740,11 @@ function OrganizationCard() {
     queryFn: listOrganizations,
     retry: 1,
   });
+  const hasMultiple = (orgs?.length ?? 0) > 1;
   const { data: activeOrg, isLoading: activeLoading } = useQuery({
     queryKey: ["cloud-active-org"],
     queryFn: getActiveOrganization,
+    enabled: hasMultiple,
     retry: 1,
   });
 
@@ -813,6 +757,10 @@ function OrganizationCard() {
       if (error) {
         Alert.alert("Couldn't switch organization", error);
         return;
+      }
+      const selected = orgs?.find((org) => org.id === organizationId);
+      if (selected) {
+        queryClient.setQueryData(["cloud-active-org"], selected);
       }
       // Plans are org-scoped on the cloud, so switching orgs can change the
       // plan — refresh both the active org and usage so the PLAN card updates.
@@ -827,70 +775,247 @@ function OrganizationCard() {
         queryKey: ["cloud-profile-fields"],
       });
     },
-    [activeOrg?.id, queryClient],
+    [activeOrg?.id, orgs, queryClient],
   );
 
-  // Nothing to show until we know the user belongs to at least one org.
-  if (!orgsLoading && (orgs?.length ?? 0) === 0) return null;
-
-  const hasMultiple = (orgs?.length ?? 0) > 1;
+  // A default personal organization is an implementation detail. Surface a
+  // workspace switcher only when it gives the person a real choice.
+  if (orgsLoading || activeLoading || !hasMultiple) return null;
 
   return (
-    <Card>
-      <ThemedText type="eyebrow" themeColor="mutedForeground">
-        ORGANIZATION
-      </ThemedText>
-      {orgsLoading || activeLoading ? (
-        <Skeleton width={160} height={20} />
-      ) : hasMultiple ? (
-        <>
-          <Pressable
-            onPress={() => setPickerOpen(true)}
-            disabled={switching !== null}
-            accessibilityRole="button"
-            accessibilityLabel="Choose organization"
-            accessibilityValue={{ text: activeOrg?.name ?? "Not set" }}
-            style={({ pressed }) => [
-              styles.orgRow,
-              { borderColor: theme.border },
-              pressed &&
-                switching === null && { backgroundColor: theme.secondary },
+    <SettingsGroup title="Workspace">
+      <SettingsValueRow
+        icon={Building2}
+        label="Current workspace"
+        value={activeOrg?.name ?? "Choose workspace"}
+        onPress={() => setPickerOpen(true)}
+        disabled={switching !== null}
+        last
+        trailing={
+          switching ? (
+            <ActivityIndicator color={theme.foreground} size="small" />
+          ) : undefined
+        }
+      />
+      <WorkspacePickerSheet
+        visible={pickerOpen}
+        organizations={orgs ?? []}
+        selectedOrganizationId={activeOrg?.id}
+        onSelect={(organizationId) => {
+          setPickerOpen(false);
+          void onSwitch(organizationId);
+        }}
+        onClose={() => setPickerOpen(false)}
+      />
+    </SettingsGroup>
+  );
+}
+
+const WORKSPACE_WHEEL_ITEM_HEIGHT = 52;
+const WORKSPACE_WHEEL_VISIBLE_ITEMS = 5;
+type Organization = Awaited<ReturnType<typeof listOrganizations>>[number];
+
+/**
+ * The operating-system picker visual is important here: a workspace is a
+ * durable context change, so choosing it happens in an explicit bottom sheet
+ * rather than the transient iOS action sheet used for one-off commands.
+ */
+function WorkspacePickerSheet({
+  visible,
+  organizations,
+  selectedOrganizationId,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  organizations: Organization[];
+  selectedOrganizationId?: string;
+  onSelect: (organizationId: string) => void;
+  onClose: () => void;
+}) {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const [pendingOrganizationId, setPendingOrganizationId] = useState(
+    selectedOrganizationId ?? organizations[0]?.id ?? "",
+  );
+  const selectedIndex = Math.max(
+    0,
+    organizations.findIndex((org) => org.id === pendingOrganizationId),
+  );
+
+  useEffect(() => {
+    if (!visible) return;
+    const initialId = selectedOrganizationId ?? organizations[0]?.id ?? "";
+    setPendingOrganizationId(initialId);
+    const initialIndex = Math.max(
+      0,
+      organizations.findIndex((org) => org.id === initialId),
+    );
+    const frame = requestAnimationFrame(() => {
+      scrollRef.current?.scrollTo({
+        y: initialIndex * WORKSPACE_WHEEL_ITEM_HEIGHT,
+        animated: false,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [organizations, selectedOrganizationId, visible]);
+
+  const settleAtOffset = useCallback(
+    (offsetY: number) => {
+      const index = Math.max(
+        0,
+        Math.min(
+          organizations.length - 1,
+          Math.round(offsetY / WORKSPACE_WHEEL_ITEM_HEIGHT),
+        ),
+      );
+      const next = organizations[index];
+      if (next) setPendingOrganizationId(next.id);
+    },
+    [organizations],
+  );
+
+  const onScrollEnd = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      settleAtOffset(event.nativeEvent.contentOffset.y);
+    },
+    [settleAtOffset],
+  );
+
+  const selectOrganization = useCallback(
+    (organization: Organization, index: number) => {
+      setPendingOrganizationId(organization.id);
+      scrollRef.current?.scrollTo({
+        y: index * WORKSPACE_WHEEL_ITEM_HEIGHT,
+        animated: true,
+      });
+    },
+    [],
+  );
+
+  const confirm = useCallback(() => {
+    if (pendingOrganizationId) onSelect(pendingOrganizationId);
+  }, [onSelect, pendingOrganizationId]);
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="slide"
+      presentationStyle="overFullScreen"
+      onRequestClose={onClose}
+    >
+      <View style={styles.workspacePickerOverlay}>
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={onClose}
+          accessibilityRole="button"
+          accessibilityLabel="Close workspace picker"
+        />
+        <View
+          style={[
+            styles.workspacePickerSheet,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.cardRing,
+              paddingBottom: Math.max(insets.bottom, Spacing.five),
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.workspacePickerHandle,
+              { backgroundColor: theme.border },
             ]}
-          >
-            <Building2 size={18} color={theme.foreground} />
-            <ThemedText style={styles.orgName} numberOfLines={1}>
-              {activeOrg?.name ?? "Choose organization"}
-            </ThemedText>
-            {switching ? (
-              <ActivityIndicator color={theme.foreground} size="small" />
-            ) : (
-              <ChevronDown color={theme.mutedForeground} size={18} />
-            )}
-          </Pressable>
-          <SelectSheet
-            visible={pickerOpen}
-            title="Organization"
-            options={(orgs ?? []).map((org) => ({
-              value: org.id,
-              label: org.name,
-            }))}
-            selectedValue={activeOrg?.id}
-            onSelect={(organizationId) => {
-              setPickerOpen(false);
-              void onSwitch(organizationId);
-            }}
-            onClose={() => setPickerOpen(false)}
           />
-        </>
-      ) : (
-        <View style={[styles.orgRow, { borderColor: theme.border }]}>
-          <Building2 size={18} color={theme.foreground} />
-          <ThemedText style={styles.orgName} numberOfLines={1}>
-            {activeOrg?.name ?? orgs?.[0]?.name ?? "—"}
+          <View style={styles.workspacePickerNav}>
+            <Pressable
+              onPress={onClose}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Cancel workspace selection"
+            >
+              <ThemedText
+                style={[styles.workspacePickerAction, { color: theme.primary }]}
+              >
+                Cancel
+              </ThemedText>
+            </Pressable>
+            <ThemedText style={styles.workspacePickerTitle}>
+              Workspace
+            </ThemedText>
+            <Pressable
+              onPress={confirm}
+              hitSlop={10}
+              accessibilityRole="button"
+              accessibilityLabel="Confirm workspace selection"
+            >
+              <ThemedText
+                style={[styles.workspacePickerAction, { color: theme.primary }]}
+              >
+                Done
+              </ThemedText>
+            </Pressable>
+          </View>
+          <View style={styles.workspaceWheel}>
+            <View
+              pointerEvents="none"
+              style={[
+                styles.workspaceWheelSelection,
+                { backgroundColor: theme.secondary, borderColor: theme.border },
+              ]}
+            />
+            <ScrollView
+              ref={scrollRef}
+              showsVerticalScrollIndicator={false}
+              snapToInterval={WORKSPACE_WHEEL_ITEM_HEIGHT}
+              snapToAlignment="start"
+              decelerationRate="fast"
+              disableIntervalMomentum
+              onMomentumScrollEnd={onScrollEnd}
+              onScrollEndDrag={onScrollEnd}
+              contentContainerStyle={styles.workspaceWheelContent}
+            >
+              {organizations.map((organization, index) => {
+                const selected = index === selectedIndex;
+                return (
+                  <Pressable
+                    key={organization.id}
+                    onPress={() => selectOrganization(organization, index)}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={organization.name}
+                    style={styles.workspaceWheelRow}
+                  >
+                    <ThemedText
+                      numberOfLines={1}
+                      style={[
+                        styles.workspaceWheelLabel,
+                        {
+                          color: selected
+                            ? theme.foreground
+                            : theme.mutedForeground,
+                        },
+                        !selected && styles.workspaceWheelLabelMuted,
+                      ]}
+                    >
+                      {organization.name}
+                    </ThemedText>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </View>
+          <ThemedText
+            themeColor="mutedForeground"
+            style={styles.workspacePickerHint}
+          >
+            Your profile, preferences, and plan follow this workspace.
           </ThemedText>
         </View>
-      )}
-    </Card>
+      </View>
+    </Modal>
   );
 }
 
@@ -898,8 +1023,9 @@ const styles = StyleSheet.create({
   accountHero: {
     alignItems: "center",
     gap: Spacing.two,
-    paddingVertical: Spacing.two,
+    paddingVertical: Spacing.three,
   },
+  avatarWrap: { position: "relative" },
   avatar: {
     width: 76,
     height: 76,
@@ -955,77 +1081,92 @@ const styles = StyleSheet.create({
   },
   outlineButtonText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   buttonDisabled: { opacity: 0.6 },
-  input: {
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two + 2,
-    fontFamily: Fonts.sans,
-    fontSize: 15,
-    marginTop: Spacing.two,
+  editorSheet: {
+    flex: 1,
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.three,
   },
-  selectField: {
-    minHeight: 52,
+  editorNav: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: Spacing.three,
-    borderWidth: 1,
+  },
+  editorTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 17 },
+  editorNavAction: { fontFamily: Fonts.sansMedium, fontSize: 16 },
+  editorInput: {
+    minHeight: 52,
     borderRadius: Radius.lg,
     paddingHorizontal: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  selectFieldLabel: { flex: 1, fontFamily: Fonts.sans, fontSize: 15 },
-  detailsLabel: { marginTop: Spacing.four },
-  reseedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.three,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  reseedLabel: {
-    flex: 1,
     fontFamily: Fonts.sans,
-    fontSize: 14,
-    lineHeight: 19,
+    fontSize: 16,
+    marginTop: Spacing.three,
   },
-  providerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.three,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    marginTop: Spacing.two,
+  workspacePickerOverlay: {
+    flex: 1,
+    justifyContent: "flex-end",
+    backgroundColor: "rgba(0, 0, 0, 0.44)",
   },
-  providerLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  connectButton: {
-    marginLeft: "auto",
-    borderWidth: 1,
+  workspacePickerSheet: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopLeftRadius: Radius["2xl"],
+    borderTopRightRadius: Radius["2xl"],
+    paddingHorizontal: Spacing.four,
+    paddingTop: Spacing.two,
+    paddingBottom: Spacing.five,
+  },
+  workspacePickerHandle: {
+    alignSelf: "center",
+    width: 36,
+    height: 4,
     borderRadius: Radius.full,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
-    minWidth: 84,
-    alignItems: "center",
+    marginBottom: Spacing.two,
   },
-  connectButtonText: { fontFamily: Fonts.sansMedium, fontSize: 14 },
-  orgRow: {
+  workspacePickerNav: {
+    minHeight: 40,
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.three,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    marginTop: Spacing.two,
+    justifyContent: "space-between",
   },
-  orgName: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 15 },
-  orgTrailing: { marginLeft: "auto" },
+  workspacePickerTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 17 },
+  workspacePickerAction: { fontFamily: Fonts.sansMedium, fontSize: 16 },
+  workspaceWheel: {
+    height: WORKSPACE_WHEEL_ITEM_HEIGHT * WORKSPACE_WHEEL_VISIBLE_ITEMS,
+    marginTop: Spacing.two,
+    overflow: "hidden",
+  },
+  workspaceWheelSelection: {
+    position: "absolute",
+    top: WORKSPACE_WHEEL_ITEM_HEIGHT * 2,
+    left: 0,
+    right: 0,
+    height: WORKSPACE_WHEEL_ITEM_HEIGHT,
+    borderRadius: Radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  workspaceWheelContent: {
+    paddingVertical: WORKSPACE_WHEEL_ITEM_HEIGHT * 2,
+  },
+  workspaceWheelRow: {
+    height: WORKSPACE_WHEEL_ITEM_HEIGHT,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: Spacing.three,
+  },
+  workspaceWheelLabel: {
+    fontFamily: Fonts.sansMedium,
+    fontSize: 17,
+    lineHeight: 22,
+    textAlign: "center",
+  },
+  workspaceWheelLabelMuted: { opacity: 0.42, transform: [{ scale: 0.92 }] },
+  workspacePickerHint: {
+    fontSize: 13,
+    lineHeight: 18,
+    textAlign: "center",
+    marginTop: Spacing.two,
+    marginBottom: Spacing.one,
+  },
   signOutCard: {
     flexDirection: "row",
     alignItems: "center",

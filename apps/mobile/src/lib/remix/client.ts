@@ -9,6 +9,7 @@ import { Platform } from "react-native";
 import { cloud } from "@/lib/cloud/client";
 
 import type {
+  PendingConnectorApproval,
   RemixStreamEvent,
   RemixThreadOrigin,
   RemixThreadPage,
@@ -22,6 +23,46 @@ const MOBILE_AGENT_CLIENT = {
 } as const;
 
 export type RemixThread = { id: string; messages: UIMessage[] };
+
+export type DurableTurnStatus =
+  | "queued"
+  | "running"
+  | "waiting_approval"
+  | "waiting_desktop"
+  | "needs_desktop"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export type DurableTurn = {
+  id: string;
+  threadId: string;
+  status: DurableTurnStatus;
+  error: string | null;
+};
+
+export type DurableThreadAction = {
+  id: string;
+  turnId: string;
+  kind: "connector" | "desktop";
+  status:
+    | "pending"
+    | "claimed"
+    | "completed"
+    | "declined"
+    | "expired"
+    | "failed";
+  toolName: string;
+  display: string;
+  capability: string | null;
+  expiresAt: string;
+};
+
+export type DurableThreadRuntime = {
+  thread: RemixThread;
+  activeTurn: DurableTurn | null;
+  pendingAction: DurableThreadAction | null;
+};
 
 export async function getLatestThread(): Promise<RemixThread | null> {
   const result = await cloud.json<{ thread: RemixThread | null }>(
@@ -41,6 +82,88 @@ export async function getThread(id: string): Promise<RemixThread | null> {
     // Treat the Cloud's 404 as an unavailable thread, not a failed request.
     if (error instanceof CloudRequestError && error.status === 404) return null;
     throw error;
+  }
+}
+
+export async function getDurableThreadRuntime(
+  id: string,
+): Promise<DurableThreadRuntime | null> {
+  try {
+    return await cloud.json<DurableThreadRuntime>(
+      `/v2/threads/${encodeURIComponent(id)}`,
+    );
+  } catch (error) {
+    if (error instanceof CloudRequestError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function getDurableTurn(turnId: string): Promise<DurableTurn> {
+  const result = await cloud.json<{ turn: DurableTurn }>(
+    `/v2/turns/${encodeURIComponent(turnId)}`,
+  );
+  return result.turn;
+}
+
+export async function sendDurableRemixTurn({
+  messages,
+  threadId,
+  firstTurn,
+  clientRequestId,
+}: {
+  messages: UIMessage[];
+  threadId: string;
+  firstTurn: boolean;
+  clientRequestId: string;
+}): Promise<DurableTurn> {
+  const result = await cloud.json<{ turn: DurableTurn }>(
+    `/v2/threads/${encodeURIComponent(threadId)}/turns`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "mobile-remix",
+        messages,
+        trigger: "submit-message",
+        threadId,
+        firstTurn,
+        clientRequestId,
+        client: {
+          ...MOBILE_AGENT_CLIENT,
+          supportsConnectorApprovals: true,
+        },
+      }),
+    },
+  );
+  return result.turn;
+}
+
+export async function commandDurableTurn(
+  turnId: string,
+  command:
+    | { type: "cancel" }
+    | { type: "approve" | "decline"; actionId: string },
+): Promise<void> {
+  await cloud.json(`/v2/turns/${encodeURIComponent(turnId)}/commands`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(command),
+  });
+}
+
+/** Soft-delete one durable conversation owned by the signed-in user. */
+export async function deleteThread(id: string): Promise<void> {
+  const response = await cloud.request(
+    `/v2/threads/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
+  if (!response.ok) {
+    throw new CloudRequestError(
+      response.status,
+      await response.text().catch(() => ""),
+    );
   }
 }
 
@@ -66,6 +189,8 @@ type AgentStreamChunk = {
   toolName?: unknown;
   input?: unknown;
   errorText?: unknown;
+  output?: unknown;
+  result?: unknown;
 };
 
 function eventFromFrame(frame: string): AgentStreamChunk | null {
@@ -147,7 +272,12 @@ async function requestRemixTurn({
       firstTurn,
       client: {
         ...MOBILE_AGENT_CLIENT,
-        ...(keyboardInsertion ? { supportsKeyboardInsertion: true } : {}),
+        // Keyboard Remix can only insert a finished answer into the current
+        // text field. It deliberately never receives connected-app tools or
+        // their approval cards, which cannot be resolved in the compact IME.
+        ...(keyboardInsertion
+          ? { supportsKeyboardInsertion: true }
+          : { supportsConnectorApprovals: true }),
       },
     }),
     signal,
@@ -229,6 +359,27 @@ export async function runRemixTurn({
           });
         }
         break;
+      case "tool-output-available": {
+        const output = chunk.output ?? chunk.result;
+        if (!output || typeof output !== "object") break;
+        const approval = (output as { approval?: unknown }).approval;
+        if (!approval || typeof approval !== "object") break;
+        const candidate = approval as Partial<PendingConnectorApproval>;
+        if (
+          typeof candidate.approvalToken === "string" &&
+          typeof candidate.toolkit === "string" &&
+          typeof candidate.toolkitName === "string" &&
+          typeof candidate.toolSlug === "string" &&
+          typeof candidate.actionDescription === "string" &&
+          typeof candidate.expiresAt === "string"
+        ) {
+          onEvent({
+            type: "connector-approval",
+            approval: candidate as PendingConnectorApproval,
+          });
+        }
+        break;
+      }
       case "finish":
         completed = true;
         onEvent({ type: "complete" });

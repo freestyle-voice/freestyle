@@ -77,6 +77,7 @@ struct FreestyleDictationBridge {
     static let appGroupID = "group.com.freestylevoice.app"
     static let stateKey = "com.freestylevoice.dictation.state"
     static let commandKey = "com.freestylevoice.dictation.command"
+    static let stateDarwinName = "com.freestylevoice.dictation.state" as CFString
     static let commandDarwinName = "com.freestylevoice.dictation.command" as CFString
     /// Timestamp the keyboard extension stamps each time it loads. A value here
     /// at all proves the keyboard was added to the Keyboards list AND that it
@@ -97,7 +98,12 @@ struct FreestyleDictationBridge {
 
     // MARK: State channel
 
-    func loadState() -> FreestyleDictationState {
+    func loadState(refresh: Bool = true) -> FreestyleDictationState {
+        // App Group defaults are backed by two processes. Refresh before each
+        // read so a state notification always observes the app's latest final.
+        if refresh {
+            defaults.synchronize()
+        }
         guard let data = defaults.data(forKey: Self.stateKey),
               let state = try? JSONDecoder().decode(FreestyleDictationState.self, from: data)
         else {
@@ -106,12 +112,24 @@ struct FreestyleDictationBridge {
         return state
     }
 
-    func writeState(_ mutate: (inout FreestyleDictationState) -> Void) {
-        var state = loadState()
+    func writeState(
+        _ mutate: (inout FreestyleDictationState) -> Void,
+        notifyKeyboard: Bool = true
+    ) {
+        // The app is the sole state writer. Avoid synchronizing for every meter
+        // frame; meaningful state transitions flush below before notifying the
+        // keyboard.
+        var state = loadState(refresh: false)
         mutate(&state)
         state.updatedAt = Date().timeIntervalSince1970
         if let data = try? JSONEncoder().encode(state) {
             defaults.set(data, forKey: Self.stateKey)
+        }
+        // A completed transcript must not wait for UserDefaults' asynchronous
+        // cross-process propagation or the keyboard's fallback poll.
+        if notifyKeyboard {
+            defaults.synchronize()
+            Self.postStateNotification()
         }
     }
 
@@ -119,6 +137,8 @@ struct FreestyleDictationBridge {
         if let data = try? JSONEncoder().encode(FreestyleDictationState()) {
             defaults.set(data, forKey: Self.stateKey)
         }
+        defaults.synchronize()
+        Self.postStateNotification()
     }
 
     // MARK: Keyboard installation handshake
@@ -144,6 +164,10 @@ struct FreestyleDictationBridge {
     // MARK: Command channel
 
     func loadCommand() -> FreestyleKeyboardCommand {
+        // The keyboard's Darwin notification can arrive before another process
+        // naturally refreshes its App Group cache, so make the command visible
+        // before the app's immediate event handler reads it.
+        defaults.synchronize()
         guard let data = defaults.data(forKey: Self.commandKey),
               let command = try? JSONDecoder().decode(FreestyleKeyboardCommand.self, from: data)
         else {
@@ -167,6 +191,7 @@ struct FreestyleDictationBridge {
             defaults.set(data, forKey: Self.commandKey)
         }
 
+        defaults.synchronize()
         Self.postCommandNotification()
         return command
     }
@@ -175,6 +200,17 @@ struct FreestyleDictationBridge {
         if let data = try? JSONEncoder().encode(FreestyleKeyboardCommand()) {
             defaults.set(data, forKey: Self.commandKey)
         }
+    }
+
+    /// Wakes the keyboard as soon as the app publishes a meaningful state.
+    static func postStateNotification() {
+        CFNotificationCenterPostNotification(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            CFNotificationName(stateDarwinName),
+            nil,
+            nil,
+            true
+        )
     }
 
     /// Wakes or nudges the containing app when the keyboard posts a command.

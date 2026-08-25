@@ -34,4 +34,25 @@ describe("ThreadHistory", () => {
     expect(html).toContain("Briefs");
     expect(html).toContain("Loading conversations…");
   });
+
+  it("can open directly on activity briefs from the compact workspace drawer", () => {
+    useInfiniteQuery.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    });
+    useQueryClient.mockReturnValue({ fetchQuery: vi.fn() });
+
+    const html = renderToStaticMarkup(
+      createElement(ThreadHistory, {
+        currentId: "active-thread",
+        initialOrigin: "scheduled",
+        onPick: vi.fn(),
+      }),
+    );
+
+    expect(html).toContain("Loading activity…");
+  });
 });

@@ -5,7 +5,7 @@ const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@renderer/lib/api", () => ({ apiFetch }));
 
 import { threadHistoryInfiniteQueryOptions } from "./query";
-import { listThreads } from "./threads";
+import { cancelDurableTurn, listThreads } from "./threads";
 
 describe("thread client", () => {
   it("passes a cursor and preserves the server next cursor", async () => {
@@ -29,5 +29,19 @@ describe("thread client", () => {
     expect(
       options.getNextPageParam({ threads: [], nextCursor: null }),
     ).toBeUndefined();
+  });
+
+  it("sends an explicit durable cancel instead of only dropping the stream", async () => {
+    apiFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+
+    await cancelDurableTurn("turn-123");
+
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/agent/turn/turn-123/commands",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ type: "cancel" }),
+      }),
+    );
   });
 });

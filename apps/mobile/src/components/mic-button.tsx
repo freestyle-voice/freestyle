@@ -1,6 +1,6 @@
 import { Mic, Square } from "lucide-react-native";
 import { useEffect } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import Animated, {
   interpolate,
   type SharedValue,
@@ -13,7 +13,7 @@ import Animated, {
 import { Radius } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 
-export type MicState = "idle" | "recording" | "finalizing";
+export type MicState = "idle" | "starting" | "recording" | "finalizing";
 
 interface MicButtonProps {
   state: MicState;
@@ -95,12 +95,14 @@ export function MicButton({
   const bg =
     state === "recording"
       ? theme.destructive
-      : state === "finalizing"
+      : state === "starting" || state === "finalizing"
         ? theme.muted
         : theme.primary;
   const haloColor = state === "recording" ? theme.destructive : theme.primary;
   const fg =
-    state === "finalizing" ? theme.mutedForeground : theme.primaryForeground;
+    state === "starting" || state === "finalizing"
+      ? theme.mutedForeground
+      : theme.primaryForeground;
 
   return (
     <View style={[styles.container, { width: size * 1.6, height: size * 1.6 }]}>
@@ -122,7 +124,11 @@ export function MicButton({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={
-            state === "recording" ? "Stop recording" : "Start recording"
+            state === "recording"
+              ? "Stop recording"
+              : state === "starting"
+                ? "Starting microphone"
+                : "Start recording"
           }
           disabled={state === "finalizing"}
           onPressIn={handlePressIn}
@@ -139,6 +145,8 @@ export function MicButton({
         >
           {state === "recording" ? (
             <Square color={fg} fill={fg} size={22} />
+          ) : state === "starting" ? (
+            <ActivityIndicator color={fg} />
           ) : (
             <Mic color={fg} size={30} />
           )}

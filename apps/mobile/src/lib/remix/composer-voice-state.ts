@@ -1,4 +1,4 @@
-type ComposerMicState = "idle" | "recording" | "finalizing";
+type ComposerMicState = "idle" | "starting" | "recording" | "finalizing";
 
 type RemixComposerVoiceInput = {
   draft: string;
@@ -32,6 +32,15 @@ export function remixComposerVoiceState({
       // composer's status row. Replacing the placeholder with it hides the
       // draft and makes the control look like a second, unrelated surface.
       placeholder: "Message Remix",
+      value: draft,
+    };
+  }
+
+  if (micState === "starting") {
+    return {
+      action: "waiting-for-microphone" as const,
+      label: "Starting microphone",
+      placeholder: "Starting microphone…",
       value: draft,
     };
   }

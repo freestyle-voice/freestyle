@@ -343,6 +343,12 @@ const styles = StyleSheet.create({
   panel: {
     flex: 1,
     borderRightWidth: StyleSheet.hairlineWidth,
+    // The panel is revealed beneath the translated chat canvas. Matching the
+    // canvas radius on this edge makes their handoff read as one curved slide
+    // instead of two flat rectangles passing over each other.
+    borderTopRightRadius: 38,
+    borderBottomRightRadius: 38,
+    overflow: "hidden",
     shadowColor: "#000",
     shadowOpacity: 0.28,
     shadowRadius: 20,

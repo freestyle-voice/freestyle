@@ -1,10 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as WebBrowser from "expo-web-browser";
-import { Link2, PlugZap, Search, Unplug } from "lucide-react-native";
-import { useMemo, useState } from "react";
 import {
+  ArrowUpRight,
+  Check,
+  Link2,
+  MoreHorizontal,
+  Plus,
+  RefreshCw,
+  Search,
+} from "lucide-react-native";
+import { useCallback, useMemo, useState } from "react";
+import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  Image,
+  Platform,
   Pressable,
   StyleSheet,
   TextInput,
@@ -15,6 +26,7 @@ import {
   Card,
   RetryLoadState,
   SectionTitle,
+  SettingsGroup,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
@@ -22,6 +34,7 @@ import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import {
   type ConnectorCatalogItem,
+  type ConnectorConnection,
   connectToolkit,
   connectToolkitWithCredentials,
   disconnectToolkit,
@@ -36,6 +49,9 @@ export default function ConnectedAppsScreen() {
   const [credentialsFor, setCredentialsFor] =
     useState<ConnectorCatalogItem | null>(null);
   const [credentials, setCredentials] = useState<Record<string, string>>({});
+  const [pendingAction, setPendingAction] = useState<{ key: string } | null>(
+    null,
+  );
 
   const {
     data: connections = [],
@@ -78,6 +94,7 @@ export default function ConnectedAppsScreen() {
         "Couldn't connect app",
         error instanceof Error ? error.message : "Try again.",
       ),
+    onSettled: () => setPendingAction(null),
   });
   const disconnect = useMutation({
     mutationFn: disconnectToolkit,
@@ -87,6 +104,20 @@ export default function ConnectedAppsScreen() {
         "Couldn't disconnect app",
         error instanceof Error ? error.message : "Try again.",
       ),
+    onSettled: () => setPendingAction(null),
+  });
+  const reconnect = useMutation({
+    mutationFn: async (connection: ConnectorConnection) => {
+      const url = await connectToolkit(connection.toolkitSlug);
+      await WebBrowser.openAuthSessionAsync(url, "freestyle://connected-apps");
+    },
+    onSuccess: invalidate,
+    onError: (error) =>
+      Alert.alert(
+        "Couldn't reconnect app",
+        error instanceof Error ? error.message : "Try again.",
+      ),
+    onSettled: () => setPendingAction(null),
   });
   const saveCredentials = useMutation({
     mutationFn: async () => {
@@ -109,71 +140,113 @@ export default function ConnectedAppsScreen() {
       ),
   });
 
-  const catalogItems = useMemo(() => catalog?.connectors ?? [], [catalog]);
+  const activeConnections = useMemo(
+    () => connections.filter((connection) => connection.status === "active"),
+    [connections],
+  );
+  const attentionConnections = useMemo(
+    () =>
+      connections.filter(
+        (connection) =>
+          connection.status !== "active" &&
+          connection.status !== "disconnected",
+      ),
+    [connections],
+  );
+  const catalogItems = useMemo(
+    () =>
+      (catalog?.connectors ?? []).filter(
+        (item) =>
+          item.connection == null || item.connection.status === "disconnected",
+      ),
+    [catalog],
+  );
+  const disconnectConnection = useCallback(
+    (connection: ConnectorConnection) => {
+      if (pendingAction) return;
+      setPendingAction({ key: `connection:${connection.id}` });
+      disconnect.mutate(connection.toolkitSlug);
+    },
+    [disconnect, pendingAction],
+  );
+  const showConnectionMenu = useCallback(
+    (connection: ConnectorConnection) => {
+      if (pendingAction) return;
+      const onDisconnect = () => disconnectConnection(connection);
+      if (Platform.OS === "ios") {
+        ActionSheetIOS.showActionSheetWithOptions(
+          {
+            options: ["Cancel", "Disconnect"],
+            cancelButtonIndex: 0,
+            destructiveButtonIndex: 1,
+            title: connection.toolkitName,
+          },
+          (selectedIndex) => {
+            if (selectedIndex === 1) onDisconnect();
+          },
+        );
+        return;
+      }
+      Alert.alert(connection.toolkitName, undefined, [
+        { text: "Cancel", style: "cancel" },
+        { text: "Disconnect", style: "destructive", onPress: onDisconnect },
+      ]);
+    },
+    [disconnectConnection, pendingAction],
+  );
 
   return (
     <SettingsScreenScaffold
       title="Connected apps"
-      subtitle="Connect the tools Remix can use for you. Review connections here and disconnect any app you no longer want to use."
+      subtitle="Apps Remix can use when you ask it to help."
     >
-      <Card>
-        <SectionTitle icon={PlugZap} title="Connected" />
-        {connectionsLoading ? (
+      {connectionsLoading ? (
+        <SettingsGroup title="Connected">
           <Loading />
-        ) : connectionsError && connections.length === 0 ? (
+        </SettingsGroup>
+      ) : connectionsError && connections.length === 0 ? (
+        <SettingsGroup title="Connected">
           <RetryLoadState
             message="Couldn't load your connected apps. Check your connection and try again."
             onRetry={() => void refetchConnections()}
           />
-        ) : connections.length === 0 ? (
-          <ThemedText themeColor="mutedForeground" style={styles.empty}>
-            No apps connected yet. Add one below to let Remix work with it.
-          </ThemedText>
-        ) : (
-          connections.map((connection, index) => (
-            <View
+        </SettingsGroup>
+      ) : activeConnections.length > 0 ? (
+        <SettingsGroup title="Connected">
+          {activeConnections.map((connection, index) => (
+            <ConnectedConnectorRow
               key={connection.id}
-              style={[
-                styles.connection,
-                index > 0 && {
-                  borderTopWidth: StyleSheet.hairlineWidth,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <View style={styles.connectionCopy}>
-                <ThemedText style={styles.name}>
-                  {connection.toolkitName}
-                </ThemedText>
-                <ThemedText themeColor="mutedForeground" style={styles.meta}>
-                  {connection.status === "active"
-                    ? `${connection.toolCount} tools available`
-                    : connection.status === "needs_reconnect"
-                      ? "Reconnect needed"
-                      : "Connecting…"}
-                </ThemedText>
-              </View>
-              <Pressable
-                onPress={() => disconnect.mutate(connection.toolkitSlug)}
-                disabled={disconnect.isPending}
-                accessibilityRole="button"
-                accessibilityLabel={`Disconnect ${connection.toolkitName}`}
-                style={({ pressed }) => [
-                  styles.iconButton,
-                  { borderColor: theme.border },
-                  pressed && { opacity: 0.6 },
-                ]}
-              >
-                {disconnect.isPending ? (
-                  <ActivityIndicator size="small" color={theme.destructive} />
-                ) : (
-                  <Unplug size={16} color={theme.destructive} />
-                )}
-              </Pressable>
-            </View>
-          ))
-        )}
-      </Card>
+              name={connection.toolkitName}
+              logo={connection.toolkitLogo}
+              last={index === activeConnections.length - 1}
+              actionBusy={pendingAction?.key === `connection:${connection.id}`}
+              actionDisabled={pendingAction !== null}
+              onManage={() => showConnectionMenu(connection)}
+            />
+          ))}
+        </SettingsGroup>
+      ) : null}
+
+      {attentionConnections.length > 0 ? (
+        <SettingsGroup title="Needs attention">
+          {attentionConnections.map((connection, index) => (
+            <AttentionConnectorRow
+              key={connection.id}
+              name={connection.toolkitName}
+              logo={connection.toolkitLogo}
+              status={connection.status}
+              last={index === attentionConnections.length - 1}
+              actionBusy={pendingAction?.key === `connection:${connection.id}`}
+              actionDisabled={pendingAction !== null}
+              onPress={() => {
+                if (pendingAction) return;
+                setPendingAction({ key: `connection:${connection.id}` });
+                reconnect.mutate(connection);
+              }}
+            />
+          ))}
+        </SettingsGroup>
+      ) : null}
 
       <View
         style={[
@@ -193,11 +266,7 @@ export default function ConnectedAppsScreen() {
         />
       </View>
 
-      <Card>
-        <SectionTitle
-          icon={Link2}
-          title={search.trim() ? "Results" : "Available apps"}
-        />
+      <SettingsGroup title={search.trim() ? "Results" : "Apps"}>
         {catalogLoading ? (
           <Loading />
         ) : catalogError && catalogItems.length === 0 ? (
@@ -211,61 +280,22 @@ export default function ConnectedAppsScreen() {
           </ThemedText>
         ) : (
           catalogItems.map((item, index) => (
-            <View
+            <AvailableConnectorRow
               key={item.slug}
-              style={[
-                styles.connection,
-                index > 0 && {
-                  borderTopWidth: StyleSheet.hairlineWidth,
-                  borderColor: theme.border,
-                },
-              ]}
-            >
-              <View style={styles.connectionCopy}>
-                <ThemedText style={styles.name}>{item.name}</ThemedText>
-                <ThemedText
-                  themeColor="mutedForeground"
-                  style={styles.meta}
-                  numberOfLines={2}
-                >
-                  {item.connection?.status === "active"
-                    ? "Connected"
-                    : (item.description ?? `${item.toolsCount ?? 0} tools`)}
-                </ThemedText>
-              </View>
-              {item.connection?.status === "active" ? null : (
-                <Pressable
-                  onPress={() => connect.mutate(item)}
-                  disabled={connect.isPending}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Connect ${item.name}`}
-                  style={({ pressed }) => [
-                    styles.connectButton,
-                    { backgroundColor: theme.primary },
-                    pressed && { opacity: 0.85 },
-                  ]}
-                >
-                  {connect.isPending ? (
-                    <ActivityIndicator
-                      size="small"
-                      color={theme.primaryForeground}
-                    />
-                  ) : (
-                    <ThemedText
-                      style={[
-                        styles.connectText,
-                        { color: theme.primaryForeground },
-                      ]}
-                    >
-                      Connect
-                    </ThemedText>
-                  )}
-                </Pressable>
-              )}
-            </View>
+              name={item.name}
+              logo={item.logo}
+              last={index === catalogItems.length - 1}
+              actionBusy={pendingAction?.key === `catalog:${item.slug}`}
+              actionDisabled={pendingAction !== null}
+              onPress={() => {
+                if (pendingAction) return;
+                setPendingAction({ key: `catalog:${item.slug}` });
+                connect.mutate(item);
+              }}
+            />
           ))
         )}
-      </Card>
+      </SettingsGroup>
 
       {credentialsFor ? (
         <Card>
@@ -347,25 +377,243 @@ function Loading() {
   );
 }
 
+function ConnectedConnectorRow({
+  name,
+  logo,
+  last,
+  actionBusy,
+  actionDisabled,
+  onManage,
+}: {
+  name: string;
+  logo?: string | null;
+  last: boolean;
+  actionBusy: boolean;
+  actionDisabled: boolean;
+  onManage: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View
+      style={[
+        styles.connectorRow,
+        !last && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.border,
+        },
+      ]}
+    >
+      <ConnectorMark name={name} logo={logo} />
+      <ThemedText numberOfLines={1} style={[styles.name, styles.rowLabel]}>
+        {name}
+      </ThemedText>
+      {actionBusy ? (
+        <ActivityIndicator color={theme.primary} size="small" />
+      ) : (
+        <>
+          <View
+            accessibilityLabel={`${name} connected`}
+            style={[
+              styles.connectedIndicator,
+              { backgroundColor: theme.accent },
+            ]}
+          >
+            <Check color={theme.primary} size={18} />
+          </View>
+          <Pressable
+            onPress={onManage}
+            disabled={actionDisabled}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={`Manage ${name}`}
+            style={({ pressed }) => [
+              styles.iconAction,
+              pressed && styles.pressed,
+            ]}
+          >
+            <MoreHorizontal color={theme.mutedForeground} size={20} />
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+}
+
+function AttentionConnectorRow({
+  name,
+  logo,
+  status,
+  last,
+  actionBusy,
+  actionDisabled,
+  onPress,
+}: {
+  name: string;
+  logo?: string | null;
+  status: ConnectorConnection["status"];
+  last: boolean;
+  actionBusy: boolean;
+  actionDisabled: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  const isPending = status === "pending";
+  const action = isPending ? "Finish connecting" : "Reconnect";
+  const Icon = isPending ? ArrowUpRight : RefreshCw;
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={actionDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={`${action} ${name}`}
+      style={({ pressed }) => [
+        styles.connectorRow,
+        !last && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.border,
+        },
+        pressed && styles.pressed,
+      ]}
+    >
+      <ConnectorMark name={name} logo={logo} />
+      <View style={styles.connectionCopy}>
+        <ThemedText numberOfLines={1} style={styles.name}>
+          {name}
+        </ThemedText>
+        <ThemedText themeColor="mutedForeground" style={styles.meta}>
+          {action}
+        </ThemedText>
+      </View>
+      {actionBusy ? (
+        <ActivityIndicator color={theme.primary} size="small" />
+      ) : (
+        <Icon color={theme.primary} size={20} />
+      )}
+    </Pressable>
+  );
+}
+
+function AvailableConnectorRow({
+  name,
+  logo,
+  last,
+  actionBusy,
+  actionDisabled,
+  onPress,
+}: {
+  name: string;
+  logo?: string | null;
+  last: boolean;
+  actionBusy: boolean;
+  actionDisabled: boolean;
+  onPress: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={actionDisabled}
+      accessibilityRole="button"
+      accessibilityLabel={`Connect ${name}`}
+      style={({ pressed }) => [
+        styles.connectorRow,
+        !last && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.border,
+        },
+        pressed && styles.pressed,
+      ]}
+    >
+      <ConnectorMark name={name} logo={logo} />
+      <ThemedText numberOfLines={1} style={[styles.name, styles.rowLabel]}>
+        {name}
+      </ThemedText>
+      {actionBusy ? (
+        <ActivityIndicator color={theme.primary} size="small" />
+      ) : (
+        <View style={[styles.addIndicator, { backgroundColor: theme.accent }]}>
+          <Plus color={theme.primary} size={18} />
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+function ConnectorMark({ name, logo }: { name: string; logo?: string | null }) {
+  const theme = useTheme();
+  const [failed, setFailed] = useState(false);
+  if (logo && !failed) {
+    return (
+      <View style={[styles.connectorMark, { borderColor: theme.border }]}>
+        <Image
+          accessibilityLabel={`${name} logo`}
+          source={{ uri: logo }}
+          resizeMode="contain"
+          onError={() => setFailed(true)}
+          style={styles.connectorLogo}
+        />
+      </View>
+    );
+  }
+  return (
+    <View
+      accessibilityLabel={`${name} icon`}
+      style={[
+        styles.connectorMark,
+        { borderColor: theme.border, backgroundColor: theme.accent },
+      ]}
+    >
+      <ThemedText style={[styles.connectorInitial, { color: theme.primary }]}>
+        {name.slice(0, 1).toUpperCase()}
+      </ThemedText>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   loading: { minHeight: 64, alignItems: "center", justifyContent: "center" },
   empty: { fontSize: 14, lineHeight: 21 },
-  connection: {
-    minHeight: 62,
+  connectorRow: {
+    minHeight: 64,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.two,
+    paddingVertical: 10,
   },
-  connectionCopy: { flex: 1, gap: 3 },
-  name: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  meta: { fontFamily: Fonts.mono, fontSize: 11, lineHeight: 16 },
-  iconButton: {
-    width: 36,
-    height: 36,
+  connectorMark: {
+    width: 40,
+    height: 40,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: 1,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.md,
+  },
+  connectorLogo: { width: 28, height: 28 },
+  connectorInitial: { fontFamily: Fonts.sansSemiBold, fontSize: 17 },
+  connectionCopy: { flex: 1, minWidth: 0, gap: 3 },
+  name: { flexShrink: 1, fontFamily: Fonts.sansMedium, fontSize: 15 },
+  rowLabel: { flex: 1, minWidth: 0 },
+  meta: { fontSize: 12, lineHeight: 17 },
+  connectedIndicator: {
+    width: 28,
+    height: 28,
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: Radius.full,
+  },
+  addIndicator: {
+    width: 30,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Radius.full,
+  },
+  iconAction: {
+    width: 28,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   search: {
     height: 46,
@@ -386,6 +634,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.full,
   },
   connectText: { fontFamily: Fonts.sansSemiBold, fontSize: 13 },
+  pressed: { opacity: 0.62 },
   field: { gap: Spacing.one },
   fieldLabel: { fontFamily: Fonts.sansMedium, fontSize: 14 },
   credentialInput: {

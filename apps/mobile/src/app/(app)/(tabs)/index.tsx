@@ -3,10 +3,14 @@ import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
 import {
+  ArrowRight,
   ArrowUp,
   Check,
+  Copy,
   Menu,
   Mic,
+  Pencil,
+  RefreshCw,
   Settings,
   Square,
   X,
@@ -33,7 +37,10 @@ import {
 
 import { ChatSidebar } from "@/components/chat-sidebar";
 import { MicButton } from "@/components/mic-button";
+import { MobileConnectSuggestions } from "@/components/mobile-connect-suggestions";
 import { MobileMarkdown } from "@/components/mobile-markdown";
+import { MobileToolActivity } from "@/components/mobile-tool-activity";
+import { RemixWorkingIndicator } from "@/components/remix-working-indicator";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { TranscriptView } from "@/components/transcript-view";
@@ -54,6 +61,7 @@ import {
 } from "@/lib/remix/composer-voice-state";
 import {
   loadRemixDrafts,
+  mergeHydratedRemixDrafts,
   type RemixDrafts,
   saveRemixDrafts,
   updateRemixDraft,
@@ -151,13 +159,15 @@ export default function VoiceScreen() {
   }, [sidebarOpen, sidebarPanelWidth, sidebarProgress]);
 
   const status =
-    micState === "recording"
-      ? "Listening"
-      : micState === "finalizing"
-        ? "Polishing"
-        : text
-          ? "Tap to keep dictating"
-          : "Hold or tap to speak";
+    micState === "starting"
+      ? "Starting microphone"
+      : micState === "recording"
+        ? "Listening"
+        : micState === "finalizing"
+          ? "Polishing"
+          : text
+            ? "Tap to keep dictating"
+            : "Hold or tap to speak";
 
   return (
     <ThemedView style={styles.container}>
@@ -403,6 +413,8 @@ function RemixHome({
     REMIX_COMPOSER_MIN_INPUT_HEIGHT,
   );
   const inputRef = useRef<TextInput>(null);
+  const transcriptRef = useRef<ScrollView>(null);
+  const pendingThreadEndScrollRef = useRef<string | null>(null);
   const draft = drafts[thread.threadId] ?? "";
   const editingCurrentThread = editingMessage?.threadId === thread.threadId;
   const busy = status === "streaming";
@@ -429,8 +441,11 @@ function RemixHome({
     void loadRemixDrafts(userId)
       .then((stored) => {
         if (cancelled) return;
-        draftsRef.current = stored;
-        setDrafts(stored);
+        // A voice final (or typed input) may arrive before AsyncStorage. Keep
+        // that newer in-memory draft instead of replacing it with stale data.
+        const next = mergeHydratedRemixDrafts(stored, draftsRef.current);
+        draftsRef.current = next;
+        setDrafts(next);
       })
       .catch(() => {
         // Draft recovery is best-effort. Storage should never block chat.
@@ -460,8 +475,31 @@ function RemixHome({
   );
 
   useEffect(() => {
-    if (selectedThreadId) void loadThread(selectedThreadId);
+    if (!selectedThreadId) return;
+    pendingThreadEndScrollRef.current = selectedThreadId;
+    void loadThread(selectedThreadId).then((loaded) => {
+      if (!loaded && pendingThreadEndScrollRef.current === selectedThreadId) {
+        pendingThreadEndScrollRef.current = null;
+      }
+    });
   }, [loadThread, selectedThreadId]);
+
+  // A selected sidebar session should begin at its newest turn. This is scoped
+  // to the initial load only—later streamed changes must never pull someone
+  // away from an older message they are reading.
+  useEffect(() => {
+    if (
+      messages.length === 0 ||
+      pendingThreadEndScrollRef.current !== thread.threadId
+    ) {
+      return;
+    }
+    pendingThreadEndScrollRef.current = null;
+    const frame = requestAnimationFrame(() => {
+      transcriptRef.current?.scrollToEnd({ animated: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [messages.length, thread.threadId]);
 
   // A fresh session is an input-first surface: focus both on first launch and
   // after creating a new chat, even though the existing TextInput stays mounted.
@@ -480,13 +518,19 @@ function RemixHome({
   }, [draft]);
 
   const submit = useCallback(async () => {
-    const sent =
-      editingCurrentThread && editingMessage
-        ? await resend(editingMessage.id, draft)
-        : await send(draft);
-    if (sent) {
+    // A durable turn continues after acceptance (for streaming, approvals, or
+    // desktop work). Clear the controlled field at that acceptance boundary,
+    // rather than making the user's sent draft linger until the turn ends.
+    // If the initial request fails, this callback is never reached and the
+    // draft remains available to retry.
+    const clearAcceptedDraft = () => {
       setDraft("");
       setEditingMessage(null);
+    };
+    if (editingCurrentThread && editingMessage) {
+      await resend(editingMessage.id, draft, clearAcceptedDraft);
+    } else {
+      await send(draft, clearAcceptedDraft);
     }
   }, [draft, editingCurrentThread, editingMessage, resend, send, setDraft]);
 
@@ -494,6 +538,13 @@ function RemixHome({
     await Clipboard.setStringAsync(text);
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   }, []);
+
+  const sendStarter = useCallback(
+    (prompt: string) => {
+      void send(prompt, () => setDraft(""));
+    },
+    [send, setDraft],
+  );
 
   const handleComposerAction = useCallback(() => {
     switch (voiceControl.action) {
@@ -544,26 +595,19 @@ function RemixHome({
       ]}
     >
       <ScrollView
+        ref={transcriptRef}
         style={styles.remixScrollArea}
-        contentContainerStyle={styles.remixScroll}
+        contentContainerStyle={[
+          styles.remixScroll,
+          messages.length === 0 && styles.remixScrollEmpty,
+        ]}
         keyboardShouldPersistTaps="handled"
       >
-        {messages.map((message, index) => (
-          <View
-            key={message.id}
-            style={[
-              styles.turn,
-              {
-                backgroundColor:
-                  message.role === "user" ? theme.secondary : theme.card,
-                borderColor: theme.border,
-              },
-            ]}
-          >
-            <ThemedText type="eyebrow" themeColor="mutedForeground">
-              {message.role === "user" ? "YOU" : "REMIX"}
-            </ThemedText>
-            <MobileMarkdown text={messageText(message)} />
+        {messages.length === 0 && !activeTool && !pendingApproval && !error ? (
+          <StarterPrompts busy={busy} onPrompt={sendStarter} />
+        ) : null}
+        {messages.map((message, index) => {
+          const actions = (
             <MessageActions
               message={message}
               isLatest={index === messages.length - 1}
@@ -579,21 +623,34 @@ function RemixHome({
               }}
               onRegenerate={() => void retryLastTurn()}
             />
-          </View>
-        ))}
-        {activeTool ? (
-          <View
-            style={[styles.toolStatus, { backgroundColor: theme.secondary }]}
-          >
-            <ActivityIndicator color={theme.primary} size="small" />
-            <ThemedText
-              themeColor="mutedForeground"
-              style={styles.toolStatusText}
-            >
-              {activeTool}
-            </ThemedText>
-          </View>
-        ) : null}
+          );
+
+          if (message.role === "user") {
+            return (
+              <View key={message.id} style={styles.userMessageGroup}>
+                <View
+                  style={[
+                    styles.userTurn,
+                    { backgroundColor: theme.secondary },
+                  ]}
+                >
+                  <ThemedText style={styles.userMessage}>
+                    {messageText(message)}
+                  </ThemedText>
+                </View>
+                {actions}
+              </View>
+            );
+          }
+
+          return (
+            <View key={message.id} style={styles.assistantTurn}>
+              <AssistantMessageContent message={message} />
+              {actions}
+            </View>
+          );
+        })}
+        {activeTool ? <RemixWorkingIndicator label={activeTool} /> : null}
         {pendingApproval ? (
           <ConnectorApprovalCard
             approval={pendingApproval}
@@ -651,7 +708,9 @@ function RemixHome({
           {
             backgroundColor: theme.card,
             borderColor:
-              voiceState === "recording" ? theme.primary : theme.border,
+              voiceState === "recording" || voiceState === "starting"
+                ? theme.primary
+                : theme.border,
           },
         ]}
       >
@@ -672,9 +731,11 @@ function RemixHome({
               style={styles.voiceStatusText}
               numberOfLines={1}
             >
-              {voiceState === "recording"
-                ? voicePartial || "Listening"
-                : "Adding your voice"}
+              {voiceState === "starting"
+                ? "Starting microphone"
+                : voiceState === "recording"
+                  ? voicePartial || "Listening"
+                  : "Adding your voice"}
             </ThemedText>
           </View>
         ) : null}
@@ -694,6 +755,7 @@ function RemixHome({
             placeholder={voiceControl.placeholder}
             placeholderTextColor={theme.mutedForeground}
             multiline
+            underlineColorAndroid="transparent"
             scrollEnabled={inputHeight >= REMIX_COMPOSER_MAX_INPUT_HEIGHT}
             onContentSizeChange={onInputContentSizeChange}
             style={[
@@ -704,11 +766,18 @@ function RemixHome({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={voiceControl.label}
+            accessibilityHint={
+              voiceControl.action === "stop-remix"
+                ? "Stops this Remix response and cancels its server turn."
+                : undefined
+            }
             disabled={
               Boolean(
                 pendingApproval &&
                   !["approved", "declined"].includes(approvalState),
-              ) || voiceControl.action === "waiting-for-transcript"
+              ) ||
+              voiceControl.action === "waiting-for-transcript" ||
+              voiceControl.action === "waiting-for-microphone"
             }
             onPress={handleComposerAction}
             style={[
@@ -727,6 +796,8 @@ function RemixHome({
                 fill={theme.primaryForeground}
                 size={15}
               />
+            ) : voiceState === "starting" ? (
+              <ActivityIndicator color={theme.mutedForeground} size="small" />
             ) : hasDraft ? (
               <ArrowUp
                 color={theme.primaryForeground}
@@ -750,6 +821,97 @@ function RemixHome({
   );
 }
 
+const STARTER_PROMPTS = [
+  "Look this up and keep it short",
+  "Help me draft a message I've been putting off",
+  "Remember something about how I work",
+] as const;
+
+function StarterPrompts({
+  busy,
+  onPrompt,
+}: {
+  busy: boolean;
+  onPrompt: (prompt: string) => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={styles.starters}>
+      <ThemedText type="eyebrow" themeColor="mutedForeground">
+        START HERE
+      </ThemedText>
+      <View style={styles.starterList}>
+        {STARTER_PROMPTS.map((prompt) => (
+          <Pressable
+            key={prompt}
+            accessibilityRole="button"
+            accessibilityLabel={prompt}
+            disabled={busy}
+            onPress={() => onPrompt(prompt)}
+            style={({ pressed }) => [
+              styles.starter,
+              { backgroundColor: theme.card, borderColor: theme.border },
+              pressed && styles.pressed,
+            ]}
+          >
+            <View
+              style={[styles.starterMark, { backgroundColor: theme.accent }]}
+            >
+              <ThemedText
+                style={[styles.starterMarkText, { color: theme.primary }]}
+              >
+                ✦
+              </ThemedText>
+            </View>
+            <ThemedText style={styles.starterText}>{prompt}</ThemedText>
+            <ArrowRight color={theme.mutedForeground} size={16} />
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
+
+function AssistantMessageContent({ message }: { message: UIMessage }) {
+  return (
+    <View style={styles.assistantMessageContent}>
+      {message.parts.map((part, index) => {
+        if (part.type === "text") {
+          const text = part.text?.trim();
+          return text ? <MobileMarkdown key={index} text={text} /> : null;
+        }
+        if (part.type === "tool-suggest_connections") {
+          const tool = part as { state?: string; output?: unknown };
+          return tool.state === "output-available" ? (
+            <MobileConnectSuggestions key={index} output={tool.output} />
+          ) : null;
+        }
+        if (part.type.startsWith("tool-")) {
+          const previous = message.parts[index - 1];
+          if (
+            previous?.type.startsWith("tool-") &&
+            previous.type !== "tool-suggest_connections"
+          ) {
+            return null;
+          }
+          const group: UIMessage["parts"] = [];
+          for (const candidate of message.parts.slice(index)) {
+            if (
+              !candidate.type.startsWith("tool-") ||
+              candidate.type === "tool-suggest_connections"
+            ) {
+              break;
+            }
+            group.push(candidate);
+          }
+          return <MobileToolActivity key={index} parts={group} />;
+        }
+        return null;
+      })}
+    </View>
+  );
+}
+
 function MessageActions({
   message,
   isLatest,
@@ -767,23 +929,22 @@ function MessageActions({
   const text = messageText(message);
   if (!text) return null;
   return (
-    <View style={styles.messageActions}>
+    <View
+      style={[
+        styles.messageActions,
+        message.role === "user" && styles.userMessageActions,
+      ]}
+    >
       <Pressable
         onPress={() => void onCopy(text)}
         accessibilityRole="button"
         accessibilityLabel="Copy message"
         style={({ pressed }) => [
           styles.messageAction,
-          { borderColor: theme.border },
           pressed && styles.pressed,
         ]}
       >
-        <ThemedText
-          themeColor="mutedForeground"
-          style={styles.messageActionText}
-        >
-          Copy
-        </ThemedText>
+        <Copy color={theme.mutedForeground} size={15} />
       </Pressable>
       {message.role === "user" ? (
         <Pressable
@@ -792,16 +953,10 @@ function MessageActions({
           accessibilityLabel="Edit and resend message"
           style={({ pressed }) => [
             styles.messageAction,
-            { borderColor: theme.border },
             pressed && styles.pressed,
           ]}
         >
-          <ThemedText
-            themeColor="mutedForeground"
-            style={styles.messageActionText}
-          >
-            Edit
-          </ThemedText>
+          <Pencil color={theme.mutedForeground} size={15} />
         </Pressable>
       ) : isLatest ? (
         <Pressable
@@ -810,16 +965,10 @@ function MessageActions({
           accessibilityLabel="Regenerate last Remix response"
           style={({ pressed }) => [
             styles.messageAction,
-            { borderColor: theme.border },
             pressed && styles.pressed,
           ]}
         >
-          <ThemedText
-            themeColor="mutedForeground"
-            style={styles.messageActionText}
-          >
-            Regenerate
-          </ThemedText>
+          <RefreshCw color={theme.mutedForeground} size={15} />
         </Pressable>
       ) : null}
     </View>
@@ -971,37 +1120,61 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   remixScrollArea: { flex: 1, minHeight: 0 },
-  remixScroll: { gap: Spacing.two, paddingBottom: Spacing.two },
-  turn: {
-    gap: Spacing.one,
-    borderWidth: 1,
-    borderRadius: Radius.xl,
-    padding: Spacing.three,
+  remixScroll: { gap: Spacing.four, paddingBottom: Spacing.three },
+  remixScrollEmpty: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingBottom: Spacing.five,
   },
+  userTurn: {
+    alignSelf: "stretch",
+    borderRadius: Radius.xl,
+    borderBottomRightRadius: Radius.sm,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two + 2,
+  },
+  userMessageGroup: {
+    alignSelf: "flex-end",
+    maxWidth: "84%",
+    gap: Spacing.half,
+  },
+  userMessage: { fontFamily: Fonts.sans, fontSize: 15, lineHeight: 22 },
+  assistantTurn: { alignSelf: "stretch", gap: Spacing.one },
+  assistantMessageContent: { gap: Spacing.two },
   messageActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: Spacing.two,
-    paddingTop: Spacing.one,
+    gap: Spacing.one,
+    paddingTop: Spacing.half,
   },
+  userMessageActions: { alignSelf: "flex-end" },
   messageAction: {
-    minHeight: 28,
+    width: 30,
+    height: 30,
+    alignItems: "center",
     justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.full,
-    paddingHorizontal: Spacing.two,
+    borderRadius: Radius.md,
   },
-  messageActionText: { fontFamily: Fonts.sansMedium, fontSize: 12 },
-  toolStatus: {
-    alignSelf: "flex-start",
+  starters: { gap: Spacing.two, alignSelf: "stretch" },
+  starterList: { gap: Spacing.two },
+  starter: {
+    minHeight: 52,
     flexDirection: "row",
     alignItems: "center",
     gap: Spacing.two,
-    borderRadius: Radius.full,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.lg,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two,
   },
-  toolStatusText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
+  starterMark: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: Radius.sm,
+  },
+  starterMarkText: { fontFamily: Fonts.sansSemiBold, fontSize: 12 },
+  starterText: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 14 },
   approvalCard: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: Radius.xl,
@@ -1081,14 +1254,13 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    minHeight: REMIX_COMPOSER_MIN_INPUT_HEIGHT,
-    maxHeight: REMIX_COMPOSER_MAX_INPUT_HEIGHT,
+    minWidth: 0,
+    width: "100%",
     fontFamily: Fonts.sans,
     fontSize: 15,
     lineHeight: 21,
     paddingHorizontal: Spacing.one,
-    paddingTop: Spacing.one + 2,
-    paddingBottom: Spacing.one + 1,
+    paddingVertical: 10,
     textAlignVertical: "top",
   },
   send: {

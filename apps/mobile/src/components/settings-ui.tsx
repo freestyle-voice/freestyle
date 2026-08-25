@@ -9,8 +9,12 @@ import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
 import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react-native";
 import type { ComponentType, ReactNode } from "react";
-import type { AccessibilityRole, ViewStyle } from "react-native";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import type {
+  AccessibilityRole,
+  DimensionValue,
+  ViewStyle,
+} from "react-native";
+import { Pressable, ScrollView, StyleSheet, Switch, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
@@ -223,8 +227,14 @@ export function SettingsNavRow({
     >
       <Icon color={theme.mutedForeground} size={20} />
       <View style={styles.navRowContent}>
-        <ThemedText style={styles.navRowLabel}>{label}</ThemedText>
-        <ThemedText themeColor="mutedForeground" style={styles.navRowValue}>
+        <ThemedText style={styles.navRowLabel} numberOfLines={1}>
+          {label}
+        </ThemedText>
+        <ThemedText
+          themeColor="mutedForeground"
+          style={styles.navRowValue}
+          numberOfLines={1}
+        >
           {value}
         </ThemedText>
       </View>
@@ -246,6 +256,7 @@ export function SettingsValueRow({
   last = false,
   disabled = false,
   trailing,
+  valueMaxWidth,
 }: {
   icon?: LucideIcon | ComponentType<{ color?: string; size?: number }>;
   label: string;
@@ -254,18 +265,28 @@ export function SettingsValueRow({
   last?: boolean;
   disabled?: boolean;
   trailing?: ReactNode;
+  /** Lets data-heavy account rows reserve more room without changing all rows. */
+  valueMaxWidth?: DimensionValue;
 }) {
   const theme = useTheme();
   const content = (
     <>
       {Icon ? <Icon color={theme.mutedForeground} size={20} /> : null}
-      <ThemedText style={styles.valueRowLabel} numberOfLines={1}>
+      <ThemedText
+        style={styles.valueRowLabel}
+        numberOfLines={1}
+        ellipsizeMode="tail"
+      >
         {label}
       </ThemedText>
       <ThemedText
         themeColor="mutedForeground"
-        style={styles.valueRowValue}
+        style={[
+          styles.valueRowValue,
+          valueMaxWidth ? { maxWidth: valueMaxWidth } : null,
+        ]}
         numberOfLines={1}
+        ellipsizeMode="tail"
       >
         {value}
       </ThemedText>
@@ -300,6 +321,64 @@ export function SettingsValueRow({
     >
       {content}
     </Pressable>
+  );
+}
+
+/** A native switch row for binary preferences that take effect immediately. */
+export function SettingsToggleRow({
+  icon: Icon,
+  label,
+  hint,
+  value,
+  onValueChange,
+  last = false,
+  disabled = false,
+}: {
+  icon?: LucideIcon | ComponentType<{ color?: string; size?: number }>;
+  label: string;
+  hint?: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+  last?: boolean;
+  disabled?: boolean;
+}) {
+  const theme = useTheme();
+  return (
+    <View
+      style={[
+        styles.toggleRow,
+        !last && {
+          borderBottomWidth: StyleSheet.hairlineWidth,
+          borderBottomColor: theme.border,
+        },
+        disabled && styles.valueRowDisabled,
+      ]}
+    >
+      {Icon ? <Icon color={theme.mutedForeground} size={20} /> : null}
+      <View style={styles.toggleCopy}>
+        <ThemedText style={styles.valueRowLabel} numberOfLines={1}>
+          {label}
+        </ThemedText>
+        {hint ? (
+          <ThemedText
+            themeColor="mutedForeground"
+            style={styles.toggleHint}
+            numberOfLines={1}
+          >
+            {hint}
+          </ThemedText>
+        ) : null}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        disabled={disabled}
+        accessibilityLabel={label}
+        accessibilityHint={hint}
+        trackColor={{ false: theme.border, true: theme.primary }}
+        thumbColor={theme.primaryForeground}
+      />
+    </View>
   );
 }
 
@@ -464,7 +543,7 @@ const styles = StyleSheet.create({
     gap: Spacing.three,
     paddingVertical: Spacing.two,
   },
-  navRowContent: { flex: 1 },
+  navRowContent: { flex: 1, minWidth: 0 },
   navRowLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   navRowValue: { fontSize: 13, marginTop: 1 },
 
@@ -475,13 +554,28 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   valueRowDisabled: { opacity: 0.55 },
-  valueRowLabel: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 16 },
+  valueRowLabel: {
+    flex: 1,
+    minWidth: 0,
+    fontFamily: Fonts.sansMedium,
+    fontSize: 16,
+  },
   valueRowValue: {
-    maxWidth: "48%",
+    maxWidth: "38%",
+    flexShrink: 1,
+    minWidth: 0,
     fontFamily: Fonts.sans,
     fontSize: 15,
     textAlign: "right",
   },
+  toggleRow: {
+    minHeight: 58,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+  },
+  toggleCopy: { flex: 1, minWidth: 0, gap: 1 },
+  toggleHint: { fontSize: 13, lineHeight: 18 },
 
   option: {
     flexDirection: "row",

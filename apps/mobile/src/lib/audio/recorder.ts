@@ -34,9 +34,34 @@ export async function requestMicPermission(): Promise<MicPermission> {
       : "undetermined";
 }
 
+let recordingModeReady = false;
+let recordingModePreparation: Promise<void> | null = null;
+
+/**
+ * Configure the audio session before the user taps the mic. This does not
+ * start capture or light the iOS recording indicator; it removes the first
+ * native audio-session transition from the interaction-critical path.
+ */
+export function prepareRecordingAudioSession(): Promise<void> {
+  if (recordingModeReady) return Promise.resolve();
+  if (recordingModePreparation) return recordingModePreparation;
+
+  recordingModePreparation = setAudioModeAsync({
+    allowsRecording: true,
+    playsInSilentMode: true,
+  })
+    .then(() => {
+      recordingModeReady = true;
+    })
+    .finally(() => {
+      recordingModePreparation = null;
+    });
+  return recordingModePreparation;
+}
+
 /** Configure the audio session for recording. Call before starting a stream. */
 async function enableRecordingMode(): Promise<void> {
-  await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+  await prepareRecordingAudioSession();
 }
 
 export interface RecorderCallbacks {

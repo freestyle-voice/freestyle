@@ -1,14 +1,5 @@
 import type { UIMessage } from "ai";
 
-export function latestThreadState(
-  latest: { id: string; messages: UIMessage[] } | null,
-  fallbackThreadId: string,
-): { threadId: string; messages: UIMessage[] } {
-  return latest
-    ? { threadId: latest.id, messages: latest.messages }
-    : { threadId: fallbackThreadId, messages: [] };
-}
-
 export function appendAssistantDelta(
   messages: UIMessage[],
   delta: string,

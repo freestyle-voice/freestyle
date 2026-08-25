@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { ScrollView, StyleSheet } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
@@ -21,10 +22,23 @@ export function TranscriptView({
 }: TranscriptViewProps) {
   const theme = useTheme();
   const { transcriptSize, transcriptPlaceholderSize } = useResponsive();
+  const scrollRef = useRef<ScrollView>(null);
   const empty = !text && !partial;
+
+  // A new partial is appended after the settled transcript. Without following
+  // it, a second long dictation can be streaming correctly below the fold yet
+  // look as though no live words are arriving.
+  useEffect(() => {
+    if (!partial) return;
+    const frame = requestAnimationFrame(() =>
+      scrollRef.current?.scrollToEnd({ animated: true }),
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [partial]);
 
   return (
     <ScrollView
+      ref={scrollRef}
       style={styles.scroll}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}

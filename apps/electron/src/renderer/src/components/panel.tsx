@@ -40,6 +40,7 @@ import {
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
+  cancelDurableTurn,
   type DurableThreadAction,
   getThread,
   getThreadRuntime,
@@ -1105,6 +1106,28 @@ function PanelInner({
   const stopGeneration = (): void => {
     if (!busy) return;
     stop();
+    const cancel = (turnId: string) =>
+      void cancelDurableTurn(turnId)
+        .then(() => durableRuntime.refetch())
+        .catch(() =>
+          setNotice(
+            "Stopped locally, but couldn't cancel the server turn. Check this conversation when you're back online.",
+          ),
+        );
+    const activeTurnId = durableRuntime.data?.activeTurn?.id;
+    if (activeTurnId) {
+      cancel(activeTurnId);
+      return;
+    }
+    // The first runtime poll can trail the streamed response by a moment. A
+    // one-off refetch closes that race so Stop remains server-authoritative.
+    void durableRuntime
+      .refetch()
+      .then(({ data }) => {
+        const turnId = data?.activeTurn?.id;
+        if (turnId) cancel(turnId);
+      })
+      .catch(() => {});
   };
 
   const copyMessage = (message: UIMessage): void => {

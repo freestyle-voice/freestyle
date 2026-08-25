@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { remixDraftStorageKey, updateRemixDraft } from "./drafts";
+import {
+  mergeHydratedRemixDrafts,
+  remixDraftStorageKey,
+  updateRemixDraft,
+} from "./drafts";
 
 describe("Remix draft persistence", () => {
   it("scopes drafts to the signed-in account", () => {
@@ -18,6 +22,18 @@ describe("Remix draft persistence", () => {
     });
     expect(updateRemixDraft(withBoth, "thread-a", "")).toEqual({
       "thread-b": "Reply later",
+    });
+  });
+
+  it("does not let a late hydration overwrite a transcript added in memory", () => {
+    expect(
+      mergeHydratedRemixDrafts(
+        { "thread-a": "Saved earlier draft" },
+        { "thread-a": "Voice transcript", "thread-b": "In progress" },
+      ),
+    ).toEqual({
+      "thread-a": "Voice transcript",
+      "thread-b": "In progress",
     });
   });
 });

@@ -106,3 +106,9 @@ export async function sendDurableTurnCommand(
     }),
   );
 }
+
+/** Explicitly end a server-owned turn; unlike aborting a stream, this survives
+ * an app close and prevents the harness from continuing in the background. */
+export async function cancelDurableTurn(turnId: string): Promise<unknown> {
+  return sendDurableTurnCommand(turnId, { type: "cancel" });
+}

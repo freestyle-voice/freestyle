@@ -13,15 +13,22 @@ describe("Profile settings layout", () => {
     expect(screen).not.toContain('accessibilityLabel="Edit name"');
     expect(screen).not.toContain("nameEditBadge");
     expect(screen).not.toContain("function NameCard");
+    expect(screen).toContain('valueMaxWidth="68%"');
   });
 
-  it("shows work details as direct value rows instead of a collapsed legacy form", () => {
+  it("shows work details as direct value rows with native wheel selectors", () => {
     expect(screen).not.toContain('<SettingsGroup title="Freestyle">');
     expect(screen).not.toContain('<SettingsGroup title="Personalization">');
     expect(screen).toContain('<SettingsGroup title="Work profile">');
     expect(screen).toContain('label="Industry"');
     expect(screen).toContain('label="Job title"');
     expect(screen).toContain('label="Company"');
+    expect(screen).toContain("WheelPickerSheet");
+    expect(screen).toContain('title="Industry"');
+    expect(screen).toContain('title="Job title"');
+    expect(screen).toContain("JOB_TITLE_OPTIONS");
+    expect(screen).toContain('label: "Custom title"');
+    expect(screen).not.toContain("<SelectSheet");
     expect(screen).toContain("TextEditorSheet");
     expect(screen).toContain('presentationStyle="formSheet"');
   });
@@ -31,8 +38,8 @@ describe("Profile settings layout", () => {
     expect(screen).toContain(
       "if (orgsLoading || activeLoading || !hasMultiple) return null;",
     );
-    expect(screen).toContain("WorkspacePickerSheet");
-    expect(screen).toContain("snapToInterval={WORKSPACE_WHEEL_ITEM_HEIGHT}");
+    expect(screen).toContain("WheelPickerSheet");
+    expect(screen).toContain("snapToInterval={WHEEL_ITEM_HEIGHT}");
     expect(screen).not.toContain("ActionSheetIOS.showActionSheetWithOptions");
   });
 });

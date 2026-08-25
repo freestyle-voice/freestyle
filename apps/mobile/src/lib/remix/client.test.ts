@@ -10,10 +10,14 @@ vi.mock("@/lib/cloud/client", () => ({ cloud: { json, request } }));
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 
 import {
+  commandDurableTurn,
+  deleteThread,
+  getDurableTurn,
   getLatestThread,
   getThread,
   listThreads,
   runRemixTurn,
+  sendDurableRemixTurn,
 } from "./client";
 
 function responseWithEvents(events: object[]): Response {
@@ -65,6 +69,77 @@ describe("mobile Remix cloud client", () => {
     expect(json).toHaveBeenCalledWith("/v2/threads/thread-1");
   });
 
+  it("submits an idempotent durable app turn and reads its server-owned state", async () => {
+    json
+      .mockResolvedValueOnce({
+        turn: {
+          id: "turn-1",
+          threadId: "thread-1",
+          status: "queued",
+          error: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        turn: {
+          id: "turn-1",
+          threadId: "thread-1",
+          status: "completed",
+          error: null,
+        },
+      })
+      .mockResolvedValueOnce({ ok: true });
+
+    await expect(
+      sendDurableRemixTurn({
+        messages: [
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Write a reply" }],
+          },
+        ],
+        threadId: "thread-1",
+        firstTurn: true,
+        clientRequestId: "turn-retry-safe-1",
+      }),
+    ).resolves.toEqual(expect.objectContaining({ id: "turn-1" }));
+    await expect(getDurableTurn("turn-1")).resolves.toEqual(
+      expect.objectContaining({ status: "completed" }),
+    );
+    await commandDurableTurn("turn-1", {
+      type: "approve",
+      actionId: "action-1",
+    });
+
+    expect(json).toHaveBeenNthCalledWith(
+      1,
+      "/v2/threads/thread-1/turns",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const body = JSON.parse(json.mock.calls[0]?.[1]?.body as string) as {
+      clientRequestId?: string;
+      client?: { platform?: string; supportsConnectorApprovals?: boolean };
+    };
+    expect(body.clientRequestId).toBe("turn-retry-safe-1");
+    expect(body.client?.platform).toMatch(/^(ios|android)$/);
+    expect(body.client?.supportsConnectorApprovals).toBe(true);
+    expect(json).toHaveBeenNthCalledWith(2, "/v2/turns/turn-1");
+    expect(json).toHaveBeenNthCalledWith(
+      3,
+      "/v2/turns/turn-1/commands",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
+  it("deletes a durable conversation from session management", async () => {
+    request.mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await expect(deleteThread("thread/one")).resolves.toBeUndefined();
+    expect(request).toHaveBeenCalledWith("/v2/threads/thread%2Fone", {
+      method: "DELETE",
+    });
+  });
+
   it("treats a cleared thread as unavailable instead of a load failure", async () => {
     json.mockRejectedValueOnce(new CloudRequestError(404, "Not found"));
 
@@ -104,9 +179,10 @@ describe("mobile Remix cloud client", () => {
       expect.objectContaining({ method: "POST" }),
     );
     const body = JSON.parse(request.mock.calls[0]?.[1]?.body as string) as {
-      client?: { platform?: string };
+      client?: { platform?: string; supportsConnectorApprovals?: boolean };
     };
     expect(body.client?.platform).toMatch(/^(ios|android)$/);
+    expect(body.client?.supportsConnectorApprovals).toBe(true);
   });
 
   it("holds an insert request for the keyboard instead of treating it as an app paste", async () => {
@@ -145,9 +221,56 @@ describe("mobile Remix cloud client", () => {
       input: { text: "Ready to paste" },
     });
     const body = JSON.parse(request.mock.calls[0]?.[1]?.body as string) as {
-      client?: { supportsKeyboardInsertion?: boolean };
+      client?: {
+        supportsKeyboardInsertion?: boolean;
+        supportsConnectorApprovals?: boolean;
+      };
     };
     expect(body.client?.supportsKeyboardInsertion).toBe(true);
+    expect(body.client?.supportsConnectorApprovals).toBeUndefined();
+  });
+
+  it("surfaces a server-bound connected-app approval instead of executing it in the app", async () => {
+    request.mockResolvedValueOnce(
+      responseWithEvents([
+        {
+          type: "tool-output-available",
+          output: {
+            approval: {
+              approvalToken: "a".repeat(32),
+              toolkit: "gmail",
+              toolkitName: "Gmail",
+              toolSlug: "GMAIL_SEND_EMAIL",
+              actionDescription: "gmail send email — to: ada@example.com",
+              expiresAt: "2026-08-25T12:00:00.000Z",
+            },
+          },
+        },
+        { type: "finish" },
+      ]),
+    );
+    const events: unknown[] = [];
+
+    await runRemixTurn({
+      messages: [
+        {
+          id: "user-1",
+          role: "user",
+          parts: [{ type: "text", text: "Email Ada" }],
+        },
+      ],
+      threadId: "thread-123",
+      signal: new AbortController().signal,
+      onEvent: (event) => events.push(event),
+    });
+
+    expect(events).toContainEqual({
+      type: "connector-approval",
+      approval: expect.objectContaining({
+        toolkit: "gmail",
+        toolSlug: "GMAIL_SEND_EMAIL",
+      }),
+    });
   });
 
   it("keeps temporary request rate limits distinct from usage limits", async () => {

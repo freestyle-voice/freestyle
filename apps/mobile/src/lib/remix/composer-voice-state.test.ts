@@ -10,25 +10,24 @@ describe("Remix composer voice state", () => {
     expect(
       remixComposerVoiceState({
         draft: "",
-        partial: "",
         micState: "idle",
         remixBusy: false,
       }),
     ).toMatchObject({ action: "listen", label: "Start listening" });
   });
 
-  it("shows the live phrase and lets the user stop recording", () => {
+  it("keeps the text field stable while live listening feedback is rendered separately", () => {
     expect(
       remixComposerVoiceState({
         draft: "Write this down",
-        partial: "and send it tomorrow",
         micState: "recording",
         remixBusy: false,
       }),
     ).toMatchObject({
       action: "finish-listening",
       label: "Stop listening",
-      value: "and send it tomorrow",
+      value: "Write this down",
+      placeholder: "Message Remix",
     });
   });
 

@@ -1,59 +1,47 @@
 import { describe, expect, it } from "vitest";
 
-import { appendAssistantDelta, latestThreadState } from "./thread";
+import { messagesForResend, messagesForRetry } from "./thread";
 
-describe("Remix thread updates", () => {
-  it("extends the current assistant turn instead of adding a message per stream chunk", () => {
-    const first = appendAssistantDelta([], "First", "assistant-1");
-    const second = appendAssistantDelta(first, " draft", "assistant-1");
+const messages = [
+  {
+    id: "u1",
+    role: "user" as const,
+    parts: [{ type: "text" as const, text: "First" }],
+  },
+  {
+    id: "a1",
+    role: "assistant" as const,
+    parts: [{ type: "text" as const, text: "Answer" }],
+  },
+  {
+    id: "u2",
+    role: "user" as const,
+    parts: [{ type: "text" as const, text: "Second" }],
+  },
+  {
+    id: "a2",
+    role: "assistant" as const,
+    parts: [{ type: "text" as const, text: "Another answer" }],
+  },
+];
 
-    expect(second).toEqual([
+describe("Remix resend history", () => {
+  it("retries the latest user turn without retaining a partial answer", () => {
+    expect(messagesForRetry(messages)).toEqual(messages.slice(0, 3));
+  });
+
+  it("replaces an edited user turn and truncates the discarded tail", () => {
+    expect(messagesForResend(messages, "u1", "Rewritten first")).toEqual([
       {
-        id: "assistant-1",
-        role: "assistant",
-        parts: [{ type: "text", text: "First draft" }],
+        id: "u1",
+        role: "user",
+        parts: [{ type: "text", text: "Rewritten first" }],
       },
     ]);
   });
 
-  it("keeps consecutive assistant turns uniquely keyed", () => {
-    const first = appendAssistantDelta([], "First", "assistant-1");
-    const second = appendAssistantDelta(
-      [
-        ...first,
-        {
-          id: "user-2",
-          role: "user",
-          parts: [{ type: "text", text: "Again" }],
-        },
-      ],
-      "Second",
-      "assistant-2",
-    );
-
-    expect(second.map((message) => message.id)).toEqual([
-      "assistant-1",
-      "user-2",
-      "assistant-2",
-    ]);
-  });
-
-  it("uses the latest durable thread without discarding a fresh-thread fallback", () => {
-    expect(
-      latestThreadState(
-        {
-          id: "cloud-thread",
-          messages: [{ id: "user", role: "user", parts: [] }],
-        },
-        "fresh-thread",
-      ),
-    ).toEqual({
-      threadId: "cloud-thread",
-      messages: [{ id: "user", role: "user", parts: [] }],
-    });
-    expect(latestThreadState(null, "fresh-thread")).toEqual({
-      threadId: "fresh-thread",
-      messages: [],
-    });
+  it("does not resend empty text or assistant messages", () => {
+    expect(messagesForResend(messages, "u2", "  ")).toBeNull();
+    expect(messagesForResend(messages, "a2", "Nope")).toBeNull();
   });
 });

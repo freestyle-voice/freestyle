@@ -1,3 +1,4 @@
+import CoreFoundation
 import SwiftUI
 import UIKit
 
@@ -90,6 +91,7 @@ final class KeyboardViewController: UIInputViewController {
     private let bridge = FreestyleDictationBridge()
     private let keyboardModeKey = "com.freestylevoice.keyboard.mode"
     private var statePollTimer: Timer?
+    private var observingSharedState = false
     private var lastInsertedToken = ""
     /// Cached so we only rebuild the mic control when the phase or liveness
     /// actually changes, not on every 0.3s poll tick.
@@ -151,13 +153,19 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        startObservingSharedState()
         startPollingSharedState()
         syncSharedState()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        stopObservingSharedState()
         stopPollingSharedState()
+    }
+
+    deinit {
+        stopObservingSharedState()
     }
 
     override func traitCollectionDidChange(_ previous: UITraitCollection?) {
@@ -482,6 +490,41 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     // MARK: - Shared state polling (app → keyboard)
+
+    /// The app posts this after publishing a meaningful state transition. In
+    /// particular, it makes final-text insertion event-driven; polling remains
+    /// only as a recovery path when iOS drops a Darwin notification.
+    private func startObservingSharedState() {
+        guard !observingSharedState else { return }
+        observingSharedState = true
+        let center = CFNotificationCenterGetDarwinNotifyCenter()
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        CFNotificationCenterAddObserver(
+            center,
+            observer,
+            { (_, observer, _, _, _) in
+                guard let observer else { return }
+                let controller = Unmanaged<KeyboardViewController>
+                    .fromOpaque(observer)
+                    .takeUnretainedValue()
+                DispatchQueue.main.async { [weak controller] in
+                    controller?.syncSharedState()
+                }
+            },
+            FreestyleDictationBridge.stateDarwinName,
+            nil,
+            .deliverImmediately
+        )
+    }
+
+    private func stopObservingSharedState() {
+        guard observingSharedState else { return }
+        observingSharedState = false
+        CFNotificationCenterRemoveEveryObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            Unmanaged.passUnretained(self).toOpaque()
+        )
+    }
 
     private func startPollingSharedState() {
         guard statePollTimer == nil else { return }

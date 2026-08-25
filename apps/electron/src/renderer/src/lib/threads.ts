@@ -3,6 +3,29 @@ import type { UIMessage } from "ai";
 
 export type ThreadState = { id: string; messages: UIMessage[] };
 
+export type DurableThreadAction = {
+  id: string;
+  turnId: string;
+  kind: "connector" | "desktop";
+  status:
+    | "pending"
+    | "claimed"
+    | "completed"
+    | "declined"
+    | "expired"
+    | "failed";
+  toolName: string;
+  display: string;
+  capability: string | null;
+  expiresAt: string;
+};
+
+export type DurableThreadRuntime = {
+  thread: ThreadState;
+  activeTurn: { id: string; status: string; error: string | null } | null;
+  pendingAction: DurableThreadAction | null;
+};
+
 export type ThreadOrigin = "user" | "scheduled";
 
 export const THREAD_ORIGINS: ThreadOrigin[] = ["user", "scheduled"];
@@ -58,4 +81,28 @@ export async function getThread(id: string): Promise<ThreadState | null> {
     await apiFetch(`/api/agent/thread/${encodeURIComponent(id)}`),
   );
   return data.thread;
+}
+
+/** The ordinary thread remains D1 history; this optional envelope adds only
+ * durable execution state and never contains server-side tool inputs. */
+export async function getThreadRuntime(
+  id: string,
+): Promise<DurableThreadRuntime | null> {
+  const data = await responseJson<DurableThreadRuntime>(
+    await apiFetch(`/api/agent/thread/${encodeURIComponent(id)}`),
+  );
+  return data.thread ? data : null;
+}
+
+export async function sendDurableTurnCommand(
+  turnId: string,
+  command: Record<string, unknown>,
+): Promise<unknown> {
+  return responseJson<unknown>(
+    await apiFetch(`/api/agent/turn/${encodeURIComponent(turnId)}/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(command),
+    }),
+  );
 }

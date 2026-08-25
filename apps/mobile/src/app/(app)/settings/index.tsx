@@ -2,13 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
 import {
+  BookOpen,
   CircleQuestionMark,
   Globe,
   Keyboard,
   Languages,
   Monitor,
   Moon,
+  Replace,
   Shield,
+  Sparkles,
   Sun,
   Trash2,
   Volume2,
@@ -20,6 +23,7 @@ import {
   Card,
   OptionCard,
   SectionTitle,
+  SettingsGroup,
   SettingsNavRow,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
@@ -161,12 +165,30 @@ export default function SettingsScreen() {
         />
       </Card>
 
-      <Card style={styles.navCard}>
+      <SettingsGroup title="More settings">
         <SettingsNavRow
           icon={Keyboard}
           label="Voice keyboard"
           value="Dictate in any app"
           onPress={() => router.push("/(app)/keyboard-setup")}
+        />
+        <SettingsNavRow
+          icon={Sparkles}
+          label="Cleanup & tone"
+          value="How Freestyle polishes your words"
+          onPress={() => router.push("/(app)/tone")}
+        />
+        <SettingsNavRow
+          icon={BookOpen}
+          label="Words"
+          value="Names and phrases to recognize"
+          onPress={() => router.push("/(app)/vocabulary")}
+        />
+        <SettingsNavRow
+          icon={Replace}
+          label="Dictionary"
+          value="On-device text replacements"
+          onPress={() => router.push("/(app)/dictionary")}
         />
         <SettingsNavRow
           icon={CircleQuestionMark}
@@ -175,7 +197,7 @@ export default function SettingsScreen() {
           onPress={() => router.push("/(app)/help")}
           last
         />
-      </Card>
+      </SettingsGroup>
 
       <Card>
         <SectionTitle icon={Monitor} title="Appearance" />
@@ -336,7 +358,6 @@ const styles = StyleSheet.create({
   },
   clearLabel: { fontFamily: Fonts.sansMedium, fontSize: 15, flex: 1 },
   clearCount: { fontSize: 12 },
-  navCard: { gap: 0, paddingVertical: Spacing.one },
   toggleTrack: {
     flexDirection: "row",
     borderRadius: Radius.lg,

@@ -19,7 +19,9 @@ import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { Colors } from "@/constants/theme";
+import { useAuth } from "@/hooks/use-auth";
 import { ColorModeProvider, useColorMode } from "@/lib/color-mode";
+import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
 import { queryClient } from "@/lib/query";
 
 Sentry.init({
@@ -56,6 +58,20 @@ SplashScreen.preventAutoHideAsync();
 function RootNavigator() {
   const { scheme } = useColorMode();
   const theme = Colors[scheme];
+  const { loading, signedIn } = useAuth();
+  const { ready: onboardingReady } = useOnboarding();
+  const startupReady = !loading && (!signedIn || onboardingReady);
+
+  useEffect(() => {
+    if (startupReady) {
+      void SplashScreen.hideAsync();
+    }
+  }, [startupReady]);
+
+  // Keep the native launch screen in place until the states that determine
+  // the first route have both settled. This prevents a signed-in first-run
+  // user from seeing the app shell before being sent to onboarding.
+  if (!startupReady) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -80,18 +96,14 @@ function RootLayout() {
     JetBrainsMono_400Regular,
   });
 
-  useEffect(() => {
-    if (fontsLoaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded]);
-
   if (!fontsLoaded) return null;
 
   return (
     <QueryClientProvider client={queryClient}>
       <ColorModeProvider>
-        <RootNavigator />
+        <OnboardingProvider>
+          <RootNavigator />
+        </OnboardingProvider>
       </ColorModeProvider>
     </QueryClientProvider>
   );

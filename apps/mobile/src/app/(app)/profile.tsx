@@ -5,7 +5,17 @@ import {
 } from "@freestyle-voice/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { Building2, Check, LogOut, Sparkles } from "lucide-react-native";
+import {
+  Bell,
+  Building2,
+  CalendarClock,
+  Check,
+  ChevronDown,
+  LogOut,
+  PlugZap,
+  SlidersHorizontal,
+  Sparkles,
+} from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -18,9 +28,11 @@ import {
   View,
 } from "react-native";
 import { AppleIcon, GitHubIcon, GoogleIcon } from "@/components/provider-icons";
+import { SelectSheet } from "@/components/select-sheet";
 import {
   Card,
-  OptionCard,
+  SettingsGroup,
+  SettingsNavRow,
   SettingsScreenScaffold,
 } from "@/components/settings-ui";
 import { Skeleton } from "@/components/skeleton";
@@ -48,6 +60,10 @@ import { formatNumber } from "@/lib/format";
 import { initialsFor } from "@/lib/initials";
 
 export default function ProfileScreen() {
+  return <ProfileContent />;
+}
+
+export function ProfileContent() {
   const theme = useTheme();
   const router = useRouter();
   const { user, signedIn, signOut } = useAuth();
@@ -121,42 +137,67 @@ export default function ProfileScreen() {
       })
     : "";
 
-  return (
-    <SettingsScreenScaffold title="Profile">
-      {/* Account */}
-      <Card>
-        <View style={styles.accountHeader}>
-          {user?.image ? (
-            <Image
-              source={{ uri: user.image }}
-              style={styles.avatarImage}
-              accessibilityIgnoresInvertColors
-            />
-          ) : (
-            <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
-              <ThemedText
-                style={[styles.avatarText, { color: theme.accentForeground }]}
-              >
-                {user ? initialsFor(user) : "?"}
-              </ThemedText>
-            </View>
-          )}
-          <View style={styles.accountInfo}>
-            <ThemedText style={styles.accountName} numberOfLines={1}>
-              {user?.name ?? "Signed in"}
+  const content = (
+    <>
+      <View style={styles.accountHero}>
+        {user?.image ? (
+          <Image
+            source={{ uri: user.image }}
+            style={styles.avatarImage}
+            accessibilityIgnoresInvertColors
+          />
+        ) : (
+          <View style={[styles.avatar, { backgroundColor: theme.accent }]}>
+            <ThemedText
+              style={[styles.avatarText, { color: theme.accentForeground }]}
+            >
+              {user ? initialsFor(user) : "?"}
             </ThemedText>
-            {user?.email ? (
-              <ThemedText
-                themeColor="mutedForeground"
-                style={styles.accountEmail}
-                numberOfLines={1}
-              >
-                {user.email}
-              </ThemedText>
-            ) : null}
           </View>
+        )}
+        <View style={styles.accountInfo}>
+          <ThemedText style={styles.accountName} numberOfLines={1}>
+            {user?.name ?? "Signed in"}
+          </ThemedText>
+          {user?.email ? (
+            <ThemedText
+              themeColor="mutedForeground"
+              style={styles.accountEmail}
+              numberOfLines={1}
+            >
+              {user.email}
+            </ThemedText>
+          ) : null}
         </View>
-      </Card>
+      </View>
+
+      <SettingsGroup title="Freestyle">
+        <SettingsNavRow
+          icon={SlidersHorizontal}
+          label="Dictation settings"
+          value="Language, cleanup, and privacy"
+          onPress={() => router.push("/(app)/settings")}
+        />
+        <SettingsNavRow
+          icon={PlugZap}
+          label="Connected apps & MCPs"
+          value="Give Remix access to your tools"
+          onPress={() => router.push("/(app)/connected-apps")}
+        />
+        <SettingsNavRow
+          icon={CalendarClock}
+          label="Automations"
+          value="Scheduled work and briefs"
+          onPress={() => router.push("/(app)/automations")}
+        />
+        <SettingsNavRow
+          icon={Bell}
+          label="Notifications"
+          value="Updates from Remix"
+          onPress={() => router.push("/(app)/notifications")}
+          last
+        />
+      </SettingsGroup>
 
       {/* Personal information */}
       {signedIn ? <NameCard currentName={user?.name ?? ""} /> : null}
@@ -286,7 +327,11 @@ export default function ProfileScreen() {
           Sign out
         </ThemedText>
       </Pressable>
-    </SettingsScreenScaffold>
+    </>
+  );
+
+  return (
+    <SettingsScreenScaffold title="Settings">{content}</SettingsScreenScaffold>
   );
 }
 
@@ -382,6 +427,7 @@ function ProfileDetailsCard() {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [industry, setIndustry] = useState<Industry | undefined>(undefined);
+  const [industryPickerOpen, setIndustryPickerOpen] = useState(false);
   const [jobTitle, setJobTitle] = useState("");
   const [company, setCompany] = useState("");
   // Re-seed tone + vocabulary defaults for the new industry (opt-out). Only
@@ -478,14 +524,47 @@ function ProfileDetailsCard() {
       <ThemedText type="eyebrow" themeColor="mutedForeground">
         INDUSTRY
       </ThemedText>
-      {industrySchema.options.map((value) => (
-        <OptionCard
-          key={value}
-          label={INDUSTRY_LABELS[value]}
-          selected={industry === value}
-          onPress={() => setIndustry(industry === value ? undefined : value)}
-        />
-      ))}
+      <Pressable
+        onPress={() => setIndustryPickerOpen(true)}
+        accessibilityRole="button"
+        accessibilityLabel="Choose industry"
+        accessibilityValue={{
+          text: industry ? INDUSTRY_LABELS[industry] : "Not set",
+        }}
+        style={({ pressed }) => [
+          styles.selectField,
+          { borderColor: theme.border },
+          pressed && { backgroundColor: theme.secondary },
+        ]}
+      >
+        <ThemedText
+          style={[
+            styles.selectFieldLabel,
+            !industry && { color: theme.mutedForeground },
+          ]}
+        >
+          {industry ? INDUSTRY_LABELS[industry] : "Choose an industry"}
+        </ThemedText>
+        <ChevronDown color={theme.mutedForeground} size={18} />
+      </Pressable>
+      <SelectSheet
+        visible={industryPickerOpen}
+        title="Industry"
+        options={industrySchema.options.map((value) => ({
+          value,
+          label: INDUSTRY_LABELS[value],
+        }))}
+        selectedValue={industry}
+        onSelect={(value) => {
+          setIndustry(value as Industry);
+          setIndustryPickerOpen(false);
+        }}
+        onClear={() => {
+          setIndustry(undefined);
+          setIndustryPickerOpen(false);
+        }}
+        onClose={() => setIndustryPickerOpen(false)}
+      />
 
       {industryWillChange ? (
         <View style={[styles.reseedRow, { borderColor: theme.border }]}>
@@ -712,6 +791,7 @@ function OrganizationCard() {
   const theme = useTheme();
   const queryClient = useQueryClient();
   const [switching, setSwitching] = useState<string | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   const { data: orgs, isLoading: orgsLoading } = useQuery({
     queryKey: ["cloud-orgs"],
@@ -763,52 +843,45 @@ function OrganizationCard() {
       {orgsLoading || activeLoading ? (
         <Skeleton width={160} height={20} />
       ) : hasMultiple ? (
-        orgs?.map((org) => {
-          const isActive = org.id === activeOrg?.id;
-          return (
-            <Pressable
-              key={org.id}
-              onPress={() => void onSwitch(org.id)}
-              disabled={switching !== null || isActive}
-              style={[
-                styles.orgRow,
-                {
-                  borderColor: isActive ? theme.primary : theme.border,
-                  backgroundColor: isActive ? theme.accent : "transparent",
-                },
-              ]}
-            >
-              <Building2
-                size={18}
-                color={isActive ? theme.accentForeground : theme.foreground}
-              />
-              <ThemedText
-                style={[
-                  styles.orgName,
-                  {
-                    color: isActive ? theme.accentForeground : theme.foreground,
-                  },
-                ]}
-                numberOfLines={1}
-              >
-                {org.name}
-              </ThemedText>
-              {switching === org.id ? (
-                <ActivityIndicator
-                  color={theme.foreground}
-                  size="small"
-                  style={styles.orgTrailing}
-                />
-              ) : isActive ? (
-                <Check
-                  size={18}
-                  color={theme.accentForeground}
-                  style={styles.orgTrailing}
-                />
-              ) : null}
-            </Pressable>
-          );
-        })
+        <>
+          <Pressable
+            onPress={() => setPickerOpen(true)}
+            disabled={switching !== null}
+            accessibilityRole="button"
+            accessibilityLabel="Choose organization"
+            accessibilityValue={{ text: activeOrg?.name ?? "Not set" }}
+            style={({ pressed }) => [
+              styles.orgRow,
+              { borderColor: theme.border },
+              pressed &&
+                switching === null && { backgroundColor: theme.secondary },
+            ]}
+          >
+            <Building2 size={18} color={theme.foreground} />
+            <ThemedText style={styles.orgName} numberOfLines={1}>
+              {activeOrg?.name ?? "Choose organization"}
+            </ThemedText>
+            {switching ? (
+              <ActivityIndicator color={theme.foreground} size="small" />
+            ) : (
+              <ChevronDown color={theme.mutedForeground} size={18} />
+            )}
+          </Pressable>
+          <SelectSheet
+            visible={pickerOpen}
+            title="Organization"
+            options={(orgs ?? []).map((org) => ({
+              value: org.id,
+              label: org.name,
+            }))}
+            selectedValue={activeOrg?.id}
+            onSelect={(organizationId) => {
+              setPickerOpen(false);
+              void onSwitch(organizationId);
+            }}
+            onClose={() => setPickerOpen(false)}
+          />
+        </>
       ) : (
         <View style={[styles.orgRow, { borderColor: theme.border }]}>
           <Building2 size={18} color={theme.foreground} />
@@ -822,27 +895,27 @@ function OrganizationCard() {
 }
 
 const styles = StyleSheet.create({
-  accountHeader: {
-    flexDirection: "row",
+  accountHero: {
     alignItems: "center",
-    gap: Spacing.three,
+    gap: Spacing.two,
+    paddingVertical: Spacing.two,
   },
   avatar: {
-    width: 48,
-    height: 48,
+    width: 76,
+    height: 76,
     borderRadius: Radius.full,
     alignItems: "center",
     justifyContent: "center",
   },
   avatarImage: {
-    width: 48,
-    height: 48,
+    width: 76,
+    height: 76,
     borderRadius: Radius.full,
   },
-  avatarText: { fontFamily: Fonts.sansSemiBold, fontSize: 17 },
-  accountInfo: { flex: 1 },
-  accountName: { fontFamily: Fonts.serif, fontSize: 22, lineHeight: 24 },
-  accountEmail: { fontSize: 13, marginTop: 3 },
+  avatarText: { fontFamily: Fonts.sansSemiBold, fontSize: 24 },
+  accountInfo: { alignItems: "center" },
+  accountName: { fontFamily: Fonts.sansSemiBold, fontSize: 22, lineHeight: 27 },
+  accountEmail: { fontSize: 14, marginTop: 2 },
   inlineRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -891,6 +964,18 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginTop: Spacing.two,
   },
+  selectField: {
+    minHeight: 52,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: Spacing.three,
+    borderWidth: 1,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.three,
+    marginTop: Spacing.two,
+  },
+  selectFieldLabel: { flex: 1, fontFamily: Fonts.sans, fontSize: 15 },
   detailsLabel: { marginTop: Spacing.four },
   reseedRow: {
     flexDirection: "row",

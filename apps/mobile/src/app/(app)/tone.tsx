@@ -7,7 +7,7 @@ import {
   Divider,
   OptionCard,
   SectionTitle,
-  TabScreenScaffold,
+  SettingsScreenScaffold,
 } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
@@ -41,7 +41,7 @@ export default function ToneScreen() {
   const [draftPrompt, setDraftPrompt] = useState(settings.customPrompt);
 
   return (
-    <TabScreenScaffold
+    <SettingsScreenScaffold
       title="Cleanup & Tone"
       subtitle="Control how much Freestyle polishes your words, and the voice it uses for each kind of writing."
     >
@@ -166,7 +166,7 @@ export default function ToneScreen() {
           </Card>
         </>
       ) : null}
-    </TabScreenScaffold>
+    </SettingsScreenScaffold>
   );
 }
 

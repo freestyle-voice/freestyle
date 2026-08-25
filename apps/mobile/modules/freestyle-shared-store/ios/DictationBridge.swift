@@ -128,12 +128,17 @@ struct FreestyleDictationBridge {
     /// keyboard is both enabled and has Full Access granted.
     func markKeyboardActive(now: TimeInterval = Date().timeIntervalSince1970) {
         defaults.set(now, forKey: Self.keyboardActiveKey)
+        // App extensions run in another process. Flush the App Group write so
+        // the host app's readiness poll can observe it immediately.
+        defaults.synchronize()
     }
 
     /// The last time the keyboard extension stamped its handshake, or 0 if it
     /// never has (keyboard not added, or added without Full Access).
     func keyboardLastActive() -> TimeInterval {
-        defaults.double(forKey: Self.keyboardActiveKey)
+        // Pull the latest App Group value written by the keyboard process.
+        defaults.synchronize()
+        return defaults.double(forKey: Self.keyboardActiveKey)
     }
 
     // MARK: Command channel

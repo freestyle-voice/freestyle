@@ -1,5 +1,4 @@
-import { Redirect, Stack, useRouter, useSegments } from "expo-router";
-import { useEffect } from "react";
+import { Redirect, Stack, useSegments } from "expo-router";
 
 import { KeyboardDictationStrip } from "@/components/keyboard-dictation-strip";
 import { useAuth } from "@/hooks/use-auth";
@@ -7,11 +6,11 @@ import { DismissiblesProvider } from "@/lib/dismissibles";
 import { EntriesProvider } from "@/lib/entries";
 import { HistoryProvider } from "@/lib/history";
 import { KeyboardDictationProvider } from "@/lib/keyboard/keyboard-dictation-provider";
-import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
+import { useOnboarding } from "@/lib/onboarding";
 import { SettingsProvider } from "@/lib/settings";
 
 /**
- * Authenticated area. A Stack hosts the bottom-tab group `(tabs)` plus the
+ * Authenticated area. A Stack hosts the chat-home group `(tabs)` plus the
  * pushed pages (settings, profile, keyboard setup). The resident keyboard
  * dictation session lives in a provider here (not on any one screen) so it
  * survives across navigation — the whole point is that after the first
@@ -20,54 +19,48 @@ import { SettingsProvider } from "@/lib/settings";
  */
 export default function AppLayout() {
   const { signedIn, loading } = useAuth();
+  const { complete: onboardingComplete, ready: onboardingReady } =
+    useOnboarding();
+  const segments = useSegments();
+  const onOnboardingScreen = segments[segments.length - 1] === "onboarding";
 
-  // The root index shows the spinner during restore; once resolved, bounce
-  // unauthenticated users back to sign-in.
+  // Keep direct links and post-sign-in navigation from briefly mounting the
+  // app shell before the local onboarding state has hydrated.
+  if (loading || (signedIn && !onboardingReady)) return null;
+
   if (!loading && !signedIn) return <Redirect href="/sign-in" />;
+  if (!onboardingComplete && !onOnboardingScreen) {
+    return <Redirect href="/(app)/onboarding" />;
+  }
 
   return (
     <SettingsProvider>
       <EntriesProvider>
         <HistoryProvider>
-          <OnboardingProvider>
-            <DismissiblesProvider>
-              <KeyboardDictationProvider>
-                <OnboardingGate />
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(tabs)" />
-                  <Stack.Screen name="onboarding" />
-                  <Stack.Screen name="settings" />
-                  <Stack.Screen name="profile" />
-                  <Stack.Screen name="keyboard-setup" />
-                  <Stack.Screen name="help" />
-                  <Stack.Screen name="billing" />
-                </Stack>
-                <KeyboardDictationStrip />
-              </KeyboardDictationProvider>
-            </DismissiblesProvider>
-          </OnboardingProvider>
+          <DismissiblesProvider>
+            <KeyboardDictationProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="onboarding" />
+                <Stack.Screen name="settings" />
+                <Stack.Screen name="profile" />
+                <Stack.Screen name="history" />
+                <Stack.Screen name="vocabulary" />
+                <Stack.Screen name="dictionary" />
+                <Stack.Screen name="tone" />
+                <Stack.Screen name="keyboard-setup" />
+                <Stack.Screen name="help" />
+                <Stack.Screen name="billing" />
+                <Stack.Screen name="connected-apps" />
+                <Stack.Screen name="automations" />
+                <Stack.Screen name="notifications" />
+                <Stack.Screen name="agent-thread/[id]" />
+              </Stack>
+              <KeyboardDictationStrip />
+            </KeyboardDictationProvider>
+          </DismissiblesProvider>
         </HistoryProvider>
       </EntriesProvider>
     </SettingsProvider>
   );
-}
-
-/**
- * Redirects first-run users to the wizard. Rendered under the providers so it
- * can read the onboarding flag; a no-op once complete. Uses imperative
- * navigation (not <Redirect>) so it doesn't fight the Stack's own screens.
- */
-function OnboardingGate() {
-  const { complete, ready } = useOnboarding();
-  const router = useRouter();
-  const segments = useSegments();
-
-  useEffect(() => {
-    if (!ready || complete) return;
-    // Don't redirect if already on the onboarding screen.
-    if (segments[segments.length - 1] === "onboarding") return;
-    router.replace("/(app)/onboarding");
-  }, [ready, complete, segments, router]);
-
-  return null;
 }

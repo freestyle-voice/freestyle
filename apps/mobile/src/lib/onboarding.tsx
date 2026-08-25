@@ -26,16 +26,33 @@ interface OnboardingContextValue {
 
 const OnboardingContext = createContext<OnboardingContextValue | null>(null);
 
+export async function loadOnboardingComplete(
+  readPreference: typeof getPref = getPref,
+): Promise<boolean> {
+  try {
+    return (await readPreference(ONBOARDING_KEY)) === "true";
+  } catch {
+    // A local storage failure must not block app launch. Treat it as a
+    // first-run device so the user can continue through onboarding.
+    return false;
+  }
+}
+
 export function OnboardingProvider({ children }: { children: ReactNode }) {
   const [complete, setComplete] = useState(false);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    (async () => {
-      const stored = await getPref(ONBOARDING_KEY);
-      setComplete(stored === "true");
+    let cancelled = false;
+    void loadOnboardingComplete().then((storedComplete) => {
+      if (cancelled) return;
+      setComplete(storedComplete);
       setReady(true);
-    })();
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const finish = useCallback(() => {

@@ -17,13 +17,15 @@ export type MicState = "idle" | "recording" | "finalizing";
 
 interface MicButtonProps {
   state: MicState;
+  /** Diameter of the tap target; the Dictate dock uses a more compact control. */
+  size?: number;
   /** Live input level [0, 1], shared for smooth UI-thread animation. */
   level: SharedValue<number>;
   onPressIn: () => void;
   onPressOut: () => void;
 }
 
-const SIZE = 92;
+const DEFAULT_SIZE = 92;
 
 // Fast attack, slow decay so the halo swells sharply with speech and settles
 // gently — same feel as the waveform, so both react to real loudness.
@@ -33,6 +35,7 @@ const DECAY = 0.14;
 /** The primary press-and-hold / tap-to-toggle record control. */
 export function MicButton({
   state,
+  size = DEFAULT_SIZE,
   level,
   onPressIn,
   onPressOut,
@@ -100,12 +103,20 @@ export function MicButton({
     state === "finalizing" ? theme.mutedForeground : theme.primaryForeground;
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { width: size * 1.6, height: size * 1.6 }]}>
       <Animated.View
-        style={[styles.ring, { backgroundColor: `${haloColor}22` }, ringOuter]}
+        style={[
+          styles.ring,
+          { width: size, height: size, backgroundColor: `${haloColor}22` },
+          ringOuter,
+        ]}
       />
       <Animated.View
-        style={[styles.ring, { backgroundColor: `${haloColor}33` }, ringInner]}
+        style={[
+          styles.ring,
+          { width: size, height: size, backgroundColor: `${haloColor}33` },
+          ringInner,
+        ]}
       />
       <Animated.View style={buttonStyle}>
         <Pressable
@@ -118,7 +129,12 @@ export function MicButton({
           onPressOut={handlePressOut}
           style={[
             styles.button,
-            { backgroundColor: bg, shadowColor: haloColor },
+            {
+              width: size,
+              height: size,
+              backgroundColor: bg,
+              shadowColor: haloColor,
+            },
           ]}
         >
           {state === "recording" ? (
@@ -134,20 +150,14 @@ export function MicButton({
 
 const styles = StyleSheet.create({
   container: {
-    width: SIZE * 2,
-    height: SIZE * 2,
     alignItems: "center",
     justifyContent: "center",
   },
   ring: {
     position: "absolute",
-    width: SIZE,
-    height: SIZE,
     borderRadius: Radius.full,
   },
   button: {
-    width: SIZE,
-    height: SIZE,
     borderRadius: Radius.full,
     alignItems: "center",
     justifyContent: "center",

@@ -12,7 +12,7 @@ import {
   Mic,
   Sparkles,
 } from "lucide-react-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -21,25 +21,32 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  checkMicPermission,
-  type MicPermission,
-  requestMicPermission,
-} from "@/lib/audio/recorder";
-import { fetchCloudConfig } from "@/lib/cloud/cloud-config";
+import type { MicPermission } from "@/lib/audio/recorder";
+import { useMicPermission } from "@/lib/audio/use-mic-permission";
+import { type CloudConfig, fetchCloudConfig } from "@/lib/cloud/cloud-config";
 import {
   type KeyboardStatus,
   useKeyboardStatus,
 } from "@/lib/keyboard/use-keyboard-status";
 import { useOnboarding } from "@/lib/onboarding";
+import { canCompleteOnboardingWithoutVoiceSetup } from "@/lib/onboarding-flow";
 import { LANGUAGES, useSettings } from "@/lib/settings";
 
 const TUTORIAL_STEPS = [
-  { Icon: Mic, text: "Hold or tap the mic to start recording." },
-  { Icon: Sparkles, text: "Speak naturally — Freestyle cleans it up." },
+  {
+    Icon: Mic,
+    title: "Dictate",
+    text: "Speak naturally to turn your words into clean text.",
+  },
+  {
+    Icon: Sparkles,
+    title: "Remix",
+    text: "Ask by voice for a draft, rewrite, reply, or plan.",
+  },
   {
     Icon: ClipboardCheck,
-    text: "Copy, share, or paste your text anywhere.",
+    title: "Finish the thought",
+    text: "If Remix needs context, answer a quick follow-up—then copy, share, or paste the result.",
   },
 ] as const;
 
@@ -50,43 +57,67 @@ export default function OnboardingScreen() {
   const { settings, setLanguages } = useSettings();
 
   const [step, setStep] = useState<0 | 1 | 2>(0);
-  const [micStatus, setMicStatus] = useState<MicPermission>("undetermined");
+  const { status: micStatus, request: requestMic } = useMicPermission();
   const { status: keyboardStatus } = useKeyboardStatus();
-
-  useEffect(() => {
-    void checkMicPermission().then(setMicStatus);
-  }, []);
+  // Warm the regional language suggestions while the permission screen is
+  // visible so the picker does not reshuffle after the user reaches it.
+  const { data: cloudConfig } = useQuery({
+    queryKey: ["cloud-config"],
+    queryFn: () => fetchCloudConfig(),
+    staleTime: 6 * 60 * 60 * 1000,
+    retry: 1,
+  });
 
   const grantMic = useCallback(async () => {
-    const status =
-      (await checkMicPermission()) === "granted"
-        ? "granted"
-        : await requestMicPermission();
-    setMicStatus(status);
+    const status = await requestMic();
     // If already denied, the prompt won't show again — send them to Settings.
     if (status === "denied") void Linking.openSettings();
-  }, []);
+  }, [requestMic]);
 
   const complete = useCallback(() => {
     finish();
     router.replace("/(app)/(tabs)");
   }, [finish, router]);
 
-  const canContinueStep0 = micStatus === "granted";
+  const canContinueStep0 = canCompleteOnboardingWithoutVoiceSetup();
 
   return (
     <ThemedView style={styles.container}>
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.progress}>
-          {[0, 1, 2].map((i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                { backgroundColor: i === step ? theme.primary : theme.border },
-              ]}
-            />
-          ))}
+        <View style={styles.topBar}>
+          {step > 0 ? (
+            <Pressable
+              onPress={() => setStep((s) => (s === 2 ? 1 : 0))}
+              style={[styles.topAction, styles.topBack]}
+            >
+              <ThemedText themeColor="mutedForeground" style={styles.backText}>
+                Back
+              </ThemedText>
+            </Pressable>
+          ) : (
+            <View style={[styles.topAction, styles.topBack]} />
+          )}
+          <View style={styles.progress}>
+            {[0, 1, 2].map((i) => (
+              <View
+                key={i}
+                style={[
+                  styles.dot,
+                  {
+                    backgroundColor: i === step ? theme.primary : theme.border,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+          <Pressable
+            onPress={complete}
+            style={[styles.topAction, styles.topSkip]}
+          >
+            <ThemedText themeColor="mutedForeground" style={styles.backText}>
+              Skip
+            </ThemedText>
+          </Pressable>
         </View>
 
         <View style={styles.body}>
@@ -101,6 +132,7 @@ export default function OnboardingScreen() {
             <StepLanguage
               selected={settings.languages}
               onChange={setLanguages}
+              cloudConfig={cloudConfig}
               theme={theme}
             />
           ) : (
@@ -109,43 +141,15 @@ export default function OnboardingScreen() {
         </View>
 
         <View style={styles.footer}>
-          <View style={styles.footerRow}>
-            {step > 0 ? (
-              <Pressable
-                onPress={() => setStep((s) => (s === 2 ? 1 : 0))}
-                style={styles.backButton}
-              >
-                <ThemedText
-                  themeColor="mutedForeground"
-                  style={styles.backText}
-                >
-                  Back
-                </ThemedText>
-              </Pressable>
-            ) : (
-              <View style={styles.backButton} />
-            )}
-            {step > 0 ? (
-              <Pressable onPress={complete} style={styles.skipButton}>
-                <ThemedText
-                  themeColor="mutedForeground"
-                  style={styles.backText}
-                >
-                  Skip
-                </ThemedText>
-              </Pressable>
-            ) : null}
-          </View>
-
           <Pressable
             onPress={
               step === 2 ? complete : () => setStep((s) => (s === 0 ? 1 : 2))
             }
-            disabled={step === 0 && !canContinueStep0}
+            disabled={!canContinueStep0}
             style={[
               styles.cta,
               { backgroundColor: theme.primary },
-              step === 0 && !canContinueStep0 ? styles.ctaDisabled : null,
+              !canContinueStep0 ? styles.ctaDisabled : null,
             ]}
           >
             <ThemedText
@@ -192,22 +196,30 @@ function StepPermissions({
           },
         ]}
       >
+        <Mic
+          color={
+            micStatus === "granted" ? theme.primary : theme.mutedForeground
+          }
+          size={18}
+        />
         <View style={styles.switchLabel}>
           <ThemedText style={styles.rowLabel}>Microphone access</ThemedText>
           <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
             {micStatus === "granted"
-              ? "Granted — Freestyle can record your dictation."
+              ? "Freestyle can record your dictation."
               : micStatus === "denied"
                 ? "Denied — tap to open Settings and enable it."
-                : "Tap to grant microphone access."}
+                : "Set up microphone access to use voice dictation."}
           </ThemedText>
         </View>
         {micStatus === "granted" ? (
           <Check color={theme.primary} size={18} />
         ) : (
-          <ThemedText type="eyebrow" themeColor="primary">
-            Grant
-          </ThemedText>
+          <View style={[styles.setupPill, { borderColor: theme.primary }]}>
+            <ThemedText style={[styles.setupText, { color: theme.primary }]}>
+              Setup
+            </ThemedText>
+          </View>
         )}
       </Pressable>
 
@@ -234,15 +246,17 @@ function StepPermissions({
             <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
               {keyboardReady
                 ? "Enabled with Full Access — dictate in any app."
-                : "Enable the Freestyle keyboard + Full Access in Settings."}
+                : "Enable Full Access, then open Freestyle once in any text field to verify it."}
             </ThemedText>
           </View>
           {keyboardReady ? (
             <Check color={theme.primary} size={18} />
           ) : (
-            <ThemedText type="eyebrow" themeColor="primary">
-              Set up
-            </ThemedText>
+            <View style={[styles.setupPill, { borderColor: theme.primary }]}>
+              <ThemedText style={[styles.setupText, { color: theme.primary }]}>
+                Setup
+              </ThemedText>
+            </View>
           )}
         </Pressable>
       ) : null}
@@ -253,21 +267,15 @@ function StepPermissions({
 function StepLanguage({
   selected,
   onChange,
+  cloudConfig,
   theme,
 }: {
   selected: string[];
   onChange: (codes: string[]) => void;
+  cloudConfig: CloudConfig | undefined;
   theme: ReturnType<typeof useTheme>;
 }) {
   const [showAll, setShowAll] = useState(false);
-
-  // Public config — works pre-sign-in — for region-based language ordering.
-  const { data: cloudConfig } = useQuery({
-    queryKey: ["cloud-config"],
-    queryFn: () => fetchCloudConfig(),
-    staleTime: 6 * 60 * 60 * 1000,
-    retry: 1,
-  });
 
   const options = useMemo(
     () =>
@@ -372,20 +380,25 @@ function StepTutorial() {
   return (
     <View style={styles.stepContent}>
       <ThemedText type="display" style={styles.title}>
-        How it{" "}
+        Your voice,{" "}
         <ThemedText type="displayItalic" themeColor="primary">
-          works
+          two ways
         </ThemedText>
         <ThemedText type="display">.</ThemedText>
       </ThemedText>
 
       <View style={styles.steps}>
-        {TUTORIAL_STEPS.map(({ Icon, text }) => (
-          <View key={text} style={styles.step}>
+        {TUTORIAL_STEPS.map(({ Icon, title, text }) => (
+          <View key={title} style={styles.step}>
             <View style={[styles.badge, { backgroundColor: theme.accent }]}>
               <Icon color={theme.accentForeground} size={18} />
             </View>
-            <ThemedText style={styles.stepText}>{text}</ThemedText>
+            <View style={styles.stepCopy}>
+              <ThemedText style={styles.stepTitle}>{title}</ThemedText>
+              <ThemedText themeColor="mutedForeground" style={styles.stepText}>
+                {text}
+              </ThemedText>
+            </View>
           </View>
         ))}
       </View>
@@ -400,11 +413,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
     justifyContent: "space-between",
   },
+  topBar: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: Spacing.one,
+  },
   progress: {
     flexDirection: "row",
     justifyContent: "center",
     gap: Spacing.two,
-    marginTop: Spacing.two,
+    position: "absolute",
   },
   dot: { width: 8, height: 8, borderRadius: Radius.full },
   body: { flex: 1, justifyContent: "center" },
@@ -421,6 +440,13 @@ const styles = StyleSheet.create({
   switchLabel: { flex: 1 },
   rowLabel: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
   rowHint: { fontSize: 13, lineHeight: 19, marginTop: 2 },
+  setupPill: {
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+  },
+  setupText: { fontFamily: Fonts.sansSemiBold, fontSize: 12 },
   pillGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -441,22 +467,21 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  stepCopy: { flex: 1, gap: 2 },
+  stepTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 15 },
   stepText: {
-    flex: 1,
     fontFamily: Fonts.sans,
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
   },
-  footer: { paddingBottom: Spacing.five, gap: Spacing.two },
-  footerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    minHeight: 32,
+  footer: { paddingBottom: Spacing.two },
+  topAction: {
+    position: "absolute",
+    minWidth: 56,
+    paddingVertical: Spacing.two,
   },
-  backButton: { paddingVertical: Spacing.one },
-  skipButton: { paddingVertical: Spacing.one },
+  topBack: { left: 0, alignItems: "flex-start" },
+  topSkip: { right: 0, alignItems: "flex-end" },
   backText: { fontFamily: Fonts.sansMedium, fontSize: 14 },
   cta: {
     height: 54,

@@ -8,7 +8,7 @@
 import { useRouter } from "expo-router";
 import type { LucideIcon } from "lucide-react-native";
 import { ChevronLeft, ChevronRight, RotateCw } from "lucide-react-native";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import type { AccessibilityRole, ViewStyle } from "react-native";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -66,6 +66,8 @@ export function SettingsScreenScaffold({
         </View>
         <ScrollView
           contentContainerStyle={[styles.body, styles.centerColumn]}
+          contentInsetAdjustmentBehavior="automatic"
+          automaticallyAdjustKeyboardInsets
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
@@ -227,6 +229,76 @@ export function SettingsNavRow({
         </ThemedText>
       </View>
       <ChevronRight color={theme.mutedForeground} size={18} />
+    </Pressable>
+  );
+}
+
+/**
+ * An iOS-style account row: the setting name stays on the left and its current
+ * value is immediately scannable on the right. Use this for editable profile
+ * and account fields, not for descriptive navigation.
+ */
+export function SettingsValueRow({
+  icon: Icon,
+  label,
+  value,
+  onPress,
+  last = false,
+  disabled = false,
+  trailing,
+}: {
+  icon?: LucideIcon | ComponentType<{ color?: string; size?: number }>;
+  label: string;
+  value: string;
+  onPress?: () => void;
+  last?: boolean;
+  disabled?: boolean;
+  trailing?: ReactNode;
+}) {
+  const theme = useTheme();
+  const content = (
+    <>
+      {Icon ? <Icon color={theme.mutedForeground} size={20} /> : null}
+      <ThemedText style={styles.valueRowLabel} numberOfLines={1}>
+        {label}
+      </ThemedText>
+      <ThemedText
+        themeColor="mutedForeground"
+        style={styles.valueRowValue}
+        numberOfLines={1}
+      >
+        {value}
+      </ThemedText>
+      {trailing ??
+        (onPress ? (
+          <ChevronRight color={theme.mutedForeground} size={18} />
+        ) : null)}
+    </>
+  );
+  const rowStyle = [
+    styles.valueRow,
+    !last && {
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: theme.border,
+    },
+    disabled && styles.valueRowDisabled,
+  ];
+
+  if (!onPress) return <View style={rowStyle}>{content}</View>;
+
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={`${label}: ${value}`}
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => [
+        rowStyle,
+        pressed && !disabled && { opacity: 0.6 },
+      ]}
+    >
+      {content}
     </Pressable>
   );
 }
@@ -395,6 +467,21 @@ const styles = StyleSheet.create({
   navRowContent: { flex: 1 },
   navRowLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   navRowValue: { fontSize: 13, marginTop: 1 },
+
+  valueRow: {
+    minHeight: 54,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+  },
+  valueRowDisabled: { opacity: 0.55 },
+  valueRowLabel: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 16 },
+  valueRowValue: {
+    maxWidth: "48%",
+    fontFamily: Fonts.sans,
+    fontSize: 15,
+    textAlign: "right",
+  },
 
   option: {
     flexDirection: "row",

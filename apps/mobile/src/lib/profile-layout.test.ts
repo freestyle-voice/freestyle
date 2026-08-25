@@ -13,10 +13,15 @@ describe("Profile settings layout", () => {
     expect(screen).not.toContain("function NameCard");
   });
 
-  it("removes the redundant Freestyle group label and keeps work details collapsed", () => {
+  it("shows work details as direct value rows instead of a collapsed legacy form", () => {
     expect(screen).not.toContain('<SettingsGroup title="Freestyle">');
-    expect(screen).toContain('<SettingsGroup title="Personalization">');
-    expect(screen).toContain('label="Work profile"');
+    expect(screen).not.toContain('<SettingsGroup title="Personalization">');
+    expect(screen).toContain('<SettingsGroup title="Work profile">');
+    expect(screen).toContain('label="Industry"');
+    expect(screen).toContain('label="Job title"');
+    expect(screen).toContain('label="Company"');
+    expect(screen).toContain("TextEditorSheet");
+    expect(screen).toContain('presentationStyle="formSheet"');
   });
 
   it("only exposes a workspace switcher when the person has a choice", () => {
@@ -24,5 +29,6 @@ describe("Profile settings layout", () => {
     expect(screen).toContain(
       "if (orgsLoading || activeLoading || !hasMultiple) return null;",
     );
+    expect(screen).toContain("ActionSheetIOS.showActionSheetWithOptions");
   });
 });

@@ -2,6 +2,7 @@ import {
   INDUSTRY_LABELS,
   type Industry,
   industrySchema,
+  type ProfileInput,
 } from "@freestyle-voice/validations";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
@@ -10,8 +11,6 @@ import {
   Building2,
   CalendarClock,
   Check,
-  ChevronDown,
-  ChevronRight,
   LogOut,
   Pencil,
   PlugZap,
@@ -21,13 +20,15 @@ import {
 } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   Pressable,
   StyleSheet,
-  Switch,
   TextInput,
   View,
 } from "react-native";
@@ -38,6 +39,7 @@ import {
   SettingsGroup,
   SettingsNavRow,
   SettingsScreenScaffold,
+  SettingsValueRow,
 } from "@/components/settings-ui";
 import { Skeleton } from "@/components/skeleton";
 import { ThemedText } from "@/components/themed-text";
@@ -144,18 +146,18 @@ export function ProfileContent() {
 
   const content = (
     <>
-      <Pressable
-        onPress={() => setNameEditorOpen(true)}
-        disabled={!signedIn}
-        accessibilityRole="button"
-        accessibilityLabel="Edit name"
-        accessibilityState={{ disabled: !signedIn }}
-        style={({ pressed }) => [
-          styles.accountHero,
-          pressed && signedIn && styles.accountHeroPressed,
-        ]}
-      >
-        <View style={styles.avatarWrap}>
+      <View style={styles.accountHero}>
+        <Pressable
+          onPress={() => setNameEditorOpen(true)}
+          disabled={!signedIn}
+          accessibilityRole="button"
+          accessibilityLabel="Edit name"
+          accessibilityState={{ disabled: !signedIn }}
+          style={({ pressed }) => [
+            styles.avatarWrap,
+            pressed && signedIn && styles.accountHeroPressed,
+          ]}
+        >
           {user?.image ? (
             <Image
               source={{ uri: user.image }}
@@ -181,7 +183,7 @@ export function ProfileContent() {
               <Pencil color={theme.mutedForeground} size={14} />
             </View>
           ) : null}
-        </View>
+        </Pressable>
         <View style={styles.accountInfo}>
           <ThemedText style={styles.accountName} numberOfLines={1}>
             {user?.name ?? "Signed in"}
@@ -196,7 +198,20 @@ export function ProfileContent() {
             </ThemedText>
           ) : null}
         </View>
-      </Pressable>
+      </View>
+
+      <SettingsGroup title="Account">
+        <SettingsValueRow
+          label="Name"
+          value={user?.name ?? "Not set"}
+          onPress={() => setNameEditorOpen(true)}
+        />
+        <SettingsValueRow
+          label="Email"
+          value={user?.email ?? "Not available"}
+          last
+        />
+      </SettingsGroup>
 
       <SettingsGroup>
         <SettingsNavRow
@@ -383,7 +398,7 @@ const PROVIDER_META: {
   { id: "apple", label: "Apple", Icon: AppleIcon },
 ];
 
-/** A small native sheet keeps editing out of the everyday account surface. */
+/** Keyboard-safe native sheet used for the small, focused account edits. */
 function NameEditorSheet({
   visible,
   currentName,
@@ -393,246 +408,218 @@ function NameEditorSheet({
   currentName: string;
   onClose: () => void;
 }) {
+  return (
+    <TextEditorSheet
+      visible={visible}
+      title="Edit name"
+      value={currentName}
+      placeholder="Your name"
+      onClose={onClose}
+      onSave={async (name) => {
+        const { error } = await updateName(name);
+        if (error) throw new Error(error);
+      }}
+    />
+  );
+}
+
+function TextEditorSheet({
+  visible,
+  title,
+  value,
+  placeholder,
+  allowEmpty = false,
+  onClose,
+  onSave,
+}: {
+  visible: boolean;
+  title: string;
+  value: string;
+  placeholder: string;
+  allowEmpty?: boolean;
+  onClose: () => void;
+  onSave: (value: string) => Promise<void>;
+}) {
   const theme = useTheme();
-  const [name, setName] = useState(currentName);
+  const [draft, setDraft] = useState(value);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    setName(currentName);
-  }, [currentName]);
+    if (visible) setDraft(value);
+  }, [value, visible]);
 
-  const trimmed = name.trim();
-  const dirty = trimmed !== currentName.trim();
-  const canSave = dirty && trimmed.length > 0 && !saving;
-
-  const onSave = useCallback(async () => {
+  const trimmed = draft.trim();
+  const canSave =
+    !saving && trimmed !== value.trim() && (allowEmpty || trimmed.length > 0);
+  const save = useCallback(async () => {
     if (!canSave) return;
     setSaving(true);
-    setSaved(false);
-    const { error } = await updateName(trimmed);
-    setSaving(false);
-    if (error) {
-      Alert.alert("Couldn't update name", error);
-      return;
-    }
-    setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
+    try {
+      await onSave(trimmed);
       onClose();
-    }, 550);
-  }, [canSave, onClose, trimmed]);
+    } catch (error) {
+      Alert.alert(
+        `Couldn't update ${title.toLowerCase()}`,
+        error instanceof Error ? error.message : "Try again.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [canSave, onClose, onSave, title, trimmed]);
 
   return (
     <Modal
       visible={visible}
-      transparent
       animationType="slide"
+      presentationStyle="formSheet"
       onRequestClose={onClose}
-      statusBarTranslucent
     >
-      <Pressable style={styles.sheetBackdrop} onPress={onClose} />
-      <View style={[styles.nameSheet, { backgroundColor: theme.card }]}>
-        <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
-        <View style={styles.nameSheetHeader}>
-          <ThemedText style={styles.nameSheetTitle}>Edit name</ThemedText>
-          <Pressable onPress={onClose} accessibilityLabel="Close name editor">
+      <KeyboardAvoidingView
+        // iOS form sheets already track the software keyboard. Let the
+        // native presentation own that transition; Android still needs the
+        // standard height adjustment for its full-screen modal fallback.
+        enabled={Platform.OS !== "ios"}
+        behavior="height"
+        style={[styles.editorSheet, { backgroundColor: theme.background }]}
+      >
+        <View style={styles.editorNav}>
+          <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Cancel">
             <ThemedText
-              style={[styles.nameSheetDone, { color: theme.primary }]}
+              style={[styles.editorNavAction, { color: theme.primary }]}
             >
               Cancel
             </ThemedText>
           </Pressable>
+          <ThemedText style={styles.editorTitle}>{title}</ThemedText>
+          <Pressable
+            onPress={() => void save()}
+            disabled={!canSave}
+            hitSlop={10}
+            accessibilityLabel={`Save ${title.toLowerCase()}`}
+          >
+            {saving ? (
+              <ActivityIndicator color={theme.primary} size="small" />
+            ) : (
+              <ThemedText
+                style={[
+                  styles.editorNavAction,
+                  { color: canSave ? theme.primary : theme.mutedForeground },
+                ]}
+              >
+                Save
+              </ThemedText>
+            )}
+          </Pressable>
         </View>
         <TextInput
-          value={name}
-          onChangeText={setName}
-          placeholder="Your name"
+          value={draft}
+          onChangeText={setDraft}
+          placeholder={placeholder}
           placeholderTextColor={theme.mutedForeground}
           maxLength={120}
           autoFocus
           returnKeyType="done"
-          onSubmitEditing={() => void onSave()}
+          onSubmitEditing={() => void save()}
           style={[
-            styles.input,
-            { borderColor: theme.border, color: theme.foreground },
+            styles.editorInput,
+            { backgroundColor: theme.secondary, color: theme.foreground },
           ]}
         />
-        <Pressable
-          onPress={() => void onSave()}
-          disabled={!canSave}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            { backgroundColor: theme.primary },
-            pressed && canSave ? { opacity: 0.9 } : null,
-            !canSave ? styles.buttonDisabled : null,
-          ]}
-        >
-          {saving ? (
-            <ActivityIndicator color={theme.primaryForeground} />
-          ) : (
-            <>
-              {saved ? (
-                <Check color={theme.primaryForeground} size={16} />
-              ) : null}
-              <ThemedText
-                style={[
-                  styles.primaryButtonText,
-                  { color: theme.primaryForeground },
-                ]}
-              >
-                {saved ? "Saved" : "Save"}
-              </ThemedText>
-            </>
-          )}
-        </Pressable>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 
-/** Professional details: industry, job title, company + detected location. */
+/** Small, focused account details instead of one large legacy profile form. */
 function ProfileDetailsCard() {
-  const theme = useTheme();
   const queryClient = useQueryClient();
-  const [industry, setIndustry] = useState<Industry | undefined>(undefined);
   const [industryPickerOpen, setIndustryPickerOpen] = useState(false);
-  const [jobTitle, setJobTitle] = useState("");
-  const [company, setCompany] = useState("");
-  // Re-seed tone + vocabulary defaults for the new industry (opt-out). Only
-  // surfaced while the industry is actually changing. Mirrors the dashboard.
-  const [updatePreferences, setUpdatePreferences] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [editing, setEditing] = useState(false);
-
+  const [editingField, setEditingField] = useState<
+    "jobTitle" | "company" | null
+  >(null);
   const { data: profile, isLoading } = useQuery({
     queryKey: ["cloud-profile-fields"],
     queryFn: getProfileFields,
     retry: 1,
   });
-
-  useEffect(() => {
-    if (!profile) return;
-    const parsed = industrySchema.safeParse(profile.industry);
-    setIndustry(parsed.success ? parsed.data : undefined);
-    setJobTitle(profile.jobTitle ?? "");
-    setCompany(profile.company ?? "");
-    setUpdatePreferences(true);
-  }, [profile]);
-
-  const savedIndustry = industrySchema.safeParse(profile?.industry).success
+  const industry = industrySchema.safeParse(profile?.industry).success
     ? (profile?.industry as Industry)
     : undefined;
-  // Show the re-seed toggle only when switching to a real industry (clearing it
-  // never reseeds).
-  const industryWillChange =
-    industry !== savedIndustry && industry !== undefined;
-  const dirty =
-    industry !== savedIndustry ||
-    jobTitle.trim() !== (profile?.jobTitle ?? "") ||
-    company.trim() !== (profile?.company ?? "");
-  const canSave = dirty && !saving;
 
-  const onSave = useCallback(async (): Promise<boolean> => {
-    if (!canSave) return false;
-    setSaving(true);
-    setSaved(false);
-    try {
-      const updated = await updateProfileFields({
-        // Send `null` (not `undefined`) to clear a field — `undefined` is
-        // dropped by JSON serialization, which the server reads as "unchanged".
-        industry: industry ?? null,
-        jobTitle: jobTitle.trim() || null,
-        company: company.trim() || null,
-        // Only meaningful on an industry change; harmless otherwise.
-        updatePreferences,
-      });
+  const saveProfile = useCallback(
+    async (input: ProfileInput) => {
+      const updated = await updateProfileFields(input);
       queryClient.setQueryData(["cloud-profile-fields"], updated);
-      // The cloud re-seeds tone/vocabulary defaults into member_preferences on
-      // ANY industry change (unless opted out). Invalidate the preferences query
-      // so the seeded values are pulled in immediately.
-      const industryChanged = (savedIndustry ?? null) !== (industry ?? null);
-      if (industryChanged && industry && updatePreferences) {
-        void queryClient.invalidateQueries({
-          queryKey: ["cloud-preferences"],
-        });
+      if (input.industry && input.updatePreferences !== false) {
+        void queryClient.invalidateQueries({ queryKey: ["cloud-preferences"] });
       }
-      setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
-      return true;
-    } catch (e) {
+    },
+    [queryClient],
+  );
+
+  const selectIndustry = useCallback(
+    (next?: Industry) => {
+      setIndustryPickerOpen(false);
+      if (next === industry) return;
+      const update = (updatePreferences: boolean) => {
+        void saveProfile({ industry: next ?? null, updatePreferences }).catch(
+          (error) =>
+            Alert.alert(
+              "Couldn't update industry",
+              error instanceof Error ? error.message : "Try again.",
+            ),
+        );
+      };
+      if (!next) {
+        update(false);
+        return;
+      }
       Alert.alert(
-        "Couldn't update profile",
-        e instanceof Error ? e.message : "Try again.",
+        "Update writing defaults?",
+        "You can also update your default tone and vocabulary for this industry.",
+        [
+          { text: "Keep current", onPress: () => update(false) },
+          { text: "Update defaults", onPress: () => update(true) },
+        ],
       );
-      return false;
-    } finally {
-      setSaving(false);
-    }
-  }, [
-    canSave,
-    industry,
-    savedIndustry,
-    jobTitle,
-    company,
-    updatePreferences,
-    queryClient,
-  ]);
+    },
+    [industry, saveProfile],
+  );
 
   if (isLoading) {
     return (
-      <SettingsGroup title="Personalization">
+      <SettingsGroup title="Work profile">
         <Skeleton width={180} height={20} />
       </SettingsGroup>
     );
   }
 
-  if (!editing) {
-    return (
-      <SettingsGroup title="Personalization">
-        <SettingsNavRow
-          icon={SlidersHorizontal}
-          label="Work profile"
-          value={
-            industry
-              ? INDUSTRY_LABELS[industry]
-              : jobTitle || company
-                ? "Details added"
-                : "Optional"
-          }
-          onPress={() => setEditing(true)}
+  const fieldValue = editingField ? (profile?.[editingField] ?? "") : "";
+  const fieldTitle =
+    editingField === "company" ? "Edit company" : "Edit job title";
+  const fieldPlaceholder =
+    editingField === "company" ? "e.g. Acme Inc." : "e.g. Product Manager";
+
+  return (
+    <>
+      <SettingsGroup title="Work profile">
+        <SettingsValueRow
+          label="Industry"
+          value={industry ? INDUSTRY_LABELS[industry] : "Not set"}
+          onPress={() => setIndustryPickerOpen(true)}
+        />
+        <SettingsValueRow
+          label="Job title"
+          value={profile?.jobTitle || "Not set"}
+          onPress={() => setEditingField("jobTitle")}
+        />
+        <SettingsValueRow
+          label="Company"
+          value={profile?.company || "Not set"}
+          onPress={() => setEditingField("company")}
           last
         />
       </SettingsGroup>
-    );
-  }
-
-  return (
-    <SettingsGroup title="Work profile">
-      <Pressable
-        onPress={() => setIndustryPickerOpen(true)}
-        accessibilityRole="button"
-        accessibilityLabel="Choose industry"
-        accessibilityValue={{
-          text: industry ? INDUSTRY_LABELS[industry] : "Not set",
-        }}
-        style={({ pressed }) => [
-          styles.selectField,
-          { borderColor: theme.border },
-          pressed && { backgroundColor: theme.secondary },
-        ]}
-      >
-        <ThemedText
-          style={[
-            styles.selectFieldLabel,
-            !industry && { color: theme.mutedForeground },
-          ]}
-        >
-          {industry ? INDUSTRY_LABELS[industry] : "Choose an industry"}
-        </ThemedText>
-        <ChevronDown color={theme.mutedForeground} size={18} />
-      </Pressable>
       <SelectSheet
         visible={industryPickerOpen}
         title="Industry"
@@ -641,108 +628,23 @@ function ProfileDetailsCard() {
           label: INDUSTRY_LABELS[value],
         }))}
         selectedValue={industry}
-        onSelect={(value) => {
-          setIndustry(value as Industry);
-          setIndustryPickerOpen(false);
-        }}
-        onClear={() => {
-          setIndustry(undefined);
-          setIndustryPickerOpen(false);
-        }}
+        onSelect={(value) => selectIndustry(value as Industry)}
+        onClear={() => selectIndustry(undefined)}
         onClose={() => setIndustryPickerOpen(false)}
       />
-
-      {industryWillChange ? (
-        <View style={[styles.reseedRow, { borderColor: theme.border }]}>
-          <ThemedText style={styles.reseedLabel}>
-            Update tone and vocabulary to match the new industry's defaults
-          </ThemedText>
-          <Switch
-            value={updatePreferences}
-            onValueChange={setUpdatePreferences}
-            trackColor={{ true: theme.primary, false: theme.secondary }}
-          />
-        </View>
-      ) : null}
-
-      <ThemedText
-        type="eyebrow"
-        themeColor="mutedForeground"
-        style={styles.detailsLabel}
-      >
-        JOB TITLE
-      </ThemedText>
-      <TextInput
-        value={jobTitle}
-        onChangeText={setJobTitle}
-        placeholder="e.g. Product Manager"
-        placeholderTextColor={theme.mutedForeground}
-        maxLength={120}
-        style={[
-          styles.input,
-          { borderColor: theme.border, color: theme.foreground },
-        ]}
-      />
-
-      <ThemedText
-        type="eyebrow"
-        themeColor="mutedForeground"
-        style={styles.detailsLabel}
-      >
-        COMPANY
-      </ThemedText>
-      <TextInput
-        value={company}
-        onChangeText={setCompany}
-        placeholder="e.g. Acme Inc."
-        placeholderTextColor={theme.mutedForeground}
-        maxLength={120}
-        style={[
-          styles.input,
-          { borderColor: theme.border, color: theme.foreground },
-        ]}
-      />
-
-      <Pressable
-        onPress={() => {
-          void onSave().then((didSave) => {
-            if (didSave) setEditing(false);
-          });
+      <TextEditorSheet
+        visible={editingField !== null}
+        title={fieldTitle}
+        value={fieldValue}
+        placeholder={fieldPlaceholder}
+        allowEmpty
+        onClose={() => setEditingField(null)}
+        onSave={async (value) => {
+          if (!editingField) return;
+          await saveProfile({ [editingField]: value || null });
         }}
-        disabled={!canSave}
-        style={({ pressed }) => [
-          styles.primaryButton,
-          { backgroundColor: theme.primary },
-          pressed && canSave ? { opacity: 0.9 } : null,
-          !canSave ? styles.buttonDisabled : null,
-        ]}
-      >
-        {saving ? (
-          <ActivityIndicator color={theme.primaryForeground} />
-        ) : (
-          <>
-            {saved ? <Check color={theme.primaryForeground} size={16} /> : null}
-            <ThemedText
-              style={[
-                styles.primaryButtonText,
-                { color: theme.primaryForeground },
-              ]}
-            >
-              {saved ? "Saved" : "Save changes"}
-            </ThemedText>
-          </>
-        )}
-      </Pressable>
-      <Pressable
-        onPress={() => setEditing(false)}
-        accessibilityRole="button"
-        style={styles.cancelEditButton}
-      >
-        <ThemedText themeColor="mutedForeground" style={styles.cancelEditText}>
-          Cancel
-        </ThemedText>
-      </Pressable>
-    </SettingsGroup>
+      />
+    </>
   );
 }
 
@@ -815,52 +717,28 @@ function ConnectedAccountsCard() {
           const isConnected = linked?.includes(id) ?? false;
           const isOnlyMethod = isConnected && connectedCount <= 1;
           return (
-            <Pressable
+            <SettingsValueRow
               key={id}
-              onPress={() =>
-                isConnected ? onUnlink(id, label) : void onLink(id)
+              icon={Icon}
+              label={label}
+              value={
+                isConnected ? (isOnlyMethod ? "Primary" : "Connected") : "Add"
               }
-              disabled={busy || isOnlyMethod}
-              accessibilityRole="button"
-              accessibilityLabel={
+              onPress={
                 isOnlyMethod
-                  ? `${label} is your primary sign-in method`
-                  : `${isConnected ? "Manage" : "Connect"} ${label}`
+                  ? undefined
+                  : () => (isConnected ? onUnlink(id, label) : void onLink(id))
               }
-              style={({ pressed }) => [
-                styles.providerRow,
-                index < PROVIDER_META.length - 1 && {
-                  borderBottomWidth: StyleSheet.hairlineWidth,
-                  borderBottomColor: theme.border,
-                },
-                pressed && !busy && !isOnlyMethod
-                  ? styles.providerPressed
-                  : null,
-                (busy || isOnlyMethod) && styles.buttonDisabled,
-              ]}
-            >
-              <Icon size={20} color={theme.foreground} />
-              <View style={styles.providerContent}>
-                <ThemedText style={styles.providerLabel}>{label}</ThemedText>
-                <ThemedText
-                  themeColor="mutedForeground"
-                  style={styles.providerState}
-                >
-                  {isConnected
-                    ? isOnlyMethod
-                      ? "Primary sign-in"
-                      : "Connected"
-                    : "Not connected"}
-                </ThemedText>
-              </View>
-              {linking === id || unlinking === id ? (
-                <ActivityIndicator color={theme.foreground} size="small" />
-              ) : isOnlyMethod ? (
-                <Check color={theme.primary} size={18} />
-              ) : (
-                <ChevronRight color={theme.mutedForeground} size={18} />
-              )}
-            </Pressable>
+              disabled={busy}
+              last={index === PROVIDER_META.length - 1}
+              trailing={
+                linking === id || unlinking === id ? (
+                  <ActivityIndicator color={theme.foreground} size="small" />
+                ) : isOnlyMethod ? (
+                  <Check color={theme.primary} size={18} />
+                ) : undefined
+              }
+            />
           );
         })
       )}
@@ -868,12 +746,7 @@ function ConnectedAccountsCard() {
   );
 }
 
-/**
- * Active-organization card with an inline switcher. Every signed-in user has a
- * default org set active by the cloud, so the active row always shows; the
- * other orgs are only listed (tappable to switch) when the user belongs to
- * more than one.
- */
+/** A native workspace menu, only visible when the person has a real choice. */
 function OrganizationCard() {
   const theme = useTheme();
   const queryClient = useQueryClient();
@@ -903,6 +776,10 @@ function OrganizationCard() {
         Alert.alert("Couldn't switch organization", error);
         return;
       }
+      const selected = orgs?.find((org) => org.id === organizationId);
+      if (selected) {
+        queryClient.setQueryData(["cloud-active-org"], selected);
+      }
       // Plans are org-scoped on the cloud, so switching orgs can change the
       // plan — refresh both the active org and usage so the PLAN card updates.
       void queryClient.invalidateQueries({ queryKey: ["cloud-active-org"] });
@@ -916,8 +793,27 @@ function OrganizationCard() {
         queryKey: ["cloud-profile-fields"],
       });
     },
-    [activeOrg?.id, queryClient],
+    [activeOrg?.id, orgs, queryClient],
   );
+
+  const showWorkspacePicker = useCallback(() => {
+    if (Platform.OS !== "ios") {
+      setPickerOpen(true);
+      return;
+    }
+    const choices = orgs ?? [];
+    ActionSheetIOS.showActionSheetWithOptions(
+      {
+        title: "Choose workspace",
+        message: "Your profile, preferences, and plan follow this workspace.",
+        options: ["Cancel", ...choices.map((org) => org.name)],
+        cancelButtonIndex: 0,
+      },
+      (index) => {
+        if (index > 0) void onSwitch(choices[index - 1].id);
+      },
+    );
+  }, [onSwitch, orgs]);
 
   // A default personal organization is an implementation detail. Surface a
   // workspace switcher only when it gives the person a real choice.
@@ -925,41 +821,35 @@ function OrganizationCard() {
 
   return (
     <SettingsGroup title="Workspace">
-      <Pressable
-        onPress={() => setPickerOpen(true)}
+      <SettingsValueRow
+        icon={Building2}
+        label="Current workspace"
+        value={activeOrg?.name ?? "Choose workspace"}
+        onPress={showWorkspacePicker}
         disabled={switching !== null}
-        accessibilityRole="button"
-        accessibilityLabel="Choose organization"
-        accessibilityValue={{ text: activeOrg?.name ?? "Not set" }}
-        style={({ pressed }) => [
-          styles.orgRow,
-          pressed && switching === null && styles.providerPressed,
-        ]}
-      >
-        <Building2 size={20} color={theme.foreground} />
-        <ThemedText style={styles.orgName} numberOfLines={1}>
-          {activeOrg?.name ?? "Choose organization"}
-        </ThemedText>
-        {switching ? (
-          <ActivityIndicator color={theme.foreground} size="small" />
-        ) : (
-          <ChevronRight color={theme.mutedForeground} size={18} />
-        )}
-      </Pressable>
-      <SelectSheet
-        visible={pickerOpen}
-        title="Organization"
-        options={(orgs ?? []).map((org) => ({
-          value: org.id,
-          label: org.name,
-        }))}
-        selectedValue={activeOrg?.id}
-        onSelect={(organizationId) => {
-          setPickerOpen(false);
-          void onSwitch(organizationId);
-        }}
-        onClose={() => setPickerOpen(false)}
+        last
+        trailing={
+          switching ? (
+            <ActivityIndicator color={theme.foreground} size="small" />
+          ) : undefined
+        }
       />
+      {Platform.OS !== "ios" ? (
+        <SelectSheet
+          visible={pickerOpen}
+          title="Workspace"
+          options={(orgs ?? []).map((org) => ({
+            value: org.id,
+            label: org.name,
+          }))}
+          selectedValue={activeOrg?.id}
+          onSelect={(organizationId) => {
+            setPickerOpen(false);
+            void onSwitch(organizationId);
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      ) : null}
     </SettingsGroup>
   );
 }
@@ -1037,95 +927,27 @@ const styles = StyleSheet.create({
   },
   outlineButtonText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   buttonDisabled: { opacity: 0.6 },
-  input: {
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.two + 2,
-    fontFamily: Fonts.sans,
-    fontSize: 15,
-    marginTop: Spacing.two,
-  },
-  sheetBackdrop: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: "rgba(0, 0, 0, 0.5)",
-  },
-  nameSheet: {
-    marginTop: "auto",
-    borderTopLeftRadius: Radius["2xl"],
-    borderTopRightRadius: Radius["2xl"],
+  editorSheet: {
+    flex: 1,
     paddingHorizontal: Spacing.four,
-    paddingTop: Spacing.two,
-    paddingBottom: Spacing.four,
+    paddingTop: Spacing.three,
   },
-  sheetHandle: {
-    width: 36,
-    height: 4,
-    borderRadius: Radius.full,
-    alignSelf: "center",
-  },
-  nameSheetHeader: {
+  editorNav: {
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  editorTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 17 },
+  editorNavAction: { fontFamily: Fonts.sansMedium, fontSize: 16 },
+  editorInput: {
+    minHeight: 52,
+    borderRadius: Radius.lg,
+    paddingHorizontal: Spacing.three,
+    fontFamily: Fonts.sans,
+    fontSize: 16,
     marginTop: Spacing.three,
   },
-  nameSheetTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 18 },
-  nameSheetDone: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  selectField: {
-    minHeight: 52,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: Spacing.three,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  selectFieldLabel: { flex: 1, fontFamily: Fonts.sans, fontSize: 15 },
-  detailsLabel: { marginTop: Spacing.four },
-  reseedRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.three,
-    borderWidth: 1,
-    borderRadius: Radius.lg,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  reseedLabel: {
-    flex: 1,
-    fontFamily: Fonts.sans,
-    fontSize: 14,
-    lineHeight: 19,
-  },
-  providerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.three,
-    minHeight: 60,
-    paddingVertical: Spacing.two,
-  },
-  providerPressed: { opacity: 0.6 },
-  providerContent: { flex: 1 },
-  providerLabel: { fontFamily: Fonts.sansMedium, fontSize: 15 },
-  providerState: { fontSize: 13, marginTop: 1 },
-  orgRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: Spacing.three,
-    minHeight: 60,
-    paddingVertical: Spacing.two,
-  },
-  orgName: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 15 },
-  cancelEditButton: {
-    minHeight: 40,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  cancelEditText: { fontFamily: Fonts.sansMedium, fontSize: 15 },
   signOutCard: {
     flexDirection: "row",
     alignItems: "center",

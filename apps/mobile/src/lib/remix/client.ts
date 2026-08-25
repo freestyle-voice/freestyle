@@ -9,6 +9,7 @@ import { Platform } from "react-native";
 import { cloud } from "@/lib/cloud/client";
 
 import type {
+  PendingConnectorApproval,
   RemixStreamEvent,
   RemixThreadOrigin,
   RemixThreadPage,
@@ -66,6 +67,8 @@ type AgentStreamChunk = {
   toolName?: unknown;
   input?: unknown;
   errorText?: unknown;
+  output?: unknown;
+  result?: unknown;
 };
 
 function eventFromFrame(frame: string): AgentStreamChunk | null {
@@ -147,7 +150,12 @@ async function requestRemixTurn({
       firstTurn,
       client: {
         ...MOBILE_AGENT_CLIENT,
-        ...(keyboardInsertion ? { supportsKeyboardInsertion: true } : {}),
+        // Keyboard Remix can only insert a finished answer into the current
+        // text field. It deliberately never receives connected-app tools or
+        // their approval cards, which cannot be resolved in the compact IME.
+        ...(keyboardInsertion
+          ? { supportsKeyboardInsertion: true }
+          : { supportsConnectorApprovals: true }),
       },
     }),
     signal,
@@ -229,6 +237,27 @@ export async function runRemixTurn({
           });
         }
         break;
+      case "tool-output-available": {
+        const output = chunk.output ?? chunk.result;
+        if (!output || typeof output !== "object") break;
+        const approval = (output as { approval?: unknown }).approval;
+        if (!approval || typeof approval !== "object") break;
+        const candidate = approval as Partial<PendingConnectorApproval>;
+        if (
+          typeof candidate.approvalToken === "string" &&
+          typeof candidate.toolkit === "string" &&
+          typeof candidate.toolkitName === "string" &&
+          typeof candidate.toolSlug === "string" &&
+          typeof candidate.actionDescription === "string" &&
+          typeof candidate.expiresAt === "string"
+        ) {
+          onEvent({
+            type: "connector-approval",
+            approval: candidate as PendingConnectorApproval,
+          });
+        }
+        break;
+      }
       case "finish":
         completed = true;
         onEvent({ type: "complete" });

@@ -15,6 +15,7 @@ import {
   LogOut,
   Pencil,
   PlugZap,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react-native";
@@ -209,6 +210,14 @@ export function ProfileContent() {
           label="Connected apps & MCPs"
           value="Give Remix access to your tools"
           onPress={() => router.push("/(app)/connected-apps")}
+        />
+        <SettingsNavRow
+          icon={ShieldCheck}
+          label="Action approvals"
+          value="Confirm connected-app changes"
+          // Expo's generated route declarations refresh when Metro starts; keep
+          // this new nested settings route usable in a clean typecheck too.
+          onPress={() => router.push("/(app)/settings/approvals" as never)}
         />
         <SettingsNavRow
           icon={CalendarClock}

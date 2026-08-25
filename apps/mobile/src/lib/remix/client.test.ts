@@ -104,9 +104,10 @@ describe("mobile Remix cloud client", () => {
       expect.objectContaining({ method: "POST" }),
     );
     const body = JSON.parse(request.mock.calls[0]?.[1]?.body as string) as {
-      client?: { platform?: string };
+      client?: { platform?: string; supportsConnectorApprovals?: boolean };
     };
     expect(body.client?.platform).toMatch(/^(ios|android)$/);
+    expect(body.client?.supportsConnectorApprovals).toBe(true);
   });
 
   it("holds an insert request for the keyboard instead of treating it as an app paste", async () => {
@@ -145,9 +146,56 @@ describe("mobile Remix cloud client", () => {
       input: { text: "Ready to paste" },
     });
     const body = JSON.parse(request.mock.calls[0]?.[1]?.body as string) as {
-      client?: { supportsKeyboardInsertion?: boolean };
+      client?: {
+        supportsKeyboardInsertion?: boolean;
+        supportsConnectorApprovals?: boolean;
+      };
     };
     expect(body.client?.supportsKeyboardInsertion).toBe(true);
+    expect(body.client?.supportsConnectorApprovals).toBeUndefined();
+  });
+
+  it("surfaces a server-bound connected-app approval instead of executing it in the app", async () => {
+    request.mockResolvedValueOnce(
+      responseWithEvents([
+        {
+          type: "tool-output-available",
+          output: {
+            approval: {
+              approvalToken: "a".repeat(32),
+              toolkit: "gmail",
+              toolkitName: "Gmail",
+              toolSlug: "GMAIL_SEND_EMAIL",
+              actionDescription: "gmail send email — to: ada@example.com",
+              expiresAt: "2026-08-25T12:00:00.000Z",
+            },
+          },
+        },
+        { type: "finish" },
+      ]),
+    );
+    const events: unknown[] = [];
+
+    await runRemixTurn({
+      messages: [
+        {
+          id: "user-1",
+          role: "user",
+          parts: [{ type: "text", text: "Email Ada" }],
+        },
+      ],
+      threadId: "thread-123",
+      signal: new AbortController().signal,
+      onEvent: (event) => events.push(event),
+    });
+
+    expect(events).toContainEqual({
+      type: "connector-approval",
+      approval: expect.objectContaining({
+        toolkit: "gmail",
+        toolSlug: "GMAIL_SEND_EMAIL",
+      }),
+    });
   });
 
   it("keeps temporary request rate limits distinct from usage limits", async () => {

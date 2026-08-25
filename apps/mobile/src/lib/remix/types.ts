@@ -28,7 +28,20 @@ export type RemixStreamEvent =
       name: "insert_at_cursor";
       input: unknown;
     }
+  | {
+      type: "connector-approval";
+      approval: PendingConnectorApproval;
+    }
   | { type: "complete" };
+
+export type PendingConnectorApproval = {
+  approvalToken: string;
+  toolkit: string;
+  toolkitName: string;
+  toolSlug: string;
+  actionDescription: string;
+  expiresAt: string;
+};
 
 export type RemixTurnPhase = "idle" | "listening" | "question" | "ready";
 

@@ -1,9 +1,18 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
-import { ArrowUp, Menu, Mic, Settings, Square } from "lucide-react-native";
+import {
+  ArrowUp,
+  Check,
+  Menu,
+  Mic,
+  Settings,
+  Square,
+  X,
+} from "lucide-react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Keyboard,
   KeyboardAvoidingView,
@@ -352,8 +361,18 @@ function RemixHome({
   const { threadId: selectedThreadId } = useLocalSearchParams<{
     threadId?: string;
   }>();
-  const { messages, status, error, activeTool, send, stop, loadThread } =
-    thread;
+  const {
+    messages,
+    status,
+    error,
+    activeTool,
+    pendingApproval,
+    approvalState,
+    decideApproval,
+    send,
+    stop,
+    loadThread,
+  } = thread;
   const [draft, setDraft] = useState("");
   const inputRef = useRef<TextInput>(null);
   const busy = status === "streaming";
@@ -456,6 +475,13 @@ function RemixHome({
             {activeTool}…
           </ThemedText>
         ) : null}
+        {pendingApproval ? (
+          <ConnectorApprovalCard
+            approval={pendingApproval}
+            state={approvalState}
+            onDecide={decideApproval}
+          />
+        ) : null}
         {error ? (
           <ThemedText style={[styles.error, { color: theme.destructive }]}>
             {error}
@@ -476,7 +502,14 @@ function RemixHome({
           ref={inputRef}
           value={voiceControl.value}
           onChangeText={setDraft}
-          editable={!busy && voiceState === "idle"}
+          editable={
+            !busy &&
+            !(
+              pendingApproval &&
+              !["approved", "declined"].includes(approvalState)
+            ) &&
+            voiceState === "idle"
+          }
           autoCapitalize="sentences"
           placeholder="Message Remix"
           placeholderTextColor={theme.mutedForeground}
@@ -486,7 +519,12 @@ function RemixHome({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={voiceControl.label}
-          disabled={voiceControl.action === "waiting-for-transcript"}
+          disabled={
+            Boolean(
+              pendingApproval &&
+                !["approved", "declined"].includes(approvalState),
+            ) || voiceControl.action === "waiting-for-transcript"
+          }
           onPress={handleComposerAction}
           style={[
             styles.send,
@@ -532,6 +570,88 @@ function RemixHome({
           )}
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function ConnectorApprovalCard({
+  approval,
+  state,
+  onDecide,
+}: {
+  approval: import("@/lib/remix/types").PendingConnectorApproval;
+  state:
+    | "idle"
+    | "approving"
+    | "approved"
+    | "declining"
+    | "declined"
+    | "failed";
+  onDecide: (approved: boolean) => Promise<boolean>;
+}) {
+  const theme = useTheme();
+  const resolved = state === "approved" || state === "declined";
+  return (
+    <View
+      style={[
+        styles.approvalCard,
+        { backgroundColor: theme.secondary, borderColor: theme.border },
+      ]}
+    >
+      <ThemedText type="eyebrow" themeColor="mutedForeground">
+        CONNECTED APP ACTION
+      </ThemedText>
+      <ThemedText style={styles.approvalTitle}>
+        {state === "approved"
+          ? "Action approved"
+          : state === "declined"
+            ? "Action declined"
+            : `Allow ${approval.toolkitName}?`}
+      </ThemedText>
+      <ThemedText themeColor="mutedForeground" style={styles.approvalHint}>
+        {state === "approved"
+          ? "Freestyle sent this action to your connected account."
+          : state === "declined"
+            ? "Nothing was changed."
+            : `Review this action before Freestyle sends it: ${approval.actionDescription}.`}
+      </ThemedText>
+      {resolved ? (
+        <View style={styles.approvalResolved}>
+          {state === "approved" ? (
+            <Check color={theme.primary} size={18} />
+          ) : (
+            <X color={theme.mutedForeground} size={18} />
+          )}
+        </View>
+      ) : (
+        <View style={styles.approvalActions}>
+          <Pressable
+            onPress={() => void onDecide(false)}
+            disabled={state !== "idle" && state !== "failed"}
+            style={[styles.approvalDecline, { borderColor: theme.border }]}
+          >
+            <ThemedText style={styles.approvalDeclineText}>Decline</ThemedText>
+          </Pressable>
+          <Pressable
+            onPress={() => void onDecide(true)}
+            disabled={state !== "idle" && state !== "failed"}
+            style={[styles.approvalAllow, { backgroundColor: theme.primary }]}
+          >
+            {state === "approving" ? (
+              <ActivityIndicator color={theme.primaryForeground} size="small" />
+            ) : (
+              <ThemedText
+                style={[
+                  styles.approvalAllowText,
+                  { color: theme.primaryForeground },
+                ]}
+              >
+                Allow
+              </ThemedText>
+            )}
+          </Pressable>
+        </View>
+      )}
     </View>
   );
 }
@@ -611,6 +731,38 @@ const styles = StyleSheet.create({
     fontSize: 11,
     paddingHorizontal: Spacing.one,
   },
+  approvalCard: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.xl,
+    marginTop: Spacing.two,
+    padding: Spacing.three,
+    gap: Spacing.two,
+  },
+  approvalTitle: { fontFamily: Fonts.sansSemiBold, fontSize: 17 },
+  approvalHint: { fontSize: 14, lineHeight: 20 },
+  approvalActions: {
+    flexDirection: "row",
+    gap: Spacing.two,
+    marginTop: Spacing.one,
+  },
+  approvalDecline: {
+    flex: 1,
+    height: 42,
+    borderWidth: 1,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  approvalDeclineText: { fontFamily: Fonts.sansMedium, fontSize: 14 },
+  approvalAllow: {
+    flex: 1,
+    height: 42,
+    borderRadius: Radius.full,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  approvalAllowText: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
+  approvalResolved: { alignItems: "flex-start", paddingTop: Spacing.one },
   error: { fontSize: 13, lineHeight: 19, paddingHorizontal: Spacing.one },
   composer: {
     flexDirection: "row",

@@ -1,9 +1,13 @@
 import type { UIMessage } from "ai";
 import { useCallback, useEffect, useRef, useState } from "react";
-
+import {
+  declineConnectorApproval,
+  executeConnectorApproval,
+} from "@/lib/cloud/connector-approvals";
 import { getLatestThread, getThread, runRemixTurn } from "./client";
 import { createMobileId } from "./ids";
 import { appendAssistantDelta, latestThreadState } from "./thread";
+import type { PendingConnectorApproval } from "./types";
 
 export type RemixRunStatus = "idle" | "streaming" | "failed";
 
@@ -18,6 +22,11 @@ export function useRemixThread() {
   const [status, setStatus] = useState<RemixRunStatus>("idle");
   const [error, setError] = useState<string | null>(null);
   const [activeTool, setActiveTool] = useState<string | null>(null);
+  const [pendingApproval, setPendingApproval] =
+    useState<PendingConnectorApproval | null>(null);
+  const [approvalState, setApprovalState] = useState<
+    "idle" | "approving" | "approved" | "declining" | "declined" | "failed"
+  >("idle");
   const abortRef = useRef<AbortController | null>(null);
   const statusRef = useRef<RemixRunStatus>(status);
   const hydratedRef = useRef(false);
@@ -60,6 +69,8 @@ export function useRemixThread() {
     setMessages([]);
     setError(null);
     setActiveTool(null);
+    setPendingApproval(null);
+    setApprovalState("idle");
     setStatus("idle");
     hydratedRef.current = true;
   }, []);
@@ -72,6 +83,8 @@ export function useRemixThread() {
     setStatus("idle");
     setError(null);
     setActiveTool(null);
+    setPendingApproval(null);
+    setApprovalState("idle");
     try {
       const thread = await getThread(id);
       if (!thread) throw new Error("This conversation is no longer available.");
@@ -98,7 +111,13 @@ export function useRemixThread() {
   const send = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || status === "streaming") return false;
+      const approvalPending =
+        pendingApproval &&
+        (approvalState === "idle" ||
+          approvalState === "approving" ||
+          approvalState === "declining" ||
+          approvalState === "failed");
+      if (!trimmed || status === "streaming" || approvalPending) return false;
       const userMessage: UIMessage = {
         id: newId("user"),
         role: "user",
@@ -130,6 +149,10 @@ export function useRemixThread() {
               setActiveTool(event.name.replace(/_/g, " "));
             } else if (event.type === "tool-result-needed") {
               setActiveTool("Preparing a keyboard-ready result");
+            } else if (event.type === "connector-approval") {
+              setPendingApproval(event.approval);
+              setApprovalState("idle");
+              setActiveTool(null);
             }
           },
         });
@@ -155,7 +178,38 @@ export function useRemixThread() {
         if (abortRef.current === controller) abortRef.current = null;
       }
     },
-    [messages, status, threadId],
+    [approvalState, messages, pendingApproval, status, threadId],
+  );
+
+  const decideApproval = useCallback(
+    async (approved: boolean) => {
+      if (
+        !pendingApproval ||
+        approvalState === "approving" ||
+        approvalState === "declining"
+      )
+        return false;
+      setApprovalState(approved ? "approving" : "declining");
+      try {
+        if (approved) {
+          await executeConnectorApproval(pendingApproval.approvalToken);
+          setApprovalState("approved");
+        } else {
+          await declineConnectorApproval(pendingApproval.approvalToken);
+          setApprovalState("declined");
+        }
+        return true;
+      } catch (cause) {
+        setApprovalState("failed");
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Couldn't resolve this connected-app action.",
+        );
+        return false;
+      }
+    },
+    [approvalState, pendingApproval],
   );
 
   return {
@@ -164,6 +218,9 @@ export function useRemixThread() {
     status,
     error,
     activeTool,
+    pendingApproval,
+    approvalState,
+    decideApproval,
     send,
     stop,
     newThread,

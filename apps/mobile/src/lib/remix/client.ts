@@ -45,6 +45,22 @@ export async function getThread(id: string): Promise<RemixThread | null> {
   }
 }
 
+/** Soft-delete one durable conversation owned by the signed-in user. */
+export async function deleteThread(id: string): Promise<void> {
+  const response = await cloud.request(
+    `/v2/threads/${encodeURIComponent(id)}`,
+    {
+      method: "DELETE",
+    },
+  );
+  if (!response.ok) {
+    throw new CloudRequestError(
+      response.status,
+      await response.text().catch(() => ""),
+    );
+  }
+}
+
 export async function listThreads({
   origin = "user",
   cursor,

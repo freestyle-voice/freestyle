@@ -6,13 +6,37 @@ import {
 } from "@/lib/cloud/connector-approvals";
 import { getLatestThread, getThread, runRemixTurn } from "./client";
 import { createMobileId } from "./ids";
-import { appendAssistantDelta, latestThreadState } from "./thread";
+import {
+  appendAssistantDelta,
+  latestThreadState,
+  messagesForResend,
+  messagesForRetry,
+} from "./thread";
 import type { PendingConnectorApproval } from "./types";
 
 export type RemixRunStatus = "idle" | "streaming" | "failed";
 
 function newId(prefix: string): string {
   return createMobileId(prefix);
+}
+
+function approvalNeedsDecision(
+  approval: PendingConnectorApproval | null,
+  state:
+    | "idle"
+    | "approving"
+    | "approved"
+    | "declining"
+    | "declined"
+    | "failed",
+): boolean {
+  return Boolean(
+    approval &&
+      (state === "idle" ||
+        state === "approving" ||
+        state === "declining" ||
+        state === "failed"),
+  );
 }
 
 export function useRemixThread() {
@@ -108,22 +132,9 @@ export function useRemixThread() {
     setActiveTool(null);
   }, []);
 
-  const send = useCallback(
-    async (text: string) => {
-      const trimmed = text.trim();
-      const approvalPending =
-        pendingApproval &&
-        (approvalState === "idle" ||
-          approvalState === "approving" ||
-          approvalState === "declining" ||
-          approvalState === "failed");
-      if (!trimmed || status === "streaming" || approvalPending) return false;
-      const userMessage: UIMessage = {
-        id: newId("user"),
-        role: "user",
-        parts: [{ type: "text", text: trimmed }],
-      };
-      const nextMessages = [...messages, userMessage];
+  const run = useCallback(
+    async (nextMessages: UIMessage[]) => {
+      if (abortRef.current) return false;
       const controller = new AbortController();
       const assistantId = newId("assistant");
       abortRef.current = controller;
@@ -135,7 +146,7 @@ export function useRemixThread() {
         await runRemixTurn({
           messages: nextMessages,
           threadId,
-          firstTurn: messages.length === 0,
+          firstTurn: nextMessages.length === 1,
           signal: controller.signal,
           onEvent: (event) => {
             if (abortRef.current !== controller || controller.signal.aborted) {
@@ -169,16 +180,58 @@ export function useRemixThread() {
         }
         setStatus("failed");
         setError(
-          cause instanceof Error
-            ? cause.message
-            : "Remix could not finish that run.",
+          cause instanceof Error && cause.message
+            ? `Connection interrupted. ${cause.message}`
+            : "Connection interrupted. Retry this message when you're back online.",
         );
         return false;
       } finally {
         if (abortRef.current === controller) abortRef.current = null;
       }
     },
-    [approvalState, messages, pendingApproval, status, threadId],
+    [threadId],
+  );
+
+  const send = useCallback(
+    async (text: string) => {
+      const trimmed = text.trim();
+      const approvalPending = approvalNeedsDecision(
+        pendingApproval,
+        approvalState,
+      );
+      if (!trimmed || status === "streaming" || approvalPending) return false;
+      const userMessage: UIMessage = {
+        id: newId("user"),
+        role: "user",
+        parts: [{ type: "text", text: trimmed }],
+      };
+      const nextMessages = [...messages, userMessage];
+      return run(nextMessages);
+    },
+    [approvalState, messages, pendingApproval, run, status],
+  );
+
+  const retryLastTurn = useCallback(async () => {
+    if (
+      status === "streaming" ||
+      approvalNeedsDecision(pendingApproval, approvalState)
+    )
+      return false;
+    const nextMessages = messagesForRetry(messages);
+    return nextMessages ? run(nextMessages) : false;
+  }, [approvalState, messages, pendingApproval, run, status]);
+
+  const resend = useCallback(
+    async (messageId: string, text: string) => {
+      if (
+        status === "streaming" ||
+        approvalNeedsDecision(pendingApproval, approvalState)
+      )
+        return false;
+      const nextMessages = messagesForResend(messages, messageId, text);
+      return nextMessages ? run(nextMessages) : false;
+    },
+    [approvalState, messages, pendingApproval, run, status],
   );
 
   const decideApproval = useCallback(
@@ -222,6 +275,8 @@ export function useRemixThread() {
     approvalState,
     decideApproval,
     send,
+    resend,
+    retryLastTurn,
     stop,
     newThread,
     loadThread,

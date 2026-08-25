@@ -10,6 +10,7 @@ vi.mock("@/lib/cloud/client", () => ({ cloud: { json, request } }));
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 
 import {
+  deleteThread,
   getLatestThread,
   getThread,
   listThreads,
@@ -63,6 +64,15 @@ describe("mobile Remix cloud client", () => {
       messages: [],
     });
     expect(json).toHaveBeenCalledWith("/v2/threads/thread-1");
+  });
+
+  it("deletes a durable conversation from session management", async () => {
+    request.mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await expect(deleteThread("thread/one")).resolves.toBeUndefined();
+    expect(request).toHaveBeenCalledWith("/v2/threads/thread%2Fone", {
+      method: "DELETE",
+    });
   });
 
   it("treats a cleared thread as unavailable instead of a load failure", async () => {

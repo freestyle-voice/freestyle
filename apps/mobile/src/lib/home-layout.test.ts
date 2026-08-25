@@ -21,8 +21,8 @@ describe("Remix home layout", () => {
     expect(screen).toMatch(
       /<View style=\{styles\.header\}>[\s\S]*?<ModeSwitch/,
     );
-    expect(styles).not.toMatch(
-      /modeSwitch:\s*\{[\s\S]*?position:\s*"absolute"/,
+    expect(styles).toMatch(
+      /modeSwitch:\s*\{[\s\S]*?flexDirection:\s*"row"[\s\S]*?\n {2}\},\n {2}modeOption:/,
     );
   });
 
@@ -65,5 +65,11 @@ describe("Remix home layout", () => {
     expect(screen).toContain(
       "scrollEnabled={inputHeight >= REMIX_COMPOSER_MAX_INPUT_HEIGHT}",
     );
+  });
+
+  it("keeps an interrupted thread recoverable with durable drafts and retry", () => {
+    expect(screen).toContain("loadRemixDrafts(userId)");
+    expect(screen).toContain("Retry last Remix message");
+    expect(screen).toContain("retryLastTurn()");
   });
 });

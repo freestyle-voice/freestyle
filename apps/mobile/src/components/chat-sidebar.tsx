@@ -1,13 +1,15 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
-import { MessageSquarePlus } from "lucide-react-native";
+import { MessageSquarePlus, Search, Trash2 } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
+  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
@@ -17,7 +19,7 @@ import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useHistory } from "@/lib/history";
-import { listThreads } from "@/lib/remix/client";
+import { deleteThread, listThreads } from "@/lib/remix/client";
 import { remixQueryKeys } from "@/lib/remix/query";
 import type { RemixMode } from "@/lib/remix/types";
 
@@ -45,11 +47,13 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   const theme = useTheme();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { history } = useHistory();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const panelWidth = Math.min(360, Math.round(width * 0.88));
   const [mounted, setMounted] = useState(visible);
+  const [search, setSearch] = useState("");
   const progress = useRef(new Animated.Value(visible ? 1 : 0)).current;
   const { data, isLoading } = useQuery({
     queryKey: remixQueryKeys.recentSessions,
@@ -93,6 +97,34 @@ export function ChatSidebar({
     onClose();
     router.replace({ pathname: "/(app)/(tabs)", params: { threadId: id } });
   };
+  const removeThread = (id: string, title: string) => {
+    Alert.alert(
+      "Delete conversation?",
+      `“${title || "Untitled chat"}” will be removed from your history.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            void deleteThread(id)
+              .then(() => {
+                void queryClient.invalidateQueries({
+                  queryKey: remixQueryKeys.threads,
+                });
+                if (id === currentThreadId) onNewChat();
+              })
+              .catch(() => {
+                Alert.alert(
+                  "Couldn't delete conversation",
+                  "Check your connection and try again.",
+                );
+              });
+          },
+        },
+      ],
+    );
+  };
   const startNewChat = () => {
     onNewChat();
     onClose();
@@ -101,6 +133,9 @@ export function ChatSidebar({
     inputRange: [0, 1],
     outputRange: [-panelWidth, 0],
   });
+  const threads = (data?.threads ?? []).filter((thread) =>
+    thread.title.toLowerCase().includes(search.trim().toLowerCase()),
+  );
 
   return (
     <Modal
@@ -150,6 +185,22 @@ export function ChatSidebar({
                 {mode === "dictate" ? "RECENT DICTATIONS" : "RECENT CHATS"}
               </ThemedText>
             </View>
+            {mode === "remix" ? (
+              <View
+                style={[styles.search, { backgroundColor: theme.secondary }]}
+              >
+                <Search color={theme.mutedForeground} size={16} />
+                <TextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search conversations"
+                  placeholderTextColor={theme.mutedForeground}
+                  accessibilityLabel="Search conversations"
+                  style={[styles.searchInput, { color: theme.foreground }]}
+                  returnKeyType="search"
+                />
+              </View>
+            ) : null}
             <ScrollView
               style={styles.sessionScroll}
               contentContainerStyle={styles.sessionList}
@@ -159,32 +210,54 @@ export function ChatSidebar({
                 <ThemedText themeColor="mutedForeground" style={styles.empty}>
                   Loading conversations…
                 </ThemedText>
-              ) : mode === "remix" && data?.threads.length ? (
-                data.threads.slice(0, MAX_RECENT_SESSIONS).map((thread) => {
+              ) : mode === "remix" && threads.length ? (
+                threads.slice(0, MAX_RECENT_SESSIONS).map((thread) => {
                   const selected = thread.id === currentThreadId;
                   return (
-                    <Pressable
+                    <View
                       key={thread.id}
-                      onPress={() => selectThread(thread.id)}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={thread.title || "Untitled chat"}
-                      style={({ pressed }) => [
-                        styles.session,
+                      style={[
+                        styles.sessionRow,
                         selected && { backgroundColor: theme.accent },
-                        pressed && styles.pressed,
                       ]}
                     >
-                      <ThemedText
-                        numberOfLines={1}
-                        style={[
-                          styles.sessionTitle,
-                          selected && { color: theme.accentForeground },
+                      <Pressable
+                        onPress={() => selectThread(thread.id)}
+                        accessibilityRole="button"
+                        accessibilityState={{ selected }}
+                        accessibilityLabel={thread.title || "Untitled chat"}
+                        style={({ pressed }) => [
+                          styles.session,
+                          pressed && styles.pressed,
                         ]}
                       >
-                        {thread.title || "Untitled chat"}
-                      </ThemedText>
-                    </Pressable>
+                        <ThemedText
+                          numberOfLines={1}
+                          style={[
+                            styles.sessionTitle,
+                            selected && { color: theme.accentForeground },
+                          ]}
+                        >
+                          {thread.title || "Untitled chat"}
+                        </ThemedText>
+                      </Pressable>
+                      <Pressable
+                        onPress={() => removeThread(thread.id, thread.title)}
+                        hitSlop={8}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Delete ${thread.title || "conversation"}`}
+                        style={styles.deleteSession}
+                      >
+                        <Trash2
+                          color={
+                            selected
+                              ? theme.accentForeground
+                              : theme.mutedForeground
+                          }
+                          size={15}
+                        />
+                      </Pressable>
+                    </View>
                   );
                 })
               ) : mode === "dictate" && history.length ? (
@@ -218,12 +291,18 @@ export function ChatSidebar({
                     />
                   </View>
                   <ThemedText style={styles.emptyTitle}>
-                    {mode === "dictate" ? "No dictations yet" : "No chats yet"}
+                    {mode === "dictate"
+                      ? "No dictations yet"
+                      : search
+                        ? "No matching chats"
+                        : "No chats yet"}
                   </ThemedText>
                   <ThemedText themeColor="mutedForeground" style={styles.empty}>
                     {mode === "dictate"
                       ? "Your recent dictations will appear here."
-                      : "Start a chat and it will stay here for next time."}
+                      : search
+                        ? "Try a different search."
+                        : "Start a chat and it will stay here for next time."}
                   </ThemedText>
                 </View>
               )}
@@ -275,13 +354,36 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.four,
   },
   sessionsLabel: { paddingBottom: Spacing.three },
+  search: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radius.md,
+    marginBottom: Spacing.three,
+  },
+  searchInput: { flex: 1, fontFamily: Fonts.sans, fontSize: 14 },
   sessionScroll: { flex: 1, minHeight: 0 },
   sessionList: { gap: Spacing.half, paddingBottom: Spacing.two },
+  sessionRow: {
+    minHeight: 42,
+    borderRadius: Radius.md,
+    flexDirection: "row",
+    alignItems: "center",
+  },
   session: {
+    flex: 1,
     minHeight: 42,
     justifyContent: "center",
-    paddingHorizontal: Spacing.two,
-    borderRadius: Radius.md,
+    paddingLeft: Spacing.two,
+    paddingRight: Spacing.one,
+  },
+  deleteSession: {
+    width: 36,
+    height: 42,
+    alignItems: "center",
+    justifyContent: "center",
   },
   sessionTitle: { fontFamily: Fonts.sansMedium, fontSize: 14 },
   empty: {

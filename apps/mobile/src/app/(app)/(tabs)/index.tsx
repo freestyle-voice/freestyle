@@ -1,3 +1,4 @@
+import type { UIMessage } from "ai";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
 import { useIsFocused, useLocalSearchParams, useRouter } from "expo-router";
@@ -51,14 +52,21 @@ import {
   appendVoiceTranscript,
   remixComposerVoiceState,
 } from "@/lib/remix/composer-voice-state";
+import {
+  loadRemixDrafts,
+  type RemixDrafts,
+  saveRemixDrafts,
+  updateRemixDraft,
+} from "@/lib/remix/drafts";
 import { DEFAULT_HOME_MODE } from "@/lib/remix/home-mode";
+import { messageText } from "@/lib/remix/thread";
 import type { RemixMode } from "@/lib/remix/types";
 import { useRemixThread } from "@/lib/remix/use-remix-thread";
 
 export default function VoiceScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { signedIn } = useAuth();
+  const { signedIn, user } = useAuth();
   const router = useRouter();
   const { width } = useWindowDimensions();
   // This home screen stays mounted while the resident keyboard session runs in the
@@ -194,6 +202,7 @@ export default function VoiceScreen() {
                 <RemixHome
                   thread={remixThread}
                   signedIn={signedIn && focused}
+                  userId={user?.id}
                   keyboardVisible={keyboardVisible}
                   bottomInset={insets.bottom}
                 />
@@ -354,11 +363,13 @@ function ModeSwitch({
 function RemixHome({
   thread,
   signedIn,
+  userId,
   keyboardVisible,
   bottomInset,
 }: {
   thread: ReturnType<typeof useRemixThread>;
   signedIn: boolean;
+  userId: string | undefined;
   keyboardVisible: boolean;
   bottomInset: number;
 }) {
@@ -375,19 +386,31 @@ function RemixHome({
     approvalState,
     decideApproval,
     send,
+    resend,
+    retryLastTurn,
     stop,
     loadThread,
   } = thread;
-  const [draft, setDraft] = useState("");
+  const [drafts, setDrafts] = useState<RemixDrafts>({});
+  const draftsRef = useRef<RemixDrafts>({});
+  const draftWriteQueue = useRef<Promise<void>>(Promise.resolve());
+  const [editingMessage, setEditingMessage] = useState<{
+    id: string;
+    text: string;
+    threadId: string;
+  } | null>(null);
   const [inputHeight, setInputHeight] = useState(
     REMIX_COMPOSER_MIN_INPUT_HEIGHT,
   );
   const inputRef = useRef<TextInput>(null);
+  const draft = drafts[thread.threadId] ?? "";
+  const editingCurrentThread = editingMessage?.threadId === thread.threadId;
   const busy = status === "streaming";
   const hasDraft = draft.trim().length > 0;
   const {
     micState: voiceState,
     partial: voicePartial,
+    level: voiceLevel,
     toggle: toggleVoiceInput,
   } = useDictation({
     signedIn,
@@ -404,6 +427,41 @@ function RemixHome({
   });
 
   useEffect(() => {
+    let cancelled = false;
+    void loadRemixDrafts(userId)
+      .then((stored) => {
+        if (cancelled) return;
+        draftsRef.current = stored;
+        setDrafts(stored);
+      })
+      .catch(() => {
+        // Draft recovery is best-effort. Storage should never block chat.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const setDraft = useCallback(
+    (value: string | ((current: string) => string)) => {
+      const current = draftsRef.current[thread.threadId] ?? "";
+      const nextValue = typeof value === "function" ? value(current) : value;
+      const next = updateRemixDraft(
+        draftsRef.current,
+        thread.threadId,
+        nextValue,
+      );
+      draftsRef.current = next;
+      setDrafts(next);
+      draftWriteQueue.current = draftWriteQueue.current
+        .catch(() => {})
+        .then(() => saveRemixDrafts(userId, next))
+        .catch(() => {});
+    },
+    [thread.threadId, userId],
+  );
+
+  useEffect(() => {
     if (selectedThreadId) void loadThread(selectedThreadId);
   }, [loadThread, selectedThreadId]);
 
@@ -416,9 +474,20 @@ function RemixHome({
   }, [messages.length]);
 
   const submit = useCallback(async () => {
-    const sent = await send(draft);
-    if (sent) setDraft("");
-  }, [draft, send]);
+    const sent =
+      editingCurrentThread && editingMessage
+        ? await resend(editingMessage.id, draft)
+        : await send(draft);
+    if (sent) {
+      setDraft("");
+      setEditingMessage(null);
+    }
+  }, [draft, editingCurrentThread, editingMessage, resend, send, setDraft]);
+
+  const copyMessage = useCallback(async (text: string) => {
+    await Clipboard.setStringAsync(text);
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  }, []);
 
   const handleComposerAction = useCallback(() => {
     switch (voiceControl.action) {
@@ -465,7 +534,7 @@ function RemixHome({
         contentContainerStyle={styles.remixScroll}
         keyboardShouldPersistTaps="handled"
       >
-        {messages.map((message) => (
+        {messages.map((message, index) => (
           <View
             key={message.id}
             style={[
@@ -480,18 +549,36 @@ function RemixHome({
             <ThemedText type="eyebrow" themeColor="mutedForeground">
               {message.role === "user" ? "YOU" : "REMIX"}
             </ThemedText>
-            <MobileMarkdown
-              text={message.parts
-                .filter((part) => part.type === "text")
-                .map((part) => part.text)
-                .join("")}
+            <MobileMarkdown text={messageText(message)} />
+            <MessageActions
+              message={message}
+              isLatest={index === messages.length - 1}
+              onCopy={copyMessage}
+              onEdit={(text) => {
+                setEditingMessage({
+                  id: message.id,
+                  text,
+                  threadId: thread.threadId,
+                });
+                setDraft(text);
+                requestAnimationFrame(() => inputRef.current?.focus());
+              }}
+              onRegenerate={() => void retryLastTurn()}
             />
           </View>
         ))}
         {activeTool ? (
-          <ThemedText themeColor="mutedForeground" style={styles.toolStatus}>
-            {activeTool}…
-          </ThemedText>
+          <View
+            style={[styles.toolStatus, { backgroundColor: theme.secondary }]}
+          >
+            <ActivityIndicator color={theme.primary} size="small" />
+            <ThemedText
+              themeColor="mutedForeground"
+              style={styles.toolStatusText}
+            >
+              {activeTool}
+            </ThemedText>
+          </View>
         ) : null}
         {pendingApproval ? (
           <ConnectorApprovalCard
@@ -501,11 +588,49 @@ function RemixHome({
           />
         ) : null}
         {error ? (
-          <ThemedText style={[styles.error, { color: theme.destructive }]}>
-            {error}
-          </ThemedText>
+          <View
+            style={[
+              styles.recovery,
+              { backgroundColor: theme.secondary, borderColor: theme.border },
+            ]}
+          >
+            <ThemedText style={[styles.error, { color: theme.destructive }]}>
+              {error}
+            </ThemedText>
+            <Pressable
+              onPress={() => void retryLastTurn()}
+              accessibilityRole="button"
+              accessibilityLabel="Retry last Remix message"
+              style={[styles.retry, { backgroundColor: theme.primary }]}
+            >
+              <ThemedText
+                style={[styles.retryText, { color: theme.primaryForeground }]}
+              >
+                Retry
+              </ThemedText>
+            </Pressable>
+          </View>
         ) : null}
       </ScrollView>
+      {editingCurrentThread ? (
+        <View
+          style={[styles.editingBanner, { backgroundColor: theme.secondary }]}
+        >
+          <ThemedText themeColor="mutedForeground" style={styles.editingCopy}>
+            Editing an earlier message. Sending will replace the reply after it.
+          </ThemedText>
+          <Pressable
+            onPress={() => {
+              setEditingMessage(null);
+              setDraft("");
+            }}
+            accessibilityRole="button"
+            accessibilityLabel="Cancel editing message"
+          >
+            <X color={theme.mutedForeground} size={16} />
+          </Pressable>
+        </View>
+      ) : null}
       <View
         style={[
           styles.composer,
@@ -516,6 +641,27 @@ function RemixHome({
           },
         ]}
       >
+        {voiceState !== "idle" ? (
+          <View
+            accessibilityLiveRegion="polite"
+            style={[styles.voiceStatus, { backgroundColor: theme.secondary }]}
+          >
+            {voiceState === "recording" ? (
+              <Waveform level={voiceLevel} active compact />
+            ) : (
+              <ActivityIndicator color={theme.primary} size="small" />
+            )}
+            <ThemedText
+              themeColor="mutedForeground"
+              style={styles.voiceStatusText}
+              numberOfLines={1}
+            >
+              {voiceState === "recording"
+                ? voicePartial || "Listening — keep typing or tap stop"
+                : "Adding your voice…"}
+            </ThemedText>
+          </View>
+        ) : null}
         <TextInput
           ref={inputRef}
           value={voiceControl.value}
@@ -592,6 +738,82 @@ function RemixHome({
           )}
         </Pressable>
       </View>
+    </View>
+  );
+}
+
+function MessageActions({
+  message,
+  isLatest,
+  onCopy,
+  onEdit,
+  onRegenerate,
+}: {
+  message: UIMessage;
+  isLatest: boolean;
+  onCopy: (text: string) => Promise<void>;
+  onEdit: (text: string) => void;
+  onRegenerate: () => void;
+}) {
+  const theme = useTheme();
+  const text = messageText(message);
+  if (!text) return null;
+  return (
+    <View style={styles.messageActions}>
+      <Pressable
+        onPress={() => void onCopy(text)}
+        accessibilityRole="button"
+        accessibilityLabel="Copy message"
+        style={({ pressed }) => [
+          styles.messageAction,
+          { borderColor: theme.border },
+          pressed && styles.pressed,
+        ]}
+      >
+        <ThemedText
+          themeColor="mutedForeground"
+          style={styles.messageActionText}
+        >
+          Copy
+        </ThemedText>
+      </Pressable>
+      {message.role === "user" ? (
+        <Pressable
+          onPress={() => onEdit(text)}
+          accessibilityRole="button"
+          accessibilityLabel="Edit and resend message"
+          style={({ pressed }) => [
+            styles.messageAction,
+            { borderColor: theme.border },
+            pressed && styles.pressed,
+          ]}
+        >
+          <ThemedText
+            themeColor="mutedForeground"
+            style={styles.messageActionText}
+          >
+            Edit
+          </ThemedText>
+        </Pressable>
+      ) : isLatest ? (
+        <Pressable
+          onPress={onRegenerate}
+          accessibilityRole="button"
+          accessibilityLabel="Regenerate last Remix response"
+          style={({ pressed }) => [
+            styles.messageAction,
+            { borderColor: theme.border },
+            pressed && styles.pressed,
+          ]}
+        >
+          <ThemedText
+            themeColor="mutedForeground"
+            style={styles.messageActionText}
+          >
+            Regenerate
+          </ThemedText>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -748,11 +970,30 @@ const styles = StyleSheet.create({
     borderRadius: Radius.xl,
     padding: Spacing.three,
   },
-  toolStatus: {
-    fontFamily: Fonts.mono,
-    fontSize: 11,
-    paddingHorizontal: Spacing.one,
+  messageActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    paddingTop: Spacing.one,
   },
+  messageAction: {
+    minHeight: 28,
+    justifyContent: "center",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.two,
+  },
+  messageActionText: { fontFamily: Fonts.sansMedium, fontSize: 12 },
+  toolStatus: {
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  toolStatusText: { fontFamily: Fonts.sansMedium, fontSize: 13 },
   approvalCard: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: Radius.xl,
@@ -785,7 +1026,30 @@ const styles = StyleSheet.create({
   },
   approvalAllowText: { fontFamily: Fonts.sansSemiBold, fontSize: 14 },
   approvalResolved: { alignItems: "flex-start", paddingTop: Spacing.one },
-  error: { fontSize: 13, lineHeight: 19, paddingHorizontal: Spacing.one },
+  recovery: {
+    gap: Spacing.two,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
+  },
+  error: { fontSize: 13, lineHeight: 19 },
+  retry: {
+    alignSelf: "flex-start",
+    minHeight: 34,
+    justifyContent: "center",
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three,
+  },
+  retryText: { fontFamily: Fonts.sansSemiBold, fontSize: 13 },
+  editingBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+  },
+  editingCopy: { flex: 1, fontSize: 12, lineHeight: 17 },
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -795,6 +1059,20 @@ const styles = StyleSheet.create({
     padding: Spacing.two,
     minHeight: 64,
   },
+  voiceStatus: {
+    position: "absolute",
+    left: Spacing.three,
+    right: 58,
+    top: Spacing.two,
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: Spacing.two,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.two,
+    zIndex: 1,
+  },
+  voiceStatusText: { flex: 1, fontFamily: Fonts.sansMedium, fontSize: 13 },
   input: {
     flex: 1,
     minHeight: 38,
@@ -813,6 +1091,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  pressed: { opacity: 0.62 },
   actions: {
     flexDirection: "row",
     justifyContent: "center",

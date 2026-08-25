@@ -39,7 +39,13 @@ import {
 } from "@renderer/lib/query";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
-import { getThread, type ThreadState } from "@renderer/lib/threads";
+import {
+  type DurableThreadAction,
+  getThread,
+  getThreadRuntime,
+  sendDurableTurnCommand,
+  type ThreadState,
+} from "@renderer/lib/threads";
 import { highlightToolJson, toolJson } from "@renderer/lib/tool-json";
 import {
   connectorToolkitSlug,
@@ -656,6 +662,15 @@ function newThread(): ThreadState {
   return { id: crypto.randomUUID(), messages: [] };
 }
 
+function durableDesktopClientId(): string {
+  const key = "freestyle.durable-desktop-client-id";
+  const existing = window.localStorage.getItem(key);
+  if (existing) return existing;
+  const next = `desktop-${crypto.randomUUID()}`;
+  window.localStorage.setItem(key, next);
+  return next;
+}
+
 function touchesBrain(message: UIMessage): boolean {
   return message.parts.some(
     (part) =>
@@ -921,7 +936,12 @@ function PanelInner({
   const [draft, setDraft] = useState("");
 
   const [notice, setNotice] = useState<string | null>(null);
-  const [approvals, setApprovals] = useState<AgentToolCall[]>([]);
+  const [approvals, setApprovals] = useState<
+    Array<{
+      call: AgentToolCall;
+      durable?: { turnId: string; actionId: string };
+    }>
+  >([]);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -931,6 +951,16 @@ function PanelInner({
   const dictationBaseRef = useRef<string | null>(null);
   // Whether the current draft arrived by voice, so message_sent can say so.
   const dictatedRef = useRef(false);
+
+  const durableRuntime = useQuery({
+    queryKey: ["durable-thread-runtime", thread.id],
+    queryFn: () => getThreadRuntime(thread.id),
+    retry: false,
+    refetchInterval: (query) =>
+      query.state.data?.activeTurn || query.state.data?.pendingAction
+        ? 1_000
+        : false,
+  });
 
   const transport = useMemo(
     () =>
@@ -993,7 +1023,7 @@ function PanelInner({
       };
       const tier = await agentToolTier(call);
       if (tier === "confirmed") {
-        setApprovals((prev) => [...prev, call]);
+        setApprovals((prev) => [...prev, { call }]);
         return;
       }
       const output =
@@ -1025,6 +1055,12 @@ function PanelInner({
     if (status === "submitted" || status === "streaming") return;
     if (thread.messages.length > messages.length) setMessages(thread.messages);
   }, [thread.messages, messages.length, setMessages, status]);
+
+  useEffect(() => {
+    const synced = durableRuntime.data?.thread;
+    if (!synced || status === "submitted" || status === "streaming") return;
+    if (synced.messages.length >= messages.length) setMessages(synced.messages);
+  }, [durableRuntime.data?.thread, messages.length, setMessages, status]);
 
   const startedRef = useRef(thread.messages.length > 0);
   useEffect(() => {
@@ -1122,10 +1158,17 @@ function PanelInner({
     });
   };
 
-  const resolveApproval = (call: AgentToolCall, allowed: boolean): void => {
+  const resolveApproval = (
+    approval: {
+      call: AgentToolCall;
+      durable?: { turnId: string; actionId: string };
+    },
+    allowed: boolean,
+  ): void => {
+    const call = approval.call;
     capture("approval_resolved", { tool: call.toolName, allowed });
     setApprovals((prev) =>
-      prev.filter((a) => a.toolCallId !== call.toolCallId),
+      prev.filter((item) => item.call.toolCallId !== call.toolCallId),
     );
     void (async () => {
       const startedAt = Date.now();
@@ -1144,12 +1187,76 @@ function PanelInner({
                   : undefined,
             });
       reportAgentToolResult(call, output, startedAt);
-      addToolOutput({
-        tool: call.toolName,
-        toolCallId: call.toolCallId,
-        output,
-      });
+      if (approval.durable) {
+        await sendDurableTurnCommand(approval.durable.turnId, {
+          type: "desktop_complete",
+          actionId: approval.durable.actionId,
+          clientId: durableDesktopClientId(),
+          result: output,
+        });
+        await durableRuntime.refetch();
+      } else {
+        addToolOutput({
+          tool: call.toolName,
+          toolCallId: call.toolCallId,
+          output,
+        });
+      }
     })();
+  };
+
+  const resolveDurableConnector = (
+    action: DurableThreadAction,
+    allowed: boolean,
+  ): void => {
+    void sendDurableTurnCommand(action.turnId, {
+      type: allowed ? "approve" : "decline",
+      actionId: action.id,
+    })
+      .then(() => durableRuntime.refetch())
+      .catch(() => setNotice("Couldn't resolve this connected-app action."));
+  };
+
+  const claimDurableDesktopAction = (action: DurableThreadAction): void => {
+    void (async () => {
+      const response = (await sendDurableTurnCommand(action.turnId, {
+        type: "desktop_claim",
+        actionId: action.id,
+        clientId: durableDesktopClientId(),
+        client: {
+          platform: window.api.platform,
+          supportsDownloadsSave: true,
+        },
+      })) as { action?: { id?: string; toolName?: string; input?: unknown } };
+      if (!response.action?.id || !response.action.toolName) {
+        throw new Error("The desktop action was no longer available.");
+      }
+      const call: AgentToolCall = {
+        toolCallId: response.action.id,
+        toolName: response.action.toolName,
+        input: response.action.input,
+      };
+      const tier = await agentToolTier(call);
+      if (tier === "confirmed") {
+        setApprovals((previous) => [
+          ...previous,
+          { call, durable: { turnId: action.turnId, actionId: action.id } },
+        ]);
+        return;
+      }
+      const output =
+        tier === "free"
+          ? await executeAgentTool(call)
+          : { ok: false, reason: `unknown tool: ${call.toolName}` };
+      reportAgentToolResult(call, output, Date.now());
+      await sendDurableTurnCommand(action.turnId, {
+        type: "desktop_complete",
+        actionId: action.id,
+        clientId: durableDesktopClientId(),
+        result: output,
+      });
+      await durableRuntime.refetch();
+    })().catch(() => setNotice("Couldn't run that desktop action."));
   };
 
   useEffect(() => {
@@ -1518,33 +1625,97 @@ function PanelInner({
                       onRegenerate={() => regenerateMessage(m)}
                     />
                   ))}
-                  {approvals.map((call) => (
-                    <div key={call.toolCallId} className="tavern-approve">
+                  {approvals.map((approval) => (
+                    <div
+                      key={approval.call.toolCallId}
+                      className="tavern-approve"
+                    >
                       <span className="tavern-approve-title">
                         {SPRITES_INFO[spriteForm].label.toLowerCase()} wants to
                         act
                       </span>
                       <div className="tavern-approve-text">
-                        {describeAgentAction(call)}
+                        {describeAgentAction(approval.call)}
                       </div>
                       <div className="tavern-approve-actions">
                         <button
                           type="button"
                           className="tavern-approve-btn tavern-approve-allow"
-                          onClick={() => resolveApproval(call, true)}
+                          onClick={() => resolveApproval(approval, true)}
                         >
                           Allow
                         </button>
                         <button
                           type="button"
                           className="tavern-approve-btn"
-                          onClick={() => resolveApproval(call, false)}
+                          onClick={() => resolveApproval(approval, false)}
                         >
                           Don't allow
                         </button>
                       </div>
                     </div>
                   ))}
+                  {durableRuntime.data?.pendingAction?.kind === "connector" &&
+                  durableRuntime.data.pendingAction.status === "pending" ? (
+                    <div className="tavern-approve">
+                      <span className="tavern-approve-title">
+                        connected app action needs approval
+                      </span>
+                      <div className="tavern-approve-text">
+                        {durableRuntime.data.pendingAction.display}
+                      </div>
+                      <div className="tavern-approve-actions">
+                        <button
+                          type="button"
+                          className="tavern-approve-btn tavern-approve-allow"
+                          onClick={() =>
+                            resolveDurableConnector(
+                              durableRuntime.data!.pendingAction!,
+                              true,
+                            )
+                          }
+                        >
+                          Allow
+                        </button>
+                        <button
+                          type="button"
+                          className="tavern-approve-btn"
+                          onClick={() =>
+                            resolveDurableConnector(
+                              durableRuntime.data!.pendingAction!,
+                              false,
+                            )
+                          }
+                        >
+                          Don't allow
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {durableRuntime.data?.pendingAction?.kind === "desktop" &&
+                  durableRuntime.data.pendingAction.status === "pending" ? (
+                    <div className="tavern-approve">
+                      <span className="tavern-approve-title">
+                        desktop action waiting
+                      </span>
+                      <div className="tavern-approve-text">
+                        {durableRuntime.data.pendingAction.display}
+                      </div>
+                      <div className="tavern-approve-actions">
+                        <button
+                          type="button"
+                          className="tavern-approve-btn tavern-approve-allow"
+                          onClick={() =>
+                            claimDurableDesktopAction(
+                              durableRuntime.data!.pendingAction!,
+                            )
+                          }
+                        >
+                          Run on this desktop
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
                   {awaitingText ? (
                     <div
                       className="tavern-stream-wait"

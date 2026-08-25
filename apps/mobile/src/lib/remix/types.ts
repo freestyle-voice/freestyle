@@ -35,10 +35,14 @@ export type RemixStreamEvent =
   | { type: "complete" };
 
 export type PendingConnectorApproval = {
-  approvalToken: string;
-  toolkit: string;
-  toolkitName: string;
-  toolSlug: string;
+  /** Durable protocol fields. actionId/turnId are used for the shared command
+   * endpoint; legacy token fields remain optional for keyboard compatibility. */
+  actionId?: string;
+  turnId?: string;
+  approvalToken?: string;
+  toolkit?: string;
+  toolkitName?: string;
+  toolSlug?: string;
   actionDescription: string;
   expiresAt: string;
 };

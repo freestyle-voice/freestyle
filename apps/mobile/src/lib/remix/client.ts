@@ -24,6 +24,46 @@ const MOBILE_AGENT_CLIENT = {
 
 export type RemixThread = { id: string; messages: UIMessage[] };
 
+export type DurableTurnStatus =
+  | "queued"
+  | "running"
+  | "waiting_approval"
+  | "waiting_desktop"
+  | "needs_desktop"
+  | "completed"
+  | "failed"
+  | "canceled";
+
+export type DurableTurn = {
+  id: string;
+  threadId: string;
+  status: DurableTurnStatus;
+  error: string | null;
+};
+
+export type DurableThreadAction = {
+  id: string;
+  turnId: string;
+  kind: "connector" | "desktop";
+  status:
+    | "pending"
+    | "claimed"
+    | "completed"
+    | "declined"
+    | "expired"
+    | "failed";
+  toolName: string;
+  display: string;
+  capability: string | null;
+  expiresAt: string;
+};
+
+export type DurableThreadRuntime = {
+  thread: RemixThread;
+  activeTurn: DurableTurn | null;
+  pendingAction: DurableThreadAction | null;
+};
+
 export async function getLatestThread(): Promise<RemixThread | null> {
   const result = await cloud.json<{ thread: RemixThread | null }>(
     "/v2/threads/latest",
@@ -43,6 +83,72 @@ export async function getThread(id: string): Promise<RemixThread | null> {
     if (error instanceof CloudRequestError && error.status === 404) return null;
     throw error;
   }
+}
+
+export async function getDurableThreadRuntime(
+  id: string,
+): Promise<DurableThreadRuntime | null> {
+  try {
+    return await cloud.json<DurableThreadRuntime>(
+      `/v2/threads/${encodeURIComponent(id)}`,
+    );
+  } catch (error) {
+    if (error instanceof CloudRequestError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function getDurableTurn(turnId: string): Promise<DurableTurn> {
+  const result = await cloud.json<{ turn: DurableTurn }>(
+    `/v2/turns/${encodeURIComponent(turnId)}`,
+  );
+  return result.turn;
+}
+
+export async function sendDurableRemixTurn({
+  messages,
+  threadId,
+  firstTurn,
+  clientRequestId,
+}: {
+  messages: UIMessage[];
+  threadId: string;
+  firstTurn: boolean;
+  clientRequestId: string;
+}): Promise<DurableTurn> {
+  const result = await cloud.json<{ turn: DurableTurn }>(
+    `/v2/threads/${encodeURIComponent(threadId)}/turns`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: "mobile-remix",
+        messages,
+        trigger: "submit-message",
+        threadId,
+        firstTurn,
+        clientRequestId,
+        client: {
+          ...MOBILE_AGENT_CLIENT,
+          supportsConnectorApprovals: true,
+        },
+      }),
+    },
+  );
+  return result.turn;
+}
+
+export async function commandDurableTurn(
+  turnId: string,
+  command:
+    | { type: "cancel" }
+    | { type: "approve" | "decline"; actionId: string },
+): Promise<void> {
+  await cloud.json(`/v2/turns/${encodeURIComponent(turnId)}/commands`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(command),
+  });
 }
 
 /** Soft-delete one durable conversation owned by the signed-in user. */

@@ -10,11 +10,14 @@ vi.mock("@/lib/cloud/client", () => ({ cloud: { json, request } }));
 vi.mock("react-native", () => ({ Platform: { OS: "ios" } }));
 
 import {
+  commandDurableTurn,
   deleteThread,
+  getDurableTurn,
   getLatestThread,
   getThread,
   listThreads,
   runRemixTurn,
+  sendDurableRemixTurn,
 } from "./client";
 
 function responseWithEvents(events: object[]): Response {
@@ -64,6 +67,68 @@ describe("mobile Remix cloud client", () => {
       messages: [],
     });
     expect(json).toHaveBeenCalledWith("/v2/threads/thread-1");
+  });
+
+  it("submits an idempotent durable app turn and reads its server-owned state", async () => {
+    json
+      .mockResolvedValueOnce({
+        turn: {
+          id: "turn-1",
+          threadId: "thread-1",
+          status: "queued",
+          error: null,
+        },
+      })
+      .mockResolvedValueOnce({
+        turn: {
+          id: "turn-1",
+          threadId: "thread-1",
+          status: "completed",
+          error: null,
+        },
+      })
+      .mockResolvedValueOnce({ ok: true });
+
+    await expect(
+      sendDurableRemixTurn({
+        messages: [
+          {
+            id: "user-1",
+            role: "user",
+            parts: [{ type: "text", text: "Write a reply" }],
+          },
+        ],
+        threadId: "thread-1",
+        firstTurn: true,
+        clientRequestId: "turn-retry-safe-1",
+      }),
+    ).resolves.toEqual(expect.objectContaining({ id: "turn-1" }));
+    await expect(getDurableTurn("turn-1")).resolves.toEqual(
+      expect.objectContaining({ status: "completed" }),
+    );
+    await commandDurableTurn("turn-1", {
+      type: "approve",
+      actionId: "action-1",
+    });
+
+    expect(json).toHaveBeenNthCalledWith(
+      1,
+      "/v2/threads/thread-1/turns",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const body = JSON.parse(json.mock.calls[0]?.[1]?.body as string) as {
+      clientRequestId?: string;
+      client?: { platform?: string; supportsConnectorApprovals?: boolean };
+    };
+    expect(body.clientRequestId).toBe("turn-retry-safe-1");
+    expect(body.client?.platform).toMatch(/^(ios|android)$/);
+    expect(body.client?.supportsConnectorApprovals).toBe(true);
+    expect(json).toHaveBeenNthCalledWith(2, "/v2/turns/turn-1");
+    expect(json).toHaveBeenNthCalledWith(
+      3,
+      "/v2/turns/turn-1/commands",
+      expect.objectContaining({ method: "POST" }),
+    );
   });
 
   it("deletes a durable conversation from session management", async () => {

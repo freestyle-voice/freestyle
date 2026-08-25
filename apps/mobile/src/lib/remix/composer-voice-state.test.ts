@@ -17,7 +17,7 @@ describe("Remix composer voice state", () => {
     ).toMatchObject({ action: "listen", label: "Start listening" });
   });
 
-  it("shows the live phrase and lets the user stop recording", () => {
+  it("keeps the text field stable while showing live listening feedback", () => {
     expect(
       remixComposerVoiceState({
         draft: "Write this down",
@@ -28,7 +28,8 @@ describe("Remix composer voice state", () => {
     ).toMatchObject({
       action: "finish-listening",
       label: "Stop listening",
-      value: "and send it tomorrow",
+      value: "Write this down",
+      placeholder: "and send it tomorrow",
     });
   });
 

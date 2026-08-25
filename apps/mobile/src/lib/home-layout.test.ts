@@ -50,4 +50,20 @@ describe("Remix home layout", () => {
     );
     expect(screen).toMatch(/onPress=\{openSidebar\}/);
   });
+
+  it("keeps the system keyboard up while inline voice listening begins", () => {
+    expect(screen).toMatch(
+      /case "listen":[\s\S]*?toggleVoiceInput\(\);[\s\S]*?inputRef\.current\?\.focus\(\)/,
+    );
+    expect(screen).not.toMatch(
+      /function RemixHome[\s\S]*?case "listen":[\s\S]*?Keyboard\.dismiss\(\)/,
+    );
+  });
+
+  it("grows the composer through four lines before enabling its input scroll", () => {
+    expect(screen).toContain("onContentSizeChange={onInputContentSizeChange}");
+    expect(screen).toContain(
+      "scrollEnabled={inputHeight >= REMIX_COMPOSER_MAX_INPUT_HEIGHT}",
+    );
+  });
 });

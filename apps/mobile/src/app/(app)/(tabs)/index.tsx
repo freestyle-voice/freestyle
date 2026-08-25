@@ -43,6 +43,11 @@ import { useTheme } from "@/hooks/use-theme";
 import { useDictation } from "@/lib/audio/use-dictation";
 import { composerBottomPadding } from "@/lib/composer-spacing";
 import {
+  REMIX_COMPOSER_MAX_INPUT_HEIGHT,
+  REMIX_COMPOSER_MIN_INPUT_HEIGHT,
+  remixComposerInputHeight,
+} from "@/lib/remix/composer-sizing";
+import {
   appendVoiceTranscript,
   remixComposerVoiceState,
 } from "@/lib/remix/composer-voice-state";
@@ -374,6 +379,9 @@ function RemixHome({
     loadThread,
   } = thread;
   const [draft, setDraft] = useState("");
+  const [inputHeight, setInputHeight] = useState(
+    REMIX_COMPOSER_MIN_INPUT_HEIGHT,
+  );
   const inputRef = useRef<TextInput>(null);
   const busy = status === "streaming";
   const hasDraft = draft.trim().length > 0;
@@ -422,13 +430,23 @@ function RemixHome({
         break;
       case "listen":
       case "finish-listening":
-        Keyboard.dismiss();
         toggleVoiceInput();
+        // Do not dismiss or swap out the field here. The keyboard remains
+        // available while the microphone streams, just like a native chat
+        // composer, and dictated text appends to the same draft when ready.
+        requestAnimationFrame(() => inputRef.current?.focus());
         break;
       case "waiting-for-transcript":
         break;
     }
   }, [stop, submit, toggleVoiceInput, voiceControl.action]);
+
+  const onInputContentSizeChange = useCallback(
+    ({ nativeEvent }: { nativeEvent: { contentSize: { height: number } } }) => {
+      setInputHeight(remixComposerInputHeight(nativeEvent.contentSize.height));
+    },
+    [],
+  );
 
   return (
     <View
@@ -507,14 +525,18 @@ function RemixHome({
             !(
               pendingApproval &&
               !["approved", "declined"].includes(approvalState)
-            ) &&
-            voiceState === "idle"
+            )
           }
           autoCapitalize="sentences"
-          placeholder="Message Remix"
+          placeholder={voiceControl.placeholder}
           placeholderTextColor={theme.mutedForeground}
           multiline
-          style={[styles.input, { color: theme.foreground }]}
+          scrollEnabled={inputHeight >= REMIX_COMPOSER_MAX_INPUT_HEIGHT}
+          onContentSizeChange={onInputContentSizeChange}
+          style={[
+            styles.input,
+            { color: theme.foreground, height: inputHeight },
+          ]}
         />
         <Pressable
           accessibilityRole="button"

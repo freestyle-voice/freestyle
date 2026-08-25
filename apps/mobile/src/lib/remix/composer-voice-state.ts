@@ -18,14 +18,22 @@ export function remixComposerVoiceState({
   remixBusy,
 }: RemixComposerVoiceInput) {
   if (remixBusy) {
-    return { action: "stop-remix" as const, label: "Stop Remix", value: draft };
+    return {
+      action: "stop-remix" as const,
+      label: "Stop Remix",
+      placeholder: "Message Remix",
+      value: draft,
+    };
   }
 
   if (micState === "recording") {
     return {
       action: "finish-listening" as const,
       label: "Stop listening",
-      value: partial || "Listening…",
+      // Keep the real input value stable so focus stays on the same native
+      // field while the microphone streams.
+      placeholder: partial || "Listening…",
+      value: draft,
     };
   }
 
@@ -33,13 +41,24 @@ export function remixComposerVoiceState({
     return {
       action: "waiting-for-transcript" as const,
       label: "Transcribing voice input",
-      value: "Transcribing…",
+      placeholder: "Transcribing…",
+      value: draft,
     };
   }
 
   if (draft.trim()) {
-    return { action: "send" as const, label: "Send to Remix", value: draft };
+    return {
+      action: "send" as const,
+      label: "Send to Remix",
+      placeholder: "Message Remix",
+      value: draft,
+    };
   }
 
-  return { action: "listen" as const, label: "Start listening", value: "" };
+  return {
+    action: "listen" as const,
+    label: "Start listening",
+    placeholder: "Message Remix",
+    value: "",
+  };
 }

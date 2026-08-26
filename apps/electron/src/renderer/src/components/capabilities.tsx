@@ -29,38 +29,62 @@ export function Capabilities({
   onOpenApps: () => void;
 }): React.JSX.Element {
   const [groups, setGroups] = useState<CapabilityGroup[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [applied, setApplied] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
-    void apiFetch("/api/suggestions/capabilities")
-      .then(async (res) =>
-        res.ok
-          ? ((await res.json()) as { groups: CapabilityGroup[] }).groups
-          : [],
-      )
-      .catch(() => [])
-      .then((next) => {
+    if (loadAttempt > 0) setLoadFailed(false);
+    void (async () => {
+      try {
+        const res = await apiFetch("/api/suggestions/capabilities");
+        if (!res.ok)
+          throw new Error(`capabilities fetch failed: ${res.status}`);
+        const payload = (await res.json()) as { groups?: unknown };
+        if (!Array.isArray(payload.groups)) {
+          throw new Error("capabilities response did not include groups");
+        }
+        if (cancelled) return;
+        const next = payload.groups as CapabilityGroup[];
         if (cancelled) return;
         setGroups(next);
+        setLoadFailed(false);
         capture("capabilities_opened", {
           groups: next.map((group) => group.id),
           items: next.reduce((total, group) => total + group.items.length, 0),
         });
-      });
+      } catch {
+        if (cancelled) return;
+        setLoadFailed(true);
+      }
+    })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadAttempt]);
 
-  if (groups === null) return <div className="tavern-empty">Loading…</div>;
-  if (groups.length === 0)
+  if (loadFailed)
     return (
-      <div className="tavern-empty">
-        Couldn't load this right now. Ask in chat instead.
+      <div className="tavern-empty" role="alert">
+        <p>Couldn&apos;t load the available shortcuts.</p>
+        <button
+          type="button"
+          className="tavern-retry"
+          onClick={() => {
+            setGroups(null);
+            setLoadFailed(false);
+            setLoadAttempt((attempt) => attempt + 1);
+          }}
+        >
+          Try again
+        </button>
       </div>
     );
+  if (groups === null) return <div className="tavern-empty">Loading…</div>;
+  if (groups.length === 0)
+    return <div className="tavern-empty">No shortcuts are available yet.</div>;
 
   const run = (item: CapabilityItem): void => {
     captureSuggestion("accepted", "capability", { id: item.id });

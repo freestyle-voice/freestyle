@@ -468,7 +468,7 @@ export function ScheduledTasks({
       {refreshFailed}
       {runNotices(tasks.map((t) => t.id))}
       {tasks.length === 0 ? (
-        <div className="tavern-empty">
+        <div className="tavern-empty tavern-sched-empty">
           Nothing scheduled. Ask {mascot} to do something regularly — "check the
           stocks every weekday morning" — and it lands here.
         </div>
@@ -509,7 +509,7 @@ export function ScheduledTasks({
       )}
       <button
         type="button"
-        className="tavern-file-new"
+        className="tavern-file-new tavern-sched-new"
         onClick={() => setView({ kind: "create", draft: emptyDraft() })}
       >
         ＋ New scheduled task

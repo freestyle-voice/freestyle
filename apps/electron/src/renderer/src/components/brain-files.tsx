@@ -328,42 +328,51 @@ export function BrainFiles({
           {...(onOpenThread ? { onOpenThread } : {})}
         />
       ) : null}
-      {filesQuery.isLoading ? (
-        <DataSkeleton label="Loading Brain files" />
-      ) : filesQuery.isError ? (
-        <div className="tavern-empty">
-          <p>Couldn&apos;t load Brain files.</p>
-          <button type="button" onClick={() => void filesQuery.refetch()}>
-            Try again
-          </button>
-        </div>
-      ) : files.length === 0 ? (
-        <div className="tavern-empty">{emptyText}</div>
-      ) : (
-        <div className="tavern-tree">
-          <FileTree
-            dir={buildTree(files)}
-            depth={0}
-            collapsed={collapsed}
-            onToggle={(path) =>
-              setCollapsed((prev) => {
-                const next = new Set(prev);
-                if (next.has(path)) next.delete(path);
-                else next.add(path);
-                return next;
-              })
-            }
-            onOpen={openFile}
-          />
-        </div>
-      )}
-      <button
-        type="button"
-        className="tavern-file-new"
-        onClick={() => setView({ kind: "create", name: "", draft: "" })}
+      <section
+        className={`tavern-brain-files${scheduled ? " has-scheduled" : ""}`}
+        aria-label="Brain files"
       >
-        ＋ {newLabel}
-      </button>
+        <div className="tavern-brain-files-head">
+          <span>Files</span>
+          {filesQuery.isSuccess ? <em>{files.length}</em> : null}
+        </div>
+        {filesQuery.isLoading ? (
+          <DataSkeleton label="Loading Brain files" />
+        ) : filesQuery.isError ? (
+          <div className="tavern-empty">
+            <p>Couldn&apos;t load Brain files.</p>
+            <button type="button" onClick={() => void filesQuery.refetch()}>
+              Try again
+            </button>
+          </div>
+        ) : files.length === 0 ? (
+          <div className="tavern-empty">{emptyText}</div>
+        ) : (
+          <div className="tavern-tree">
+            <FileTree
+              dir={buildTree(files)}
+              depth={0}
+              collapsed={collapsed}
+              onToggle={(path) =>
+                setCollapsed((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(path)) next.delete(path);
+                  else next.add(path);
+                  return next;
+                })
+              }
+              onOpen={openFile}
+            />
+          </div>
+        )}
+        <button
+          type="button"
+          className="tavern-file-new"
+          onClick={() => setView({ kind: "create", name: "", draft: "" })}
+        >
+          + {newLabel}
+        </button>
+      </section>
     </>
   );
 }

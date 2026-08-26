@@ -28,6 +28,24 @@ import {
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 
+function SearchIcon(): React.JSX.Element {
+  return (
+    <svg
+      className="connector-search-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <circle cx="10.8" cy="10.8" r="5.8" />
+      <path d="m15.2 15.2 4 4" />
+    </svg>
+  );
+}
+
 export function ConnectorLogo({
   name,
   logo,
@@ -609,7 +627,8 @@ export function ConnectedApps({
     connect(toolkit);
   };
 
-  const searching = search.length > 0;
+  const searching = query.trim().length > 0;
+  const searchPending = searching && search !== query.trim();
 
   const [loadMoreEl, setLoadMoreEl] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -637,10 +656,12 @@ export function ConnectedApps({
     searching,
   ]);
 
+  // Present the directory as one coherent surface rather than letting each
+  // source shift the page as it happens to arrive.
   const initialLoading =
-    (suggestedQuery.isLoading || connectionsQuery.isLoading) &&
-    connectedItems.length === 0 &&
-    suggested.length === 0;
+    connectionsQuery.isLoading ||
+    suggestedQuery.isLoading ||
+    browseQuery.isLoading;
   const error =
     actionError ??
     connectError ??
@@ -688,9 +709,16 @@ export function ConnectedApps({
     ));
 
   return (
-    <section className="connected-apps" aria-busy={browseQuery.isFetching}>
+    <section
+      className="connected-apps"
+      aria-busy={
+        connectionsQuery.isFetching ||
+        suggestedQuery.isFetching ||
+        browseQuery.isFetching
+      }
+    >
       <label className="connector-search" htmlFor="connector-search">
-        <span aria-hidden="true">⌕</span>
+        <SearchIcon />
         <input
           id="connector-search"
           aria-label="Search all apps"
@@ -742,7 +770,7 @@ export function ConnectedApps({
             <span>Results</span>
             <em>{searchResults.length}</em>
           </div>
-          {searchQuery.isLoading ? (
+          {searchPending || searchQuery.isLoading ? (
             <ConnectedAppsSkeleton />
           ) : searchResults.length > 0 ? (
             <>

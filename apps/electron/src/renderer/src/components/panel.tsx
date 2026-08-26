@@ -10,7 +10,11 @@ import { Markdown } from "@renderer/components/markdown";
 import { NotesTab } from "@renderer/components/notes-tab";
 import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
 import { OpenerCards } from "@renderer/components/opener-cards";
-import { SettingsView } from "@renderer/components/settings-view";
+import {
+  SETTINGS_PAGE_TITLES,
+  type SettingsPage,
+  SettingsView,
+} from "@renderer/components/settings-view";
 import { Spark } from "@renderer/components/spark";
 import { ThreadHistory } from "@renderer/components/thread-history";
 import { TodosTab } from "@renderer/components/todos-tab";
@@ -58,18 +62,10 @@ import {
   type ToolPhase,
   toolPresentation,
 } from "@renderer/lib/tool-presentation";
-import {
-  compactActivitySummary,
-  workspaceNavigationMode,
-} from "@renderer/lib/workspace-navigation";
+import { compactActivitySummary } from "@renderer/lib/workspace-navigation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
-import {
-  PANEL_MAX_WIDTH,
-  PANEL_MIN_WIDTH,
-  PANEL_TABS,
-  type PanelTab,
-} from "@shared/panel";
+import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, type PanelTab } from "@shared/panel";
 import { SPRITES_INFO } from "@shared/sprites";
 import {
   QueryClientProvider,
@@ -85,16 +81,9 @@ import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-const TAB_LABELS: Record<PanelTab, string> = {
-  chat: "Chat",
-  history: "History",
-  todos: "Todos",
-  notes: "Notes",
-  brain: "Brain",
-  apps: "Apps",
-};
+type WorkspaceView = PanelTab;
 
-const TAB_PLACEHOLDER: Record<PanelTab, string> = {
+const TAB_PLACEHOLDER: Record<WorkspaceView, string> = {
   chat: "Ask anything, or point at something on screen.",
   history: "Past conversations land here — pick one to continue it.",
   todos: "Nothing to do yet.",
@@ -104,99 +93,70 @@ const TAB_PLACEHOLDER: Record<PanelTab, string> = {
   apps: "Connect the apps you live in, and Freestyle can work them for you.",
 };
 
-const SECONDARY_TABS = PANEL_TABS.filter(
-  (tab): tab is Exclude<PanelTab, "chat" | "history"> =>
-    tab !== "chat" && tab !== "history",
-);
+type WorkspaceIconName =
+  | "history"
+  | "settings"
+  | "close"
+  | "plus"
+  | "send"
+  | "stop";
+const WORKSPACE_VIEW_LABELS: Record<WorkspaceView, string> = {
+  chat: "Chat",
+  history: "History",
+  todos: "Tasks",
+  notes: "Notes",
+  brain: "Brain",
+  apps: "Apps",
+};
 
-function useWorkspaceNavigationMode(): "rail" | "drawer" {
-  const [mode, setMode] = useState(() =>
-    workspaceNavigationMode(window.innerWidth),
-  );
+const WORKSPACE_TOP_VIEWS: WorkspaceView[] = [
+  "chat",
+  "history",
+  "todos",
+  "notes",
+  "brain",
+  "apps",
+];
 
-  useEffect(() => {
-    const update = (): void =>
-      setMode(workspaceNavigationMode(window.innerWidth));
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-
-  return mode;
-}
-
-function WorkspaceDrawer({
-  title,
-  onClose,
-  children,
+/** A small, consistent icon set for the compact workspace controls. */
+function WorkspaceIcon({
+  name,
 }: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
+  name: WorkspaceIconName;
 }): React.JSX.Element {
-  const closeRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    closeRef.current?.focus();
-  }, []);
+  const paths: Record<WorkspaceIconName, React.ReactNode> = {
+    history: (
+      <>
+        <path d="M4.5 8.5A8 8 0 1 1 4 13" />
+        <path d="M4 4v4.5h4.5M12 7.5V12l3 2" />
+      </>
+    ),
+    settings: (
+      <>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.68 2.68-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-3.8v-.09a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.68-2.68.06-.06A1.7 1.7 0 0 0 5.12 15a1.7 1.7 0 0 0-1.56-1.03H3.5v-3.8h.06A1.7 1.7 0 0 0 5.12 9.14a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.68-2.68.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56V3.3h3.8v.06a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.68 2.68-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.09v3.8h-.09A1.7 1.7 0 0 0 19.4 15Z" />
+      </>
+    ),
+    close: <path d="m7 7 10 10M17 7 7 17" />,
+    plus: <path d="M12 5v14M5 12h14" />,
+    send: <path d="M12 18V6m0 0-4 4m4-4 4 4" />,
+    stop: <rect x="7.5" y="7.5" width="9" height="9" rx="1.2" />,
+  };
 
   return (
-    <div className="tavern-workspace-drawer-layer">
-      <button
-        type="button"
-        className="tavern-workspace-drawer-scrim"
-        aria-label={`Close ${title.toLowerCase()}`}
-        onClick={onClose}
-      />
-      <aside
-        className="tavern-workspace-drawer"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          event.stopPropagation();
-          onClose();
-        }}
-      >
-        <div className="tavern-workspace-drawer-head">
-          <span>{title}</span>
-          <button
-            ref={closeRef}
-            type="button"
-            className="tavern-close"
-            aria-label={`Close ${title.toLowerCase()}`}
-            onClick={onClose}
-          >
-            ×
-          </button>
-        </div>
-        <div className="tavern-workspace-drawer-body">{children}</div>
-      </aside>
-    </div>
-  );
-}
-
-function SecondaryNavigation({
-  active,
-  onSelect,
-}: {
-  active: PanelTab;
-  onSelect: (tab: Exclude<PanelTab, "chat" | "history">) => void;
-}): React.JSX.Element {
-  return (
-    <nav className="tavern-secondary-nav" aria-label="Workspace tools">
-      <span className="tavern-label">Workspace</span>
-      {SECONDARY_TABS.map((tab) => (
-        <button
-          key={tab}
-          type="button"
-          className={`tavern-secondary-nav-item${active === tab ? " is-active" : ""}`}
-          onClick={() => onSelect(tab)}
-        >
-          {TAB_LABELS[tab]}
-        </button>
-      ))}
-    </nav>
+    <svg
+      className="tavern-workspace-icon"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+      focusable="false"
+    >
+      {paths[name]}
+    </svg>
   );
 }
 
@@ -806,7 +766,7 @@ function SignInGate(): React.JSX.Element {
         aria-label="Close"
         onClick={() => window.api.panelClose()}
       >
-        ×
+        <WorkspaceIcon name="close" />
       </button>
       <div className="tavern-gate-body">
         <div className="tavern-gate-lockup">
@@ -909,9 +869,7 @@ function PanelRoot(): React.JSX.Element {
   }, [latestQuery.data, latestQuery.isPending]);
 
   if (!thread) return <div className="tavern tavern-panel" />;
-  return (
-    <PanelInner key={thread.id} thread={thread} onSwitchThread={switchThread} />
-  );
+  return <PanelInner thread={thread} onSwitchThread={switchThread} />;
 }
 
 function PanelNotificationAuthBridge({
@@ -937,12 +895,7 @@ function PanelInner({
   thread: ThreadState;
   onSwitchThread: (thread: ThreadState) => void;
 }): React.JSX.Element {
-  const [tab, setTab] = useState<PanelTab>("chat");
-  const navigationMode = useWorkspaceNavigationMode();
-  const [railCollapsed, setRailCollapsed] = useState(false);
-  const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
-  const [activityDrawerOpen, setActivityDrawerOpen] = useState(false);
-  const [workspaceDrawerOpen, setWorkspaceDrawerOpen] = useState(false);
+  const [tab, setTab] = useState<WorkspaceView>("chat");
   const queryClient = useQueryClient();
   const auth = useCloudAuth();
   const onboarding = useOnboarding(!!auth.user);
@@ -985,6 +938,7 @@ function PanelInner({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<SettingsPage>("root");
   const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dictationBaseRef = useRef<string | null>(null);
@@ -1084,6 +1038,24 @@ function PanelInner({
     },
   });
 
+  const resetThreadRef = useRef(thread.id);
+  useEffect(() => {
+    if (resetThreadRef.current === thread.id) return;
+    resetThreadRef.current = thread.id;
+    setTab("chat");
+    setDraft("");
+    setNotice(null);
+    setApprovals([]);
+    setCopiedMessageId(null);
+    setEditingMessageId(null);
+    setEditDraft("");
+    setSettingsOpen(false);
+    setSettingsPage("root");
+    setCapabilitiesOpen(false);
+    dictationBaseRef.current = null;
+    dictatedRef.current = false;
+  }, [thread.id]);
+
   useEffect(() => {
     if (status === "submitted" || status === "streaming") return;
     if (thread.messages.length > messages.length) setMessages(thread.messages);
@@ -1096,6 +1068,12 @@ function PanelInner({
   }, [durableRuntime.data?.thread, messages.length, setMessages, status]);
 
   const startedRef = useRef(thread.messages.length > 0);
+  const startedThreadRef = useRef(thread.id);
+  useEffect(() => {
+    if (startedThreadRef.current === thread.id) return;
+    startedThreadRef.current = thread.id;
+    startedRef.current = thread.messages.length > 0;
+  }, [thread.id, thread.messages.length]);
   useEffect(() => {
     if (startedRef.current || messages.length === 0) return;
     startedRef.current = true;
@@ -1404,21 +1382,19 @@ function PanelInner({
 
   const chatActive = tab === "chat";
   const showChat = chatActive && messages.length > 0;
-  const selectSecondary = (
-    next: Exclude<PanelTab, "chat" | "history">,
-  ): void => {
-    capture("panel_tab_opened", { tab: next });
+  const startNewChat = (): void => {
+    setTab("chat");
     setSettingsOpen(false);
+    setSettingsPage("root");
     setCapabilitiesOpen(false);
-    setWorkspaceDrawerOpen(false);
-    setTab(next);
-  };
-  const openHistory = (): void => {
-    if (navigationMode === "rail") {
-      setRailCollapsed((collapsed) => !collapsed);
-      return;
-    }
-    setHistoryDrawerOpen(true);
+    setDraft("");
+    setNotice(null);
+    dictationBaseRef.current = null;
+    dictatedRef.current = false;
+    onSwitchThread(newThread());
+    requestAnimationFrame(() =>
+      document.getElementById("panel-composer")?.focus(),
+    );
   };
 
   // Signed out, the gate is the entire panel — no head, no tabs, no way to
@@ -1475,23 +1451,6 @@ function PanelInner({
     <div className="tavern-shell">
       <div className="tavern tavern-panel">
         <div className="tavern-head tavern-workspace-head">
-          <button
-            type="button"
-            className="tavern-workspace-icon-btn"
-            aria-label={
-              navigationMode === "rail"
-                ? railCollapsed
-                  ? "Show conversation history"
-                  : "Collapse conversation history"
-                : "Open conversation history"
-            }
-            aria-expanded={
-              navigationMode === "rail" ? !railCollapsed : historyDrawerOpen
-            }
-            onClick={openHistory}
-          >
-            ☰
-          </button>
           <SpriteBadge form={spriteForm} working={busy} size={22} />
           <span className="tavern-head-name">
             freestyle<i>.</i>
@@ -1528,21 +1487,26 @@ function PanelInner({
           ) : null}
           <button
             type="button"
-            className="tavern-head-new"
-            title="New conversation"
+            className="tavern-workspace-icon-btn"
+            aria-label="Start new chat"
+            title="New chat"
             disabled={pinned}
-            onClick={() => onSwitchThread(newThread())}
+            onClick={startNewChat}
           >
-            ＋ New chat
+            <WorkspaceIcon name="plus" />
           </button>
           <button
             type="button"
             className="tavern-workspace-icon-btn"
-            aria-label="Open activity"
-            aria-expanded={activityDrawerOpen}
-            onClick={() => setActivityDrawerOpen(true)}
+            aria-label="Open conversations"
+            aria-pressed={tab === "history"}
+            onClick={() => {
+              setSettingsOpen(false);
+              setSettingsPage("root");
+              setTab("history");
+            }}
           >
-            ◷
+            <WorkspaceIcon name="history" />
           </button>
           <button
             type="button"
@@ -1551,10 +1515,13 @@ function PanelInner({
             aria-pressed={settingsOpen}
             onClick={() => {
               setCapabilitiesOpen(false);
-              setSettingsOpen((open) => !open);
+              setSettingsOpen((open) => {
+                if (open) setSettingsPage("root");
+                return !open;
+              });
             }}
           >
-            ⚙
+            <WorkspaceIcon name="settings" />
           </button>
           <button
             type="button"
@@ -1562,50 +1529,59 @@ function PanelInner({
             aria-label="Close"
             onClick={() => window.api.panelClose()}
           >
-            ×
+            <WorkspaceIcon name="close" />
           </button>
         </div>
         <div className="tavern-workspace">
-          {navigationMode === "rail" && !railCollapsed ? (
-            <aside
-              className="tavern-history-rail"
-              aria-label="Conversation history"
-            >
-              <button
-                type="button"
-                className="tavern-history-new"
-                disabled={pinned}
-                onClick={() => onSwitchThread(newThread())}
-              >
-                ＋ New chat
-              </button>
-              <div className="tavern-history-rail-list">
-                <ThreadHistory
-                  currentId={thread.id}
-                  onPick={(picked) => {
-                    setTab("chat");
-                    if (picked.id !== thread.id) onSwitchThread(picked);
-                  }}
-                />
-              </div>
-              <SecondaryNavigation active={tab} onSelect={selectSecondary} />
-            </aside>
-          ) : null}
           <div className="tavern-workspace-main">
-            <div className="tavern-workspace-mobile-tools">
-              <button type="button" onClick={openHistory}>
-                Conversations
-              </button>
-              <button type="button" onClick={() => setActivityDrawerOpen(true)}>
-                Activity
-              </button>
-              <button
-                type="button"
-                onClick={() => setWorkspaceDrawerOpen(true)}
+            {settingsOpen ? (
+              <div className="tavern-settings-context">
+                <div className="tavern-settings-context-path">
+                  {settingsPage === "root" ? (
+                    <span>Settings</span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setSettingsPage("root")}
+                      >
+                        Settings
+                      </button>
+                      <span aria-hidden="true">/</span>
+                      <strong>{SETTINGS_PAGE_TITLES[settingsPage]}</strong>
+                    </>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(false);
+                    setSettingsPage("root");
+                  }}
+                >
+                  Done
+                </button>
+              </div>
+            ) : (
+              <nav
+                className="tavern-workspace-mobile-tools"
+                aria-label="Workspace"
               >
-                Workspace
-              </button>
-            </div>
+                {WORKSPACE_TOP_VIEWS.map((view) => (
+                  <button
+                    key={view}
+                    type="button"
+                    role="tab"
+                    aria-selected={tab === view}
+                    onClick={() => setTab(view)}
+                  >
+                    {view === "history"
+                      ? "Conversations"
+                      : WORKSPACE_VIEW_LABELS[view]}
+                  </button>
+                ))}
+              </nav>
+            )}
             <div
               className="tavern-body tavern-conversation"
               role="tabpanel"
@@ -1634,9 +1610,11 @@ function PanelInner({
                 </>
               ) : settingsOpen ? (
                 <SettingsView
-                  onClose={() => setSettingsOpen(false)}
+                  page={settingsPage}
+                  onPageChange={setSettingsPage}
                   onOpenThread={(threadId) => {
                     setSettingsOpen(false);
+                    setSettingsPage("root");
                     setTab("chat");
                     void openThreadById(threadId).then((picked) => {
                       if (picked) onSwitchThread(picked);
@@ -1649,6 +1627,14 @@ function PanelInner({
                   onReplayIntro={() => {
                     setSettingsOpen(false);
                     onboarding.replay();
+                  }}
+                />
+              ) : tab === "history" ? (
+                <ThreadHistory
+                  currentId={thread.id}
+                  onPick={(picked) => {
+                    setTab("chat");
+                    if (picked.id !== thread.id) onSwitchThread(picked);
                   }}
                 />
               ) : tab === "apps" ? (
@@ -1840,63 +1826,13 @@ function PanelInner({
                   title={action === "stop" ? "Stop generating" : "Send"}
                   onClick={action === "stop" ? stopGeneration : send}
                 >
-                  {action === "stop" ? "■" : "↑"}
+                  <WorkspaceIcon name={action === "stop" ? "stop" : "send"} />
                 </button>
               </div>
             ) : null}
           </div>
         </div>
       </div>
-      {navigationMode === "drawer" && historyDrawerOpen ? (
-        <WorkspaceDrawer
-          title="Conversations"
-          onClose={() => setHistoryDrawerOpen(false)}
-        >
-          <button
-            type="button"
-            className="tavern-history-new"
-            disabled={pinned}
-            onClick={() => {
-              setHistoryDrawerOpen(false);
-              onSwitchThread(newThread());
-            }}
-          >
-            ＋ New chat
-          </button>
-          <ThreadHistory
-            currentId={thread.id}
-            onPick={(picked) => {
-              setHistoryDrawerOpen(false);
-              setTab("chat");
-              if (picked.id !== thread.id) onSwitchThread(picked);
-            }}
-          />
-        </WorkspaceDrawer>
-      ) : null}
-      {activityDrawerOpen ? (
-        <WorkspaceDrawer
-          title="Activity"
-          onClose={() => setActivityDrawerOpen(false)}
-        >
-          <ThreadHistory
-            currentId={thread.id}
-            initialOrigin="scheduled"
-            onPick={(picked) => {
-              setActivityDrawerOpen(false);
-              setTab("chat");
-              if (picked.id !== thread.id) onSwitchThread(picked);
-            }}
-          />
-        </WorkspaceDrawer>
-      ) : null}
-      {workspaceDrawerOpen ? (
-        <WorkspaceDrawer
-          title="Workspace"
-          onClose={() => setWorkspaceDrawerOpen(false)}
-        >
-          <SecondaryNavigation active={tab} onSelect={selectSecondary} />
-        </WorkspaceDrawer>
-      ) : null}
       <PanelTail />
       <PanelResizeHandle />
     </div>

@@ -38,7 +38,6 @@ export default function NotificationsScreen() {
     queryKey: ["agent-notification-history"],
     queryFn: listNotificationHistory,
     retry: 1,
-    refetchInterval: 30_000,
   });
   const invalidate = () =>
     void Promise.all([

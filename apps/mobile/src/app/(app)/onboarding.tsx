@@ -6,6 +6,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import {
+  Bell,
   Check,
   ClipboardCheck,
   Keyboard,
@@ -24,6 +25,7 @@ import { useTheme } from "@/hooks/use-theme";
 import type { MicPermission } from "@/lib/audio/recorder";
 import { useMicPermission } from "@/lib/audio/use-mic-permission";
 import { type CloudConfig, fetchCloudConfig } from "@/lib/cloud/cloud-config";
+import { registerExpoPush } from "@/lib/cloud/notifications";
 import {
   type KeyboardStatus,
   useKeyboardStatus,
@@ -59,6 +61,9 @@ export default function OnboardingScreen() {
   const [step, setStep] = useState<0 | 1 | 2>(0);
   const { status: micStatus, request: requestMic } = useMicPermission();
   const { status: keyboardStatus } = useKeyboardStatus();
+  const [pushStatus, setPushStatus] = useState<
+    "idle" | "granted" | "denied" | "unavailable"
+  >("idle");
   // Warm the regional language suggestions while the permission screen is
   // visible so the picker does not reshuffle after the user reaches it.
   const { data: cloudConfig } = useQuery({
@@ -73,6 +78,18 @@ export default function OnboardingScreen() {
     // If already denied, the prompt won't show again — send them to Settings.
     if (status === "denied") void Linking.openSettings();
   }, [requestMic]);
+
+  const grantPush = useCallback(async () => {
+    try {
+      if (pushStatus === "denied") {
+        await Linking.openSettings();
+        return;
+      }
+      setPushStatus(await registerExpoPush());
+    } catch {
+      setPushStatus("unavailable");
+    }
+  }, [pushStatus]);
 
   const complete = useCallback(() => {
     finish();
@@ -126,6 +143,8 @@ export default function OnboardingScreen() {
               micStatus={micStatus}
               onGrantMic={grantMic}
               keyboardStatus={keyboardStatus}
+              pushStatus={pushStatus}
+              onGrantPush={grantPush}
               theme={theme}
             />
           ) : step === 1 ? (
@@ -168,11 +187,15 @@ function StepPermissions({
   micStatus,
   onGrantMic,
   keyboardStatus,
+  pushStatus,
+  onGrantPush,
   theme,
 }: {
   micStatus: MicPermission;
   onGrantMic: () => void;
   keyboardStatus: KeyboardStatus;
+  pushStatus: "idle" | "granted" | "denied" | "unavailable";
+  onGrantPush: () => void;
   theme: ReturnType<typeof useTheme>;
 }) {
   const keyboardReady = keyboardStatus === "ready";
@@ -213,6 +236,46 @@ function StepPermissions({
           </ThemedText>
         </View>
         {micStatus === "granted" ? (
+          <Check color={theme.primary} size={18} />
+        ) : (
+          <View style={[styles.setupPill, { borderColor: theme.primary }]}>
+            <ThemedText style={[styles.setupText, { color: theme.primary }]}>
+              Setup
+            </ThemedText>
+          </View>
+        )}
+      </Pressable>
+
+      <Pressable
+        onPress={onGrantPush}
+        disabled={pushStatus === "granted"}
+        style={[
+          styles.micRow,
+          {
+            borderColor:
+              pushStatus === "granted" ? theme.primary : theme.border,
+          },
+        ]}
+      >
+        <Bell
+          color={
+            pushStatus === "granted" ? theme.primary : theme.mutedForeground
+          }
+          size={18}
+        />
+        <View style={styles.switchLabel}>
+          <ThemedText style={styles.rowLabel}>Remix updates</ThemedText>
+          <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
+            {pushStatus === "granted"
+              ? "Get useful Remix updates on all your devices."
+              : pushStatus === "denied"
+                ? "Denied — you can turn this on later in Settings."
+                : pushStatus === "unavailable"
+                  ? "Available after installing the Freestyle dev or production build."
+                  : "Get notified when Remix finds something worth seeing."}
+          </ThemedText>
+        </View>
+        {pushStatus === "granted" ? (
           <Check color={theme.primary} size={18} />
         ) : (
           <View style={[styles.setupPill, { borderColor: theme.primary }]}>

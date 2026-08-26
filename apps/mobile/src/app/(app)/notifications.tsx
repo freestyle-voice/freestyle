@@ -32,11 +32,13 @@ export default function NotificationsScreen() {
     queryKey: ["agent-notifications"],
     queryFn: listNotifications,
     retry: 1,
+    refetchInterval: 30_000,
   });
   const { data: history = [] } = useQuery({
     queryKey: ["agent-notification-history"],
     queryFn: listNotificationHistory,
     retry: 1,
+    refetchInterval: 30_000,
   });
   const invalidate = () =>
     void Promise.all([

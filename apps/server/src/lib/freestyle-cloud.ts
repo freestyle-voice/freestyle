@@ -451,6 +451,38 @@ export async function postProcessWithFreestyleCloud(opts: {
 }
 
 /**
+ * Exchange the server-owned Freestyle Cloud session for a short-lived,
+ * user-scoped Courier Inbox JWT. The Cloud bearer token never crosses the
+ * embedded-server boundary into an Electron renderer.
+ */
+export async function fetchCourierInboxToken(token: string): Promise<string> {
+  const res = await fetch(`${freestyleCloudUrl()}/v2/notifications/token`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (res.status === 401) {
+    throw new FreestyleCloudAuthError("Freestyle Cloud session expired");
+  }
+  if (!res.ok) {
+    throw new FreestyleCloudRequestError(
+      res.status,
+      "Courier notification token fetch failed",
+    );
+  }
+  const payload = (await res.json().catch(() => null)) as {
+    token?: unknown;
+  } | null;
+  if (!payload || typeof payload.token !== "string" || !payload.token) {
+    throw new FreestyleCloudRequestError(
+      502,
+      "Courier notification token response was invalid",
+    );
+  }
+  return payload.token;
+}
+
+/**
  * Fetch the current usage balance from Freestyle Cloud.
  * Returns remaining credits, limit, total consumed, and window reset time.
  *
@@ -459,65 +491,6 @@ export async function postProcessWithFreestyleCloud(opts: {
  * on the next poll instead of after the cache TTL. Regular reads omit it and
  * get the cached (fast) path.
  */
-export interface CloudNotificationDto {
-  id: string;
-  kind: "thread" | "info";
-  title: string;
-  body: string;
-  payload: { threadId?: string; messages?: unknown[]; url?: string } | null;
-  createdAt: number;
-  expiresAt: number | null;
-}
-
-export interface CloudNotificationsResult {
-  changed: boolean;
-  etag: string | null;
-  notifications: CloudNotificationDto[];
-}
-
-export async function fetchCloudNotifications(
-  token: string,
-  etag: string | null,
-): Promise<CloudNotificationsResult> {
-  const res = await fetch(`${freestyleCloudUrl()}/v2/notifications`, {
-    headers: {
-      authorization: `Bearer ${token}`,
-      ...(etag ? { "if-none-match": etag } : {}),
-    },
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (res.status === 304) return { changed: false, etag, notifications: [] };
-  if (res.status === 401) {
-    throw new FreestyleCloudAuthError("Freestyle Cloud session expired");
-  }
-  if (!res.ok) {
-    throw new FreestyleCloudRequestError(
-      res.status,
-      "notification fetch failed",
-    );
-  }
-
-  const data = (await res.json()) as { notifications?: CloudNotificationDto[] };
-  return {
-    changed: true,
-    etag: res.headers.get("etag"),
-    notifications: data.notifications ?? [],
-  };
-}
-
-export async function postCloudNotificationAction(
-  token: string,
-  id: string,
-  action: "dismiss" | "open",
-): Promise<void> {
-  await cloudJson<{ ok: boolean }>(
-    `/v2/notifications/${encodeURIComponent(id)}/${action}`,
-    token,
-    { method: "POST" },
-  );
-}
-
 export async function fetchCloudUsage(
   token: string,
   opts: { fresh?: boolean } = {},

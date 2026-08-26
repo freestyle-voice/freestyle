@@ -155,21 +155,34 @@ const api = {
     ipcRenderer.on("panel:focus-composer", handler);
     return () => ipcRenderer.removeListener("panel:focus-composer", handler);
   },
-  notificationsList: (): Promise<unknown[]> =>
-    ipcRenderer.invoke("notifications:list"),
-  notificationDismiss: (id: string): void =>
-    ipcRenderer.send("notifications:dismiss", id),
-  notificationOpen: (id: string): void =>
-    ipcRenderer.send("notifications:open", id),
+  notificationPresent: (payload: {
+    messageId: string;
+    title: string;
+    body: string;
+  }): void => ipcRenderer.send("notifications:present", payload),
+  notificationSetVisible: (visible: boolean): void =>
+    ipcRenderer.send("notifications:set-visible", visible),
   notificationSetHeight: (height: number): void =>
     ipcRenderer.send("notifications:set-height", height),
-  onNotificationsChanged: (callback: () => void): (() => void) => {
+  notificationOpenThread: (threadId: string): void =>
+    ipcRenderer.send("notifications:open-thread", threadId),
+  notificationAuthChanged: (): void =>
+    ipcRenderer.send("notifications:auth-changed"),
+  onNotificationAuthChanged: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
-    ipcRenderer.on("notifications:changed", handler);
-    return () => ipcRenderer.removeListener("notifications:changed", handler);
+    ipcRenderer.on("notifications:auth-changed", handler);
+    return () =>
+      ipcRenderer.removeListener("notifications:auth-changed", handler);
   },
-  agentTurnFinished: (payload: { threadId: string; excerpt: string }): void =>
-    ipcRenderer.send("agent:turn-finished", payload),
+  onNotificationNativeClick: (
+    callback: (messageId: string) => void,
+  ): (() => void) => {
+    const handler = (_event: unknown, messageId: string): void =>
+      callback(messageId);
+    ipcRenderer.on("notifications:native-click", handler);
+    return () =>
+      ipcRenderer.removeListener("notifications:native-click", handler);
+  },
   onPanelOpenThread: (callback: (threadId: string) => void): (() => void) => {
     const handler = (_e: unknown, threadId: string): void => callback(threadId);
     ipcRenderer.on("panel:open-thread", handler);

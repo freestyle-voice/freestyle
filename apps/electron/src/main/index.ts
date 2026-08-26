@@ -122,6 +122,7 @@ import { SPRITES_INFO } from "../shared/sprites";
 import { registerAgentFileIpc } from "./agent-files";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
+import { CourierNativeNotificationPresenter } from "./courier-native-notifications";
 import { HotkeyRecorder } from "./hotkey-recorder";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
@@ -129,13 +130,10 @@ import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { getNativeBinaryPath } from "./native-binary";
 import {
-  notificationStreamUrl,
-  startNotificationStream,
-} from "./notification-stream";
-import {
+  createNotificationWindow,
   hideNotifications,
   initNotificationWindow,
-  notifyRendererChanged,
+  notificationWindow,
   setNotificationHeight,
   setTravelling,
   showNotifications,
@@ -452,8 +450,8 @@ function getServerBaseUrl(): string {
 function broadcastServerChanged(): void {
   panelWindow?.webContents.send("server:changed");
   companionWindow?.webContents.send("server:changed");
+  notificationWindow()?.webContents.send("server:changed");
   invalidatePluginViews();
-  if (stopNotificationStream) restartNotificationStream();
 }
 
 function broadcastUpdateStatus(): void {
@@ -2002,7 +2000,9 @@ app.whenReady().then(async () => {
       return { x: b.x, y: b.y, width: b.width };
     },
   });
-  startNotificationEvents();
+  // The hidden renderer owns Courier's real-time Inbox connection and asks
+  // main to show the window only while unopened messages exist.
+  createNotificationWindow();
 
   // A signed-out launch surfaces the panel unprompted: the sign-in gate is
   // the whole product until there's a session, and a first-time user doesn't
@@ -3185,204 +3185,81 @@ ipcMain.on("sprite:event", (event, ev: unknown) => {
   }
 });
 
-const NOTIFICATION_FALLBACK_POLL_MS = 120_000;
-let notificationFallbackPollTimer: NodeJS.Timeout | null = null;
-let stopNotificationStream: (() => void) | null = null;
 let notificationsShowing = false;
-const notifiedIds = new Map<string, number>();
-const activeNotifications = new Map<string, Notification>();
 
-interface DesktopNotification {
-  id: string;
-  origin: "cloud" | "local";
-  kind: "thread" | "info";
-  title: string;
-  body: string;
-  createdAt: number;
-  seenAt: number | null;
-}
+const courierNativeNotifications = new CourierNativeNotificationPresenter(
+  (title, body, onClick) => {
+    if (!Notification.isSupported()) return;
+    const notification = new Notification({ title, body });
+    notification.on("click", onClick);
+    notification.show();
+  },
+  (messageId) => {
+    notificationWindow()?.webContents.send(
+      "notifications:native-click",
+      messageId,
+    );
+  },
+);
 
-async function fetchNotifications(): Promise<DesktopNotification[]> {
-  try {
-    const res = await fetch(`${getServerBaseUrl()}/api/notifications`, {
-      headers: getServerAuthHeaders(),
-    });
-    if (!res.ok) return [];
-    const data = (await res.json()) as {
-      notifications?: DesktopNotification[];
-    };
-    return data.notifications ?? [];
-  } catch {
-    return [];
-  }
-}
-
-async function postNotification(
-  path: string,
-  body?: unknown,
-): Promise<unknown> {
-  try {
-    const res = await fetch(`${getServerBaseUrl()}/api/notifications${path}`, {
-      method: "POST",
-      headers: {
-        ...getServerAuthHeaders(),
-        ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-    });
-    return res.ok ? await res.json() : null;
-  } catch {
-    return null;
-  }
-}
-
-async function refreshNotifications(): Promise<void> {
-  const items = await fetchNotifications();
-  if (items.length === 0) {
-    notificationsShowing = false;
-    hideNotifications();
-    notifyRendererChanged();
-    if (!panelBusy) setCompanionState("idle");
+ipcMain.on("notifications:present", (event, payload: unknown) => {
+  if (event.sender !== notificationWindow()?.webContents) return;
+  const item = payload as {
+    messageId?: unknown;
+    title?: unknown;
+    body?: unknown;
+  };
+  if (
+    typeof item?.messageId !== "string" ||
+    typeof item.title !== "string" ||
+    typeof item.body !== "string"
+  ) {
     return;
   }
-
-  notifyRendererChanged();
-
-  // A bubble stays on screen until the user opens or dismisses it. There is
-  // deliberately no auto-collapse: a reminder that quietly folds itself away
-  // while the user is at lunch is a reminder that never happened.
-  notificationsShowing = true;
-  showNotifications();
-  setCompanionState("suggestion");
-
-  const live = new Set(items.map((n) => n.id));
-  for (const id of notifiedIds.keys()) {
-    if (!live.has(id)) notifiedIds.delete(id);
-  }
-  const fresh = items.filter(
-    (n) => n.seenAt === null && notifiedIds.get(n.id) !== n.createdAt,
-  );
-  if (fresh.length === 0) return;
-  if (!Notification.isSupported()) return;
-  for (const item of fresh) {
-    notifiedIds.set(item.id, item.createdAt);
-    activeNotifications.get(item.id)?.close();
-    const note = new Notification({ title: item.title, body: item.body });
-    activeNotifications.set(item.id, note);
-    note.on("click", () => {
-      activeNotifications.delete(item.id);
-      void openNotification(item.id);
-    });
-    note.on("close", () => {
-      if (activeNotifications.get(item.id) === note) {
-        activeNotifications.delete(item.id);
-      }
-    });
-    note.show();
-  }
-  // The companion reacts to work that finished while the panel was closed;
-  // without this the sprite sleeps through the product's whole point.
+  courierNativeNotifications.present({
+    messageId: item.messageId,
+    title: item.title,
+    body: item.body,
+  });
   companionWindow?.webContents.send("companion:sprite-event", {
     kind: "emote",
     emotion: "proud",
   });
-  await postNotification("/seen", { ids: fresh.map((n) => n.id) });
-}
+});
 
-async function openNotification(id: string): Promise<void> {
-  const result = (await postNotification(
-    `/${encodeURIComponent(id)}/open`,
-  )) as {
-    ok?: boolean;
-    threadId?: string;
-    url?: string;
-  } | null;
-  void refreshNotifications();
-  if (result?.url) {
-    void shell.openExternal(result.url);
+ipcMain.on("notifications:set-visible", (event, visible: unknown) => {
+  if (event.sender !== notificationWindow()?.webContents) return;
+  if (typeof visible !== "boolean") return;
+  notificationsShowing = visible;
+  if (visible) {
+    showNotifications();
+    setCompanionState("suggestion");
     return;
   }
-  openPanel({ focusComposer: false, trigger: "notification" });
-  if (result?.threadId) {
-    panelRendererMessages.send({
-      channel: "panel:open-thread",
-      payload: result.threadId,
-    });
-  }
-}
-
-function startNotificationFallbackPoll(): void {
-  if (notificationFallbackPollTimer) return;
-  notificationFallbackPollTimer = setInterval(
-    () => void refreshNotifications(),
-    NOTIFICATION_FALLBACK_POLL_MS,
-  );
-  notificationFallbackPollTimer.unref();
-}
-
-function stopNotificationFallbackPoll(): void {
-  if (!notificationFallbackPollTimer) return;
-  clearInterval(notificationFallbackPollTimer);
-  notificationFallbackPollTimer = null;
-}
-
-function startNotificationEvents(): void {
-  if (stopNotificationStream) return;
-  void refreshNotifications();
-  stopNotificationStream = startNotificationStream({
-    url: () => notificationStreamUrl(getServerBaseUrl()),
-    headers: getServerAuthHeaders,
-    onChange: () => void refreshNotifications(),
-    onConnected: stopNotificationFallbackPoll,
-    onDisconnected: startNotificationFallbackPoll,
-  });
-}
-
-function stopNotificationEvents(): void {
-  stopNotificationStream?.();
-  stopNotificationStream = null;
-  stopNotificationFallbackPoll();
-}
-
-function restartNotificationStream(): void {
-  stopNotificationEvents();
-  startNotificationEvents();
-}
-
-ipcMain.handle("notifications:list", async () => await fetchNotifications());
-
-ipcMain.on("notifications:dismiss", (_event, id: unknown) => {
-  if (typeof id !== "string") return;
-  void postNotification(`/${encodeURIComponent(id)}/dismiss`).then(() =>
-    refreshNotifications(),
-  );
+  hideNotifications();
+  if (!panelBusy) setCompanionState("idle");
 });
 
-ipcMain.on("notifications:open", (_event, id: unknown) => {
-  if (typeof id !== "string") return;
-  void openNotification(id);
-});
-
-ipcMain.on("notifications:set-height", (_event, height: unknown) => {
+ipcMain.on("notifications:set-height", (event, height: unknown) => {
+  if (event.sender !== notificationWindow()?.webContents) return;
   if (typeof height !== "number") return;
   setNotificationHeight(height);
 });
 
-ipcMain.on("agent:turn-finished", (_event, payload: unknown) => {
-  const turn = payload as { threadId?: unknown; excerpt?: unknown };
-  if (typeof turn?.threadId !== "string" || typeof turn?.excerpt !== "string") {
-    return;
-  }
-  void postNotification("/refresh");
-  if (panelWindow && !panelWindow.isDestroyed() && panelWindow.isVisible()) {
-    return;
-  }
-  void postNotification("", {
-    kind: "thread",
-    title: `${SPRITES_INFO[companionFormSetting()].label} finished`,
-    body: turn.excerpt.slice(0, 140),
-    threadId: turn.threadId,
-  }).then(() => refreshNotifications());
+ipcMain.on("notifications:open-thread", (event, threadId: unknown) => {
+  if (event.sender !== notificationWindow()?.webContents) return;
+  if (typeof threadId !== "string" || !threadId) return;
+  openPanel({ focusComposer: false, trigger: "notification" });
+  panelRendererMessages.send({
+    channel: "panel:open-thread",
+    payload: threadId,
+  });
+});
+
+ipcMain.on("notifications:auth-changed", (event) => {
+  if (event.sender !== panelWindow?.webContents) return;
+  courierNativeNotifications.clearAll();
+  notificationWindow()?.webContents.send("notifications:auth-changed");
 });
 
 initSpriteTravel({
@@ -4432,7 +4309,6 @@ function cleanupBeforeQuit(): void {
   void disposeServerPlugins().catch(() => {});
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
-  stopNotificationEvents();
   destroyCompanionWindow();
   destroyPanelWindow();
   if (keyListener) {

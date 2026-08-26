@@ -134,7 +134,3 @@ export function setTravelling(travelling: boolean): void {
   }
   if (wantsVisible) showNotifications();
 }
-
-export function notifyRendererChanged(): void {
-  notificationWindow()?.webContents.send("notifications:changed");
-}

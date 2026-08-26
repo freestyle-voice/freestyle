@@ -1,10 +1,9 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
+import type { CourierNotificationItem } from "@renderer/lib/courier-notifications";
 import {
-  NotificationHistoryError,
-  type NotificationHistoryRow,
-} from "@renderer/lib/notifications";
-import { notificationHistoryQueryOptions } from "@renderer/lib/query";
-import { useQuery } from "@tanstack/react-query";
+  CourierNotificationsProvider,
+  useCourierNotifications,
+} from "@renderer/lib/courier-provider";
 import type React from "react";
 
 function when(ts: number): string {
@@ -20,38 +19,35 @@ function when(ts: number): string {
   return date.toLocaleDateString(undefined, opts);
 }
 
-function statusOf(row: NotificationHistoryRow): {
+function statusOf(row: CourierNotificationItem): {
   label: string;
   tone: string;
 } {
+  if (row.archivedAt) return { label: "Archived", tone: "is-dismissed" };
   if (row.openedAt) return { label: "Opened", tone: "is-opened" };
-  if (row.dismissedAt) return { label: "Dismissed", tone: "is-dismissed" };
-  if (row.expiresAt !== null && row.expiresAt <= Date.now())
-    return { label: "Expired", tone: "is-expired" };
+  if (row.readAt) return { label: "Read", tone: "is-opened" };
   return { label: "Unread", tone: "is-unread" };
 }
 
-export function NotificationsHistory({
+function NotificationsHistoryContent({
   onOpenThread,
 }: {
   onOpenThread?: (threadId: string) => void;
 }): React.JSX.Element {
-  const query = useQuery(notificationHistoryQueryOptions());
-  const error =
-    query.error instanceof NotificationHistoryError ? query.error : null;
+  const { status, notifications: rows, open } = useCourierNotifications();
 
-  if (query.isLoading) return <DataSkeleton label="Loading notifications" />;
-  if (error?.kind === "signed-out")
+  if (status === "loading")
+    return <DataSkeleton label="Loading notifications" />;
+  if (status === "signed-out")
     return (
       <div className="tavern-empty">Sign in to see your notifications.</div>
     );
-  if (error?.kind === "unreachable")
+  if (status === "unavailable")
     return (
       <div className="tavern-empty">
         Couldn't reach Freestyle Cloud. Try again in a moment.
       </div>
     );
-  const rows = query.data ?? [];
   if (rows.length === 0)
     return (
       <div className="tavern-empty">
@@ -67,7 +63,7 @@ export function NotificationsHistory({
       </p>
       {rows.map((row) => {
         const status = statusOf(row);
-        const threadId = onOpenThread ? row.payload?.threadId : undefined;
+        const threadId = onOpenThread ? row.threadId : null;
         const body = (
           <>
             <div className="tavern-notif-head">
@@ -97,12 +93,26 @@ export function NotificationsHistory({
             key={row.id}
             type="button"
             className="tavern-notif is-openable"
-            onClick={() => onOpenThread?.(threadId)}
+            onClick={() => void open(row, onOpenThread)}
           >
             {body}
           </button>
         );
       })}
     </>
+  );
+}
+
+export function NotificationsHistory({
+  onOpenThread,
+}: {
+  onOpenThread?: (threadId: string) => void;
+}): React.JSX.Element {
+  return (
+    <CourierNotificationsProvider>
+      <NotificationsHistoryContent
+        {...(onOpenThread ? { onOpenThread } : {})}
+      />
+    </CourierNotificationsProvider>
   );
 }

@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 26;
+const SCHEMA_VERSION = 27;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -701,39 +701,16 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     `);
   }
 
-  if (currentVersion < 25) {
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS notifications (
-        id           TEXT PRIMARY KEY,
-        origin       TEXT NOT NULL,
-        kind         TEXT NOT NULL,
-        title        TEXT NOT NULL,
-        body         TEXT NOT NULL,
-        payload      TEXT,
-        thread_id    TEXT,
-        user_id      TEXT,
-        created_at   INTEGER NOT NULL,
-        expires_at   INTEGER,
-        dismissed_at INTEGER,
-        seen_at      INTEGER
-      )
-    `);
-    db.exec(
-      "CREATE INDEX IF NOT EXISTS idx_notifications_active ON notifications (dismissed_at, created_at)",
-    );
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS notification_outbox (
-        notification_id TEXT PRIMARY KEY,
-        action          TEXT NOT NULL,
-        next_attempt_at TEXT NOT NULL,
-        attempts        INTEGER NOT NULL DEFAULT 0,
-        last_error      TEXT
-      )
-    `);
-  }
-
   if (currentVersion < 26) {
     db.exec("DROP TABLE IF EXISTS agent_threads");
+  }
+
+  if (currentVersion < 27) {
+    // Courier is authoritative for notification history and lifecycle. Remove
+    // the desktop-only mirror and its action outbox so two state stores cannot
+    // silently diverge after the cutover.
+    db.exec("DROP TABLE IF EXISTS notification_outbox");
+    db.exec("DROP TABLE IF EXISTS notifications");
   }
 
   // Upsert schema version

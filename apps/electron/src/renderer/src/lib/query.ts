@@ -9,7 +9,6 @@ import {
   listSuggestedConnectors,
 } from "./connectors";
 import type { AvailableModel } from "./models";
-import { listNotificationHistory } from "./notifications";
 import { listScheduledTasks } from "./scheduled-tasks";
 import {
   getLatestThread,
@@ -96,9 +95,6 @@ export const queryKeys = {
     latest: ["threads", "latest"] as const,
     list: (origin: ThreadOrigin) => ["threads", "list", origin] as const,
     detail: (id: string) => ["threads", "detail", id] as const,
-  },
-  notifications: {
-    history: ["notifications", "history"] as const,
   },
   brain: {
     all: ["brain"] as const,
@@ -322,13 +318,6 @@ export function prependThreadToHistory(
       return { ...data, pages: [{ ...first, threads }, ...rest] };
     },
   );
-}
-
-export function notificationHistoryQueryOptions() {
-  return {
-    queryKey: queryKeys.notifications.history,
-    queryFn: listNotificationHistory,
-  };
 }
 
 export function brainFileQueryOptions(path: string) {

@@ -58,6 +58,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.101.2
         version: 5.101.2(react@19.2.6)
+      '@trycourier/courier-react':
+        specifier: ^9.2.12
+        version: 9.2.12(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       ai:
         specifier: ^6.0.191
         version: 6.0.191(zod@4.4.3)
@@ -3798,6 +3801,30 @@ packages:
 
   '@tootallnate/quickjs-emscripten@0.23.0':
     resolution: {integrity: sha512-C5Mc6rdnsaJDjO3UpGW/CQTHtCKaYlScZTly4JIu97Jxo/odCiH0ITnDXSJPTOrEKk/ycSZ0AOgTmkDtkOsvIA==}
+
+  '@trycourier/courier-js@3.5.1':
+    resolution: {integrity: sha512-FOHcziyk0hQhSInddzYu/CHE0ZpO1qBhW8kF0Dc8PDFZPqj+t2HN8cLgbQPQOc3FSkQ/iY2YfSq4kHorrnk52g==}
+
+  '@trycourier/courier-react-components@2.2.12':
+    resolution: {integrity: sha512-JA8IJthAD484eEcpsmkd9rTcUa8YIVoCrWF0u/R13pv+GmL1cMsIP6v7VA7TMPVdC858brl97mf8/pdQGhkj2Q==}
+
+  '@trycourier/courier-react@9.2.12':
+    resolution: {integrity: sha512-Lyxi+c+ydPj+ZFv+kwbZjf8m9lGibtkLxX35LxQGNdaDAgUm59YqVU+bzw00b8U9QCEgOZG2xlT3NFCCuD7Riw==}
+    peerDependencies:
+      react: '>=18.0.0'
+      react-dom: '>=18.0.0'
+
+  '@trycourier/courier-ui-core@2.3.1':
+    resolution: {integrity: sha512-ItIY8omkYcdgSwPNI4tm75Q38Qm6x+Yu7eDhhgp2fl4QfrM+isccy2NqLHWSSFWtxwjwfMwtDtsRXARdF+hJ4g==}
+
+  '@trycourier/courier-ui-inbox@2.5.3':
+    resolution: {integrity: sha512-e42QTtVKzKsSLxszVRYcTjgUJwj6ygnAOcM7gMlddtvYcjXDm+0pygFshCXd18Du0s+O+8K7xH27WcB2x4+yuw==}
+
+  '@trycourier/courier-ui-preferences@1.2.2':
+    resolution: {integrity: sha512-8FwKggbMoACqb7CCCilPkQLdvJL0L5Q+TMxo1dsF5PikWA+eLuMUgAmfber0ajS78xzROh2Fvc5AvsEqOisNAQ==}
+
+  '@trycourier/courier-ui-toast@2.2.1':
+    resolution: {integrity: sha512-7MdJioNN0wyzV0OV9W1uR5RfNtLP23cnrZ1e63YvL9dGsdNX/aVxLyF8w8f2f49jBSTCGC8LQF2ShHW7aYxARw==}
 
   '@turbo/darwin-64@2.9.14':
     resolution: {integrity: sha512-t7QiPflaEyBE4oayeZtSmu4mEfjgIrcNlNNl1z1dmIVPqEdtA7+CfTf8d7KXsOGPh6aNgWjKxyvQg9uGfDQF+A==}
@@ -12980,6 +13007,44 @@ snapshots:
       '@testing-library/dom': 10.4.1
 
   '@tootallnate/quickjs-emscripten@0.23.0': {}
+
+  '@trycourier/courier-js@3.5.1': {}
+
+  '@trycourier/courier-react-components@2.2.12':
+    dependencies:
+      '@trycourier/courier-js': 3.5.1
+      '@trycourier/courier-ui-core': 2.3.1
+      '@trycourier/courier-ui-inbox': 2.5.3
+      '@trycourier/courier-ui-preferences': 1.2.2
+      '@trycourier/courier-ui-toast': 2.2.1
+
+  '@trycourier/courier-react@9.2.12(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+    dependencies:
+      '@trycourier/courier-js': 3.5.1
+      '@trycourier/courier-react-components': 2.2.12
+      '@trycourier/courier-ui-core': 2.3.1
+      '@trycourier/courier-ui-inbox': 2.5.3
+      '@trycourier/courier-ui-preferences': 1.2.2
+      '@trycourier/courier-ui-toast': 2.2.1
+      react: 19.2.6
+      react-dom: 19.2.6(react@19.2.6)
+
+  '@trycourier/courier-ui-core@2.3.1': {}
+
+  '@trycourier/courier-ui-inbox@2.5.3':
+    dependencies:
+      '@trycourier/courier-js': 3.5.1
+      '@trycourier/courier-ui-core': 2.3.1
+
+  '@trycourier/courier-ui-preferences@1.2.2':
+    dependencies:
+      '@trycourier/courier-js': 3.5.1
+      '@trycourier/courier-ui-core': 2.3.1
+
+  '@trycourier/courier-ui-toast@2.2.1':
+    dependencies:
+      '@trycourier/courier-js': 3.5.1
+      '@trycourier/courier-ui-core': 2.3.1
 
   '@turbo/darwin-64@2.9.14':
     optional: true

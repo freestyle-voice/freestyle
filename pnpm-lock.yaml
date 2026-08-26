@@ -167,6 +167,9 @@ importers:
       '@tanstack/react-query':
         specifier: ^5.101.2
         version: 5.101.2(react@19.2.3)
+      '@trycourier/courier-react-native':
+        specifier: ^6.0.4
+        version: 6.0.4(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)
       ai:
         specifier: ^6.0.191
         version: 6.0.240(zod@4.4.3)
@@ -3807,6 +3810,13 @@ packages:
 
   '@trycourier/courier-react-components@2.2.12':
     resolution: {integrity: sha512-JA8IJthAD484eEcpsmkd9rTcUa8YIVoCrWF0u/R13pv+GmL1cMsIP6v7VA7TMPVdC858brl97mf8/pdQGhkj2Q==}
+
+  '@trycourier/courier-react-native@6.0.4':
+    resolution: {integrity: sha512-b0XaSWkvk/47xK4jpwCcKR8wKQc2sHEsQBaRneiimdXCRkGRUIKhFRoDKSZOlJE/45lMTkAVPIYoZgsgzOKtKg==}
+    engines: {node: '>= 16.0.0'}
+    peerDependencies:
+      react: '*'
+      react-native: '*'
 
   '@trycourier/courier-react@9.2.12':
     resolution: {integrity: sha512-Lyxi+c+ydPj+ZFv+kwbZjf8m9lGibtkLxX35LxQGNdaDAgUm59YqVU+bzw00b8U9QCEgOZG2xlT3NFCCuD7Riw==}
@@ -7925,6 +7935,12 @@ packages:
 
   react-native-svg@15.15.4:
     resolution: {integrity: sha512-boT/vIRgj6zZKBpfTPJJiYWMbZE9duBMOwPK6kCSTgxsS947IFMOq9OgIFkpWZTB7t229H24pDRkh3W9ZK/J1A==}
+    peerDependencies:
+      react: '*'
+      react-native: '*'
+
+  react-native-toast-message@2.4.0:
+    resolution: {integrity: sha512-Ip4sPpf9707Qmn06Jp1aGJrYLx2mwTYBRjXzP7ebPvmjABA6OCT9bEh62E0L6s5zc/KPZ3rix+OnBKW/pOJZ4g==}
     peerDependencies:
       react: '*'
       react-native: '*'
@@ -13017,6 +13033,12 @@ snapshots:
       '@trycourier/courier-ui-inbox': 2.5.3
       '@trycourier/courier-ui-preferences': 1.2.2
       '@trycourier/courier-ui-toast': 2.2.1
+
+  '@trycourier/courier-react-native@6.0.4(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)':
+    dependencies:
+      react: 19.2.3
+      react-native: 0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3)
+      react-native-toast-message: 2.4.0(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)
 
   '@trycourier/courier-react@9.2.12(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
@@ -18203,6 +18225,11 @@ snapshots:
       react: 19.2.3
       react-native: 0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3)
       warn-once: 0.1.1
+
+  react-native-toast-message@2.4.0(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3):
+    dependencies:
+      react: 19.2.3
+      react-native: 0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3)
 
   react-native-worklets@0.10.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(react-native@0.86.0(@babel/core@7.29.0)(@react-native/metro-config@0.86.0(@babel/core@7.29.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3):
     dependencies:

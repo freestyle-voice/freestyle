@@ -17,13 +17,15 @@ import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
-import { AppState } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
-import { openNotification } from "@/lib/cloud/notifications";
 import { ColorModeProvider, useColorMode } from "@/lib/color-mode";
+import {
+  CourierNotificationsProvider,
+  useCourierNotifications,
+} from "@/lib/courier/notifications";
 import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
 import { queryClient } from "@/lib/query";
 
@@ -67,44 +69,14 @@ Sentry.init({
 
 SplashScreen.preventAutoHideAsync();
 
-function RootNavigator() {
-  const { scheme } = useColorMode();
-  const theme = Colors[scheme];
-  const { loading, signedIn, user } = useAuth();
+function CourierPushRouter({ enabled }: { enabled: boolean }) {
   const router = useRouter();
-  const { ready: onboardingReady } = useOnboarding();
-  const startupReady = !loading && (!signedIn || onboardingReady);
-
-  useEffect(() => {
-    if (startupReady) {
-      void SplashScreen.hideAsync();
-    }
-  }, [startupReady]);
-
-  useEffect(() => {
-    if (!signedIn || !user?.id) {
-      queryClient.removeQueries({ queryKey: ["agent-notifications"] });
-      queryClient.removeQueries({ queryKey: ["agent-notification-history"] });
-      return;
-    }
-    queryClient.removeQueries({ queryKey: ["agent-notifications"] });
-    queryClient.removeQueries({ queryKey: ["agent-notification-history"] });
-    const appState = AppState.addEventListener("change", (nextState) => {
-      if (nextState !== "active") return;
-      void queryClient.invalidateQueries({ queryKey: ["agent-notifications"] });
-      void queryClient.invalidateQueries({
-        queryKey: ["agent-notification-history"],
-      });
-    });
-    return () => {
-      appState.remove();
-    };
-  }, [signedIn, user?.id]);
+  const { openFromPush, refresh } = useCourierNotifications();
 
   useEffect(() => {
     let active = true;
     const routePush = (response: Notifications.NotificationResponse | null) => {
-      if (loading || !signedIn || !user?.id) return;
+      if (!enabled) return;
       const data = response?.notification.request.content.data;
       const threadId = data?.threadId;
       if (typeof threadId === "string") {
@@ -115,30 +87,42 @@ function RootNavigator() {
       }
       const notificationId = data?.notificationId;
       if (typeof notificationId === "string") {
-        void openNotification(notificationId).catch(() => {});
+        void openFromPush(notificationId).catch(() => {});
       }
       if (response) void Notifications.clearLastNotificationResponseAsync();
     };
     void Notifications.getLastNotificationResponseAsync().then((response) => {
       if (active) routePush(response);
     });
-    const subscription =
+    const responseSubscription =
       Notifications.addNotificationResponseReceivedListener(routePush);
+    const receivedSubscription = Notifications.addNotificationReceivedListener(
+      () => {
+        if (enabled) void refresh().catch(() => {});
+      },
+    );
     return () => {
       active = false;
-      subscription.remove();
+      responseSubscription.remove();
+      receivedSubscription.remove();
     };
-  }, [loading, router, signedIn, user?.id]);
+  }, [enabled, openFromPush, refresh, router]);
+
+  return null;
+}
+
+function RootNavigator() {
+  const { scheme } = useColorMode();
+  const theme = Colors[scheme];
+  const { loading, signedIn, user } = useAuth();
+  const { ready: onboardingReady } = useOnboarding();
+  const startupReady = !loading && (!signedIn || onboardingReady);
 
   useEffect(() => {
-    const subscription = Notifications.addNotificationReceivedListener(() => {
-      void queryClient.invalidateQueries({ queryKey: ["agent-notifications"] });
-      void queryClient.invalidateQueries({
-        queryKey: ["agent-notification-history"],
-      });
-    });
-    return () => subscription.remove();
-  }, []);
+    if (startupReady) {
+      void SplashScreen.hideAsync();
+    }
+  }, [startupReady]);
 
   // Keep the native launch screen in place until the states that determine
   // the first route have both settled. This prevents a signed-in first-run
@@ -147,13 +131,16 @@ function RootNavigator() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: theme.background },
-        }}
-      />
+      <CourierNotificationsProvider userId={signedIn ? user?.id : undefined}>
+        <CourierPushRouter enabled={signedIn && Boolean(user?.id)} />
+        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: theme.background },
+          }}
+        />
+      </CourierNotificationsProvider>
     </GestureHandlerRootView>
   );
 }

@@ -1,4 +1,3 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { Bell, Check, Clock, X } from "lucide-react-native";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
@@ -12,76 +11,52 @@ import {
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
-import {
-  dismissNotification,
-  listNotificationHistory,
-  listNotifications,
-  openNotification,
-} from "@/lib/cloud/notifications";
+import { useCourierNotifications } from "@/lib/courier/notifications";
 
 export default function NotificationsScreen() {
   const theme = useTheme();
   const router = useRouter();
-  const queryClient = useQueryClient();
-  const {
-    data: notifications = [],
-    isLoading,
-    isError,
-    refetch,
-  } = useQuery({
-    queryKey: ["agent-notifications"],
-    queryFn: listNotifications,
-    retry: 1,
-    refetchInterval: 30_000,
-  });
-  const { data: history = [] } = useQuery({
-    queryKey: ["agent-notification-history"],
-    queryFn: listNotificationHistory,
-    retry: 1,
-  });
-  const invalidate = () =>
-    void Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["agent-notifications"] }),
-      queryClient.invalidateQueries({
-        queryKey: ["agent-notification-history"],
-      }),
-    ]);
-  const previous = history.filter(
-    (notification) =>
-      notification.dismissedAt !== null ||
-      notification.openedAt !== null ||
-      (notification.expiresAt !== null && notification.expiresAt <= Date.now()),
-  );
-  const open = useMutation({
-    mutationFn: openNotification,
-    onSuccess: invalidate,
-  });
-  const dismiss = useMutation({
-    mutationFn: dismissNotification,
-    onSuccess: invalidate,
-  });
-  const fail = (error: unknown) =>
+  const { active, archived, archive, error, loading, open, refresh } =
+    useCourierNotifications();
+  const notifications = active.filter((notification) => !notification.opened);
+  const previous = [
+    ...active.filter((notification) => notification.opened),
+    ...archived,
+  ];
+  const fail = (cause: unknown) =>
     Alert.alert(
       "Couldn't update notification",
-      error instanceof Error ? error.message : "Try again.",
+      cause instanceof Error ? cause.message : "Try again.",
     );
+
+  const openResult = async (notificationId: string, threadId: string) => {
+    try {
+      await open(notificationId);
+      router.push({
+        pathname: "/(app)/agent-thread/[id]",
+        params: { id: threadId },
+      });
+    } catch (cause) {
+      fail(cause);
+    }
+  };
 
   return (
     <SettingsScreenScaffold
       title="Notifications"
       subtitle="Updates from scheduled Remix work. Open one to see the full result."
     >
-      {isLoading ? (
+      {loading ? (
         <Card>
           <ThemedText themeColor="mutedForeground">
             Loading notifications…
           </ThemedText>
         </Card>
-      ) : isError && notifications.length === 0 ? (
+      ) : error && notifications.length === 0 ? (
         <Card>
           <RetryLoadState
             message="Couldn't load notifications. Check your connection and try again."
-            onRetry={() => void refetch()}
+            onRetry={() => void refresh()}
           />
         </Card>
       ) : notifications.length === 0 ? (
@@ -95,53 +70,51 @@ export default function NotificationsScreen() {
           </View>
         </Card>
       ) : (
-        notifications.map((notification) => (
-          <Card key={notification.id}>
-            <View style={styles.top}>
-              <View style={styles.copy}>
-                <ThemedText style={styles.title}>
-                  {notification.title}
-                </ThemedText>
-                <ThemedText themeColor="mutedForeground" style={styles.body}>
-                  {notification.body}
-                </ThemedText>
-              </View>
-              <Pressable
-                onPress={() =>
-                  dismiss.mutate(notification.id, { onError: fail })
-                }
-                accessibilityRole="button"
-                accessibilityLabel="Dismiss notification"
-                style={[styles.dismiss, { borderColor: theme.border }]}
-              >
-                <X size={15} color={theme.mutedForeground} />
-              </Pressable>
-            </View>
-            {notification.payload?.threadId ? (
-              <Pressable
-                onPress={() =>
-                  open.mutate(notification.id, {
-                    onSuccess: () =>
-                      router.push({
-                        pathname: "/(app)/agent-thread/[id]",
-                        params: { id: notification.payload?.threadId ?? "" },
-                      }),
-                    onError: fail,
-                  })
-                }
-                style={[styles.open, { backgroundColor: theme.primary }]}
-                accessibilityRole="button"
-              >
-                <Check size={15} color={theme.primaryForeground} />
-                <ThemedText
-                  style={[styles.openText, { color: theme.primaryForeground }]}
+        notifications.map((notification) => {
+          const threadId =
+            typeof notification.data?.threadId === "string"
+              ? notification.data.threadId
+              : undefined;
+          return (
+            <Card key={notification.id}>
+              <View style={styles.top}>
+                <View style={styles.copy}>
+                  <ThemedText style={styles.title}>
+                    {notification.title}
+                  </ThemedText>
+                  <ThemedText themeColor="mutedForeground" style={styles.body}>
+                    {notification.body}
+                  </ThemedText>
+                </View>
+                <Pressable
+                  onPress={() => void archive(notification.id).catch(fail)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss notification"
+                  style={[styles.dismiss, { borderColor: theme.border }]}
                 >
-                  Open result
-                </ThemedText>
-              </Pressable>
-            ) : null}
-          </Card>
-        ))
+                  <X size={15} color={theme.mutedForeground} />
+                </Pressable>
+              </View>
+              {threadId ? (
+                <Pressable
+                  onPress={() => void openResult(notification.id, threadId)}
+                  style={[styles.open, { backgroundColor: theme.primary }]}
+                  accessibilityRole="button"
+                >
+                  <Check size={15} color={theme.primaryForeground} />
+                  <ThemedText
+                    style={[
+                      styles.openText,
+                      { color: theme.primaryForeground },
+                    ]}
+                  >
+                    Open result
+                  </ThemedText>
+                </Pressable>
+              ) : null}
+            </Card>
+          );
+        })
       )}
 
       {previous.length > 0 ? (
@@ -152,7 +125,10 @@ export default function NotificationsScreen() {
             revisit its conversation.
           </ThemedText>
           {previous.map((notification, index) => {
-            const threadId = notification.payload?.threadId;
+            const threadId =
+              typeof notification.data?.threadId === "string"
+                ? notification.data.threadId
+                : undefined;
             return (
               <Pressable
                 key={notification.id}
@@ -194,7 +170,7 @@ export default function NotificationsScreen() {
                   </ThemedText>
                 </View>
                 <ThemedText themeColor="mutedForeground" style={styles.state}>
-                  {notification.openedAt ? "Opened" : "Cleared"}
+                  {notification.opened ? "Opened" : "Cleared"}
                 </ThemedText>
               </Pressable>
             );

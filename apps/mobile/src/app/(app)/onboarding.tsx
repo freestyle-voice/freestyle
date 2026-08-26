@@ -21,11 +21,12 @@ import { LanguageSheet } from "@/components/language-sheet";
 import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
+import { useAuth } from "@/hooks/use-auth";
 import { useTheme } from "@/hooks/use-theme";
 import type { MicPermission } from "@/lib/audio/recorder";
 import { useMicPermission } from "@/lib/audio/use-mic-permission";
 import { type CloudConfig, fetchCloudConfig } from "@/lib/cloud/cloud-config";
-import { registerExpoPush } from "@/lib/cloud/notifications";
+import { registerCourierExpoPush } from "@/lib/courier/notifications";
 import {
   type KeyboardStatus,
   useKeyboardStatus,
@@ -56,6 +57,7 @@ export default function OnboardingScreen() {
   const theme = useTheme();
   const router = useRouter();
   const { finish } = useOnboarding();
+  const { user } = useAuth();
   const { settings, setLanguages } = useSettings();
 
   const [step, setStep] = useState<0 | 1 | 2>(0);
@@ -85,11 +87,15 @@ export default function OnboardingScreen() {
         await Linking.openSettings();
         return;
       }
-      setPushStatus(await registerExpoPush());
+      if (!user?.id) {
+        setPushStatus("unavailable");
+        return;
+      }
+      setPushStatus(await registerCourierExpoPush(user.id));
     } catch {
       setPushStatus("unavailable");
     }
-  }, [pushStatus]);
+  }, [pushStatus, user?.id]);
 
   const complete = useCallback(() => {
     finish();

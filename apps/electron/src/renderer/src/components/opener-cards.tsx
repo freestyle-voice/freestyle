@@ -62,7 +62,7 @@ function OpenerRow({
   logoName?: string | undefined;
   busy: boolean;
   onRun: () => void;
-  onDismiss: () => void;
+  onDismiss?: () => void;
   children?: React.ReactNode;
 }): React.JSX.Element {
   return (
@@ -86,14 +86,16 @@ function OpenerRow({
             →
           </span>
         </button>
-        <button
-          type="button"
-          className="tavern-opener-x"
-          aria-label={`Dismiss: ${label}`}
-          onClick={onDismiss}
-        >
-          ×
-        </button>
+        {onDismiss ? (
+          <button
+            type="button"
+            className="tavern-opener-x"
+            aria-label={`Dismiss: ${label}`}
+            onClick={onDismiss}
+          >
+            ×
+          </button>
+        ) : null}
       </div>
       {children}
     </div>
@@ -297,7 +299,6 @@ export function OpenerCards({
                   connect(slug);
                 }
               }}
-              onDismiss={() => dismiss(card)}
             >
               {apiKey && keyFormSlug === slug && phase !== "connected" ? (
                 <div className="tavern-opener-keyform">

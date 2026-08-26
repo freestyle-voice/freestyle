@@ -31,4 +31,13 @@ describe("compactActivitySummary", () => {
       compactActivitySummary([{ title: "Searched the web", phase: "done" }]),
     ).toEqual({ label: "Searched the web", running: false });
   });
+
+  it("uses the persisted elapsed time as the collapsed work label", () => {
+    expect(
+      compactActivitySummary(
+        [{ title: "Searched the web", phase: "done" }],
+        113_000,
+      ),
+    ).toEqual({ label: "Worked for 1m 53s", running: false });
+  });
 });

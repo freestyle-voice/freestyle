@@ -4,10 +4,7 @@ import {
   DEFAULT_AUTH_FIELDS,
 } from "@renderer/components/connected-apps";
 import { captureSuggestion } from "@renderer/lib/analytics";
-import {
-  type ConnectorAuthField,
-  disconnectToolkit,
-} from "@renderer/lib/connectors";
+import type { ConnectorAuthField } from "@renderer/lib/connectors";
 import { useConnectorConnect } from "@renderer/lib/use-connector-connect";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
@@ -37,20 +34,18 @@ function parseSuggestions(output: unknown): Suggestion[] {
 
 /** Renders a suggest_connections tool result as connect cards instead of the
  * generic tool chip. The part is persisted with the message, so the cards
- * survive reload; dismissal is per-session only. */
+ * survive reload. */
 export function ConnectSuggestions({
   output,
 }: {
   output: unknown;
 }): React.JSX.Element | null {
   const suggestions = parseSuggestions(output);
-  const { connect, connectWithCredentials, cancel, phases, error } =
+  const { connect, connectWithCredentials, phases, error } =
     useConnectorConnect();
-  const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [keyFormSlug, setKeyFormSlug] = useState<string | null>(null);
   const shownRef = useRef<string | null>(null);
   const connectedRef = useRef<ReadonlySet<string>>(new Set());
-  const visible = suggestions.filter((item) => !dismissed.has(item.slug));
 
   useEffect(() => {
     if (suggestions.length === 0) return;
@@ -77,11 +72,11 @@ export function ConnectSuggestions({
     }
   }, [phases, suggestions]);
 
-  if (visible.length === 0) return null;
+  if (suggestions.length === 0) return null;
 
   return (
     <div className="tavern-connect-cards">
-      {visible.map((suggestion) => {
+      {suggestions.map((suggestion) => {
         const phase = phases[suggestion.slug];
         const apiKey = suggestion.authMode === "api_key";
         return (
@@ -136,25 +131,6 @@ export function ConnectSuggestions({
                         : apiKey
                           ? "Add API key"
                           : "Connect"}
-                </button>
-                <button
-                  type="button"
-                  className="tavern-approve-btn"
-                  onClick={() => {
-                    // Backing out of an in-flight connect must also clear the
-                    // pending row, or the app sticks at "In progress".
-                    if (phase === "pending" || phase === "opening") {
-                      cancel(suggestion.slug);
-                      void disconnectToolkit(suggestion.slug).catch(() => {});
-                    }
-                    captureSuggestion("dismissed", "chat_connect", {
-                      slug: suggestion.slug,
-                      wasPending: phase === "pending" || phase === "opening",
-                    });
-                    setDismissed((prev) => new Set(prev).add(suggestion.slug));
-                  }}
-                >
-                  {phase === "pending" ? "Cancel" : "Not now"}
                 </button>
               </div>
             )}

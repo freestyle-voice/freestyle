@@ -756,6 +756,29 @@
   font-weight: 700;
 }
 
+.tavern-agent-brief {
+  align-self: stretch;
+  border-left: 3px solid var(--tavern-lantern);
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--tavern-parchment) 72%, var(--tavern-card));
+  color: var(--tavern-ink);
+  line-height: 1.5;
+}
+
+.tavern-agent-brief strong {
+  display: block;
+  font-weight: 700;
+}
+
+.tavern-agent-brief p,
+.tavern-agent-brief ul {
+  margin: 5px 0 0;
+}
+
+.tavern-agent-brief ul {
+  padding-left: 17px;
+}
+
 .tavern-stream-wait {
   display: flex;
   padding: 2px 0;

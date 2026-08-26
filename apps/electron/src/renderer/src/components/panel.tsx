@@ -15,6 +15,11 @@ import { Spark } from "@renderer/components/spark";
 import { ThreadHistory } from "@renderer/components/thread-history";
 import { TodosTab } from "@renderer/components/todos-tab";
 import {
+  agentWorkDuration,
+  toolActivityParts,
+} from "@renderer/lib/agent-activity";
+import { readAgentBrief } from "@renderer/lib/agent-brief";
+import {
   type AgentToolCall,
   agentToolResultTelemetry,
   agentToolTier,
@@ -366,8 +371,10 @@ function ToolChip({
 
 function ToolActivity({
   parts,
+  elapsedMs,
 }: {
   parts: UIMessage["parts"];
+  elapsedMs: number | null;
 }): React.JSX.Element | null {
   const tools = parts.filter(
     (part) =>
@@ -399,7 +406,7 @@ function ToolActivity({
       title: toolPresentation(part.type, phase, tool.input, tool.output).title,
     };
   });
-  const summary = compactActivitySummary(items);
+  const summary = compactActivitySummary(items, elapsedMs);
 
   return (
     <details className="tavern-tool-activity" open={summary.running}>
@@ -408,7 +415,7 @@ function ToolActivity({
           ✦
         </span>
         <span>
-          {summary.running ? "Working · " : "Activity · "}
+          {summary.running ? "Working · " : ""}
           {summary.label}
         </span>
         {summary.running ? (
@@ -431,6 +438,26 @@ function ToolActivity({
         ))}
       </div>
     </details>
+  );
+}
+
+function AgentBriefCard({
+  brief,
+}: {
+  brief: NonNullable<ReturnType<typeof readAgentBrief>>;
+}): React.JSX.Element {
+  return (
+    <section className="tavern-agent-brief" aria-label="Brief">
+      <strong>{brief.headline}</strong>
+      {brief.summary ? <p>{brief.summary}</p> : null}
+      {brief.points.length > 0 ? (
+        <ul>
+          {brief.points.map((point) => (
+            <li key={point}>{point}</li>
+          ))}
+        </ul>
+      ) : null}
+    </section>
   );
 }
 
@@ -528,6 +555,10 @@ function ChatMessage({
   onRegenerate: () => void;
 }): React.JSX.Element {
   const text = messageText(message);
+  const brief = readAgentBrief(message.parts);
+  const activityParts = toolActivityParts(message.parts);
+  const activityAnchor = activityParts[0];
+  const elapsedMs = agentWorkDuration(message.metadata);
   const editInputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -593,7 +624,8 @@ function ChatMessage({
       <div className="tavern-msg-assistant-content">
         {message.parts.map((part, i) => {
           if (part.type === "text") {
-            if (!part.text || isPlaceholderText(part.text)) return null;
+            if (brief || !part.text || isPlaceholderText(part.text))
+              return null;
             return (
               <div key={`${message.id}-${i}`} className="tavern-msg-assistant">
                 <Markdown text={part.text} />
@@ -610,23 +642,19 @@ function ChatMessage({
               />
             );
           }
+          if (part.type === "data-brief") {
+            return brief ? (
+              <AgentBriefCard key={`${message.id}-${i}`} brief={brief} />
+            ) : null;
+          }
           if (part.type.startsWith("tool-")) {
-            const previous = message.parts[i - 1];
-            if (
-              previous?.type.startsWith("tool-") &&
-              previous.type !== "tool-suggest_connections"
-            )
-              return null;
-            const group: UIMessage["parts"] = [];
-            for (const candidate of message.parts.slice(i)) {
-              if (
-                !candidate.type.startsWith("tool-") ||
-                candidate.type === "tool-suggest_connections"
-              )
-                break;
-              group.push(candidate);
-            }
-            return <ToolActivity key={`${message.id}-${i}`} parts={group} />;
+            return part === activityAnchor ? (
+              <ToolActivity
+                key={`${message.id}-${i}`}
+                parts={activityParts}
+                elapsedMs={elapsedMs}
+              />
+            ) : null;
           }
           return null;
         })}

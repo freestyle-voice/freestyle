@@ -33,6 +33,7 @@
     "@freestyle-voice/utils": "workspace:*",
     "@freestyle-voice/validations": "workspace:*",
     "@tanstack/react-query": "^5.101.2",
+    "@trycourier/courier-react": "^9.2.12",
     "ai": "^6.0.191",
     "diff": "^8.0.4",
     "electron-updater": "^6.3.9",

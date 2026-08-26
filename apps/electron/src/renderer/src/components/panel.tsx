@@ -870,14 +870,8 @@ function PanelRoot(): React.JSX.Element {
           setThread(picked);
         });
     });
-    const offNotifications = window.api.onNotificationsChanged(() => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.threads.list("scheduled"),
-      });
-    });
     return () => {
       off?.();
-      offNotifications?.();
     };
   }, [queryClient]);
 
@@ -890,6 +884,22 @@ function PanelRoot(): React.JSX.Element {
   return (
     <PanelInner key={thread.id} thread={thread} onSwitchThread={switchThread} />
   );
+}
+
+function PanelNotificationAuthBridge({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const auth = useCloudAuth();
+  const authChangeKey = auth.loading ? null : (auth.user?.id ?? "signed-out");
+
+  useEffect(() => {
+    if (authChangeKey === null) return;
+    window.api.notificationAuthChanged();
+  }, [authChangeKey]);
+
+  return <>{children}</>;
 }
 
 function PanelInner({
@@ -1008,12 +1018,6 @@ function PanelInner({
           queryKey: queryKeys.scheduled.tasks,
         });
       }
-      const text = messageText(last);
-      if (!text) return;
-      window.api.agentTurnFinished({
-        threadId: thread.id,
-        excerpt: text.slice(0, 140),
-      });
     },
     onToolCall: async ({ toolCall }) => {
       const startedAt = Date.now();
@@ -1884,7 +1888,9 @@ if (container)
   createRoot(container).render(
     <QueryClientProvider client={queryClient}>
       <CloudAuthProvider>
-        <PanelRoot />
+        <PanelNotificationAuthBridge>
+          <PanelRoot />
+        </PanelNotificationAuthBridge>
       </CloudAuthProvider>
     </QueryClientProvider>,
   );

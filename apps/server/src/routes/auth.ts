@@ -24,8 +24,6 @@ import {
   updateCloudUserName,
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
-import { purgeForAccountChange } from "../lib/notifications/store.js";
-import { notificationTransport } from "../lib/notifications/transport.js";
 import { capture, identifyCloudUser } from "../lib/posthog.js";
 import {
   pullCloudPreferences,
@@ -85,8 +83,6 @@ const auth = new Hono()
         user,
         host: freestyleCloudUrl(),
       });
-      notificationTransport.resetEtag();
-      notificationTransport.refreshNow();
       applyFreestyleCloudDefaults();
       identifyCloudUser(user);
       // If a DIFFERENT account previously synced on this device, scrub its
@@ -134,8 +130,6 @@ const auth = new Hono()
     // Discard any preference syncs queued under this account so they aren't
     // delivered to a different account that signs in next.
     clearOutbox();
-    purgeForAccountChange();
-    notificationTransport.resetEtag();
     // Re-arm the one-time preference backfill so the next account to sign in on
     // this device seeds the cloud from its own snapshot.
     resetPreferencesBackfill();

@@ -18,11 +18,6 @@ import {
   stopHistoryRetentionSweep,
 } from "./lib/history-store.js";
 import { configureNetwork } from "./lib/network.js";
-import {
-  startNotificationOutboxDrain,
-  stopNotificationOutboxDrain,
-} from "./lib/notifications/outbox.js";
-import { notificationTransport } from "./lib/notifications/transport.js";
 import { pluginApiGuard } from "./lib/plugin-api-guard.js";
 import {
   disposeServerPlugins,
@@ -70,8 +65,6 @@ async function shutdownServer(): Promise<void> {
   stopSessionKeepAlive();
   stopHistoryRetentionSweep();
   stopOutboxDrain();
-  notificationTransport.stop();
-  stopNotificationOutboxDrain();
   await disposeServerPlugins().catch(() => {});
   await shutdownPosthog();
 }
@@ -263,9 +256,6 @@ export async function startServer(
   // Retry any preference syncs that fail (offline / server down); rows persist
   // across restarts, so a change made offline eventually reaches the cloud.
   startOutboxDrain();
-
-  notificationTransport.start();
-  startNotificationOutboxDrain();
 
   // Keep the Freestyle Cloud session alive by sliding its expiry before the
   // local token lapses (the cloud issues no refresh token). Fire-and-forget.

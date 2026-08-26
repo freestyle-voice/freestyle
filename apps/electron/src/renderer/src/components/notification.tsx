@@ -2,27 +2,16 @@ import "../overlay.css";
 import "../tavern.css";
 
 import { capture } from "@renderer/lib/analytics";
-import { initApiBase } from "@renderer/lib/api";
+import { initApiBase, refreshApiBase } from "@renderer/lib/api";
+import type { CourierNotificationItem } from "@renderer/lib/courier-notifications";
+import {
+  CourierNotificationsProvider,
+  useCourierNotifications,
+} from "@renderer/lib/courier-provider";
 import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import type React from "react";
-import {
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-
-interface NotificationItem {
-  id: string;
-  origin: "cloud" | "local";
-  kind: "thread" | "info";
-  title: string;
-  body: string;
-  createdAt: number;
-  seenAt: number | null;
-}
 
 function NotificationCard({
   item,
@@ -31,7 +20,7 @@ function NotificationCard({
   badge,
   onExpand,
 }: {
-  item: NotificationItem;
+  item: CourierNotificationItem;
   onOpen: (id: string) => void;
   onDismiss: (id: string) => void;
   badge: number;
@@ -69,29 +58,36 @@ function NotificationCard({
 }
 
 function NotificationStack(): React.JSX.Element | null {
-  const [items, setItems] = useState<NotificationItem[]>([]);
+  const {
+    notifications,
+    activeNotifications: items,
+    open: openNotification,
+    archive,
+  } = useCourierNotifications();
   const [expanded, setExpanded] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const seenRef = useRef(new Set<string>());
 
-  const load = useCallback((): void => {
-    void window.api
-      .notificationsList()
-      .then((next) => setItems(next as NotificationItem[]))
-      .catch(() => {});
-  }, []);
+  useEffect(() => {
+    window.api.notificationSetVisible(items.length > 0);
+  }, [items.length]);
 
   useEffect(() => {
-    load();
-    const off = window.api.onNotificationsChanged(load);
+    const off = window.api.onNotificationNativeClick((messageId) => {
+      const item = notifications.find(
+        (candidate) => candidate.id === messageId,
+      );
+      if (!item) return;
+      void openNotification(item, window.api.notificationOpenThread);
+    });
     return () => off?.();
-  }, [load]);
+  }, [notifications, openNotification]);
 
   useEffect(() => {
     for (const item of items) {
       if (seenRef.current.has(item.id)) continue;
       seenRef.current.add(item.id);
-      capture("notification_shown", { surface: "bubble", kind: item.kind });
+      capture("notification_shown", { surface: "bubble", kind: "thread" });
     }
   }, [items]);
 
@@ -108,14 +104,14 @@ function NotificationStack(): React.JSX.Element | null {
 
   const dismiss = (id: string): void => {
     capture("notification_dismissed", { surface: "bubble", ageMs: ageOf(id) });
-    setItems((prev) => prev.filter((n) => n.id !== id));
-    window.api.notificationDismiss(id);
+    const item = items.find((candidate) => candidate.id === id);
+    if (item) void archive(item);
   };
 
-  const open = (id: string): void => {
+  const openItem = (id: string): void => {
     capture("notification_opened", { surface: "bubble", ageMs: ageOf(id) });
-    setItems((prev) => prev.filter((n) => n.id !== id));
-    window.api.notificationOpen(id);
+    const item = items.find((candidate) => candidate.id === id);
+    if (item) void openNotification(item, window.api.notificationOpenThread);
   };
 
   if (items.length === 0) return null;
@@ -132,7 +128,7 @@ function NotificationStack(): React.JSX.Element | null {
         <NotificationCard
           key={item.id}
           item={item}
-          onOpen={open}
+          onOpen={openItem}
           onDismiss={dismiss}
           badge={!expanded && index === 0 ? items.length - 1 : 0}
           onExpand={() => setExpanded(true)}
@@ -145,5 +141,38 @@ function NotificationStack(): React.JSX.Element | null {
 initApiBase();
 installGlobalErrorHandlers();
 
+function NotificationRoot(): React.JSX.Element {
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => {
+    const refresh = (): void => setRefreshKey((current) => current + 1);
+    const offAuth = window.api.onNotificationAuthChanged(refresh);
+    const offServer = window.api.onServerChanged(() => {
+      void refreshApiBase().then(refresh);
+    });
+    return () => {
+      offAuth?.();
+      offServer?.();
+    };
+  }, []);
+
+  return (
+    <CourierNotificationsProvider
+      refreshKey={refreshKey}
+      onNewMessage={(item) =>
+        window.api.notificationPresent({
+          messageId: item.id,
+          title: item.title,
+          body: item.body,
+        })
+      }
+    >
+      <NotificationStack />
+    </CourierNotificationsProvider>
+  );
+}
+
 const container = document.getElementById("root");
-if (container) createRoot(container).render(<NotificationStack />);
+if (container) {
+  createRoot(container).render(<NotificationRoot />);
+}

@@ -12,7 +12,8 @@ import * as Sentry from "@sentry/react-native";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { isRunningInExpoGo } from "expo";
 import { useFonts } from "expo-font";
-import { Stack } from "expo-router";
+import * as Notifications from "expo-notifications";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -21,8 +22,21 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { Colors } from "@/constants/theme";
 import { useAuth } from "@/hooks/use-auth";
 import { ColorModeProvider, useColorMode } from "@/lib/color-mode";
+import {
+  CourierNotificationsProvider,
+  useCourierNotifications,
+} from "@/lib/courier/notifications";
 import { OnboardingProvider, useOnboarding } from "@/lib/onboarding";
 import { queryClient } from "@/lib/query";
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
+  }),
+});
 
 Sentry.init({
   dsn: "https://51fcf17635446e0a220b3ff41b266821@o4509750817325057.ingest.us.sentry.io/4511780563124224",
@@ -55,10 +69,52 @@ Sentry.init({
 
 SplashScreen.preventAutoHideAsync();
 
+function CourierPushRouter({ enabled }: { enabled: boolean }) {
+  const router = useRouter();
+  const { openFromPush, refresh } = useCourierNotifications();
+
+  useEffect(() => {
+    let active = true;
+    const routePush = (response: Notifications.NotificationResponse | null) => {
+      if (!enabled) return;
+      const data = response?.notification.request.content.data;
+      const threadId = data?.threadId;
+      if (typeof threadId === "string") {
+        router.push({
+          pathname: "/(app)/agent-thread/[id]",
+          params: { id: threadId },
+        });
+      }
+      const notificationId = data?.notificationId;
+      if (typeof notificationId === "string") {
+        void openFromPush(notificationId).catch(() => {});
+      }
+      if (response) void Notifications.clearLastNotificationResponseAsync();
+    };
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (active) routePush(response);
+    });
+    const responseSubscription =
+      Notifications.addNotificationResponseReceivedListener(routePush);
+    const receivedSubscription = Notifications.addNotificationReceivedListener(
+      () => {
+        if (enabled) void refresh().catch(() => {});
+      },
+    );
+    return () => {
+      active = false;
+      responseSubscription.remove();
+      receivedSubscription.remove();
+    };
+  }, [enabled, openFromPush, refresh, router]);
+
+  return null;
+}
+
 function RootNavigator() {
   const { scheme } = useColorMode();
   const theme = Colors[scheme];
-  const { loading, signedIn } = useAuth();
+  const { loading, signedIn, user } = useAuth();
   const { ready: onboardingReady } = useOnboarding();
   const startupReady = !loading && (!signedIn || onboardingReady);
 
@@ -75,13 +131,16 @@ function RootNavigator() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: theme.background },
-        }}
-      />
+      <CourierNotificationsProvider userId={signedIn ? user?.id : undefined}>
+        <CourierPushRouter enabled={signedIn && Boolean(user?.id)} />
+        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: theme.background },
+          }}
+        />
+      </CourierNotificationsProvider>
     </GestureHandlerRootView>
   );
 }

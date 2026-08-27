@@ -67,7 +67,7 @@ export function ThreadHistory({
     return (
       <>
         {filter}
-        <div className="tavern-empty">
+        <div className="tavern-empty tavern-thread-empty">
           {origin === "user" ? "Loading conversations…" : "Loading activity…"}
         </div>
       </>
@@ -76,10 +76,15 @@ export function ThreadHistory({
     return (
       <>
         {filter}
-        <div className="tavern-empty">
-          {origin === "user"
-            ? "No conversations yet."
-            : "No briefs yet. Scheduled tasks write what they find here."}
+        <div className="tavern-empty tavern-thread-empty">
+          <strong>
+            {origin === "user" ? "No conversations yet" : "No briefs yet"}
+          </strong>
+          <span>
+            {origin === "user"
+              ? "Start a chat and it will be saved here."
+              : "Scheduled tasks will add their updates here."}
+          </span>
         </div>
       </>
     );

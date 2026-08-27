@@ -46,7 +46,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-type SettingsPage =
+export type SettingsPage =
   | "root"
   | "profile"
   | "billing"
@@ -57,7 +57,10 @@ type SettingsPage =
   | "permissions"
   | "data";
 
-const PAGE_TITLES: Record<Exclude<SettingsPage, "root">, string> = {
+export const SETTINGS_PAGE_TITLES: Record<
+  Exclude<SettingsPage, "root">,
+  string
+> = {
   profile: "Profile",
   billing: "Billing & Usage",
   notifications: "Notifications",
@@ -1513,17 +1516,18 @@ function DataPage({
 }
 
 export function SettingsView({
-  onClose,
+  page,
+  onPageChange: setPage,
   onThreadsCleared,
   onReplayIntro,
   onOpenThread,
 }: {
-  onClose: () => void;
+  page: SettingsPage;
+  onPageChange: (page: SettingsPage) => void;
   onThreadsCleared: () => void;
   onReplayIntro: () => void;
   onOpenThread?: (threadId: string) => void;
 }): React.JSX.Element {
-  const [page, setPage] = useState<SettingsPage>("root");
   const { settings, setSetting } = useServerSettings();
   const auth = useCloudAuth();
   const usage = useCloudUsage(!!auth.user);
@@ -1545,13 +1549,6 @@ export function SettingsView({
   if (page !== "root") {
     return (
       <>
-        <button
-          type="button"
-          className="tavern-file-back"
-          onClick={() => setPage("root")}
-        >
-          ← {PAGE_TITLES[page]}
-        </button>
         {page === "profile" ? (
           <ProfilePage />
         ) : page === "billing" ? (
@@ -1599,9 +1596,6 @@ export function SettingsView({
 
   return (
     <>
-      <button type="button" className="tavern-file-back" onClick={onClose}>
-        ← Settings
-      </button>
       <AccountCard onOpenProfile={() => setPage("profile")} />
       <NavRow
         label="Billing & Usage"

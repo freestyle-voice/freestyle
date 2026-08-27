@@ -99,8 +99,10 @@ const apiRouter = new Hono()
   .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)
   .route("/post-process", postProcessRoute)
-  .route("/agent", agentRoute)
+  // This must precede /agent: that router has a dynamic /thread/:threadId
+  // route which would otherwise treat the literal "list" and "latest" as ids.
   .route("/agent/thread", agentThreadsRoute)
+  .route("/agent", agentRoute)
   .route("/agent-os", agentOsRoute)
   .route("/brain", brainRoute)
   .route("/notifications", notificationsRoute)

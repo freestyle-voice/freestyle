@@ -1,4 +1,23 @@
 # Changelog
+## 0.8.9
+
+### New Features ✨
+
+- (chat) Present structured agent turn briefs by @MathurAditya724 in [#662](https://github.com/freestyle-voice/freestyle/pull/662)
+- (mobile) Deliver Remix-first agent experience by @MathurAditya724 in [#632](https://github.com/freestyle-voice/freestyle/pull/632)
+- (notifications) Register Expo push devices by @MathurAditya724 in [#661](https://github.com/freestyle-voice/freestyle/pull/661)
+- (panel) Polish workspace navigation by @MathurAditya724 in [#663](https://github.com/freestyle-voice/freestyle/pull/663)
+- (remix) Complete workspace experience by @MathurAditya724 in [#660](https://github.com/freestyle-voice/freestyle/pull/660)
+
+### Bug Fixes 🐛
+
+- (agent) Harden Windows local tools by @MathurAditya724 in [#657](https://github.com/freestyle-voice/freestyle/pull/657)
+- (tray) Preserve Retina icon rendering by @MathurAditya724 in [#659](https://github.com/freestyle-voice/freestyle/pull/659)
+
+### Internal Changes 🔧
+
+- Make Chat a conversation workspace by @MathurAditya724 in [#658](https://github.com/freestyle-voice/freestyle/pull/658)
+
 ## 0.8.8
 
 ### New Features ✨

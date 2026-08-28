@@ -337,7 +337,7 @@ export function BrainFiles({
           {filesQuery.isSuccess ? <em>{files.length}</em> : null}
         </div>
         {filesQuery.isLoading ? (
-          <DataSkeleton label="Loading Brain files" />
+          <DataSkeleton label="Loading Brain files" variant="files" />
         ) : filesQuery.isError ? (
           <div className="tavern-empty">
             <p>Couldn&apos;t load Brain files.</p>

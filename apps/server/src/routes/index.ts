@@ -15,6 +15,7 @@ import {
 import agentRoute from "./agent.js";
 import agentOsRoute from "./agent-os.js";
 import agentThreadsRoute from "./agent-threads.js";
+import apiKeys from "./api-keys.js";
 import auth from "./auth.js";
 import billing from "./billing.js";
 import brainRoute from "./brain.js";
@@ -24,6 +25,7 @@ import dictionary from "./dictionary.js";
 import dismissedNotifications from "./dismissed-notifications.js";
 import eventsRoute from "./events.js";
 import history from "./history.js";
+import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
 import notificationsRoute from "./notifications.js";
 import org from "./org.js";
@@ -38,6 +40,7 @@ import suggestionsRoute from "./suggestions.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
 import usage from "./usage.js";
 import vocabulary from "./vocabulary.js";
+import whisper from "./whisper.js";
 
 const clientLog = createAppLogger("renderer");
 
@@ -86,6 +89,7 @@ const apiRouter = new Hono()
     return c.json({ ok: true });
   })
   .route("/settings", settings)
+  .route("/keys", apiKeys)
   .route("/config", configRoute)
   .route("/connectors", connectorsRoute)
   .route("/scheduled", scheduledRoute)
@@ -98,6 +102,8 @@ const apiRouter = new Hono()
   .route("/dictionary", dictionary)
   .route("/dismissed-notifications", dismissedNotifications)
   .route("/vocabulary", vocabulary)
+  .route("/whisper", whisper)
+  .route("/mlx-asr", mlxAsr)
   .route("/post-process", postProcessRoute)
   // This must precede /agent: that router has a dynamic /thread/:threadId
   // route which would otherwise treat the literal "list" and "latest" as ids.

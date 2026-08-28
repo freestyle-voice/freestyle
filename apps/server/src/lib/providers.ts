@@ -1,12 +1,30 @@
 import type { LanguageModel } from "ai";
 import { getDb } from "./db.js";
 import { FREESTYLE_CLOUD_PROVIDER_ID } from "./freestyle-cloud.js";
-import { createFreestyleCloudChatModel } from "./llm/registry.js";
+import { getLlmProvider } from "./llm/registry.js";
+import { reconcileUnsupportedMlxVoiceDefault } from "./mlx-asr/reconcile.js";
 import { getApiKeyForProvider } from "./streaming-stt.js";
 
-function stripCloudPrefix(modelId: string): string {
-  const prefix = `${FREESTYLE_CLOUD_PROVIDER_ID}/`;
-  return modelId.startsWith(prefix) ? modelId.slice(prefix.length) : modelId;
+const LOCAL_PROVIDERS = new Set(["local-llm"]);
+const PROVIDER_PREFIXED_CHAT_MODELS = new Set([
+  "openai",
+  "anthropic",
+  "google",
+  "mistral",
+  "openrouter",
+  "vercel",
+  "local-llm",
+  "freestyle-cloud",
+]);
+
+function getChatModelId(providerId: string, modelId: string): string {
+  if (
+    PROVIDER_PREFIXED_CHAT_MODELS.has(providerId) &&
+    modelId.startsWith(`${providerId}/`)
+  ) {
+    return modelId.slice(providerId.length + 1);
+  }
+  return modelId;
 }
 
 interface DefaultModels {
@@ -15,6 +33,7 @@ interface DefaultModels {
 }
 
 export function getDefaultModels(): DefaultModels {
+  reconcileUnsupportedMlxVoiceDefault();
   const db = getDb();
   const voice = db
     .prepare(
@@ -41,10 +60,44 @@ export async function createChatModel(
   providerId: string,
   modelId: string,
 ): Promise<LanguageModel> {
+  // `createChatModel` backs the plugin capability. Keep that surface scoped to
+  // the signed-in Freestyle Cloud account; locally configured BYOK models are
+  // intentionally available only to dictation cleanup below.
   if (providerId !== FREESTYLE_CLOUD_PROVIDER_ID) {
     throw new Error(`Unsupported provider: ${providerId}`);
   }
-  const token = getApiKeyForProvider(FREESTYLE_CLOUD_PROVIDER_ID);
-  if (!token) throw new Error("Sign in to Freestyle Cloud to use AI cleanup");
-  return createFreestyleCloudChatModel(stripCloudPrefix(modelId), token);
+
+  const apiKey = getApiKeyForProvider(FREESTYLE_CLOUD_PROVIDER_ID);
+  if (!apiKey) {
+    throw new Error("Sign in to Freestyle Cloud to use AI cleanup");
+  }
+
+  const provider = getLlmProvider(FREESTYLE_CLOUD_PROVIDER_ID);
+  if (!provider) {
+    throw new Error("Freestyle Cloud LLM provider is unavailable");
+  }
+  return provider.createModel(
+    getChatModelId(FREESTYLE_CLOUD_PROVIDER_ID, modelId),
+    apiKey,
+  );
+}
+
+/**
+ * Resolve a locally configured cleanup model. This is deliberately separate
+ * from `createChatModel`: plugin hooks stay Cloud-only while the legacy Models
+ * page can continue to route dictation cleanup through local and BYOK models.
+ */
+export async function createCleanupModel(
+  providerId: string,
+  modelId: string,
+): Promise<LanguageModel> {
+  const provider = getLlmProvider(providerId);
+  if (!provider) throw new Error(`Unsupported provider: ${providerId}`);
+
+  const isLocal = provider.local ?? LOCAL_PROVIDERS.has(providerId);
+  const apiKey = isLocal ? "local" : getApiKeyForProvider(providerId);
+  if (!apiKey)
+    throw new Error(`No API key configured for provider: ${providerId}`);
+
+  return provider.createModel(getChatModelId(providerId, modelId), apiKey);
 }

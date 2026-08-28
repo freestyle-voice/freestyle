@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 27;
+const SCHEMA_VERSION = 28;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -711,6 +711,20 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // silently diverge after the cutover.
     db.exec("DROP TABLE IF EXISTS notification_outbox");
     db.exec("DROP TABLE IF EXISTS notifications");
+  }
+
+  // Restore the desktop-only credential store used by the legacy Models page.
+  // This is intentionally a new, forward-only table: the v23 removal was
+  // destructive, so no old key material is recreated or synced from Cloud.
+  if (currentVersion < 28) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        provider TEXT PRIMARY KEY,
+        key TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        status TEXT NOT NULL DEFAULT 'unknown'
+      )
+    `);
   }
 
   // Upsert schema version

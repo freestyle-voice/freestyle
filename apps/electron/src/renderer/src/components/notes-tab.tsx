@@ -192,7 +192,8 @@ export function NotesTab(): React.JSX.Element {
     );
   }
 
-  if (notesQuery.isLoading) return <DataSkeleton label="Loading notes" />;
+  if (notesQuery.isLoading)
+    return <DataSkeleton label="Loading notes" variant="notes" />;
   if (notesQuery.isError)
     return (
       <div className="tavern-empty">

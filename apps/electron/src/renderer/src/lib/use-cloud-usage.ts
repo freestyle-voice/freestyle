@@ -143,7 +143,7 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
 
   useEffect(() => {
     if (!signedIn) return;
-    const remove = window.api?.onTranscriptionDone(() => {
+    const remove = window.api?.onTranscriptionDone?.(() => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.cloud.usage });
     });
     return () => remove?.();

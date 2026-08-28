@@ -89,10 +89,7 @@ import {
 import {
   createDictationDisplayRequestTracker,
   invalidateDictationDisplayRequest,
-  resolveCompanionDisplay,
   resolveDictationPanelDisplay,
-  resolveDictationWindowDisplays,
-  resolvePanelCompanionDisplays,
 } from "../shared/companion-position";
 import type { DictationPrefs } from "../shared/dictation-prefs";
 import {
@@ -104,14 +101,7 @@ import {
 } from "../shared/focused-window";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
-import {
-  COMPANION_CLEARANCE,
-  PANEL_GAP,
-  PANEL_HEIGHT,
-  PANEL_MAX_WIDTH,
-  PANEL_MIN_WIDTH,
-  PANEL_WIDTH,
-} from "../shared/panel";
+import { type PetState, parsePetEnabled } from "../shared/pet";
 import {
   getDefaultRemixHotkey,
   REMIX_CLIPBOARD_PREVIEW_LIMIT,
@@ -158,7 +148,7 @@ import {
   PipelineStage,
   relayEvent,
 } from "./plugins/index";
-import { invalidatePluginViews } from "./plugins/ui-host";
+import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 import { isRemixTargetAllowed } from "./remix-target";
 import { rendererUrl } from "./renderer-url";
 import {
@@ -466,7 +456,8 @@ function broadcastUpdateStatus(): void {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let httpServer: any = null;
 let serverPort = DEFAULT_PORT;
-const mainWindow: BrowserWindow | null = null;
+let mainWindow: BrowserWindow | null = null;
+let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let keyListener: NativeKeyListener | null = null;
 // Latching flag: records that the native key listener started successfully.
@@ -639,20 +630,68 @@ function getPillAlignmentForCustom(): "custom-top" | "custom-bottom" {
   const midY = display.workArea.y + display.workArea.height / 2;
   return wy < midY ? "custom-top" : "custom-bottom";
 }
+
+function pillPositionForDisplay(display: Display): { x: number; y: number } {
+  const { x, y, width, height } = display.workArea;
+  const position = (readSettings().pillPosition as string) || "bottom-center";
+  const centerX = x + Math.round((width - APP_WIDTH) / 2);
+  const rightX = x + width - APP_WIDTH - 16;
+  const bottomY = y + height - APP_HEIGHT - 12;
+  if (position === "top-center") return { x: centerX, y: y + 12 };
+  if (position === "top-right") return { x: rightX, y: y + 12 };
+  if (position === "bottom-right") return { x: rightX, y: bottomY };
+  return { x: centerX, y: bottomY };
+}
+
+function createPillWindow(): void {
+  if (mainWindow && !mainWindow.isDestroyed()) return;
+  const { x, y } = pillPositionForDisplay(
+    screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),
+  );
+  mainWindow = new BrowserWindow({
+    width: APP_WIDTH,
+    height: APP_HEIGHT,
+    x,
+    y,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    hasShadow: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    focusable: false,
+    ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
+    ...(process.platform === "linux" ? { icon } : {}),
+    webPreferences: {
+      preload: join(__dirname, "../preload/index.js"),
+      sandbox: false,
+      backgroundThrottling: false,
+    },
+  });
+  mainWindow.setAlwaysOnTop(true, "screen-saver");
+  mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  mainWindow.on("closed", () => {
+    stopPillHotPoll();
+    mainWindow = null;
+  });
+  void mainWindow.loadURL(rendererUrl("pill.html"));
+}
+
+function showPill(): void {
+  createPillWindow();
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const { x, y } = pillPositionForDisplay(
+    screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),
+  );
+  win.setPosition(x, y);
+  win.showInactive();
+}
 /** Open the panel with the Settings view showing — the successor to every
  *  "open the dashboard at /settings" entry point. */
 function openPanelSettings(): void {
-  openPanel({ focusComposer: false });
-  const win = panelWindow;
-  if (!win || win.isDestroyed()) return;
-  win.show();
-  win.focus();
-  const send = (): void => win.webContents.send("panel:show-settings");
-  if (win.webContents.isLoading()) {
-    win.webContents.once("did-finish-load", send);
-  } else {
-    send();
-  }
+  openSettingsWindow();
 }
 
 /**
@@ -1451,6 +1490,10 @@ function buildUpdateMenuItem(): { label: string; click: () => void } {
 function buildTrayContextMenu(): Menu {
   return Menu.buildFromTemplate([
     {
+      label: "Open Freestyle",
+      click: () => openPanel({ focusComposer: true, trigger: "tray" }),
+    },
+    {
       label: "Settings",
       click: () => openPanelSettings(),
     },
@@ -1497,7 +1540,8 @@ function createTray(): void {
     // assign the menu natively so the OS can register it via DBusMenu.
     tray.setContextMenu(buildTrayContextMenu());
   } else {
-    // macOS/Windows: left-click opens settings, right-click shows menu.
+    // macOS/Windows: left-click opens the workspace; settings remains a
+    // distinct dialogue in the contextual menu.
     // Using setContextMenu on macOS would override the click handler.
     tray.on("right-click", () => {
       tray!.popUpContextMenu(buildTrayContextMenu());
@@ -1714,9 +1758,43 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on("dictation:state", (event, phase: unknown) => {
-    if (event.sender !== companionWindow?.webContents) return;
+    if (event.sender !== mainWindow?.webContents) return;
     if (phase === "recording" || phase === "transcribing" || phase === "idle") {
       setDictationPhase(phase);
+    }
+  });
+
+  // The restored pill remains the single dictation owner. These original
+  // renderer channels are deliberately kept as a narrow compatibility bridge:
+  // they only control the pill window and do not change server state.
+  ipcMain.on("pill:hide", (event) => {
+    if (event.sender === mainWindow?.webContents) hidePill();
+  });
+  ipcMain.on(
+    "pill:set-expanded",
+    (event, expanded: unknown, expansion: unknown) => {
+      if (event.sender !== mainWindow?.webContents) return;
+      setPillExpanded(
+        expanded === true,
+        expansion === "remix-chat" ? "remix-chat" : "card",
+      );
+    },
+  );
+  ipcMain.on("pill:set-hot-rect", (event, rect: unknown) => {
+    if (event.sender !== mainWindow?.webContents) return;
+    if (rect === null) {
+      setPillHotRect(null);
+      return;
+    }
+    if (
+      typeof rect === "object" &&
+      rect !== null &&
+      typeof (rect as PillHotRect).x === "number" &&
+      typeof (rect as PillHotRect).y === "number" &&
+      typeof (rect as PillHotRect).width === "number" &&
+      typeof (rect as PillHotRect).height === "number"
+    ) {
+      setPillHotRect(rect as PillHotRect);
     }
   });
 
@@ -1873,6 +1951,9 @@ app.whenReady().then(async () => {
     ipcMain.on("e2e:trigger-hotkey-down", handleNativeHotkeyDown);
     ipcMain.on("e2e:trigger-hotkey-up", handleNativeHotkeyUp);
     ipcMain.on("e2e:trigger-escape", cancelActiveDictation);
+    ipcMain.on("e2e:open-panel", () =>
+      openPanel({ focusComposer: true, trigger: "other" }),
+    );
   }
 
   // IPC: Linux system setup (input-group access for the hotkey listener and
@@ -1986,7 +2067,8 @@ app.whenReady().then(async () => {
     startServer(DEFAULT_PORT);
   }
 
-  createCompanionWindow();
+  createPillWindow();
+  if (petEnabled()) createCompanionWindow();
   registerSummonShortcut();
   capturePerson({
     companion_form: companionFormSetting(),
@@ -2004,9 +2086,15 @@ app.whenReady().then(async () => {
   // main to show the window only while unopened messages exist.
   createNotificationWindow();
 
-  // A signed-out launch surfaces the panel unprompted: the sign-in gate is
-  // the whole product until there's a session, and a first-time user doesn't
-  // know the corner hover exists yet.
+  // Paint the desktop shell as soon as the launch preference permits it. The
+  // local server/auth check runs independently below; waiting for it made a
+  // mostly-static workspace look frozen on every cold start.
+  const shouldOpenDashboard = readSettings().showDashboardOnLaunch !== false;
+  if (shouldOpenDashboard) openPanel();
+
+  // A signed-out launch still surfaces the panel when the signed-in preference
+  // says not to open it. This keeps first-run/sign-out behavior intact without
+  // holding a normal startup behind the server health/auth round-trip.
   void (async () => {
     for (let attempt = 0; attempt < 20; attempt++) {
       if (await probeServerHealth(getServerBaseUrl(), 1000)) break;
@@ -2016,15 +2104,15 @@ app.whenReady().then(async () => {
       .api.auth.status.$get()
       .then(async (res) => (res.ok ? ((await res.json()).user ?? null) : null))
       .catch(() => null);
-    if (!user) openPanel();
+    // A signed-out launch always needs the sign-in gate. Signed-in users can
+    // opt out of the restored desktop workspace opening automatically.
+    if (!user && !shouldOpenDashboard) openPanel();
   })();
 
   createTray();
 
-  // The pill window is retired: it hosted the legacy dictation pipeline
-  // (recorder + paste), which double-delivered alongside the companion's.
-  // The companion owns dictation; the pill exists only via the showPill()
-  // boot-race fallback when no companion window could be created.
+  // The pill owns the only dictation pipeline. The optional companion is a
+  // presentation-only pet and is never a dictation target.
 
   // -- Auto-update helpers --
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -2203,6 +2291,48 @@ app.whenReady().then(async () => {
     }
     app.setLoginItemSettings({ openAtLogin: enabled });
   });
+
+  // -- Workspace visibility at launch (Electron-local only) --
+  ipcMain.handle("settings:show-dashboard-on-launch", () => {
+    return readSettings().showDashboardOnLaunch !== false;
+  });
+
+  ipcMain.on(
+    "settings:set-show-dashboard-on-launch",
+    (_event, enabled: boolean) => {
+      writeSettings({ showDashboardOnLaunch: enabled });
+    },
+  );
+
+  // -- Remix session display names (Electron-local only) --
+  // Titles remain a presentation preference during the desktop redesign
+  // experiment. The canonical thread payload and Cloud API stay untouched.
+  const remixSessionTitles = (): Record<string, string> => {
+    const stored = readSettings().remixSessionTitles;
+    if (!stored || typeof stored !== "object" || Array.isArray(stored))
+      return {};
+    return Object.fromEntries(
+      Object.entries(stored).flatMap(([id, title]) => {
+        if (typeof title !== "string") return [];
+        const trimmed = title.trim().slice(0, 120);
+        return trimmed ? [[id, trimmed]] : [];
+      }),
+    );
+  };
+
+  ipcMain.handle("settings:remix-session-titles", () => remixSessionTitles());
+  ipcMain.handle(
+    "settings:set-remix-session-title",
+    (_event, threadId: unknown, title: unknown) => {
+      if (typeof threadId !== "string" || threadId.length === 0) return false;
+      const titles = remixSessionTitles();
+      const next = typeof title === "string" ? title.trim().slice(0, 120) : "";
+      if (next) titles[threadId] = next;
+      else delete titles[threadId];
+      writeSettings({ remixSessionTitles: titles });
+      return true;
+    },
+  );
 
   // -- Context-aware dictation: get frontmost app + browser context --
   ipcMain.handle("system:frontmost-app", async () => {
@@ -3037,47 +3167,29 @@ const dictationDisplayRequests = createDictationDisplayRequestTracker();
 let activeDictationDisplay: Display | null = null;
 
 /**
- * Associate the visible companion with the target captured for this dictation
- * session. Cursor is only an immediate fallback; an Accessibility lookup moves
- * it to the external app's display without following later mouse movement.
+ * Associate the restored pill with the display that received the hotkey.
+ * Cursor is only an immediate fallback; the accessibility lookup corrects it
+ * for keyboard-first, multi-display users without involving the optional pet.
  */
-function anchorCompanionForDictation(): void {
-  const win = companionWindow;
-  if (!win || win.isDestroyed()) return;
-
+function anchorPillForDictation(): void {
   const request = dictationDisplayRequests.begin();
   const cursorDisplay = screen.getDisplayNearestPoint(
     screen.getCursorScreenPoint(),
   );
-  positionDictationWindows(resolveCompanionDisplay(null, cursorDisplay));
+  activeDictationDisplay = cursorDisplay;
+  const movePill = (display: Display): void => {
+    activeDictationDisplay = display;
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return;
+    const { x, y } = pillPositionForDisplay(display);
+    win.setPosition(x, y);
+  };
+  movePill(cursorDisplay);
 
   void getFocusedExternalDisplay().then((focusedDisplay) => {
     if (!dictationDisplayRequests.isCurrent(request)) return;
-    if (!companionWindow || companionWindow.isDestroyed()) return;
-    positionDictationWindows(
-      resolveCompanionDisplay(focusedDisplay, cursorDisplay),
-    );
+    movePill(focusedDisplay ?? cursorDisplay);
   });
-}
-
-function positionDictationWindows(display: Display): void {
-  activeDictationDisplay = display;
-  const panelVisible =
-    !!panelWindow && !panelWindow.isDestroyed() && panelWindow.isVisible();
-  const { panelDisplay, companionDisplay } = resolveDictationWindowDisplays(
-    display,
-    panelVisible,
-  );
-  if (panelDisplay) positionPanelOnDisplay(panelDisplay);
-  positionCompanionOnDisplay(companionDisplay);
-}
-
-function positionCompanionOnDisplay(display: Display): void {
-  const win = companionWindow;
-  if (!win || win.isDestroyed()) return;
-  const size = SPRITES_INFO[companionFormSetting()].windowSize;
-  const { x, y } = companionPosition(display);
-  win.setBounds({ x, y, width: size, height: size });
 }
 
 function stopCompanionHotPoll(): void {
@@ -3127,6 +3239,11 @@ function companionFormSetting(): CompanionForm {
   return parseCompanionForm(readSettings().companionForm as string | undefined);
 }
 
+/** The pet is intentionally local to this Electron installation. */
+function petEnabled(): boolean {
+  return parsePetEnabled(readSettings().petEnabled);
+}
+
 async function dictationPrefs(): Promise<DictationPrefs> {
   const settings = (await getServerSettings()) ?? {};
   const mode = settings.audio_playback_mode;
@@ -3147,7 +3264,7 @@ async function dictationPrefs(): Promise<DictationPrefs> {
 
 export function broadcastDictationPrefs(): void {
   void dictationPrefs().then((prefs) => {
-    companionWindow?.webContents.send("dictation:prefs", prefs);
+    mainWindow?.webContents.send("dictation:prefs", prefs);
   });
 }
 
@@ -3156,6 +3273,27 @@ ipcMain.handle("dictation:prefs", () => dictationPrefs());
 ipcMain.on("dictation:reload-prefs", () => broadcastDictationPrefs());
 
 ipcMain.handle("companion:form", () => companionFormSetting());
+
+ipcMain.handle("pet:enabled", () => petEnabled());
+
+ipcMain.on("pet:set-enabled", (event, enabled: unknown) => {
+  if (
+    event.sender !== panelWindow?.webContents &&
+    event.sender !== settingsWindow?.webContents
+  )
+    return;
+  const next = enabled === true;
+  writeSettings({ petEnabled: next });
+  if (next) createCompanionWindow();
+  else destroyCompanionWindow();
+});
+
+ipcMain.on("pet:set-state", (event, state: PetState) => {
+  if (event.sender !== panelWindow?.webContents || !petEnabled()) return;
+  setCompanionState(
+    state === "working" ? "working" : state === "idle" ? "idle" : "suggestion",
+  );
+});
 
 ipcMain.on("companion:set-form", (_event, form: string) => {
   const next = parseCompanionForm(form);
@@ -3294,7 +3432,7 @@ ipcMain.on("companion:set-hot-rect", (event, rect: PillHotRect | null) => {
 
 ipcMain.on("companion:hover", (event) => {
   if (event.sender !== companionWindow?.webContents) return;
-  openPanel({ trigger: "hover" });
+  openPanelSettings();
 });
 
 function forwardDictation(
@@ -3310,22 +3448,22 @@ function forwardDictation(
 }
 
 ipcMain.on("panel:open-for-dictation", (event) => {
-  if (event.sender !== companionWindow?.webContents) return;
+  if (event.sender !== mainWindow?.webContents) return;
   openPanel({ focusComposer: true, trigger: "dictation" });
 });
 
 ipcMain.on("panel:dictation-partial", (event, text: string) => {
-  if (event.sender !== companionWindow?.webContents) return;
+  if (event.sender !== mainWindow?.webContents) return;
   forwardDictation("partial", text);
 });
 
 ipcMain.on("panel:dictation-final", (event, text: string) => {
-  if (event.sender !== companionWindow?.webContents) return;
+  if (event.sender !== mainWindow?.webContents) return;
   forwardDictation("final", text);
 });
 
 ipcMain.on("panel:dictation-error", (event, message: string) => {
-  if (event.sender !== companionWindow?.webContents) return;
+  if (event.sender !== mainWindow?.webContents) return;
   forwardDictation("error", message);
 });
 
@@ -3339,46 +3477,52 @@ ipcMain.on("panel:close", (event) => {
   closePanel();
 });
 
-ipcMain.on("panel:pointer-left", (event) => {
-  if (event.sender !== panelWindow?.webContents) return;
-  if (panelResizing) return;
-  schedulePanelHide();
-});
-
-// Live width while the renderer drags the resize handle. The pointer often
-// leaves the window mid-drag (the window resizes under it), so hides are
-// suppressed until the commit.
+// The restored dashboard is natively resizable. Keep the older renderer
+// resize bridge functional as well, so a hot-reloaded legacy surface never
+// invokes an absent method while its window is being replaced.
 ipcMain.on("panel:resize-width", (event, width: unknown) => {
   if (event.sender !== panelWindow?.webContents) return;
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
   if (typeof width !== "number" || !Number.isFinite(width)) return;
-  panelResizing = true;
-  cancelPanelHide();
   const bounds = win.getBounds();
   const display = screen.getDisplayMatching(bounds);
-  const next = clampPanelWidth(width, display);
-  if (next !== bounds.width) setPanelBounds(win, { ...bounds, width: next });
+  const maxWidth = Math.max(DASHBOARD_MIN_WIDTH, display.workArea.width - 48);
+  const nextWidth = Math.min(
+    maxWidth,
+    Math.max(DASHBOARD_MIN_WIDTH, Math.round(width)),
+  );
+  if (bounds.width !== nextWidth)
+    win.setBounds({ ...bounds, width: nextWidth });
 });
 
 ipcMain.on("panel:commit-width", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
-  panelResizing = false;
-  const win = panelWindow;
-  if (win && !win.isDestroyed()) {
-    writeSettings({ panelWidth: win.getBounds().width });
-  }
-  schedulePanelHide();
+});
+
+// Hover auto-dismiss belonged to the former corner companion. The restored
+// desktop workspace remains open, but accepting these channels preserves a
+// safe preload contract for any renderer still sending them.
+ipcMain.on("panel:pointer-left", (event) => {
+  if (event.sender !== panelWindow?.webContents) return;
 });
 
 ipcMain.on("panel:pointer-entered", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
-  cancelPanelHide();
 });
 
-// The renderer pins the panel while a turn is running or an approval card is
-// up: no hover-out hide, no blur-triggered hide, so the agent yielding key
-// focus to capture the user's document can't dismiss the panel mid-turn.
+ipcMain.on("settings:open", (event) => {
+  if (event.sender !== panelWindow?.webContents) return;
+  openSettingsWindow();
+});
+
+ipcMain.on("settings:close", (event) => {
+  if (event.sender !== settingsWindow?.webContents) return;
+  settingsWindow?.hide();
+});
+
+// The workspace publishes activity so the optional, local-only pet can mirror
+// it. Unlike the old corner panel, the workspace never auto-hides on blur.
 ipcMain.on("panel:set-busy", (event, busy: unknown) => {
   if (event.sender !== panelWindow?.webContents) return;
   const next = busy === true;
@@ -3391,7 +3535,6 @@ ipcMain.on("panel:set-busy", (event, busy: unknown) => {
     );
   }
   panelBusy = next;
-  if (panelBusy) cancelPanelHide();
 });
 
 // Clicking into the composer after an agent tool yielded key focus: panel
@@ -3406,9 +3549,7 @@ ipcMain.on("panel:request-focus", (event) => {
 });
 
 let panelWindow: BrowserWindow | null = null;
-let panelHideTimer: NodeJS.Timeout | null = null;
 let panelBusy = false;
-let panelResizing = false;
 const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
@@ -3421,23 +3562,10 @@ const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   }
   win.webContents.send(message.channel);
 });
-const PANEL_HIDE_GRACE_MS = 420;
-const PANEL_HOVER_PAD = 24;
-
-function clampPanelWidth(width: number, display: Display): number {
-  const max = Math.min(
-    PANEL_MAX_WIDTH,
-    Math.max(PANEL_MIN_WIDTH, display.workArea.width - 32),
-  );
-  return Math.min(max, Math.max(PANEL_MIN_WIDTH, Math.round(width)));
-}
-
-function storedPanelWidth(): number {
-  const raw = readSettings().panelWidth;
-  return typeof raw === "number" && Number.isFinite(raw)
-    ? Math.round(raw)
-    : PANEL_WIDTH;
-}
+const DASHBOARD_DEFAULT_WIDTH = 1080;
+const DASHBOARD_DEFAULT_HEIGHT = 760;
+const DASHBOARD_MIN_WIDTH = 760;
+const DASHBOARD_MIN_HEIGHT = 560;
 
 function panelPosition(display: Display): {
   x: number;
@@ -3446,29 +3574,67 @@ function panelPosition(display: Display): {
   height: number;
 } {
   const { x: waX, y: waY, width, height } = display.workArea;
-  const panelWidth = clampPanelWidth(storedPanelWidth(), display);
-  const x = Math.min(waX + 16, waX + Math.max(0, width - panelWidth - 16));
-  const available = height - COMPANION_CLEARANCE - PANEL_GAP;
-  const panelHeight = Math.max(320, Math.min(PANEL_HEIGHT, available));
-  const y = Math.max(waY, waY + height - COMPANION_CLEARANCE - panelHeight);
+  const panelWidth = Math.min(
+    DASHBOARD_DEFAULT_WIDTH,
+    Math.max(DASHBOARD_MIN_WIDTH, width - 48),
+  );
+  const panelHeight = Math.min(
+    DASHBOARD_DEFAULT_HEIGHT,
+    Math.max(DASHBOARD_MIN_HEIGHT, height - 48),
+  );
+  const x = waX + Math.max(0, Math.round((width - panelWidth) / 2));
+  const y = waY + Math.max(0, Math.round((height - panelHeight) / 2));
   return { x, y, width: panelWidth, height: panelHeight };
 }
 
-// The panel is created non-resizable, which on some platforms also pins its
-// size against setBounds. Lift the constraint just for the call.
 function setPanelBounds(
   win: BrowserWindow,
   bounds: { x: number; y: number; width: number; height: number },
 ): void {
-  win.setResizable(true);
   win.setBounds(bounds);
-  win.setResizable(false);
 }
 
 function positionPanelOnDisplay(display: Display): void {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
   setPanelBounds(win, panelPosition(display));
+}
+
+function publishFullscreenState(win: BrowserWindow): void {
+  const send =
+    (fullscreen: boolean): (() => void) =>
+    () => {
+      if (!win.isDestroyed())
+        win.webContents.send("fullscreen:changed", fullscreen);
+    };
+  win.on("enter-full-screen", send(true));
+  win.on("leave-full-screen", send(false));
+}
+
+/** Perform a host action requested by a plugin page over its isolated bridge. */
+function handlePluginAction(
+  channel: keyof import("freestyle-voice").HostActions,
+  payload: unknown,
+): void {
+  switch (channel) {
+    case "copy": {
+      const { text } = payload as { text: string };
+      if (text) clipboard.writeText(text);
+      break;
+    }
+    case "toast": {
+      const { message } = payload as { message: string };
+      if (message && Notification.isSupported()) {
+        new Notification({ title: "Freestyle", body: message }).show();
+      }
+      break;
+    }
+    case "navigate": {
+      const { to } = payload as { to: string };
+      panelWindow?.webContents.send("plugin:navigate", to);
+      break;
+    }
+  }
 }
 
 function createPanelWindow(): void {
@@ -3482,15 +3648,20 @@ function createPanelWindow(): void {
     x,
     y,
     show: false,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    hasShadow: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
+    title: "Freestyle",
+    titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
+    trafficLightPosition:
+      process.platform === "darwin" ? { x: 20, y: 16 } : undefined,
+    transparent: false,
+    resizable: true,
+    minWidth: DASHBOARD_MIN_WIDTH,
+    minHeight: DASHBOARD_MIN_HEIGHT,
+    hasShadow: true,
+    alwaysOnTop: false,
+    skipTaskbar: false,
+    backgroundColor: "#16140f",
     autoHideMenuBar: true,
     focusable: true,
-    ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
     ...(process.platform === "linux" ? { icon } : {}),
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
@@ -3498,13 +3669,11 @@ function createPanelWindow(): void {
       backgroundThrottling: false,
     },
   });
+  publishFullscreenState(panelWindow);
   panelRendererMessages.reset();
 
-  panelWindow.setAlwaysOnTop(true, "screen-saver");
-  panelWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   panelWindow.on("closed", () => {
     panelWindow = null;
-    panelResizing = false;
     panelRendererMessages.reset();
   });
   panelWindow.webContents.on(
@@ -3513,21 +3682,13 @@ function createPanelWindow(): void {
       if (isMainFrame) panelRendererMessages.handleNavigationStart();
     },
   );
-  // Losing focus is the only signal that "hover off then hide" can rely on
-  // once the composer has been clicked: pointer-leave alone is ignored while
-  // the panel is focused, so re-check on blur. Agent tool calls blur the
-  // panel deliberately mid-turn — panelBusy suppresses those.
-  panelWindow.on("blur", () => {
-    if (!panelBusy) schedulePanelHide();
+  initPluginUiHost({
+    window: panelWindow,
+    getServerBaseUrl,
+    getServerToken,
+    onAction: handlePluginAction,
   });
-
   void panelWindow.loadURL(rendererUrl("panel.html"));
-}
-
-function cancelPanelHide(): void {
-  if (!panelHideTimer) return;
-  clearTimeout(panelHideTimer);
-  panelHideTimer = null;
 }
 
 type PanelTrigger =
@@ -3541,7 +3702,6 @@ type PanelTrigger =
 function openPanel(
   opts: { focusComposer?: boolean; trigger?: PanelTrigger } = {},
 ): void {
-  cancelPanelHide();
   const wasVisible =
     !!panelWindow && !panelWindow.isDestroyed() && panelWindow.isVisible();
   createPanelWindow();
@@ -3561,10 +3721,10 @@ function openPanel(
   const targetDisplay = dictationTriggered
     ? resolveDictationPanelDisplay(activeDictationDisplay, cursorDisplay)
     : cursorDisplay;
-  const { panelDisplay, companionDisplay } =
-    resolvePanelCompanionDisplays(targetDisplay);
-  positionPanelOnDisplay(panelDisplay);
-  positionCompanionOnDisplay(companionDisplay);
+  // A normal desktop window keeps a user's chosen size and position while it
+  // is open. We only centre it when first shown, on the display that invoked
+  // it (or the dictation display for a pill-triggered open).
+  if (!wasVisible) positionPanelOnDisplay(targetDisplay);
   if (opts.focusComposer) {
     win.show();
     win.focus();
@@ -3575,45 +3735,15 @@ function openPanel(
 }
 
 function closePanel(): void {
-  cancelPanelHide();
   if (panelWindow && !panelWindow.isDestroyed()) panelWindow.hide();
   rearmCompanionHotRect();
-}
-
-function cursorWithin(win: BrowserWindow | null, pad = 0): boolean {
-  if (!win || win.isDestroyed()) return false;
-  const b = win.getBounds();
-  const c = screen.getCursorScreenPoint();
-  return (
-    c.x >= b.x - pad &&
-    c.x <= b.x + b.width + pad &&
-    c.y >= b.y - pad &&
-    c.y <= b.y + b.height + pad
-  );
-}
-
-function schedulePanelHide(): void {
-  cancelPanelHide();
-  panelHideTimer = setTimeout(() => {
-    panelHideTimer = null;
-    const win = panelWindow;
-    if (!win || win.isDestroyed() || !win.isVisible()) return;
-    if (panelBusy || panelResizing) return;
-    if (win.isFocused()) return;
-    // A pointer heading for the companion, or hovering the gap between the two,
-    // is not a pointer leaving — only hide when it is clear of both.
-    if (cursorWithin(win, PANEL_HOVER_PAD)) return;
-    if (cursorWithin(companionWindow, PANEL_HOVER_PAD)) return;
-    win.hide();
-    rearmCompanionHotRect();
-  }, PANEL_HIDE_GRACE_MS);
 }
 
 const SUMMON_ACCELERATOR = "Alt+Space";
 
 function reportSummonConflict(): void {
   reportHotkeyError(
-    `The panel shortcut ${SUMMON_ACCELERATOR} is taken by another app. Open the panel by hovering the corner or from the menu bar.`,
+    `The workspace shortcut ${SUMMON_ACCELERATOR} is taken by another app. Open Freestyle from the menu bar instead.`,
   );
 }
 
@@ -3635,12 +3765,52 @@ function registerSummonShortcut(): void {
 }
 
 function destroyPanelWindow(): void {
-  cancelPanelHide();
   if (panelWindow && !panelWindow.isDestroyed()) panelWindow.destroy();
   panelWindow = null;
 }
 
+/**
+ * The legacy app treated Settings as a focused, persistent desktop dialogue.
+ * Its renderer reuses the current settings feature module and server contract;
+ * only its window ownership and presentation are different.
+ */
+function openSettingsWindow(): void {
+  if (!settingsWindow || settingsWindow.isDestroyed()) {
+    settingsWindow = new BrowserWindow({
+      width: 760,
+      height: 720,
+      minWidth: 640,
+      minHeight: 520,
+      show: false,
+      title: "Freestyle Settings",
+      titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
+      trafficLightPosition:
+        process.platform === "darwin" ? { x: 20, y: 16 } : undefined,
+      backgroundColor: "#16140f",
+      ...(process.platform === "linux" ? { icon } : {}),
+      webPreferences: {
+        preload: join(__dirname, "../preload/index.js"),
+        sandbox: false,
+      },
+    });
+    publishFullscreenState(settingsWindow);
+    settingsWindow.on("closed", () => {
+      settingsWindow = null;
+    });
+    settingsWindow.once("ready-to-show", () => {
+      settingsWindow?.show();
+    });
+    // The restored legacy renderer owns Settings as a route in the same dark
+    // desktop shell. Hash routing keeps packaged app:// URLs intact.
+    void settingsWindow.loadURL(`${rendererUrl("panel.html")}#/settings`);
+    return;
+  }
+  settingsWindow.show();
+  settingsWindow.focus();
+}
+
 function createCompanionWindow(): void {
+  if (!petEnabled()) return;
   if (companionWindow && !companionWindow.isDestroyed()) return;
   const size = SPRITES_INFO[companionFormSetting()].windowSize;
   const { x, y } = companionPosition();
@@ -3786,12 +3956,10 @@ function hotkeyModeFromSettings(
 }
 
 function dictationTargets(): BrowserWindow[] {
-  // The companion is the ONLY window that records and delivers dictation.
-  // The settings window receives the events too, but purely for the
-  // onboarding/tutorial visuals — it has no recording pipeline.
+  // The restored pill is the only recording/delivery renderer. The optional
+  // pet is presentation-only and never receives dictation events.
   const targets: BrowserWindow[] = [];
-  if (companionWindow && !companionWindow.isDestroyed())
-    targets.push(companionWindow);
+  if (mainWindow && !mainWindow.isDestroyed()) targets.push(mainWindow);
   return targets;
 }
 
@@ -3818,13 +3986,18 @@ function updateDictationEscape(): void {
 function setDictationPhase(phase: "idle" | "recording" | "transcribing"): void {
   dictationInProgress = phase !== "idle";
   updateDictationEscape();
+  if (phase === "idle") hidePill();
 }
 
 function cancelActiveDictation(): void {
   if (!dictationInProgress) return;
   hotkeyPressed = false;
   clearHotkeyStuckWatchdog();
-  companionWindow?.webContents.send("dictation:cancel");
+  // The legacy pill listens on `pill:cancel`; the newer surfaces retain the
+  // generic dictation event. Both signal one renderer-owned cancellation, not
+  // two recordings or two deliveries.
+  mainWindow?.webContents.send("pill:cancel");
+  mainWindow?.webContents.send("dictation:cancel");
 }
 
 function sendHotkeyDown(): void {
@@ -3835,7 +4008,8 @@ function sendHotkeyDown(): void {
     void showRequiredPermissionDialog(missingPermission);
     return;
   }
-  anchorCompanionForDictation();
+  showPill();
+  anchorPillForDictation();
   relayServerEvent({ type: FreestyleEventType.RecordingStarted });
   for (const win of dictationTargets()) {
     win.webContents.send("hotkey:down");
@@ -3916,12 +4090,14 @@ function handleTavernTalkDown(): void {
     hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
   }
-  const win = companionWindow;
+  showPill();
+  anchorPillForDictation();
+  const win = mainWindow;
   if (win && !win.isDestroyed()) win.webContents.send("talk:down");
 }
 
 function handleTavernTalkUp(): void {
-  const win = companionWindow;
+  const win = mainWindow;
   if (win && !win.isDestroyed()) win.webContents.send("talk:up");
 }
 

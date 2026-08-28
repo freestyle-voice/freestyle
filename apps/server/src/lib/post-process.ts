@@ -1,4 +1,7 @@
-import { sanitizeTranscriptText } from "@freestyle-voice/stt";
+import {
+  postProcess as cleanupWithModel,
+  sanitizeTranscriptText,
+} from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import type {
   CleanupAppAssignment,
@@ -18,10 +21,14 @@ import {
   parseCleanupWorkTone,
 } from "@freestyle-voice/validations";
 import type { HookApi } from "freestyle-voice";
-import { getModelCostCached } from "../routes/models.js";
+import {
+  getModelCostCached,
+  isCleanupModelSupported,
+} from "../routes/models.js";
 import { getDb, readSetting, readSettings } from "./db.js";
 import { applyDictionaryReplacements } from "./dictionary-replacements.js";
 import { ensureCleanupPromptConfigFresh } from "./editor/prompt-config.js";
+import { buildRewritePrompt } from "./editor/prompts.js";
 import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
@@ -29,14 +36,16 @@ import {
   isTransientCloudError,
   postProcessWithFreestyleCloud,
 } from "./freestyle-cloud.js";
+import { getLlmProvider } from "./llm/registry.js";
 import {
   FreestyleEventType,
+  PipelineStage,
   parseAppContext,
   plugins,
 } from "./plugins/index.js";
 import { createHookApi } from "./plugins/pipeline.js";
 import { capture, captureException } from "./posthog.js";
-import { getDefaultModels } from "./providers.js";
+import { createCleanupModel, getDefaultModels } from "./providers.js";
 import { getSessionToken } from "./sessions.js";
 
 const log = createAppLogger("post-process");
@@ -230,9 +239,10 @@ export async function postProcess(
   }
 
   let cleanedText = normalizedRawText;
+  const handoffStart = Date.now();
   const llm = defaults.llm;
   const llmStart = Date.now();
-  const handoffMs = 0;
+  let handoffMs = 0;
 
   // A plugin already consumed/aborted the pipeline in an earlier stage (e.g.
   // `afterTranscribe`) — skip cleanup entirely rather than spending an LLM
@@ -240,6 +250,14 @@ export async function postProcess(
   if (api.control.state !== "running") {
     cleanedText = normalizedRawText;
   } else if (llm && isLlmCleanupEnabled()) {
+    const {
+      intensity,
+      customPrompt,
+      personalTone,
+      workTone,
+      emailTone,
+      overallTone,
+    } = getEffectiveCleanupTones();
     if (llm.provider === FREESTYLE_CLOUD_PROVIDER_ID) {
       // Freestyle Cloud assembles its cleanup prompts server-side: it resolves
       // the destination from appContext + appAssignments and applies the tone
@@ -297,6 +315,92 @@ export async function postProcess(
           });
           log.error(`Freestyle Cloud cleanup failed: ${err}`);
           cleanedText = normalizedRawText;
+        }
+      }
+    } else if (!(await isCleanupModelSupported(llm.provider, llm.model_id))) {
+      log.warn(
+        `Skipping LLM cleanup: unsupported cleanup model ${llm.provider}/${llm.model_id}`,
+      );
+    } else {
+      const { personalSurface } = getRewritePromptContext(
+        effectiveAppContext,
+        getCleanupAppAssignments(),
+      );
+      const promptHook = await plugins().run(
+        "beforeCleanup",
+        {
+          text: normalizedRawText,
+          appContext: parsedContext,
+          destination: resolvedDestination,
+        },
+        { system: [] as string[], destination: resolvedDestination },
+        api,
+      );
+
+      if (promptHook.skip || api.control.state !== "running") {
+        cleanedText = normalizedRawText;
+      } else {
+        const { system, prompt } = buildRewritePrompt(normalizedRawText, {
+          languages: options.languages,
+          intensity,
+          customPrompt,
+          destination: promptHook.destination ?? resolvedDestination,
+          personalTone,
+          personalSurface:
+            (promptHook.destination ?? resolvedDestination) === "personal"
+              ? personalSurface
+              : null,
+          workTone,
+          emailTone,
+          overallTone,
+        });
+        const pluginSystem =
+          promptHook.system.length > 0
+            ? system + promptHook.system.map((part) => `\n\n${part}`).join("")
+            : system;
+        const finalPrompt = promptHook.prompt ?? prompt;
+        handoffMs = Date.now() - handoffStart;
+
+        const chatModel = await createCleanupModel(llm.provider, llm.model_id);
+        let cleanupError: unknown;
+        const result = await cleanupWithModel({
+          model: chatModel,
+          text: normalizedRawText,
+          system: pluginSystem,
+          prompt: finalPrompt,
+          skipEmptyText: false,
+          providerOptions: getLlmProvider(llm.provider)?.providerOptions?.(
+            llm.model_id,
+          ),
+          onError: (error) => {
+            cleanupError = error;
+          },
+        });
+
+        if (result.model) {
+          inputTokens = result.inputTokens;
+          outputTokens = result.outputTokens;
+          llmProvider = llm.provider;
+          llmModel = llm.model_id;
+          cleanedText = result.cleaned;
+        } else {
+          const error = cleanupError;
+          if (!isTransientCloudError(error)) captureException(error);
+          void plugins().emit({
+            type: FreestyleEventType.PipelineError,
+            stage: PipelineStage.Cleanup,
+            message: error instanceof Error ? error.message : String(error),
+          });
+          capture("post process failed", {
+            provider: llm.provider,
+            model: llm.model_id,
+            source,
+            app_name: parsedContext?.appName,
+            destination: resolvedDestination,
+            has_app_context: !!effectiveAppContext,
+          });
+          log.error(`LLM cleanup failed: ${error}`);
+          cleanedText = result.cleaned;
         }
       }
     }

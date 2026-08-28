@@ -1,0 +1,622 @@
+{
+  "common": {
+    "back": "Zurück",
+    "continue": "Weiter",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "change": "Ändern",
+    "granted": "Gewährt",
+    "checking": "Prüfen",
+    "needed": "Erforderlich",
+    "allow": "Zulassen",
+    "openSettings": "Einstellungen öffnen",
+    "recheck": "Erneut prüfen",
+    "manage": "Verwalten",
+    "download": "Herunterladen",
+    "downloading": "Wird heruntergeladen...",
+    "saving": "Wird gespeichert…",
+    "restartAndUpdate": "Neu starten und aktualisieren"
+  },
+  "languageNames": {
+    "en": "English",
+    "es": "Español",
+    "fr": "Français",
+    "de": "Deutsch",
+    "it": "Italienisch",
+    "pt": "Portugiesisch",
+    "ja": "Japanisch"
+  },
+  "onboarding": {
+    "permissions": {
+      "microphone": {
+        "title": "Mikrofon",
+        "desc": "Um zu hören, was Sie sagen."
+      },
+      "accessibility": {
+        "title": "Bedienungshilfen",
+        "desc": "Um Ihre Tastenkombination zu erkennen und in jede App einzufügen."
+      },
+      "keyboardAccess": {
+        "title": "Tastaturzugang",
+        "descGranted": "Um Ihre Tastenkombination in jeder App zu erkennen.",
+        "descDenied": "Um Ihre Tastenkombination in jeder App zu erkennen, führen Sie <code>sudo usermod -aG input $USER</code> in einem Terminal aus, melden Sie sich dann ab und wieder an.",
+        "toggleNote": "Bis dahin funktioniert die Tastenkombination nur im Umschaltmodus."
+      },
+      "pasteTool": {
+        "title": "Einfüge-Tool",
+        "desc": "Um in andere Apps einzufügen, installieren Sie {{tool}}: <code>sudo apt install {{tool}}</code>"
+      },
+      "grantBoth": "Beide gewähren, um fortzufahren",
+      "grantAccess": "Zugriff gewähren, um fortzufahren"
+    },
+    "language": {
+      "titlePrefix": "Welche Sprache ",
+      "titleEmphasis": "sprechen Sie?",
+      "autoDetect": "Automatisch erkennen"
+    },
+    "tutorial": {
+      "almostReady": "Fast fertig — ",
+      "finish": "Freestyle verwenden",
+      "chooseModel": "Ein anderes Modell wählen",
+      "usingModel": "Verwendet {{name}} · Ein anderes Modell wählen"
+    },
+    "modelSelector": {
+      "chooseModel": "Modell wählen",
+      "allVoiceModels": "Alle Sprachmodelle",
+      "cloudApi": "Cloud-API",
+      "onDevice": "Auf dem Gerät",
+      "loading": "Modelle werden geladen…",
+      "cloudNote": "Cloud-Modelle benötigen einen API-Schlüssel — wir fragen einmalig.",
+      "onDeviceNote": "Gerätemodelle laufen privat auf {{phrase}}.",
+      "connect": "{{provider}} verbinden",
+      "addKey": "Ihren {{provider}}-Schlüssel hinzufügen",
+      "requiredFor": "Erforderlich für {{model}}. Im Systemschlüsselbund gespeichert — wird nie protokolliert oder gesendet.",
+      "getKey": "Keinen? Einen {{provider}}-Schlüssel erhalten ↗",
+      "saveKey": "Speichern und {{provider}} verwenden",
+      "keyPlaceholder": "Geheimschlüssel einfügen — z.B. sk-…",
+      "backToModels": "Zurück zu den Modellen"
+    },
+    "draft": {
+      "statusReady": "Bereit",
+      "statusListening": "Höre zu…",
+      "statusLanded": "Im Entwurf gelandet",
+      "skip": "Vorerst überspringen",
+      "newMessage": "Neue Nachricht",
+      "toLabel": "An",
+      "recipientName": "Sam Rivera",
+      "recipientEmail": "sam.rivera@example.com",
+      "subject": "Alles Gute zum Geburtstag",
+      "send": "Senden",
+      "bodyAria": "E-Mail-Text",
+      "title": "Schreiben Sie mit Ihrer Stimme",
+      "instructionPrefix": "Klicken Sie in die E-Mail, halten Sie",
+      "instructionSuffix": "gedrückt und sagen Sie Wort für Wort:",
+      "sayText": "Alles Gute zum Geburtstag, Sam — ich bringe am Freitag Kuchen mit."
+    },
+    "remix": {
+      "statusReady": "Bereit",
+      "statusListening": "Höre zu…",
+      "statusWorking": "Remix läuft…",
+      "statusRemixed": "Geremixt.",
+      "doneNote": "Der Entwurf wurde direkt neu geschrieben. Probieren Sie eine weitere Anweisung — oder schließen Sie ab.",
+      "extraCaption": "Das dauert ein paar Sekunden.",
+      "extraDone": "Ein Fakt und ein Foto, direkt im Entwurf. Schließen Sie ab, wann immer Sie bereit sind.",
+      "fallbackNote": "Remix braucht ein Assistenzmodell — fügen Sie eines in den Einstellungen hinzu, sobald Sie bereit sind.",
+      "sampleDraft": "Alles Gute zum Geburtstag, Sam. Ich hoffe, dein Tag wird schön — ich bringe am Freitag Kuchen mit.",
+      "sampleSignoff": "Schön, dass wir dich diese Woche feiern können.\n\nHerzliche Grüße\n{{name}}",
+      "fallbackName": "Alex",
+      "title": "Jetzt remixen",
+      "highlightNote": "Ihr Entwurf ist bereits markiert — lassen Sie ihn markiert und klicken Sie nicht in die E-Mail.",
+      "instructionPrefix": "Halten Sie",
+      "instructionSuffix": "gedrückt und sagen Sie Wort für Wort:",
+      "sayText": "Mach sie wärmer und unterschreibe mit {{name}}.",
+      "extraLead": "Noch ein Trick — solange der Text markiert ist:",
+      "extraSay": "Füge einen lustigen Fakt über Geburtstagskuchen hinzu, und ein Bild davon."
+    }
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "updateAvailable": "Version {{version}} verfügbar",
+    "updateReady": "Version {{version}} installationsbereit",
+    "interfaceLanguage": {
+      "label": "Oberflächensprache",
+      "desc": "Ändert die Sprache der App-Oberfläche."
+    },
+    "sections": {
+      "application": "Anwendung",
+      "recording": "Transkription",
+      "display": "Anzeige",
+      "permissions": "Berechtigungen",
+      "notifications": "Benachrichtigungen",
+      "connectedApps": "Verbundene Apps",
+      "data": "Daten",
+      "remix": "Remix"
+    },
+    "application": {
+      "autoUpdate": "Automatische Updates",
+      "autoUpdateDesc": "Neue Versionen werden im Hintergrund heruntergeladen, sobald sie verfügbar sind.",
+      "launchAtStartup": "Beim Start ausführen",
+      "launchAtStartupDesc": "Freestyle automatisch starten, wenn Sie sich an Ihrem Computer anmelden.",
+      "showOnLaunch": "Dashboard beim Start anzeigen",
+      "showOnLaunchDesc": "Das Dashboard-Fenster öffnen, wenn Freestyle startet."
+    },
+    "recording": {
+      "hotkey": "Tastenkombination",
+      "hotkeyDescHold": "Halten Sie die Kombination zum Aufnehmen, lassen Sie sie zum Transkribieren los.",
+      "hotkeyDescToggle": "Einmal drücken zum Starten, erneut drücken zum Stoppen.",
+      "activation": "Aktivierung",
+      "activationDescHold": "Sprechen Sie, während die Kombination gehalten wird.",
+      "activationDescToggle": "Einmal drücken zum Starten, erneut zum Stoppen.",
+      "activationHold": "Halten",
+      "activationToggle": "Umschalten",
+      "microphone": "Mikrofon",
+      "microphoneDesc": "Wählen Sie Ihr Audioeingabegerät.",
+      "microphoneDefault": "Systemstandard",
+      "language": "Sprache",
+      "transcriptionLanguages": {
+        "auto": "Automatisch erkennen",
+        "en": "Englisch",
+        "es": "Spanisch",
+        "fr": "Französisch",
+        "de": "Deutsch",
+        "it": "Italienisch",
+        "pt": "Portugiesisch",
+        "nl": "Niederländisch",
+        "ru": "Russisch",
+        "zh": "Chinesisch",
+        "ja": "Japanisch",
+        "ko": "Koreanisch",
+        "ar": "Arabisch",
+        "hi": "Hindi",
+        "pl": "Polnisch",
+        "tr": "Türkisch",
+        "sv": "Schwedisch",
+        "da": "Dänisch",
+        "no": "Norwegisch",
+        "fi": "Finnisch",
+        "uk": "Ukrainisch"
+      },
+      "outputMode": "Ausgabemodus",
+      "outputModeDesc": "In die aktive App einfügen oder in die Zwischenablage kopieren.",
+      "outputModePaste": "In App einfügen",
+      "outputModeClipboard": "In Zwischenablage kopieren",
+      "sound": "Klangfeedback",
+      "soundDesc": "Sanfte Töne zu Beginn und Ende der Aufnahme.",
+      "conflict": "Das ist bereits Ihre Remix-Tastenkombination. Wählen Sie eine andere Kombination.",
+      "needsModifier": "Tastenkombinationen benötigen eine Modifikatortaste oder Maustaste"
+    },
+    "display": {
+      "theme": "Design",
+      "themeDesc": "Hell, dunkel oder Ihrem System folgen.",
+      "themeLight": "Hell",
+      "themeDark": "Dunkel",
+      "themeSystem": "System",
+      "widgetPosition": "Widget-Position",
+      "widgetPositionDesc": "Wo das schwebende Fenster auf Ihrem Bildschirm erscheint.",
+      "positionBottomCenter": "Unten · Mitte",
+      "positionBottomRight": "Unten · Rechts",
+      "positionTopCenter": "Oben · Mitte",
+      "positionTopRight": "Oben · Rechts",
+      "positionCustom": "Benutzerdefiniert"
+    },
+    "permissions": {
+      "microphone": "Mikrofon",
+      "microphoneDesc": "Erforderlich, um Audio für die Transkription aufzunehmen.",
+      "accessibility": "Bedienungshilfen",
+      "accessibilityDescMac": "Erforderlich, um die globale Tastenkombination zu erkennen und in andere Apps einzufügen. Aktivieren Sie Freestyle unter Systemeinstellungen › Datenschutz & Sicherheit › Bedienungshilfen.",
+      "accessibilityDescOther": "Erforderlich, um die globale Tastenkombination zu erkennen und in andere Apps einzufügen.",
+      "autoGranted": "Automatisch gewährt"
+    },
+    "data": {
+      "pauseHistory": "Verlauf pausieren",
+      "pauseHistoryDesc": "Keine neuen Transkriptionssitzungen im Verlauf speichern, bis Sie dies wieder deaktivieren.",
+      "history": "Transkriptionsverlauf",
+      "historyDesc": "Alle gespeicherten Sitzungen dauerhaft löschen — dies kann nicht rückgängig gemacht werden.",
+      "clearHistory": "Verlauf löschen",
+      "clearHistoryConfirm": "Gesamten Transkriptionsverlauf löschen? Alle gespeicherten Sitzungen werden dauerhaft gelöscht."
+    },
+    "remix": {
+      "hotkey": "Remix-Tastenkombination",
+      "hotkeyDesc": "Halten Sie sie gedrückt und sagen Sie, was geändert werden soll — oder tippen Sie kurz für die Schnellrouten.",
+      "conflict": "Das ist bereits Ihre Diktat-Tastenkombination. Wählen Sie eine andere Kombination.",
+      "bar": "Remix-Leiste",
+      "barDesc": "Zeigt eine kleine Leiste am unteren Bildschirmrand. Fahren Sie darüber, um Remix zu öffnen."
+    }
+  },
+  "today": {
+    "readyWhenYouAre": "bereit, wenn Sie es sind…",
+    "inNumbers": "In Zahlen",
+    "wordsToday": "Wörter heute",
+    "minSpoken": "Min. gesprochen",
+    "emptyTimeline": "Ihr Tag ist ungeschrieben — Ihre erste Sitzung erscheint hier.",
+    "wordsLabel": "Wörter",
+    "wpmLabel": "Wörter pro Minute",
+    "fixesLabel": "KI-Korrekturen",
+    "dailyActivity": "Tägliche Aktivität",
+    "heatmapLess": "Weniger",
+    "heatmapMore": "Mehr",
+    "heatmapWords": "{{count}} Wörter"
+  },
+  "history": {
+    "title": "Verlauf",
+    "loading": "Verlauf wird geladen…",
+    "filterTitle": "Verlauf filtern",
+    "done": "Fertig",
+    "filtersBtn": "Filter",
+    "timeLabelAllTime": "Gesamter Zeitraum",
+    "timeLabelFiltered": "Gefiltert",
+    "wordsStat": "Wörter · {{label}}",
+    "sessionsStat": "Sitzungen · {{label}}",
+    "costStat": "Kosten · {{label}}",
+    "sessionSingular": "Sitzung",
+    "sessionPlural": "Sitzungen",
+    "searchSingular": "{{total}} Transkript durchsuchen…",
+    "searchPlural": "{{total}} Transkripte suchen…",
+    "pausedTitle": "Verlauf ist pausiert",
+    "pausedDesc": "Neue Transkriptionen werden derzeit nicht im Verlauf gespeichert.",
+    "pausedSettings": "Dateneinstellungen öffnen",
+    "emptyTitle": "Noch nichts aufgenommen.",
+    "emptyDesc": "Halten Sie Ihre Tastenkombination überall auf {{phrase}}, sprechen Sie, lassen Sie los. Ihr erstes Transkript erscheint hier.",
+    "noResultsSearch": "keine Transkripte entsprechen dieser Suche.",
+    "noResultsDates": "keine Transkripte für diesen Datumsbereich gefunden.",
+    "noResultsBoth": "keine Transkripte entsprechen dieser Suche und diesem Datumsbereich.",
+    "clearSearch": "Suche löschen",
+    "clearFilters": "Filter löschen",
+    "clearBoth": "Filter und Suche löschen",
+    "groupToday": "Heute",
+    "groupYesterday": "Gestern",
+    "tutorialToggle": "Tutorial-Karte",
+    "tutorialToggleDesc": "Drücken-Sprechen-Loslassen-Demo oben anzeigen",
+    "clearDates": "Löschen",
+    "openStats": "Statistiken anzeigen",
+    "closeStats": "Statistiken ausblenden",
+    "resizeStats": "Statistikleiste anpassen",
+    "changeHotkey": "Tastenkombination ändern"
+  },
+  "dictionary": {
+    "title": "Kurzbefehle",
+    "subtitle": "Abkürzungen, die sich beim Sprechen erweitern. Sagen Sie den Schlüssel, erhalten Sie den Wert.",
+    "loading": "Kurzbefehle werden geladen…",
+    "searchPlaceholder": "Kurzbefehle durchsuchen…",
+    "exportLabel": "Exportieren",
+    "importLabel": "Importieren",
+    "exportTitle": "Als JSON exportieren",
+    "importTitle": "Aus JSON importieren",
+    "addEntry": "Eintrag hinzufügen",
+    "addFirstEntry": "Ersten Eintrag hinzufügen",
+    "editEntry": "Eintrag bearbeiten",
+    "newEntry": "Neuer Eintrag",
+    "keyLabel": "Schlüssel · zu erkennende Phrase",
+    "valueLabel": "Wert · Ersatztext",
+    "cancel": "Abbrechen",
+    "update": "Aktualisieren",
+    "entrySingular": "Eintrag",
+    "entryPlural": "Einträge",
+    "emptyTitle": "Noch keine Kurzbefehle.",
+    "emptyDesc": "Fügen Sie eine häufig verwendete Phrase hinzu, wie <example>meine Adresse</example> — und Freestyle erweitert sie inline.",
+    "noResults": "nichts entspricht \"{{search}}\".",
+    "noEntries": "keine Einträge — fügen Sie einen hinzu.",
+    "failedToSave": "Eintrag konnte nicht gespeichert werden."
+  },
+  "vocabulary": {
+    "title": "Vokabular",
+    "loading": "Vokabular wird geladen…",
+    "searchPlaceholder": "Vokabular durchsuchen…",
+    "exportLabel": "Exportieren",
+    "importLabel": "Importieren",
+    "exportTitle": "Als JSON exportieren",
+    "importTitle": "Aus JSON importieren",
+    "addTerm": "Begriff hinzufügen",
+    "addFirstTerm": "Ersten Begriff hinzufügen",
+    "editTerm": "Begriff bearbeiten",
+    "newTerm": "Neuer Begriff",
+    "termLabel": "Begriff · Wort oder Phrase",
+    "notesLabel": "Notizen · optional",
+    "modelCompatNote": "Mehrwörtige Phrasen funktionieren auf Nova 3, OpenAI und Groq. Nova 2 stärkt einzelne Wörter. Scribe v1 nutzt kein Vokabular-Bias.",
+    "cancel": "Abbrechen",
+    "update": "Aktualisieren",
+    "termSingular": "Begriff",
+    "termPlural": "Begriffe",
+    "emptyTitle": "Noch keine Begriffe.",
+    "emptyDesc": "Fügen Sie Namen, Marken oder häufig verwendete Phrasen hinzu, wie <example1>Müller</example1> oder <example2>Kontonummer</example2>.",
+    "noResults": "nichts entspricht \"{{search}}\".",
+    "noTerms": "keine Begriffe — fügen Sie einen hinzu.",
+    "failedToSave": "Eintrag konnte nicht gespeichert werden.",
+    "importFailed": "Import fehlgeschlagen — die Datei muss gültiges JSON sein."
+  },
+  "tone": {
+    "title": "Ton",
+    "subtitle": "Wie stark Freestyle aufräumt – und wie es in jeder App klingt.",
+    "loading": "Ton wird geladen…",
+    "disabledBanner": {
+      "title": "Bereinigung ist aus.",
+      "desc": "Diese Stärke- und Ton-Einstellungen greifen, sobald du die KI-Bereinigung in Modelle aktivierst. Deine Auswahl bleibt bis dahin gespeichert.",
+      "goToModels": "Zu Modelle",
+      "useCloud": "Freestyle Cloud verwenden",
+      "useCloudBusy": "Wird eingerichtet…"
+    },
+    "routesFrom": "Weitergeleitet von",
+    "previewLabel": "Vorschau",
+    "tabs": {
+      "cleanup": "Bereinigung",
+      "personal": "Privat",
+      "work": "Beruflich",
+      "email": "E-Mail",
+      "everythingElse": "Alles andere"
+    },
+    "cleanup": {
+      "eyebrow": "Bereinigung",
+      "title": "Aufräumen, während ich spreche.",
+      "desc": "Wie viel korrigiert wird, bevor deine Worte ankommen.",
+      "currentMode": "Aktueller Modus",
+      "toggleLabel": "Bereinigung",
+      "strengthLabel": "Stärke",
+      "noModelTitle": "Kein Bereinigungsmodell ausgewählt.",
+      "noModelDesc": "Wähle eines unter Modelle. Diese Einstellungen greifen, sobald ein Modell konfiguriert ist.",
+      "noModelCta": "Modelle öffnen",
+      "preview": {
+        "rawLabel": "Rohtranskript",
+        "rawSample": "hey äh kannst du die neueste version schicken ich glaub der footer-link ist immer noch falsch",
+        "resultLabel": "Was ankommt",
+        "customLabel": "Deine Regeln"
+      },
+      "cards": {
+        "low": {
+          "title": "Niedrig",
+          "desc": "Zeichensetzung und Großschreibung.",
+          "sample": "Hey, äh, kannst du die neueste Version schicken? Ich glaube, der Footer-Link ist immer noch falsch."
+        },
+        "medium": {
+          "title": "Mittel",
+          "desc": "Grammatik und Formulierung.",
+          "sample": "Hey, kannst du die neueste Version schicken? Ich glaube, der Footer-Link ist immer noch falsch."
+        },
+        "high": {
+          "title": "Hoch",
+          "desc": "Für den Lesefluss umgeschrieben.",
+          "sample": "Kannst du die neueste Version schicken? Ich glaube, der Footer-Link ist immer noch falsch."
+        },
+        "custom": {
+          "title": "Benutzerdefiniert",
+          "desc": "Deine eigenen Anweisungen.",
+          "sample": "Dein Prompt entscheidet, wie viel umgeschrieben, gestrafft oder beibehalten wird."
+        }
+      }
+    },
+    "apps": {
+      "addedLabel": "Auch hierher geleitet",
+      "add": "Route hinzufügen",
+      "placeholder": "App-Name oder Website",
+      "useCurrent": "Aktuelle App verwenden",
+      "detecting": "Wird erkannt…",
+      "confirm": "Hinzufügen",
+      "cancel": "Abbrechen",
+      "remove": "Entfernen",
+      "hint": "Füge jede App oder Website hinzu, die diesen Ton verwenden soll.",
+      "anyUnlisted": "Jede App, die wir nicht erkennen",
+      "dialogTitle": "Routen hinzufügen",
+      "currentRoutes": "Hier hinzugefügt",
+      "currentRoute": "Bereits hier hinzugefügt",
+      "includedByDefault": "Standardmäßig hier enthalten",
+      "openApps": "Geöffnete Apps",
+      "openAppsEmpty": "Gerade keine geöffneten Apps gefunden. Öffne die gewünschte App und aktualisiere dann.",
+      "loadingOpenApps": "Suche nach geöffneten Apps…",
+      "refresh": "Aktualisieren",
+      "pickApp": "Diese App hinzufügen",
+      "moveFrom": "Wechselt von {{destination}}",
+      "websiteLabel": "Website",
+      "websitePlaceholder": "reddit.com oder x.com",
+      "addWebsite": "Website hinzufügen",
+      "matchByDomain": "Übereinstimmung nach Domain",
+      "kindApp": "App",
+      "kindSite": "Website"
+    },
+    "personal": {
+      "eyebrow": "Private Nachrichten",
+      "title": "Deine Chat-Stimme.",
+      "desc": "Verwendet in Nachrichten, WhatsApp, Telegram und Discord.",
+      "preview": {
+        "rawSample": "hey äh ich bin so 10 minuten zu spät bin gleich da"
+      },
+      "cards": {
+        "polished": {
+          "title": "Geschliffen",
+          "desc": "Groß-/Kleinschreibung und vollständige Zeichensetzung.",
+          "sample": "Hey, ich bin etwa 10 Minuten zu spät. Ich bin gleich da."
+        },
+        "casual": {
+          "title": "Locker",
+          "desc": "Leichte Zeichensetzung.",
+          "sample": "Hey, ich bin ca. 10 Min zu spät, bin gleich da"
+        },
+        "very_casual": {
+          "title": "Sehr locker",
+          "desc": "Kleinschreibung und Kurzform.",
+          "sample": "bin so 10 min zu spät bin gleich da"
+        }
+      }
+    },
+    "work": {
+      "eyebrow": "Berufliche Korrespondenz",
+      "title": "Deine Berufsstimme.",
+      "desc": "Verwendet in Slack, LinkedIn und erkannten beruflichen Chat-Umgebungen.",
+      "preview": {
+        "sender": "Alex",
+        "time": "14:14",
+        "rawSample": "hab das dokument durchgesehen äh ein paar änderungen sind noch nötig ähm die einleitung straffen und die footer-links aktualisieren"
+      },
+      "cards": {
+        "direct": {
+          "title": "Direkt",
+          "desc": "Kurz und auf den Punkt.",
+          "sample": "Dokument durchgesehen. Ein paar Änderungen sind noch nötig: Einleitung straffen und Footer-Links aktualisieren."
+        },
+        "friendly": {
+          "title": "Enthusiastisch",
+          "desc": "Aufgeschlossen und herzlich.",
+          "sample": "Ich habe das Dokument durchgesehen und es sieht richtig gut aus! Ein paar Änderungen sind noch nötig, vor allem die Einleitung und die Footer-Links."
+        },
+        "formal": {
+          "title": "Formell",
+          "desc": "Formell und ausführlich.",
+          "sample": "Ich habe das Dokument geprüft. Einige Überarbeitungen sind noch erforderlich, insbesondere in der Einleitung und bei den Footer-Links."
+        }
+      }
+    },
+    "email": {
+      "eyebrow": "E-Mails",
+      "title": "Deine E-Mail-Stimme.",
+      "desc": "Verwendet in Gmail, Outlook, Apple Mail und Proton.",
+      "preview": {
+        "to": "Sam",
+        "subject": "Meeting am Donnerstag + nächste Schritte",
+        "rawSample": "hi sam ähm ich bestätige nur dass wir für donnerstag um 2 noch dabei sind äh ich schicke den überarbeiteten plan morgen früh sag bescheid wenn du noch etwas ergänzt haben möchtest danke"
+      },
+      "cards": {
+        "casual": {
+          "title": "Locker",
+          "desc": "Kurz und gesprächig.",
+          "sample": "Hi Sam,\n\nich bestätige nur, dass wir für Donnerstag um 2 noch dabei sind. Den überarbeiteten Plan schicke ich dir morgen früh. Sag Bescheid, wenn du noch etwas ergänzt haben möchtest.\n\nDanke,"
+        },
+        "warm": {
+          "title": "Herzlich",
+          "desc": "Geschmeidig und taktvoll.",
+          "sample": "Hi Sam,\n\nich wollte nur bestätigen, dass wir für Donnerstag um 2 noch verabredet sind. Den überarbeiteten Plan sende ich dir morgen früh und ergänze gern noch alles, was du behandelt haben möchtest.\n\nDanke,"
+        },
+        "formal": {
+          "title": "Formell",
+          "desc": "Formell und strukturiert.",
+          "sample": "Hallo Sam,\n\nich möchte unser Meeting am Donnerstag um 14:00 Uhr bestätigen. Den überarbeiteten Plan sende ich Ihnen morgen früh. Bitte teilen Sie mir mit, ob noch etwas berücksichtigt werden soll.\n\nMit freundlichen Grüßen,"
+        }
+      }
+    },
+    "everythingElse": {
+      "eyebrow": "Alles andere",
+      "title": "Alles andere.",
+      "desc": "Überall, wo es kein Chat oder keine E-Mail ist.",
+      "preview": {
+        "rawSample": "hab gerade den fix gepusht äh sollte jetzt testbar sein"
+      },
+      "cards": {
+        "casual": {
+          "title": "Locker",
+          "desc": "Entspannt und leicht.",
+          "sample": "hab gerade den fix gepusht, sollte jetzt testbar sein"
+        },
+        "neutral": {
+          "title": "Neutral",
+          "desc": "Sauber und ausgewogen.",
+          "sample": "Habe gerade den Fix gepusht. Sollte jetzt testbar sein."
+        },
+        "professional": {
+          "title": "Professionell",
+          "desc": "Geschliffen und souverän.",
+          "sample": "Ich habe den Fix gepusht; er sollte jetzt testbereit sein."
+        }
+      }
+    }
+  },
+  "formats": {
+    "title": "Formate",
+    "loading": "Formate werden geladen…",
+    "addFormat": "Format hinzufügen",
+    "resetToDefaults": "Standardwerte zurücksetzen",
+    "editFormat": "Format bearbeiten",
+    "newFormat": "Neues Format",
+    "labelField": "Bezeichnung",
+    "appPatternField": "App-Muster · durch Pipes getrennt",
+    "appPatternHint": "Abgeglichen mit App-Name, URL und Seitentitel. Groß-/Kleinschreibung wird ignoriert.",
+    "instructionsField": "Anweisungen · an das LLM gesendet",
+    "labelPlaceholder": "z.B. \"E-Mail\" oder \"Slack\"",
+    "appPatternPlaceholder": "z.B. mail.google.com | outlook | Spark",
+    "instructionsPlaceholder": "Sagen Sie dem LLM, wie der Text formatiert werden soll…",
+    "cancel": "Abbrechen",
+    "update": "Aktualisieren",
+    "addFormatBtn": "Format hinzufügen",
+    "custom": "Benutzerdefiniert",
+    "defaults": "Standard",
+    "empty": "noch keine Formate — fügen Sie oben eines hinzu.",
+    "failedToSave": "Speichern fehlgeschlagen."
+  },
+  "models": {
+    "title": "Modelle",
+    "loading": "Modelle werden geladen…",
+    "apiKeys": "API-Schlüssel",
+    "noApiKeys": "Noch keine API-Schlüssel — wählen Sie oben ein Cloud-Modell und Sie werden nach einem Schlüssel gefragt.",
+    "onDevice": "Auf dem Gerät",
+    "keyInvalid": "Schlüssel ungültig — aktualisieren oder löschen",
+    "keyStored": "Schlüssel im Schlüsselbund gespeichert",
+    "keyStoredWithHint": "Schlüssel {{hint}} im Schlüsselbund gespeichert",
+    "modelSingular": "Modell",
+    "modelPlural": "Modelle",
+    "deleteLocalTitle": "Lokales Modell löschen?",
+    "deleteLocalMsg": "<b>{{name}}</b> von {{phrase}} entfernen. Die Gewichte werden aus Ihrem lokalen Cache gelöscht; Sie können sie später erneut herunterladen.",
+    "deleteProviderTitle": "Anbieter löschen",
+    "deleteProviderMsgBase": "Den API-Schlüssel von <b>{{provider}}</b> löschen? Dadurch werden auch alle konfigurierten Modelle für diesen Anbieter entfernt",
+    "deleteProviderCurrentSuffix": ", einschließlich eines Modells, das Sie derzeit verwenden"
+  },
+  "shell": {
+    "nav": {
+      "today": "Transkriptionen",
+      "dictionary": "Kurzbefehle",
+      "vocabulary": "Vokabular",
+      "tone": "Ton",
+      "models": "Modelle",
+      "plugins": "Plugins",
+      "settings": "Einstellungen",
+      "help": "Hilfe",
+      "remix": "Remix"
+    }
+  },
+  "remixPage": {
+    "stats": {
+      "remixes": "Remixe ausgeführt",
+      "apps": "Apps remixt",
+      "lastRemix": "letzter Remix",
+      "firstHint": "Halten Sie die Tasten über einem Text, um Ihren ersten zu starten.",
+      "heading": "Nutzung"
+    },
+    "hotkey": {
+      "change": "Tastenkombination ändern"
+    },
+    "tips": {
+      "heading": "Gut zu wissen",
+      "highlight": "Markieren Sie einen Satz, um nur diesen Teil zu remixen — ohne Auswahl liest Remix das ganze Feld.",
+      "tap": "Tippen Sie die Tastenkombination kurz an (statt zu halten) für die Schnellrouten (Strg+1–3).",
+      "followUp": "Nicht ganz richtig? Tippen Sie eine Rückfrage in die Chat-Karte — der Verlauf bleibt erhalten."
+    },
+    "examples": {
+      "groups": {
+        "everyday": "Alltagstexte",
+        "work": "Arbeit & Studium",
+        "web": "Mit dem Web — Freestyle Cloud"
+      },
+      "quotes": {
+        "email": "Mach das wärmer und halb so lang — ich klinge wie ein Anwalt.",
+        "tone": "Ich habe das wütend geschrieben. Mach es bestimmt, aber höflich.",
+        "social": "Mach das knackiger und bring es unter 280 Zeichen.",
+        "format": "Mach aus diesen Stichpunkten einen Absatz für den Bericht.",
+        "translate": "Übersetze das ins Spanische, aber lass meine Grußformel auf Englisch.",
+        "notes": "Mach aus diesen chaotischen Notizen eine saubere Liste, nach Themen gruppiert.",
+        "commit": "Schreibe diese Commit-Nachricht so um, dass sie das Warum erklärt, nicht das Was.",
+        "espresso": "Füge einen Fakt über Espresso hinzu, und ein Bild eines Pour-over.",
+        "mla": "Wandle die Zitate in diesem Essay ins MLA-Format um.",
+        "legal": "Formuliere diese Vertragsklausel so um, dass ein Mandant sie versteht.",
+        "medical": "Prüfe diese Aussagen gegen WebMD und markiere alles, was nicht stimmt."
+      }
+    },
+    "demo": {
+      "statusReady": "Bereit",
+      "statusListening": "Höre zu…",
+      "statusDone": "An Ort und Stelle neu geschrieben"
+    },
+    "how": {
+      "heading": "So verwenden Sie es",
+      "step1": "Markieren Sie mit dem Cursor den Text, den Sie ändern möchten.",
+      "step2Prefix": "Halten Sie",
+      "step2Suffix": "gedrückt und sagen Sie die Änderung laut.",
+      "step3": "Remix schreibt den Text an Ort und Stelle neu. Rückgängig bringt ihn zurück, falls Sie es sich anders überlegen.",
+      "more": "Nichts markiert? Dann liest Remix das ganze Feld, in dem Sie sind. Es kann außerdem das Web nach Fakten und Quellen durchsuchen und Bilder direkt in Ihren Entwurf einfügen."
+    }
+  }
+}

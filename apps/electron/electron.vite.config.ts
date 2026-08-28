@@ -1,4 +1,5 @@
 import { resolve } from "node:path";
+import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 import { visualizer } from "rollup-plugin-visualizer";
@@ -49,6 +50,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve("src/preload/index.ts"),
+          "plugin-bridge": resolve("src/preload/plugin-bridge.ts"),
         },
         plugins: analyze ? [mkVisualizer("preload")] : [],
       },
@@ -59,20 +61,27 @@ export default defineConfig({
       "process.platform": JSON.stringify(process.platform),
     },
     resolve: {
+      // Several restored legacy surfaces and the current notification client
+      // share React. Force one renderer copy across the multi-page build so a
+      // provider from one entry never invokes hooks against another copy.
+      dedupe: ["react", "react-dom"],
       alias: {
         ...workspaceAliases,
         "@renderer": resolve("src/renderer/src"),
         "@shared": resolve("src/shared"),
       },
     },
-    plugins: [react()],
+    plugins: [react(), tailwindcss()],
     build: {
       sourcemap: analyze,
       rollupOptions: {
         input: {
+          index: resolve("src/renderer/index.html"),
+          bar: resolve("src/renderer/bar.html"),
           companion: resolve("src/renderer/companion.html"),
           notification: resolve("src/renderer/notification.html"),
           panel: resolve("src/renderer/panel.html"),
+          pill: resolve("src/renderer/pill.html"),
         },
         plugins: analyze ? [mkVisualizer("renderer")] : [],
       },

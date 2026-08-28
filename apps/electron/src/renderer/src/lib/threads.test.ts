@@ -5,7 +5,7 @@ const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@renderer/lib/api", () => ({ apiFetch }));
 
 import { threadHistoryInfiniteQueryOptions } from "./query";
-import { cancelDurableTurn, listThreads } from "./threads";
+import { cancelDurableTurn, deleteThread, listThreads } from "./threads";
 
 describe("thread client", () => {
   it("passes a cursor and preserves the server next cursor", async () => {
@@ -43,5 +43,15 @@ describe("thread client", () => {
         body: JSON.stringify({ type: "cancel" }),
       }),
     );
+  });
+
+  it("deletes a single Remix session through the existing local proxy", async () => {
+    apiFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true })));
+
+    await deleteThread("thread/one");
+
+    expect(apiFetch).toHaveBeenCalledWith("/api/agent/thread/thread%2Fone", {
+      method: "DELETE",
+    });
   });
 });

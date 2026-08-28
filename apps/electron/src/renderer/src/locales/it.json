@@ -1,0 +1,621 @@
+{
+  "common": {
+    "back": "Indietro",
+    "continue": "Continua",
+    "cancel": "Annulla",
+    "save": "Salva",
+    "change": "Modifica",
+    "granted": "Consentito",
+    "checking": "Verifica in corso...",
+    "needed": "Necessario",
+    "allow": "Consenti",
+    "openSettings": "Apri Impostazioni",
+    "recheck": "Ricontrolla",
+    "manage": "Gestisci",
+    "download": "Scarica",
+    "downloading": "Download in corso...",
+    "saving": "Salvataggio...",
+    "restartAndUpdate": "Riavvia e Aggiorna"
+  },
+  "languageNames": {
+    "en": "Inglese",
+    "es": "Spagnolo",
+    "fr": "Francese",
+    "de": "Tedesco",
+    "it": "Italiano",
+    "pt": "Portoghese",
+    "ja": "Giapponese"
+  },
+  "onboarding": {
+    "permissions": {
+      "microphone": {
+        "title": "Microfono",
+        "desc": "Per ascoltare ciò che dici."
+      },
+      "accessibility": {
+        "title": "Accessibilità",
+        "desc": "Per rilevare la tua scorciatoia e incollare in qualsiasi app."
+      },
+      "keyboardAccess": {
+        "title": "Accesso alla tastiera",
+        "descGranted": "Per rilevare la tua scorciatoia in qualsiasi app.",
+        "descDenied": "Per abilitare il rilevamento della scorciatoia, esegui <code>sudo usermod -aG input $USER</code> nel terminale, disconnettiti e accedi di nuovo.",
+        "toggleNote": " Fino ad allora, la scorciatoia funzionerà solo in modalità toggle."
+      },
+      "pasteTool": {
+        "title": "Strumento incolla",
+        "desc": "Per incollare in altre app, installa {{tool}}: <code>sudo apt install {{tool}}</code>"
+      },
+      "grantBoth": "Consenti entrambi per continuare",
+      "grantAccess": "Consenti l'accesso per continuare"
+    },
+    "language": {
+      "titlePrefix": "Che lingua ",
+      "titleEmphasis": "parli?",
+      "autoDetect": "Rilevamento automatico"
+    },
+    "tutorial": {
+      "almostReady": "Quasi pronto — ",
+      "finish": "Inizia a usare Freestyle",
+      "chooseModel": "Scegli un altro modello",
+      "usingModel": "Utilizzando {{name}} · Scegli un altro modello"
+    },
+    "modelSelector": {
+      "chooseModel": "Scegli un modello",
+      "allVoiceModels": "Tutti i modelli vocali",
+      "cloudApi": "API Cloud",
+      "onDevice": "Sul dispositivo",
+      "loading": "Caricamento modelli...",
+      "cloudNote": "I modelli cloud richiedono una chiave API — la chiederemo una volta.",
+      "onDeviceNote": "I modelli sul dispositivo funzionano in modo privato su {{phrase}}.",
+      "connect": "Connetti {{provider}}",
+      "addKey": "Aggiungi la tua chiave per {{provider}}",
+      "requiredFor": "Richiesto per utilizzare {{model}}. Salvato nel portachiavi di sistema — mai registrato, mai inviato a noi.",
+      "getKey": "Non ne hai una? Ottieni una chiave per {{provider}} ↗",
+      "saveKey": "Salva e usa {{provider}}",
+      "keyPlaceholder": "Incolla la tua chiave segreta — es. sk-...",
+      "backToModels": "Torna ai modelli"
+    },
+    "draft": {
+      "statusReady": "Pronto",
+      "statusListening": "In ascolto…",
+      "statusLanded": "Arrivato nella bozza",
+      "skip": "Salta per ora",
+      "newMessage": "Nuovo messaggio",
+      "toLabel": "A",
+      "recipientName": "Sam Rivera",
+      "recipientEmail": "sam.rivera@example.com",
+      "subject": "Buon compleanno",
+      "send": "Invia",
+      "bodyAria": "Corpo dell'email",
+      "title": "Scrivi con la tua voce",
+      "instructionPrefix": "Clicca nell'email, tieni premuto",
+      "instructionSuffix": "e di', parola per parola:",
+      "sayText": "Buon compleanno, Sam — venerdì porto la torta."
+    },
+    "remix": {
+      "statusReady": "Pronto",
+      "statusListening": "In ascolto…",
+      "statusWorking": "Remix in corso…",
+      "statusRemixed": "Remixata.",
+      "doneNote": "La bozza si è riscritta da sola. Prova un'altra istruzione — o concludi quando vuoi.",
+      "extraCaption": "Questo richiede qualche secondo.",
+      "extraDone": "Una curiosità e una foto, dritte nella bozza. Concludi quando vuoi.",
+      "fallbackNote": "Remix ha bisogno di un modello assistente — aggiungine uno nelle Impostazioni quando vuoi.",
+      "sampleDraft": "Buon compleanno, Sam. Spero tu passi una bella giornata — venerdì porto la torta.",
+      "sampleSignoff": "Non vedo l'ora di festeggiarti questa settimana.\n\nCon affetto,\n{{name}}",
+      "fallbackName": "Alex",
+      "title": "Ora remixala",
+      "highlightNote": "La tua bozza è già evidenziata — lasciala evidenziata e non cliccare nell'email.",
+      "instructionPrefix": "Tieni premuti",
+      "instructionSuffix": "e di', parola per parola:",
+      "sayText": "Rendila più calorosa e firmala da parte di {{name}}.",
+      "extraLead": "Un altro trucco — con il testo ancora evidenziato:",
+      "extraSay": "Aggiungi una curiosità sulle torte di compleanno, e una foto di una."
+    }
+  },
+  "settings": {
+    "title": "Impostazioni",
+    "updateAvailable": "Versione {{version}} disponibile",
+    "updateReady": "Versione {{version}} pronta per l'installazione",
+    "interfaceLanguage": {
+      "label": "Lingua dell'interfaccia",
+      "desc": "Modifica la lingua dell'interfaccia dell'app."
+    },
+    "sections": {
+      "application": "Applicazione",
+      "recording": "Trascrizione",
+      "display": "Display",
+      "permissions": "Autorizzazioni",
+      "notifications": "Notifiche",
+      "connectedApps": "App connesse",
+      "data": "Dati",
+      "remix": "Remix"
+    },
+    "application": {
+      "autoUpdate": "Aggiornamenti automatici",
+      "autoUpdateDesc": "Scarica nuove versioni in background non appena disponibili.",
+      "launchAtStartup": "Avvia all'avvio",
+      "launchAtStartupDesc": "Avvia automaticamente Freestyle all'accesso al computer.",
+      "showOnLaunch": "Mostra dashboard all'avvio",
+      "showOnLaunchDesc": "Apri la finestra della dashboard all'avvio di Freestyle."
+    },
+    "recording": {
+      "hotkey": "Scorciatoia",
+      "hotkeyDescHold": "Tieni premuto per registrare, rilascia per trascrivere.",
+      "hotkeyDescToggle": "Premi una volta per avviare, premi di nuovo per fermare.",
+      "activation": "Attivazione",
+      "activationDescHold": "Push-to-talk mentre tieni premuto.",
+      "activationDescToggle": "Premi una volta per iniziare, premi di nuovo per fermare.",
+      "activationHold": "Tieni premuto",
+      "activationToggle": "Toggle",
+      "microphone": "Microfono",
+      "microphoneDesc": "Seleziona il tuo dispositivo di input audio.",
+      "microphoneDefault": "Predefinito di sistema",
+      "language": "Lingua",
+      "transcriptionLanguages": {
+        "auto": "Rilevamento automatico",
+        "en": "Inglese",
+        "es": "Spagnolo",
+        "fr": "Francese",
+        "de": "Tedesco",
+        "it": "Italiano",
+        "pt": "Portoghese",
+        "nl": "Olandese",
+        "ru": "Russo",
+        "zh": "Cinese",
+        "ja": "Giapponese",
+        "ko": "Coreano",
+        "ar": "Arabo",
+        "hi": "Hindi",
+        "pl": "Polacco",
+        "tr": "Turco",
+        "sv": "Svedese",
+        "da": "Danese",
+        "no": "Norvegese",
+        "fi": "Finlandese",
+        "uk": "Ucraino"
+      },
+      "outputMode": "Modalità di output",
+      "outputModeDesc": "Incolla nell'app attiva o copia negli appunti.",
+      "outputModePaste": "Incolla nell'app",
+      "outputModeClipboard": "Copia negli appunti",
+      "sound": "Feedback sonoro",
+      "soundDesc": "Suoni leggeri all'inizio e alla fine della registrazione.",
+      "conflict": "Questa è già la tua scorciatoia Remix. Scegli un'altra combinazione.",
+      "needsModifier": "Le scorciatoie necessitano di un tasto modificatore"
+    },
+    "display": {
+      "theme": "Tema",
+      "themeDesc": "Chiaro, scuro o segui il sistema.",
+      "themeLight": "Chiaro",
+      "themeDark": "Scuro",
+      "themeSystem": "Sistema",
+      "widgetPosition": "Posizione del widget",
+      "widgetPositionDesc": "Dove appare il widget fluttuante sullo schermo.",
+      "positionBottomCenter": "In basso · Centro",
+      "positionBottomRight": "In basso · Destra",
+      "positionTopCenter": "In alto · Centro",
+      "positionTopRight": "In alto · Destra",
+      "positionCustom": "Personalizzato"
+    },
+    "permissions": {
+      "microphone": "Microfono",
+      "microphoneDesc": "Richiesto per acquisire l'audio per la trascrizione.",
+      "accessibility": "Accessibilità",
+      "accessibilityDescMac": "Richiesto per rilevare la scorciatoia globale e incollare. Abilita Freestyle sotto Impostazioni di Sistema › Privacy e Sicurezza › Accessibilità.",
+      "accessibilityDescOther": "Richiesto per rilevare la scorciatoia globale e incollare nelle altre app.",
+      "autoGranted": "Autoconsentito"
+    },
+    "data": {
+      "pauseHistory": "Metti in pausa la cronologia",
+      "pauseHistoryDesc": "Interrompe il salvataggio delle nuove sessioni di trascrizione nella cronologia finché non lo disattivi.",
+      "history": "Cronologia delle trascrizioni",
+      "historyDesc": "Elimina permanentemente tutte le sessioni salvate.",
+      "clearHistory": "Cancella cronologia",
+      "clearHistoryConfirm": "Cancellare tutta la cronologia? Questo eliminerà definitivamente ogni sessione."
+    },
+    "remix": {
+      "hotkey": "Scorciatoia Remix",
+      "hotkeyDesc": "Tienila premuta e di' cosa cambiare, oppure toccala per le route rapide.",
+      "conflict": "Questa è già la tua scorciatoia di dettatura. Scegli un'altra combinazione.",
+      "bar": "Barra Remix",
+      "barDesc": "Mostra una piccola barra in fondo allo schermo. Passaci sopra per aprire Remix."
+    }
+  },
+  "today": {
+    "readyWhenYouAre": "pronto quando vuoi...",
+    "inNumbers": "In cifre",
+    "wordsToday": "parole oggi",
+    "minSpoken": "min parlati",
+    "emptyTimeline": "la tua giornata è vuota — la tua prima sessione apparirà qui.",
+    "wordsLabel": "Parole",
+    "wpmLabel": "Parole al minuto",
+    "fixesLabel": "Correzioni IA",
+    "dailyActivity": "Attività giornaliera",
+    "heatmapLess": "Meno",
+    "heatmapMore": "Più",
+    "heatmapWords": "{{count}} parole"
+  },
+  "history": {
+    "title": "Cronologia",
+    "loading": "Caricamento cronologia...",
+    "filterTitle": "Filtra Cronologia",
+    "done": "Fatto",
+    "filtersBtn": "Filtri",
+    "timeLabelAllTime": "Tutto il periodo",
+    "timeLabelFiltered": "Filtrato",
+    "wordsStat": "parole · {{label}}",
+    "sessionsStat": "sessioni · {{label}}",
+    "costStat": "costo · {{label}}",
+    "sessionSingular": "sessione",
+    "sessionPlural": "sessioni",
+    "searchSingular": "Cerca in {{total}} trascrizione...",
+    "searchPlural": "Cerca in {{total}} trascrizioni...",
+    "pausedTitle": "La cronologia è in pausa",
+    "pausedDesc": "Le nuove trascrizioni non vengono salvate nella cronologia in questo momento.",
+    "pausedSettings": "Apri impostazioni dati",
+    "emptyTitle": "Niente di registrato ancora.",
+    "emptyDesc": "Tieni premuto il tasto di scelta rapida, parla, rilascia. La tua prima trascrizione apparirà qui.",
+    "noResultsSearch": "nessuna trascrizione corrisponde alla ricerca.",
+    "noResultsDates": "nessuna trascrizione trovata per questo intervallo di date.",
+    "noResultsBoth": "nessuna trascrizione corrisponde alla ricerca e all'intervallo di date.",
+    "clearSearch": "Cancella ricerca",
+    "clearFilters": "Cancella filtri",
+    "clearBoth": "Cancella filtri e ricerca",
+    "groupToday": "Oggi",
+    "groupYesterday": "Ieri",
+    "tutorialToggle": "Scheda tutorial",
+    "tutorialToggleDesc": "Mostra la demo premi-parla-rilascia in alto",
+    "clearDates": "Cancella",
+    "openStats": "Mostra statistiche",
+    "closeStats": "Nascondi statistiche",
+    "resizeStats": "Ridimensiona il pannello",
+    "changeHotkey": "Cambia scorciatoia"
+  },
+  "dictionary": {
+    "title": "Scorciatoie",
+    "subtitle": "Scorciatoie che si espandono mentre parli.",
+    "loading": "Caricamento scorciatoie…",
+    "searchPlaceholder": "Cerca scorciatoie…",
+    "exportLabel": "Esporta",
+    "importLabel": "Importa",
+    "exportTitle": "Esporta come JSON",
+    "importTitle": "Importa da JSON",
+    "addEntry": "Aggiungi voce",
+    "addFirstEntry": "Aggiungi la tua prima voce",
+    "editEntry": "Modifica voce",
+    "newEntry": "Nuova voce",
+    "keyLabel": "Chiave · frase da rilevare",
+    "valueLabel": "Valore · testo sostitutivo",
+    "cancel": "Annulla",
+    "update": "Aggiorna",
+    "entrySingular": "voce",
+    "entryPlural": "voci",
+    "emptyTitle": "Ancora nessuna scorciatoia.",
+    "emptyDesc": "Aggiungi una frase che dici spesso e Freestyle la espanderà in linea.",
+    "noResults": "nessuna corrispondenza per \"{{search}}\".",
+    "noEntries": "nessuna voce — aggiungine una per iniziare.",
+    "failedToSave": "Salvataggio non riuscito."
+  },
+  "vocabulary": {
+    "title": "Vocabolario",
+    "loading": "Caricamento vocabolario...",
+    "searchPlaceholder": "Cerca nel vocabolario...",
+    "exportLabel": "Esporta",
+    "importLabel": "Importa",
+    "exportTitle": "Esporta come JSON",
+    "importTitle": "Importa da JSON",
+    "addTerm": "Aggiungi termine",
+    "addFirstTerm": "Aggiungi il tuo primo termine",
+    "editTerm": "Modifica termine",
+    "newTerm": "Nuovo termine",
+    "termLabel": "Termine · parola o frase",
+    "notesLabel": "Note · opzionale",
+    "modelCompatNote": "Funziona su Nova 3, OpenAI e Groq.",
+    "cancel": "Annulla",
+    "update": "Aggiorna",
+    "termSingular": "termine",
+    "termPlural": "termini",
+    "emptyTitle": "Nessun termine ancora.",
+    "emptyDesc": "Aggiungi nomi, marchi o parole insolite.",
+    "noResults": "nessuna corrispondenza per \"{{search}}\".",
+    "noTerms": "nessun termine — aggiungine uno per iniziare.",
+    "failedToSave": "Salvataggio non riuscito."
+  },
+  "tone": {
+    "title": "Tono",
+    "subtitle": "Quanto Freestyle ripulisce e come suona in ogni app.",
+    "loading": "Caricamento tono…",
+    "disabledBanner": {
+      "title": "La pulizia è disattivata.",
+      "desc": "Queste impostazioni di intensità e tono si applicano quando attivi la pulizia con IA in Modelli. Le tue scelte restano salvate fino ad allora.",
+      "goToModels": "Vai a Modelli",
+      "useCloud": "Usa Freestyle Cloud",
+      "useCloudBusy": "Configurazione…"
+    },
+    "routesFrom": "Instradato da",
+    "previewLabel": "Anteprima",
+    "tabs": {
+      "cleanup": "Pulizia",
+      "personal": "Personale",
+      "work": "Lavoro",
+      "email": "E-mail",
+      "everythingElse": "Tutto il resto"
+    },
+    "cleanup": {
+      "eyebrow": "Pulizia",
+      "title": "Sistema mentre parlo.",
+      "desc": "Quanto correggere prima che le tue parole arrivino.",
+      "currentMode": "Modalità attuale",
+      "toggleLabel": "Pulizia",
+      "strengthLabel": "Intensità",
+      "noModelTitle": "Nessun modello di pulizia selezionato.",
+      "noModelDesc": "Scegline uno in Modelli. Queste impostazioni si applicano non appena un modello è configurato.",
+      "noModelCta": "Apri Modelli",
+      "preview": {
+        "rawLabel": "Trascrizione grezza",
+        "rawSample": "ehi ehm puoi mandare l'ultima versione credo che il link nel piè di pagina sia ancora sbagliato",
+        "resultLabel": "Cosa arriva",
+        "customLabel": "Le tue regole"
+      },
+      "cards": {
+        "low": {
+          "title": "Bassa",
+          "desc": "Punteggiatura e maiuscole.",
+          "sample": "Ehi, ehm, puoi mandare l'ultima versione? Credo che il link nel piè di pagina sia ancora sbagliato."
+        },
+        "medium": {
+          "title": "Media",
+          "desc": "Grammatica e formulazione.",
+          "sample": "Ehi, puoi mandare l'ultima versione? Credo che il link nel piè di pagina sia ancora sbagliato."
+        },
+        "high": {
+          "title": "Alta",
+          "desc": "Riscritto per scorrere.",
+          "sample": "Puoi mandare l'ultima versione? Credo che il link nel piè di pagina sia ancora sbagliato."
+        },
+        "custom": {
+          "title": "Personalizzata",
+          "desc": "Istruzioni tue.",
+          "sample": "Il tuo prompt decide quanto riscrivere, sintetizzare o mantenere."
+        }
+      }
+    },
+    "apps": {
+      "addedLabel": "Instradato anche qui",
+      "add": "Aggiungi instradamento",
+      "placeholder": "Nome app o sito web",
+      "useCurrent": "Usa app attuale",
+      "detecting": "Rilevamento…",
+      "confirm": "Aggiungi",
+      "cancel": "Annulla",
+      "remove": "Rimuovi",
+      "hint": "Aggiungi qualsiasi app o sito web che debba usare questo tono.",
+      "anyUnlisted": "Qualsiasi app che non riconosciamo",
+      "dialogTitle": "Aggiungi instradamenti",
+      "currentRoutes": "Aggiunte qui",
+      "currentRoute": "Già aggiunta qui",
+      "includedByDefault": "Inclusa qui per impostazione predefinita",
+      "openApps": "App aperte",
+      "openAppsEmpty": "Nessuna app aperta trovata al momento. Apri l'app desiderata, poi aggiorna.",
+      "loadingOpenApps": "Ricerca delle app aperte…",
+      "refresh": "Aggiorna",
+      "pickApp": "Aggiungi questa app",
+      "moveFrom": "Si sposta da {{destination}}",
+      "websiteLabel": "Sito web",
+      "websitePlaceholder": "reddit.com o x.com",
+      "addWebsite": "Aggiungi sito web",
+      "matchByDomain": "Corrisponde per dominio",
+      "kindApp": "App",
+      "kindSite": "Sito web"
+    },
+    "personal": {
+      "eyebrow": "Messaggi personali",
+      "title": "La tua voce nei messaggi.",
+      "desc": "Usato in Messaggi, WhatsApp, Telegram e Discord.",
+      "preview": {
+        "rawSample": "ehi ehm sono in ritardo di tipo 10 minuti arrivo a breve"
+      },
+      "cards": {
+        "polished": {
+          "title": "Curata",
+          "desc": "Maiuscole e punteggiatura completa.",
+          "sample": "Ehi, sono in ritardo di circa 10 minuti. Arrivo a breve."
+        },
+        "casual": {
+          "title": "Informale",
+          "desc": "Punteggiatura leggera.",
+          "sample": "Ehi sono in ritardo di circa 10 min, arrivo a breve"
+        },
+        "very_casual": {
+          "title": "Molto informale",
+          "desc": "Minuscolo e abbreviato.",
+          "sample": "in ritardo tipo 10 min arrivo a breve"
+        }
+      }
+    },
+    "work": {
+      "eyebrow": "Corrispondenza di lavoro",
+      "title": "La tua voce professionale.",
+      "desc": "Usato in Slack, LinkedIn e nelle chat di lavoro riconosciute.",
+      "preview": {
+        "sender": "Alex",
+        "time": "14:14",
+        "rawSample": "ho riletto il documento ehm servono ancora un paio di modifiche ehm stringere l'introduzione e aggiornare i link nel piè di pagina"
+      },
+      "cards": {
+        "direct": {
+          "title": "Diretto",
+          "desc": "Breve e mirato.",
+          "sample": "Ho riletto il documento. Servono ancora un paio di modifiche: stringere l'introduzione e aggiornare i link nel piè di pagina."
+        },
+        "friendly": {
+          "title": "Entusiasta",
+          "desc": "Positivo e cordiale.",
+          "sample": "Ho riletto il documento e ci siamo quasi! Servono ancora un paio di modifiche, soprattutto l'introduzione e i link nel piè di pagina."
+        },
+        "formal": {
+          "title": "Formale",
+          "desc": "Formale e completo.",
+          "sample": "Ho esaminato il documento. Sono ancora necessarie alcune revisioni, in particolare nell'introduzione e nei link nel piè di pagina."
+        }
+      }
+    },
+    "email": {
+      "eyebrow": "E-mail",
+      "title": "La tua voce nelle e-mail.",
+      "desc": "Usato in Gmail, Outlook, Apple Mail e Proton.",
+      "preview": {
+        "to": "Sam",
+        "subject": "Riunione di giovedì + prossimi passi",
+        "rawSample": "ciao sam ehm confermo solo che siamo ancora d'accordo per giovedì alle 2 ehm ti mando il piano rivisto domani mattina fammi sapere se vuoi aggiungere altro grazie"
+      },
+      "cards": {
+        "casual": {
+          "title": "Informale",
+          "desc": "Breve e colloquiale.",
+          "sample": "Ciao Sam,\n\nconfermo che siamo ancora d'accordo per giovedì alle 2. Ti mando il piano rivisto domani mattina. Fammi sapere se vuoi aggiungere altro.\n\nGrazie,"
+        },
+        "warm": {
+          "title": "Cordiale",
+          "desc": "Scorrevole e garbato.",
+          "sample": "Ciao Sam,\n\nvolevo solo confermare che siamo ancora d'accordo per giovedì alle 2. Ti invierò il piano rivisto domani mattina e aggiungo volentieri qualsiasi altra cosa tu voglia trattare.\n\nGrazie,"
+        },
+        "formal": {
+          "title": "Formale",
+          "desc": "Formale e strutturato.",
+          "sample": "Gentile Sam,\n\nle scrivo per confermare la nostra riunione di giovedì alle 14:00. Le invierò il piano rivisto domani mattina. La prego di farmi sapere se desidera includere altro.\n\nCordiali saluti,"
+        }
+      }
+    },
+    "everythingElse": {
+      "eyebrow": "Tutto il resto",
+      "title": "Tutto il resto.",
+      "desc": "Ovunque non sia una chat o un'e-mail.",
+      "preview": {
+        "rawSample": "ho appena messo il fix ehm dovrebbe essere testabile ora"
+      },
+      "cards": {
+        "casual": {
+          "title": "Informale",
+          "desc": "Rilassato e leggero.",
+          "sample": "ho appena messo il fix, dovrebbe essere testabile ora"
+        },
+        "neutral": {
+          "title": "Neutro",
+          "desc": "Pulito ed equilibrato.",
+          "sample": "Ho appena messo il fix. Dovrebbe essere testabile ora."
+        },
+        "professional": {
+          "title": "Professionale",
+          "desc": "Curato e misurato.",
+          "sample": "Ho applicato il fix; dovrebbe essere pronto per il test ora."
+        }
+      }
+    }
+  },
+  "formats": {
+    "title": "Formati",
+    "loading": "Caricamento formati...",
+    "addFormat": "Aggiungi formato",
+    "resetToDefaults": "Ripristina predefiniti",
+    "editFormat": "Modifica formato",
+    "newFormat": "Nuovo formato",
+    "labelField": "Etichetta",
+    "appPatternField": "Pattern app",
+    "appPatternHint": "Confrontato con il nome dell'app, URL e titolo.",
+    "instructionsField": "Istruzioni per l'LLM",
+    "labelPlaceholder": "es. \"Email\" o \"Slack\"",
+    "appPatternPlaceholder": "es. mail.google.com | outlook | Spark",
+    "instructionsPlaceholder": "Indica all'LLM come formattare...",
+    "cancel": "Annulla",
+    "update": "Aggiorna",
+    "addFormatBtn": "Aggiungi formato",
+    "custom": "Personalizzato",
+    "defaults": "Predefiniti",
+    "empty": "nessun formato ancora — aggiungine uno sopra.",
+    "failedToSave": "Salvataggio non riuscito."
+  },
+  "models": {
+    "title": "Modelli",
+    "loading": "Caricamento modelli...",
+    "apiKeys": "Chiavi API",
+    "noApiKeys": "Nessuna chiave API inserita.",
+    "onDevice": "Sul dispositivo",
+    "keyInvalid": "Chiave non valida",
+    "keyStored": "Chiave salvata nel portachiavi",
+    "keyStoredWithHint": "Chiave {{hint}} salvata",
+    "modelSingular": "modello",
+    "modelPlural": "modelli",
+    "deleteLocalTitle": "Eliminare il modello locale?",
+    "deleteLocalMsg": "Rimuovere <b>{{name}}</b>? I file verranno eliminati.",
+    "deleteProviderTitle": "Elimina provider",
+    "deleteProviderMsgBase": "Eliminare la chiave per <b>{{provider}}</b>?",
+    "deleteProviderCurrentSuffix": ", incluso il modello in uso"
+  },
+  "shell": {
+    "nav": {
+      "today": "Trascrizioni",
+      "dictionary": "Scorciatoie",
+      "vocabulary": "Vocabolario",
+      "tone": "Tono",
+      "models": "Modelli",
+      "plugins": "Plugin",
+      "settings": "Impostazioni",
+      "help": "Aiuto",
+      "remix": "Remix"
+    }
+  },
+  "remixPage": {
+    "stats": {
+      "remixes": "remix eseguiti",
+      "apps": "app remixate",
+      "lastRemix": "ultimo remix",
+      "firstHint": "Tieni premuti i tasti su un testo per eseguire il primo.",
+      "heading": "Utilizzo"
+    },
+    "hotkey": {
+      "change": "Cambia scorciatoia"
+    },
+    "tips": {
+      "heading": "Da sapere",
+      "highlight": "Evidenzia una frase per remixare solo quella parte — senza selezione, Remix legge tutto il campo.",
+      "tap": "Tocca la scorciatoia (invece di tenerla premuta) per le route rapide (Control+1–3).",
+      "followUp": "Non è perfetto? Scrivi una correzione nella scheda chat — il filo resta."
+    },
+    "examples": {
+      "groups": {
+        "everyday": "Scrittura quotidiana",
+        "work": "Lavoro e studio",
+        "web": "Con il web — Freestyle Cloud"
+      },
+      "quotes": {
+        "email": "Rendila più calorosa e lunga la metà — sembro un avvocato.",
+        "tone": "L'ho scritto arrabbiato. Rendilo fermo ma educato.",
+        "social": "Rendilo più incisivo e portalo sotto i 280 caratteri.",
+        "format": "Trasforma questi punti elenco in un paragrafo per il report.",
+        "translate": "Passala in inglese, ma lascia i miei saluti in italiano.",
+        "notes": "Trasforma questi appunti disordinati in un elenco pulito, raggruppato per tema.",
+        "commit": "Riscrivi questo messaggio di commit perché spieghi il perché, non il cosa.",
+        "espresso": "Aggiungi una curiosità sull'espresso, e una foto di un pour-over.",
+        "mla": "Converti le citazioni di questo saggio nel formato MLA.",
+        "legal": "Riscrivi questa clausola del contratto in un linguaggio chiaro che un cliente possa capire.",
+        "medical": "Verifica queste affermazioni su WebMD e segnala ciò che non torna."
+      }
+    },
+    "demo": {
+      "statusReady": "Pronto",
+      "statusListening": "In ascolto…",
+      "statusDone": "Riscritto sul posto"
+    },
+    "how": {
+      "heading": "Come si usa",
+      "step1": "Evidenzia con il cursore il testo da modificare.",
+      "step2Prefix": "Tieni premuto",
+      "step2Suffix": "e di' la modifica ad alta voce.",
+      "step3": "Remix lo riscrive sul posto. Annulla lo ripristina se cambi idea.",
+      "more": "Niente di evidenziato? Remix legge tutto il campo in cui ti trovi. Può anche cercare sul web fatti e fonti, e incollare immagini direttamente nella bozza."
+    }
+  }
+}

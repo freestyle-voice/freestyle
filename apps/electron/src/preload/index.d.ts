@@ -2,6 +2,7 @@ import { ElectronAPI } from "@electron-toolkit/preload";
 import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
 import type { CompanionForm, CompanionState } from "../shared/companion";
 import type { DictationPrefs } from "../shared/dictation-prefs";
+import type { PetState } from "../shared/pet";
 import type {
   RemixContextResult,
   RemixCopyResult,
@@ -14,6 +15,12 @@ declare global {
   interface Window {
     electron: ElectronAPI;
     api: {
+      /**
+       * Transitional legacy renderer bridge. Explicit modern methods below
+       * remain typed; the historic desktop modules use additional IPC members
+       * while they are ported onto those current contracts.
+       */
+      [legacyMethod: string]: any;
       platform: string;
       pasteText: (text: string, appContext?: string | null) => Promise<void>;
       copyText: (text: string, appContext?: string | null) => Promise<void>;
@@ -41,6 +48,9 @@ declare global {
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
       onDictationCancel: (callback: () => void) => () => void;
+      onFullscreenChanged: (
+        callback: (fullscreen: boolean) => void,
+      ) => () => void;
       setDictationPhase: (phase: "idle" | "recording" | "transcribing") => void;
       onHotkeyError: (callback: (message: string) => void) => () => void;
       setHotkeyMode: (mode: "hold" | "toggle") => void;
@@ -51,6 +61,9 @@ declare global {
       remixPasteClipboard: () => Promise<RemixPrimitiveResult>;
       remixGetClipboard: () => Promise<RemixCopyResult>;
       companionForm: () => Promise<CompanionForm>;
+      petEnabled: () => Promise<boolean>;
+      setPetEnabled: (enabled: boolean) => void;
+      setPetState: (state: PetState) => void;
       companionSetHotRect: (
         rect: { x: number; y: number; width: number; height: number } | null,
       ) => void;
@@ -75,6 +88,8 @@ declare global {
       panelClose: () => void;
       panelResizeWidth: (width: number) => void;
       panelCommitWidth: () => void;
+      openSettings: () => void;
+      settingsClose: () => void;
       panelSetBusy: (busy: boolean) => void;
       panelRequestFocus: () => void;
       panelPointerLeft: () => void;
@@ -94,7 +109,6 @@ declare global {
         callback: (messageId: string) => void,
       ) => () => void;
       onPanelOpenThread: (callback: (threadId: string) => void) => () => void;
-      onPanelShowSettings: (callback: () => void) => () => void;
       onCompanionForm: (callback: (form: CompanionForm) => void) => () => void;
       onCompanionState: (
         callback: (state: CompanionState) => void,
@@ -147,6 +161,15 @@ declare global {
       // Launch at startup setting
       getLaunchAtStartup: () => Promise<boolean>;
       setLaunchAtStartup: (enabled: boolean) => void;
+      // Electron-local workspace launch preference
+      getShowDashboardOnLaunch: () => Promise<boolean>;
+      setShowDashboardOnLaunch: (enabled: boolean) => void;
+      // Electron-local Remix session display names; never sent to Cloud.
+      getRemixSessionTitles: () => Promise<Record<string, string>>;
+      setRemixSessionTitle: (
+        threadId: string,
+        title: string | null,
+      ) => Promise<boolean>;
       // Context-aware dictation
       getFrontmostApp: () => Promise<string | null>;
       // Transcription completion broadcast

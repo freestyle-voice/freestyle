@@ -9,3 +9,9 @@ export const configureModelSchema = z.object({
 });
 
 export type ConfigureModelInput = z.infer<typeof configureModelSchema>;
+
+export const serverStartSchema = z.object({
+  modelId: z.string().min(1).optional(),
+});
+
+export type ServerStartInput = z.infer<typeof serverStartSchema>;

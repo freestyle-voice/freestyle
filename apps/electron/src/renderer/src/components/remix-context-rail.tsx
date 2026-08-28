@@ -1,0 +1,390 @@
+import { DataSkeleton } from "@renderer/components/data-skeleton";
+import { Markdown } from "@renderer/components/markdown";
+import { usePersistentState } from "@renderer/hooks/use-persistent-state";
+import {
+  listBrainFiles,
+  readBrainFile,
+  writeBrainFile,
+} from "@renderer/lib/brain-fs";
+import {
+  brainFileQueryOptions,
+  notesQueryOptions,
+  queryKeys,
+} from "@renderer/lib/query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Brain, ChevronDown, FileText, ListTodo, Plus } from "lucide-react";
+import type React from "react";
+import { useMemo, useState } from "react";
+
+export type RemixContextKind = "tasks" | "notes" | "brain";
+
+const TODOS_PATH = "todos.md";
+const TODO_ITEM_RE = /^(\s*)- \[( |x|X)\] (.*)$/;
+const PREVIEW_LIMIT = 3;
+
+type TodoItem = { line: number; done: boolean; text: string };
+
+function parseTodos(text: string | null | undefined): {
+  lines: string[];
+  items: TodoItem[];
+} {
+  const lines = text?.split("\n") ?? [];
+  const items: TodoItem[] = [];
+  lines.forEach((line, index) => {
+    const match = line.match(TODO_ITEM_RE);
+    if (match) {
+      items.push({
+        line: index,
+        done: match[2].toLowerCase() === "x",
+        text: match[3],
+      });
+    }
+  });
+  return { lines, items };
+}
+
+function dateLabel(timestamp: number): string {
+  return new Date(timestamp).toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function fileLabel(path: string): string {
+  return (
+    path.replace(/\\/g, "/").split("/").at(-1)?.replace(/\.md$/, "") ?? path
+  );
+}
+
+function ContextCard({
+  kind,
+  title,
+  count,
+  attention,
+  children,
+}: {
+  kind: RemixContextKind;
+  title: string;
+  count?: number;
+  attention: boolean;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const Icon =
+    kind === "tasks" ? ListTodo : kind === "notes" ? FileText : Brain;
+
+  return (
+    <section
+      className={`remix-context-card${attention ? " is-attention" : ""}`}
+      data-context-kind={kind}
+      aria-label={title}
+    >
+      <header className="remix-context-card-head">
+        <span className="remix-context-card-title">
+          <span className="remix-context-card-icon">
+            <Icon aria-hidden="true" />
+          </span>
+          <span>{title}</span>
+        </span>
+        {count !== undefined ? (
+          <span className="remix-context-card-count">{count}</span>
+        ) : null}
+      </header>
+      {children}
+    </section>
+  );
+}
+
+function ContextTasks({
+  attention,
+}: {
+  attention: boolean;
+}): React.JSX.Element {
+  const queryClient = useQueryClient();
+  const todosQuery = useQuery({
+    queryKey: queryKeys.brain.file(TODOS_PATH),
+    queryFn: () => readBrainFile(TODOS_PATH),
+  });
+  const [expanded, setExpanded] = useState(false);
+  const [draft, setDraft] = useState("");
+  const { lines, items } = parseTodos(todosQuery.data);
+  const openItems = items.filter((item) => !item.done);
+  const shown = expanded ? items : openItems.slice(0, PREVIEW_LIMIT);
+
+  const save = (next: string[]): void => {
+    const text = next.join("\n");
+    queryClient.setQueryData(queryKeys.brain.file(TODOS_PATH), text);
+    void writeBrainFile(TODOS_PATH, text).then((ok) => {
+      if (!ok) {
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.brain.file(TODOS_PATH),
+        });
+      }
+    });
+  };
+
+  return (
+    <ContextCard
+      kind="tasks"
+      title="Tasks"
+      count={openItems.length}
+      attention={attention}
+    >
+      {todosQuery.isLoading ? (
+        <DataSkeleton label="Loading tasks" variant="tasks" />
+      ) : todosQuery.isError ? (
+        <p className="remix-context-empty">Couldn&apos;t load tasks.</p>
+      ) : shown.length > 0 ? (
+        <div className="remix-context-list">
+          {shown.map((item) => (
+            <label
+              key={`${item.line}-${item.text}`}
+              className="remix-context-task"
+            >
+              <input
+                type="checkbox"
+                checked={item.done}
+                onChange={() => {
+                  const next = [...lines];
+                  next[item.line] = next[item.line].replace(
+                    item.done ? /- \[[xX]\]/ : /- \[ \]/,
+                    item.done ? "- [ ]" : "- [x]",
+                  );
+                  save(next);
+                }}
+              />
+              <span>{item.text}</span>
+            </label>
+          ))}
+        </div>
+      ) : (
+        <p className="remix-context-empty">Nothing waiting on you.</p>
+      )}
+      <div className="remix-context-card-foot">
+        {items.length > PREVIEW_LIMIT ? (
+          <button type="button" onClick={() => setExpanded((value) => !value)}>
+            {expanded ? "Show less" : `View all ${items.length}`}
+            <ChevronDown
+              className={expanded ? "is-open" : ""}
+              aria-hidden="true"
+            />
+          </button>
+        ) : (
+          <span />
+        )}
+        <label className="remix-context-add">
+          <Plus aria-hidden="true" />
+          <input
+            value={draft}
+            placeholder="Add task"
+            onChange={(event) => setDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return;
+              const text = draft.trim();
+              if (!text) return;
+              event.preventDefault();
+              setDraft("");
+              const next = [...lines];
+              while (next.at(-1)?.trim() === "") next.pop();
+              next.push(`- [ ] ${text}`, "");
+              save(next);
+            }}
+          />
+        </label>
+      </div>
+    </ContextCard>
+  );
+}
+
+function ContextNotes({
+  attention,
+}: {
+  attention: boolean;
+}): React.JSX.Element {
+  const notesQuery = useQuery(notesQueryOptions());
+  const [expanded, setExpanded] = useState(false);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const notes = notesQuery.data ?? [];
+  const selected = notes.find((note) => note.path === selectedPath) ?? null;
+  const selectedQuery = useQuery({
+    ...brainFileQueryOptions(selectedPath ?? ""),
+    enabled: selectedPath !== null,
+  });
+  const shown = expanded ? notes : notes.slice(0, PREVIEW_LIMIT);
+
+  return (
+    <ContextCard
+      kind="notes"
+      title="Notes"
+      count={notes.length}
+      attention={attention}
+    >
+      {notesQuery.isLoading ? (
+        <DataSkeleton label="Loading notes" variant="notes" />
+      ) : notesQuery.isError ? (
+        <p className="remix-context-empty">Couldn&apos;t load notes.</p>
+      ) : notes.length === 0 ? (
+        <p className="remix-context-empty">Ask Remix to save a note.</p>
+      ) : (
+        <div className="remix-context-list">
+          {shown.map((note) => (
+            <button
+              key={note.path}
+              type="button"
+              className={`remix-context-row${selectedPath === note.path ? " is-selected" : ""}`}
+              onClick={() => setSelectedPath(note.path)}
+            >
+              <strong>{note.title}</strong>
+              <span>{note.snippet || dateLabel(note.modified)}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {selected ? (
+        <div className="remix-context-preview">
+          <span>{selected.title}</span>
+          {selectedQuery.isLoading ? (
+            "Loading…"
+          ) : (
+            <Markdown text={selectedQuery.data ?? ""} />
+          )}
+        </div>
+      ) : null}
+      {notes.length > PREVIEW_LIMIT ? (
+        <button
+          className="remix-context-view-all"
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "Show less" : `View all ${notes.length} notes`}
+          <ChevronDown
+            className={expanded ? "is-open" : ""}
+            aria-hidden="true"
+          />
+        </button>
+      ) : null}
+    </ContextCard>
+  );
+}
+
+function ContextBrain({
+  attention,
+}: {
+  attention: boolean;
+}): React.JSX.Element {
+  const filesQuery = useQuery({
+    queryKey: queryKeys.brain.files(""),
+    queryFn: () => listBrainFiles(),
+  });
+  const [expanded, setExpanded] = useState(false);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const files = useMemo(
+    () =>
+      (filesQuery.data ?? [])
+        .filter((file) => {
+          const path = file.path.replace(/\\/g, "/");
+          return path !== TODOS_PATH && !path.startsWith("notes/");
+        })
+        .sort((left, right) => right.modified - left.modified),
+    [filesQuery.data],
+  );
+  const selected = files.find((file) => file.path === selectedPath) ?? null;
+  const selectedQuery = useQuery({
+    ...brainFileQueryOptions(selectedPath ?? ""),
+    enabled: selectedPath !== null,
+  });
+  const shown = expanded ? files : files.slice(0, PREVIEW_LIMIT);
+
+  return (
+    <ContextCard
+      kind="brain"
+      title="Brain"
+      count={files.length}
+      attention={attention}
+    >
+      {filesQuery.isLoading ? (
+        <DataSkeleton label="Loading Brain" variant="files" />
+      ) : filesQuery.isError ? (
+        <p className="remix-context-empty">Couldn&apos;t load Brain.</p>
+      ) : files.length === 0 ? (
+        <p className="remix-context-empty">
+          Remix will remember useful things here.
+        </p>
+      ) : (
+        <div className="remix-context-list">
+          {shown.map((file) => (
+            <button
+              key={file.path}
+              type="button"
+              className={`remix-context-row${selectedPath === file.path ? " is-selected" : ""}`}
+              onClick={() => setSelectedPath(file.path)}
+            >
+              <strong>{fileLabel(file.path)}</strong>
+              <span>
+                {file.path.replace(/\\/g, "/")} ·{" "}
+                {file.path.endsWith(".md") ? "Markdown" : "File"} ·{" "}
+                {dateLabel(file.modified)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {selected ? (
+        <div className="remix-context-preview">
+          <span>{selected.path.replace(/\\/g, "/")}</span>
+          {selectedQuery.isLoading ? (
+            "Loading…"
+          ) : (
+            <Markdown text={selectedQuery.data ?? ""} />
+          )}
+        </div>
+      ) : null}
+      {files.length > PREVIEW_LIMIT ? (
+        <button
+          className="remix-context-view-all"
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "Show less" : `View all ${files.length} files`}
+          <ChevronDown
+            className={expanded ? "is-open" : ""}
+            aria-hidden="true"
+          />
+        </button>
+      ) : null}
+    </ContextCard>
+  );
+}
+
+export function RemixContextRail({
+  attention,
+  open,
+}: {
+  attention: RemixContextKind | null;
+  open: boolean;
+}): React.JSX.Element {
+  return (
+    <aside
+      className="remix-context-rail"
+      aria-hidden={!open}
+      aria-label="Conversation context"
+      inert={!open}
+    >
+      <ContextTasks attention={attention === "tasks"} />
+      <ContextNotes attention={attention === "notes"} />
+      <ContextBrain attention={attention === "brain"} />
+    </aside>
+  );
+}
+
+export function useRemixContextRailVisibility(): [
+  boolean,
+  (open: boolean) => void,
+] {
+  const [value, setValue] = usePersistentState<"open" | "closed">(
+    "remix.contextRail",
+    "open",
+    (stored): stored is "open" | "closed" =>
+      stored === "open" || stored === "closed",
+  );
+  return [value === "open", (open) => setValue(open ? "open" : "closed")];
+}

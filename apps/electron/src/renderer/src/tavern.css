@@ -535,10 +535,13 @@
   background: transparent;
   color: inherit;
   cursor: pointer;
-  font-family: var(--tavern-mono);
-  font-size: 13px;
-  line-height: 1;
   transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.tavern-msg-action svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.9;
 }
 
 .tavern-msg-action:hover:not(:disabled) {
@@ -2606,21 +2609,6 @@
   gap: 7px;
 }
 
-.tavern-data-skeleton {
-  display: grid;
-  gap: 9px;
-  padding: 8px 0;
-}
-
-.tavern-data-skeleton-row {
-  display: block;
-  height: 46px;
-  border-radius: 8px;
-  background: linear-gradient(90deg, #e8dfca 20%, #f4eddc 50%, #e8dfca 80%);
-  background-size: 200% 100%;
-  animation: connector-shimmer 1.2s ease-in-out infinite;
-}
-
 .connector-skeleton-row {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr) 56px;
@@ -2707,7 +2695,8 @@
   .connector-skeleton-copy i,
   .connector-skeleton-action,
   .connector-load-more.is-loading,
-  .connector-load-trail i { animation: none; }
+  .connector-load-trail i,
+  .tavern-data-skeleton-row::after { animation: none; }
 }
 
 .tavern-set-saved {

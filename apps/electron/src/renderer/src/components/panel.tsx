@@ -2,22 +2,25 @@ import "../overlay.css";
 import "../tavern.css";
 
 import { useChat } from "@ai-sdk/react";
-import { BrainFiles } from "@renderer/components/brain-files";
 import { Capabilities } from "@renderer/components/capabilities";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
-import { ConnectedApps } from "@renderer/components/connected-apps";
 import { Markdown } from "@renderer/components/markdown";
-import { NotesTab } from "@renderer/components/notes-tab";
 import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
 import { OpenerCards } from "@renderer/components/opener-cards";
 import {
-  SETTINGS_PAGE_TITLES,
-  type SettingsPage,
-  SettingsView,
-} from "@renderer/components/settings-view";
+  type RemixContextKind,
+  RemixContextRail,
+  useRemixContextRailVisibility,
+} from "@renderer/components/remix-context-rail";
+import { useRemixSession } from "@renderer/components/remix-session-context";
 import { Spark } from "@renderer/components/spark";
 import { ThreadHistory } from "@renderer/components/thread-history";
-import { TodosTab } from "@renderer/components/todos-tab";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@renderer/components/ui/dropdown-menu";
 import {
   agentWorkDuration,
   toolActivityParts,
@@ -33,25 +36,21 @@ import {
   requestAgentFileSaveGrant,
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
-import { apiFetch, initApiBase, refreshApiBase } from "@renderer/lib/api";
-import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
+import { apiFetch } from "@renderer/lib/api";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import { resetBrainCache } from "@renderer/lib/brain-fs";
 import { composerAction } from "@renderer/lib/composer-action";
 import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
-  createQueryClient,
   invalidateThreads,
-  latestThreadQueryOptions,
   prependThreadToHistory,
   queryKeys,
 } from "@renderer/lib/query";
-import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
   cancelDurableTurn,
   type DurableThreadAction,
-  getThread,
   getThreadRuntime,
   sendDurableTurnCommand,
   type ThreadState,
@@ -65,58 +64,41 @@ import {
 import { compactActivitySummary } from "@renderer/lib/workspace-navigation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
-import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, type PanelTab } from "@shared/panel";
+import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH } from "@shared/panel";
 import { SPRITES_INFO } from "@shared/sprites";
-import {
-  QueryClientProvider,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from "ai";
+import {
+  Check,
+  Copy,
+  Ellipsis,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-type WorkspaceView = PanelTab;
-
-const TAB_PLACEHOLDER: Record<WorkspaceView, string> = {
-  chat: "Ask anything, or point at something on screen.",
-  history: "Past conversations land here — pick one to continue it.",
-  todos: "Nothing to do yet.",
-  notes: "No notes yet.",
-  brain:
-    "Everything Freestyle knows lives here — scheduled tasks, memories, notes, skills, todos.",
-  apps: "Connect the apps you live in, and Freestyle can work them for you.",
-};
+type WorkspaceView = "chat" | "history";
 
 type WorkspaceIconName =
   | "history"
-  | "settings"
   | "close"
+  | "context"
   | "plus"
   | "send"
   | "stop";
 const WORKSPACE_VIEW_LABELS: Record<WorkspaceView, string> = {
   chat: "Chat",
   history: "History",
-  todos: "Tasks",
-  notes: "Notes",
-  brain: "Brain",
-  apps: "Apps",
 };
 
-const WORKSPACE_TOP_VIEWS: WorkspaceView[] = [
-  "chat",
-  "history",
-  "todos",
-  "notes",
-  "brain",
-  "apps",
-];
+const WORKSPACE_TOP_VIEWS: WorkspaceView[] = ["chat", "history"];
 
 /** A small, consistent icon set for the compact workspace controls. */
 function WorkspaceIcon({
@@ -131,13 +113,13 @@ function WorkspaceIcon({
         <path d="M4 4v4.5h4.5M12 7.5V12l3 2" />
       </>
     ),
-    settings: (
+    close: <path d="m7 7 10 10M17 7 7 17" />,
+    context: (
       <>
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.68 2.68-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-3.8v-.09a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.68-2.68.06-.06A1.7 1.7 0 0 0 5.12 15a1.7 1.7 0 0 0-1.56-1.03H3.5v-3.8h.06A1.7 1.7 0 0 0 5.12 9.14a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.68-2.68.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56V3.3h3.8v.06a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.68 2.68-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.09v3.8h-.09A1.7 1.7 0 0 0 19.4 15Z" />
+        <rect x="4" y="5" width="16" height="14" rx="1.5" />
+        <path d="M14 5v14M7.5 9h3M7.5 12h3M7.5 15h3" />
       </>
     ),
-    close: <path d="m7 7 10 10M17 7 7 17" />,
     plus: <path d="M12 5v14M5 12h14" />,
     send: <path d="M12 18V6m0 0-4 4m4-4 4 4" />,
     stop: <rect x="7.5" y="7.5" width="9" height="9" rx="1.2" />,
@@ -408,12 +390,20 @@ function AgentBriefCard({
 }): React.JSX.Element {
   return (
     <section className="tavern-agent-brief" aria-label="Brief">
-      <strong>{brief.headline}</strong>
-      {brief.summary ? <p>{brief.summary}</p> : null}
+      <div className="tavern-agent-brief-headline">
+        <Markdown text={brief.headline} />
+      </div>
+      {brief.summary ? (
+        <div className="tavern-agent-brief-summary">
+          <Markdown text={brief.summary} />
+        </div>
+      ) : null}
       {brief.points.length > 0 ? (
         <ul>
           {brief.points.map((point) => (
-            <li key={point}>{point}</li>
+            <li key={point}>
+              <Markdown text={point} />
+            </li>
           ))}
         </ul>
       ) : null}
@@ -433,6 +423,17 @@ function messageText(message: UIMessage): string {
         : [],
     )
     .join("\n\n");
+}
+
+function sessionTitle(thread: ThreadState): string {
+  const firstPrompt = thread.messages.find(
+    (message) => message.role === "user" && messageText(message).trim(),
+  );
+  const title = firstPrompt ? messageText(firstPrompt).trim() : "";
+  if (!title) return "New chat";
+
+  const firstLine = title.replace(/\s+/g, " ").trim();
+  return firstLine.length > 72 ? `${firstLine.slice(0, 71)}…` : firstLine;
 }
 
 function MessageActions({
@@ -459,7 +460,7 @@ function MessageActions({
         aria-label={copied ? "Message copied" : "Copy message"}
         title={copied ? "Copied" : "Copy message"}
       >
-        <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
+        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </button>
       {role === "user" && onEdit ? (
         <button
@@ -470,7 +471,7 @@ function MessageActions({
           aria-label="Edit and resend message"
           title="Edit and resend"
         >
-          <span aria-hidden="true">✎</span>
+          <Pencil aria-hidden="true" />
         </button>
       ) : null}
       {role === "assistant" && onRegenerate ? (
@@ -482,7 +483,7 @@ function MessageActions({
           aria-label="Regenerate response"
           title="Regenerate response"
         >
-          <span aria-hidden="true">↻</span>
+          <RotateCcw aria-hidden="true" />
         </button>
       ) : null}
     </div>
@@ -632,21 +633,6 @@ function ChatMessage({
   );
 }
 
-async function openThreadById(threadId: string): Promise<ThreadState | null> {
-  try {
-    const res = await apiFetch(`/api/agent/thread/${threadId}`);
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      thread: { id: string; messages: UIMessage[] } | null;
-    };
-    return data.thread
-      ? { id: data.thread.id, messages: data.thread.messages }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 function newThread(): ThreadState {
   return { id: crypto.randomUUID(), messages: [] };
 }
@@ -676,6 +662,16 @@ function touchesScheduled(message: UIMessage): boolean {
       part.type === "tool-scheduled_task_update" ||
       part.type === "tool-scheduled_task_delete",
   );
+}
+
+function contextKindFor(message: UIMessage): RemixContextKind | null {
+  if (touchesScheduled(message)) return "tasks";
+  if (!touchesBrain(message)) return null;
+
+  const detail = JSON.stringify(message.parts);
+  if (detail.includes("todos.md")) return "tasks";
+  if (detail.includes("notes/")) return "notes";
+  return "brain";
 }
 
 function PanelTail(): React.JSX.Element {
@@ -835,44 +831,33 @@ function SignInGate(): React.JSX.Element {
   );
 }
 
-function PanelRoot(): React.JSX.Element {
-  const [thread, setThread] = useState<ThreadState | null>(null);
-  const queryClient = useQueryClient();
-  const latestQuery = useQuery(latestThreadQueryOptions());
-  const selectionRef = useRef(0);
+/**
+ * The current durable agent runtime in a desktop-sized composition. The
+ * compact panel and the restored dashboard deliberately share this component
+ * so streaming, approvals, connected apps, and thread persistence remain one
+ * implementation.
+ */
+export function RemixWorkspace(): React.JSX.Element {
+  const { thread, switchThread, localTitles, renameThread, deleteThread } =
+    useRemixSession();
 
-  const switchThread = useCallback((next: ThreadState) => {
-    selectionRef.current += 1;
-    setThread(next);
-  }, []);
+  if (!thread) return <div className="remix-workspace" />;
 
-  useEffect(() => {
-    const off = window.api.onPanelOpenThread((threadId) => {
-      const selection = ++selectionRef.current;
-      void invalidateThreads(queryClient);
-      void getThread(threadId)
-        .catch(() => null)
-        .then((picked) => {
-          if (!picked || selectionRef.current !== selection) return;
-          queryClient.setQueryData(queryKeys.threads.detail(threadId), picked);
-          setThread(picked);
-        });
-    });
-    return () => {
-      off?.();
-    };
-  }, [queryClient]);
-
-  useEffect(() => {
-    if (latestQuery.isPending) return;
-    setThread((current) => current ?? latestQuery.data ?? newThread());
-  }, [latestQuery.data, latestQuery.isPending]);
-
-  if (!thread) return <div className="tavern tavern-panel" />;
-  return <PanelInner thread={thread} onSwitchThread={switchThread} />;
+  return (
+    <div className="remix-workspace">
+      <PanelInner
+        thread={thread}
+        onSwitchThread={switchThread}
+        onRenameSession={renameThread}
+        onDeleteSession={deleteThread}
+        sessionTitle={localTitles[thread.id] ?? sessionTitle(thread)}
+        desktop
+      />
+    </div>
+  );
 }
 
-function PanelNotificationAuthBridge({
+export function PanelNotificationAuthBridge({
   children,
 }: {
   children: React.ReactNode;
@@ -888,20 +873,184 @@ function PanelNotificationAuthBridge({
   return <>{children}</>;
 }
 
+function RemixChatHeader({
+  thread,
+  title,
+  onRename,
+  onDelete,
+  children,
+}: {
+  thread: ThreadState;
+  title: string;
+  onRename?: (threadId: string, title: string) => Promise<void>;
+  onDelete?: (threadId: string) => Promise<void>;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!renaming) setDraft(title);
+  }, [renaming, title]);
+
+  useEffect(() => {
+    if (renaming) renameInputRef.current?.focus();
+  }, [renaming]);
+
+  const saveTitle = (): void => {
+    const nextTitle = draft.trim();
+    if (!nextTitle) {
+      setActionError("A session needs a name.");
+      return;
+    }
+    if (!onRename) return;
+    setActionError(null);
+    void onRename(thread.id, nextTitle)
+      .then(() => setRenaming(false))
+      .catch(() => setActionError("Couldn’t rename this session."));
+  };
+
+  const deleteSession = (): void => {
+    if (!onDelete) return;
+    if (!window.confirm(`Delete “${title}”? This can’t be undone.`)) return;
+    setActionError(null);
+    void onDelete(thread.id).catch(() =>
+      setActionError("Couldn’t delete this session."),
+    );
+  };
+
+  return (
+    <header className="remix-chat-header">
+      <div className="remix-chat-session">
+        {renaming ? (
+          <form
+            className="remix-chat-title-edit"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveTitle();
+            }}
+          >
+            <input
+              ref={renameInputRef}
+              value={draft}
+              aria-label="Session name"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                event.preventDefault();
+                setActionError(null);
+                setRenaming(false);
+              }}
+            />
+            <button type="submit" aria-label="Save session name">
+              <Check aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              aria-label="Cancel rename"
+              onClick={() => {
+                setActionError(null);
+                setRenaming(false);
+              }}
+            >
+              <X aria-hidden="true" />
+            </button>
+          </form>
+        ) : (
+          <>
+            <h1 title={title}>{title}</h1>
+            {onRename && onDelete ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="remix-chat-session-actions"
+                    aria-label={`Session actions for ${title}`}
+                    title="Session actions"
+                  >
+                    <Ellipsis aria-hidden="true" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-35">
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setDraft(title);
+                      setActionError(null);
+                      setRenaming(true);
+                    }}
+                  >
+                    <Pencil aria-hidden="true" />
+                    Rename
+                  </DropdownMenuItem>
+                  {thread.messages.length > 0 ? (
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={deleteSession}
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Delete
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </>
+        )}
+        {actionError ? (
+          <p className="remix-chat-session-error" role="status">
+            {actionError}
+          </p>
+        ) : null}
+      </div>
+      <div className="remix-chat-header-actions">{children}</div>
+    </header>
+  );
+}
+
 function PanelInner({
   thread,
   onSwitchThread,
+  onRenameSession,
+  onDeleteSession,
+  sessionTitle: currentSessionTitle,
+  desktop = false,
 }: {
   thread: ThreadState;
   onSwitchThread: (thread: ThreadState) => void;
+  onRenameSession?: (threadId: string, title: string) => Promise<void>;
+  onDeleteSession?: (threadId: string) => Promise<void>;
+  sessionTitle?: string;
+  /** Render inside the restored full-window Remix workspace rather than a popover. */
+  desktop?: boolean;
 }): React.JSX.Element {
   const [tab, setTab] = useState<WorkspaceView>("chat");
+  const [contextRailOpen, setContextRailOpen] = useRemixContextRailVisibility();
+  const [narrowRemix, setNarrowRemix] = useState(
+    () => window.matchMedia("(max-width: 1080px)").matches,
+  );
+  const [narrowContextOpen, setNarrowContextOpen] = useState(false);
+  const [contextAttention, setContextAttention] =
+    useState<RemixContextKind | null>(null);
   const queryClient = useQueryClient();
   const auth = useCloudAuth();
   const onboarding = useOnboarding(!!auth.user);
   const [spriteForm, setSpriteForm] = useState<CompanionForm>(
     DEFAULT_COMPANION_FORM,
   );
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1080px)");
+    const update = (): void => setNarrowRemix(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (narrowRemix) setNarrowContextOpen(false);
+  }, [narrowRemix]);
 
   useEffect(() => {
     void window.api
@@ -937,11 +1086,10 @@ function PanelInner({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsPage, setSettingsPage] = useState<SettingsPage>("root");
   const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dictationBaseRef = useRef<string | null>(null);
+  const contextAttentionMessageRef = useRef<string | null>(null);
   // Whether the current draft arrived by voice, so message_sent can say so.
   const dictatedRef = useRef(false);
 
@@ -1000,6 +1148,11 @@ function PanelInner({
           queryKey: queryKeys.scheduled.tasks,
         });
       }
+      const contextKind = contextKindFor(last);
+      if (contextKind) {
+        contextAttentionMessageRef.current = last.id;
+        setContextAttention(contextKind);
+      }
     },
     onToolCall: async ({ toolCall }) => {
       const startedAt = Date.now();
@@ -1049,12 +1202,32 @@ function PanelInner({
     setCopiedMessageId(null);
     setEditingMessageId(null);
     setEditDraft("");
-    setSettingsOpen(false);
-    setSettingsPage("root");
+    setContextAttention(null);
+    contextAttentionMessageRef.current = null;
     setCapabilitiesOpen(false);
     dictationBaseRef.current = null;
     dictatedRef.current = false;
   }, [thread.id]);
+
+  useEffect(() => {
+    if (!contextAttention) return;
+    const timeout = window.setTimeout(() => setContextAttention(null), 3_000);
+    return () => window.clearTimeout(timeout);
+  }, [contextAttention]);
+
+  useEffect(() => {
+    const last = durableRuntime.data?.thread?.messages.at(-1);
+    if (
+      !last ||
+      last.role !== "assistant" ||
+      last.id === contextAttentionMessageRef.current
+    )
+      return;
+    const contextKind = contextKindFor(last);
+    if (!contextKind) return;
+    contextAttentionMessageRef.current = last.id;
+    setContextAttention(contextKind);
+  }, [durableRuntime.data?.thread?.messages]);
 
   useEffect(() => {
     if (status === "submitted" || status === "streaming") return;
@@ -1295,11 +1468,11 @@ function PanelInner({
   useEffect(() => {
     // Every tab renders into the same .tavern-body scroller, so without this
     // guard a streaming turn yanks Settings/History/Brain to the bottom.
-    if (tab !== "chat" || settingsOpen) return;
+    if (!desktop && tab !== "chat") return;
     const el = bodyRef.current;
     if (el && (messages.length > 0 || approvals.length > 0))
       el.scrollTop = el.scrollHeight;
-  }, [messages, approvals, tab, settingsOpen]);
+  }, [desktop, messages, approvals, tab]);
 
   const pinned = busy || approvals.length > 0;
   useEffect(() => {
@@ -1311,7 +1484,6 @@ function PanelInner({
     // The composer only exists on the chat tab — dictation and explicit
     // focus requests must surface it first.
     const showComposer = (): void => {
-      setSettingsOpen(false);
       setTab("chat");
     };
     const offFocus = window.api.onPanelFocusComposer(() => {
@@ -1319,9 +1491,6 @@ function PanelInner({
       requestAnimationFrame(() =>
         document.getElementById("panel-composer")?.focus(),
       );
-    });
-    const offShowSettings = window.api.onPanelShowSettings(() => {
-      setSettingsOpen(true);
     });
     const offDictation = window.api.onPanelDictation((ev) => {
       if (ev.kind !== "error") showComposer();
@@ -1359,14 +1528,13 @@ function PanelInner({
     window.api.panelRendererReady();
     return () => {
       offFocus?.();
-      offShowSettings?.();
       offDictation?.();
     };
   }, []);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") window.api.panelClose();
+      if (!desktop && e.key === "Escape") window.api.panelClose();
     };
     const onLeave = (): void => window.api.panelPointerLeft();
     const onEnter = (): void => window.api.panelPointerEntered();
@@ -1378,14 +1546,18 @@ function PanelInner({
       document.removeEventListener("mouseleave", onLeave);
       document.removeEventListener("mouseenter", onEnter);
     };
-  }, []);
+  }, [desktop]);
 
-  const chatActive = tab === "chat";
+  const chatActive = desktop || tab === "chat";
+  const contextRailVisible =
+    desktop && (narrowRemix ? narrowContextOpen : contextRailOpen);
+  const toggleContextRail = (): void => {
+    if (narrowRemix) setNarrowContextOpen((open) => !open);
+    else setContextRailOpen(!contextRailOpen);
+  };
   const showChat = chatActive && messages.length > 0;
   const startNewChat = (): void => {
     setTab("chat");
-    setSettingsOpen(false);
-    setSettingsPage("root");
     setCapabilitiesOpen(false);
     setDraft("");
     setNotice(null);
@@ -1402,12 +1574,12 @@ function PanelInner({
   // flashing the gate at signed-in users.
   if (!auth.user) {
     return (
-      <div className="tavern-shell">
+      <div className={desktop ? "remix-agent" : "tavern-shell"}>
         <div className="tavern tavern-panel">
           {auth.loading ? null : <SignInGate />}
         </div>
-        <PanelTail />
-        <PanelResizeHandle />
+        {!desktop ? <PanelTail /> : null}
+        {!desktop ? <PanelResizeHandle /> : null}
       </div>
     );
   }
@@ -1417,7 +1589,7 @@ function PanelInner({
   // the intro at users who've already been through it.
   if (onboarding.status !== "done") {
     return (
-      <div className="tavern-shell">
+      <div className={desktop ? "remix-agent" : "tavern-shell"}>
         <div className="tavern tavern-panel">
           {onboarding.status === "show" ? (
             <OnboardingGate
@@ -1441,19 +1613,27 @@ function PanelInner({
             />
           ) : null}
         </div>
-        <PanelTail />
-        <PanelResizeHandle />
+        {!desktop ? <PanelTail /> : null}
+        {!desktop ? <PanelResizeHandle /> : null}
       </div>
     );
   }
 
   return (
-    <div className="tavern-shell">
-      <div className="tavern tavern-panel">
+    <div className={desktop ? "remix-agent" : "tavern-shell"}>
+      <div
+        className={`tavern tavern-panel${desktop ? " remix-agent-panel" : ""}`}
+      >
         <div className="tavern-head tavern-workspace-head">
           <SpriteBadge form={spriteForm} working={busy} size={22} />
           <span className="tavern-head-name">
-            freestyle<i>.</i>
+            {desktop ? (
+              "Remix"
+            ) : (
+              <>
+                freestyle<i>.</i>
+              </>
+            )}
           </span>
           <span className="tavern-head-spacer" />
           {updateStatus.version ? (
@@ -1495,74 +1675,56 @@ function PanelInner({
           >
             <WorkspaceIcon name="plus" />
           </button>
-          <button
-            type="button"
-            className="tavern-workspace-icon-btn"
-            aria-label="Open conversations"
-            aria-pressed={tab === "history"}
-            onClick={() => {
-              setSettingsOpen(false);
-              setSettingsPage("root");
-              setTab("history");
-            }}
-          >
-            <WorkspaceIcon name="history" />
-          </button>
-          <button
-            type="button"
-            className={`tavern-workspace-icon-btn${settingsOpen ? " is-active" : ""}`}
-            aria-label="Settings"
-            aria-pressed={settingsOpen}
-            onClick={() => {
-              setCapabilitiesOpen(false);
-              setSettingsOpen((open) => {
-                if (open) setSettingsPage("root");
-                return !open;
-              });
-            }}
-          >
-            <WorkspaceIcon name="settings" />
-          </button>
-          <button
-            type="button"
-            className="tavern-close"
-            aria-label="Close"
-            onClick={() => window.api.panelClose()}
-          >
-            <WorkspaceIcon name="close" />
-          </button>
+          {!desktop ? (
+            <button
+              type="button"
+              className="tavern-workspace-icon-btn"
+              aria-label="Open conversations"
+              aria-pressed={tab === "history"}
+              onClick={() => {
+                setTab("history");
+              }}
+            >
+              <WorkspaceIcon name="history" />
+            </button>
+          ) : null}
+          {!desktop ? (
+            <button
+              type="button"
+              className="tavern-close"
+              aria-label="Close"
+              onClick={() => window.api.panelClose()}
+            >
+              <WorkspaceIcon name="close" />
+            </button>
+          ) : null}
         </div>
-        <div className="tavern-workspace">
+        {desktop ? (
+          <RemixChatHeader
+            thread={thread}
+            title={currentSessionTitle ?? sessionTitle(thread)}
+            onRename={onRenameSession}
+            onDelete={onDeleteSession}
+          >
+            <button
+              type="button"
+              className="remix-context-toggle"
+              aria-label={contextRailVisible ? "Hide context" : "Show context"}
+              aria-pressed={contextRailVisible}
+              title={contextRailVisible ? "Hide context" : "Show context"}
+              onClick={toggleContextRail}
+            >
+              <WorkspaceIcon name="context" />
+            </button>
+          </RemixChatHeader>
+        ) : null}
+        <div
+          className={`tavern-workspace${
+            contextRailVisible ? " is-context-open" : ""
+          }`}
+        >
           <div className="tavern-workspace-main">
-            {settingsOpen ? (
-              <div className="tavern-settings-context">
-                <div className="tavern-settings-context-path">
-                  {settingsPage === "root" ? (
-                    <span>Settings</span>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setSettingsPage("root")}
-                      >
-                        Settings
-                      </button>
-                      <span aria-hidden="true">/</span>
-                      <strong>{SETTINGS_PAGE_TITLES[settingsPage]}</strong>
-                    </>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSettingsOpen(false);
-                    setSettingsPage("root");
-                  }}
-                >
-                  Done
-                </button>
-              </div>
-            ) : (
+            {!desktop ? (
               <nav
                 className="tavern-workspace-mobile-tools"
                 aria-label="Workspace"
@@ -1581,9 +1743,10 @@ function PanelInner({
                   </button>
                 ))}
               </nav>
-            )}
+            ) : null}
             <div
               className="tavern-body tavern-conversation"
+              data-remix-view={tab}
               role="tabpanel"
               ref={bodyRef}
             >
@@ -1604,48 +1767,16 @@ function PanelInner({
                     }}
                     onOpenApps={() => {
                       setCapabilitiesOpen(false);
-                      setTab("apps");
+                      setNotice("Manage connected apps from Settings.");
                     }}
                   />
                 </>
-              ) : settingsOpen ? (
-                <SettingsView
-                  page={settingsPage}
-                  onPageChange={setSettingsPage}
-                  onOpenThread={(threadId) => {
-                    setSettingsOpen(false);
-                    setSettingsPage("root");
-                    setTab("chat");
-                    void openThreadById(threadId).then((picked) => {
-                      if (picked) onSwitchThread(picked);
-                    });
-                  }}
-                  onThreadsCleared={() => {
-                    void invalidateThreads(queryClient);
-                    onSwitchThread(newThread());
-                  }}
-                  onReplayIntro={() => {
-                    setSettingsOpen(false);
-                    onboarding.replay();
-                  }}
-                />
               ) : tab === "history" ? (
                 <ThreadHistory
                   currentId={thread.id}
                   onPick={(picked) => {
                     setTab("chat");
                     if (picked.id !== thread.id) onSwitchThread(picked);
-                  }}
-                />
-              ) : tab === "apps" ? (
-                <ConnectedApps
-                  onUseWorkflow={(prompt) => {
-                    setTab("chat");
-                    // Sending past a pending approval strands the tool call, which
-                    // leaves an unanswerable tool_use in the thread forever.
-                    if (pinned) return;
-                    setNotice(null);
-                    void sendMessage({ text: prompt });
                   }}
                 />
               ) : showChat ? (
@@ -1767,22 +1898,6 @@ function PanelInner({
                     </div>
                   ) : null}
                 </>
-              ) : tab === "todos" ? (
-                <TodosTab mascot={SPRITES_INFO[spriteForm].label} />
-              ) : tab === "notes" ? (
-                <NotesTab />
-              ) : tab === "brain" ? (
-                <BrainFiles
-                  root=""
-                  emptyText={TAB_PLACEHOLDER.brain}
-                  newLabel="New file"
-                  onOpenThread={(threadId) => {
-                    setTab("chat");
-                    void openThreadById(threadId).then((picked) => {
-                      if (picked) onSwitchThread(picked);
-                    });
-                  }}
-                />
               ) : chatActive ? (
                 <OpenerCards
                   busy={busy}
@@ -1792,13 +1907,11 @@ function PanelInner({
                     void sendMessage({ text });
                   }}
                 />
-              ) : (
-                <div className="tavern-empty">{TAB_PLACEHOLDER[tab]}</div>
-              )}
+              ) : null}
               {notice ? <p className="tavern-notice">{notice}</p> : null}
             </div>
 
-            {chatActive && !settingsOpen && !capabilitiesOpen ? (
+            {chatActive && !capabilitiesOpen ? (
               <div className="tavern-composer">
                 <textarea
                   id="panel-composer"
@@ -1831,30 +1944,16 @@ function PanelInner({
               </div>
             ) : null}
           </div>
+          {desktop ? (
+            <RemixContextRail
+              attention={contextAttention}
+              open={contextRailVisible}
+            />
+          ) : null}
         </div>
       </div>
-      <PanelTail />
-      <PanelResizeHandle />
+      {!desktop ? <PanelTail /> : null}
+      {!desktop ? <PanelResizeHandle /> : null}
     </div>
   );
 }
-
-initApiBase();
-installGlobalErrorHandlers();
-
-const queryClient = createQueryClient();
-window.api.onServerChanged(() => {
-  void refreshApiBase().then(() => queryClient.invalidateQueries());
-});
-
-const container = document.getElementById("root");
-if (container)
-  createRoot(container).render(
-    <QueryClientProvider client={queryClient}>
-      <CloudAuthProvider>
-        <PanelNotificationAuthBridge>
-          <PanelRoot />
-        </PanelNotificationAuthBridge>
-      </CloudAuthProvider>
-    </QueryClientProvider>,
-  );

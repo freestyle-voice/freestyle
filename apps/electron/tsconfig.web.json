@@ -11,6 +11,10 @@
     "../../packages/utils/src/**/*",
     "../../packages/validations/src/**/*"
   ],
+  "exclude": [
+    "src/renderer/src/onboarding.tsx",
+    "src/renderer/src/pages/models/**/*"
+  ],
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",

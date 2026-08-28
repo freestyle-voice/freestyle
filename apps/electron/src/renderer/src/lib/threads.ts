@@ -83,6 +83,16 @@ export async function getThread(id: string): Promise<ThreadState | null> {
   return data.thread;
 }
 
+/** Remove a single server-owned thread. Display-name overrides live locally
+ * in Electron and are cleaned up by the Remix session provider afterwards. */
+export async function deleteThread(id: string): Promise<void> {
+  await responseJson<{ ok: true }>(
+    await apiFetch(`/api/agent/thread/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }),
+  );
+}
+
 /** The ordinary thread remains D1 history; this optional envelope adds only
  * durable execution state and never contains server-side tool inputs. */
 export async function getThreadRuntime(

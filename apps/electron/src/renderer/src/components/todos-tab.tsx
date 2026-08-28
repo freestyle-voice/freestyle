@@ -62,7 +62,8 @@ export function TodosTab({ mascot }: { mascot: string }): React.JSX.Element {
         </button>
       </div>
     );
-  if (lines === null) return <DataSkeleton label="Loading todos" />;
+  if (lines === null)
+    return <DataSkeleton label="Loading todos" variant="tasks" />;
 
   const items = parseItems(lines);
 

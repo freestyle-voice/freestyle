@@ -1,0 +1,281 @@
+import { Badge } from "@renderer/components/ui/badge";
+import { Button } from "@renderer/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "@renderer/components/ui/dropdown-menu";
+import { Progress } from "@renderer/components/ui/progress";
+import { useUpgradeModal } from "@renderer/components/upgrade-modal";
+import { useCloudAuth } from "@renderer/lib/auth-context";
+import { formatNumber } from "@renderer/lib/format";
+import { usagePercent, useCloudUsage } from "@renderer/lib/use-cloud-usage";
+import {
+  useActiveOrganization,
+  useListOrganizations,
+  useSetActiveOrganization,
+} from "@renderer/lib/use-profile";
+import { cn } from "@renderer/lib/utils";
+import {
+  Building2,
+  Check,
+  CircleHelp,
+  Cloud,
+  CreditCard,
+  Loader2,
+  LogIn,
+  LogOut,
+  Settings,
+} from "lucide-react";
+import { useState } from "react";
+import { useNavigate } from "react-router";
+
+const ROW =
+  "flex w-full items-center gap-2.5 rounded-[7px] border border-transparent px-2.5 py-1.5 text-[13px] transition-colors";
+
+function ProfileAvatar({
+  name,
+  email,
+  image,
+}: {
+  name?: string | null;
+  email: string;
+  image?: string | null;
+}): React.JSX.Element {
+  const [imageFailed, setImageFailed] = useState(false);
+  const label = name || email;
+  const initial = label.trim().charAt(0).toUpperCase() || "F";
+
+  if (image && !imageFailed) {
+    return (
+      <img
+        src={image}
+        alt=""
+        referrerPolicy="no-referrer"
+        className="size-7 shrink-0 rounded-full object-cover"
+        onError={() => setImageFailed(true)}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className="bg-primary/15 text-primary flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+    >
+      {initial}
+    </span>
+  );
+}
+
+export function UpgradeCtaCard(): React.JSX.Element | null {
+  const { user } = useCloudAuth();
+  const { balance, isPro } = useCloudUsage(!!user);
+  const { openUpgradeModal } = useUpgradeModal();
+
+  if (!user || isPro || !balance) return null;
+
+  const pct = usagePercent(balance);
+
+  return (
+    <div
+      className="glass-card mx-3 mt-2 rounded-[10px] border p-3"
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+    >
+      <div className="text-foreground text-[12px] font-medium">
+        {formatNumber(balance.remaining)}
+        <span className="text-muted-foreground font-normal">
+          {" "}
+          / {formatNumber(balance.limit)}
+        </span>{" "}
+        words left
+      </div>
+      <Progress value={pct} className="mt-1.5 h-1.5" />
+      <p className="text-muted-foreground mt-2.5 text-[11px] leading-snug">
+        Currently on a free plan, upgrade to Pro for unlimited dictation.
+      </p>
+      <Button
+        size="sm"
+        onClick={() => openUpgradeModal()}
+        className="mt-2.5 w-full"
+      >
+        Upgrade to Pro
+      </Button>
+    </div>
+  );
+}
+
+export function CloudProfileButton(): React.JSX.Element {
+  const { user, loading, signingIn, signIn, signOut } = useCloudAuth();
+  const { isPro, balance, openBillingPortal } = useCloudUsage(!!user);
+  const { data: activeOrg } = useActiveOrganization(!!user);
+  const { data: orgs } = useListOrganizations(!!user);
+  const setActiveOrg = useSetActiveOrganization();
+  const navigate = useNavigate();
+
+  const hasMultipleOrgs = orgs && orgs.length > 1;
+
+  if (loading) {
+    return (
+      <div className={cn(ROW, "text-muted-foreground/50")}>
+        <Loader2 className="size-3.5 shrink-0 animate-spin" />
+        <span className="flex-1 text-left">…</span>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="glass-card rounded-[10px] border p-3">
+        <div className="flex items-center gap-1.5">
+          <Cloud className="text-primary size-3.5 shrink-0" />
+          <span className="text-foreground text-[12.5px] font-medium">
+            Freestyle Transcribe
+          </span>
+        </div>
+        <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
+          Fast, accurate transcription, no API key required.
+        </p>
+        <Button
+          size="sm"
+          onClick={() => void signIn()}
+          disabled={signingIn}
+          className="bg-accent text-accent-foreground hover:bg-accent/70 mt-2.5 w-full"
+        >
+          {signingIn ? (
+            <>
+              <Loader2 className="animate-spin" />
+              Signing in…
+            </>
+          ) : (
+            <>
+              <LogIn />
+              Sign in
+            </>
+          )}
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            ROW,
+            "text-foreground hover:bg-card/50 cursor-pointer data-[state=open]:bg-card data-[state=open]:border-border",
+          )}
+        >
+          <ProfileAvatar
+            name={user.name}
+            email={user.email}
+            image={user.image}
+          />
+          <span className="min-w-0 flex-1 text-left leading-tight">
+            <span className="text-foreground block min-w-0 truncate font-medium">
+              {user.name || user.email}
+            </span>
+          </span>
+          {balance == null ? null : isPro ? (
+            <Badge className="mono h-4 shrink-0 px-1.5 text-[9px] uppercase tracking-[0.12em]">
+              Pro
+            </Badge>
+          ) : (
+            <span className="text-muted-foreground shrink-0 text-[10px]">
+              Free
+            </span>
+          )}
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        side="top"
+        align="start"
+        sideOffset={6}
+        className="w-[200px]"
+      >
+        <DropdownMenuItem
+          onSelect={() => navigate("/profile")}
+          className="flex items-center gap-1.5 rounded-b-none"
+        >
+          <div className="min-w-0 flex-1">
+            <div className="text-foreground truncate text-[13px] font-medium">
+              {user.name || user.email}
+            </div>
+            <div className="text-muted-foreground truncate text-[11px]">
+              {user.email}
+            </div>
+          </div>
+          <Settings className="text-muted-foreground size-3.5 shrink-0" />
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {hasMultipleOrgs ? (
+          <>
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Building2 />
+                Switch organization
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {orgs.map((org) => {
+                  const isActive = org.id === activeOrg?.id;
+                  return (
+                    <DropdownMenuItem
+                      key={org.id}
+                      disabled={setActiveOrg.isPending}
+                      onSelect={() => {
+                        if (!isActive) {
+                          setActiveOrg.mutate(org.id);
+                        }
+                      }}
+                    >
+                      <span className="min-w-0 flex-1 truncate">
+                        {org.name}
+                      </span>
+                      {isActive ? (
+                        <Check className="text-primary ml-auto size-3.5 shrink-0" />
+                      ) : null}
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        {isPro ? (
+          <>
+            <DropdownMenuItem onSelect={() => void openBillingPortal()}>
+              <CreditCard />
+              Manage subscription
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
+        <DropdownMenuItem onSelect={() => navigate("/settings")}>
+          <Settings />
+          Settings
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => navigate("/help")}>
+          <CircleHelp />
+          Help
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          onSelect={() => void signOut()}
+          className="rounded-t-none"
+        >
+          <LogOut />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}

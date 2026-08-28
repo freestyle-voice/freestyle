@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { useInfiniteQuery, useQueryClient } = vi.hoisted(() => ({
   useInfiniteQuery: vi.fn(),
@@ -13,46 +13,114 @@ vi.mock("@renderer/lib/analytics", () => ({ capture: vi.fn() }));
 import { ThreadHistory } from "./thread-history";
 
 describe("ThreadHistory", () => {
-  it("keeps the conversation filters available while briefs load", () => {
-    useInfiniteQuery.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: vi.fn(),
-    });
+  beforeEach(() => {
+    useInfiniteQuery.mockReset();
+    useQueryClient.mockReset();
     useQueryClient.mockReturnValue({ fetchQuery: vi.fn() });
-
-    const html = renderToStaticMarkup(
-      createElement(ThreadHistory, {
-        currentId: "active-thread",
-        onPick: vi.fn(),
-      }),
-    );
-
-    expect(html).toContain("Conversations");
-    expect(html).toContain("Briefs");
-    expect(html).toContain("Loading conversations…");
   });
 
-  it("can open directly on activity briefs from the compact workspace drawer", () => {
-    useInfiniteQuery.mockReturnValue({
-      data: undefined,
-      isLoading: true,
-      hasNextPage: false,
-      isFetchingNextPage: false,
-      fetchNextPage: vi.fn(),
-    });
-    useQueryClient.mockReturnValue({ fetchQuery: vi.fn() });
+  it("merges conversations and scheduled briefs into one time-ordered list", () => {
+    useInfiniteQuery
+      .mockReturnValueOnce({
+        data: {
+          pages: [
+            {
+              threads: [
+                { id: "conversation", title: "Plan the launch", updatedAt: 20 },
+              ],
+              nextCursor: null,
+            },
+          ],
+        },
+        isLoading: false,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+      })
+      .mockReturnValueOnce({
+        data: {
+          pages: [
+            {
+              threads: [{ id: "brief", title: "Morning brief", updatedAt: 30 }],
+              nextCursor: null,
+            },
+          ],
+        },
+        isLoading: false,
+        hasNextPage: false,
+        isFetchingNextPage: false,
+        fetchNextPage: vi.fn(),
+      });
 
     const html = renderToStaticMarkup(
       createElement(ThreadHistory, {
         currentId: "active-thread",
-        initialOrigin: "scheduled",
         onPick: vi.fn(),
       }),
     );
 
-    expect(html).toContain("Loading activity…");
+    expect(html).toContain("Morning brief");
+    expect(html).toContain("Plan the launch");
+    expect(html.indexOf("Morning brief")).toBeLessThan(
+      html.indexOf("Plan the launch"),
+    );
+    expect(html).not.toContain("Conversations");
+    expect(html).not.toContain("Briefs");
+  });
+
+  it("only renders a session search field when the Remix sidebar requests it", () => {
+    const query = {
+      data: { pages: [{ threads: [], nextCursor: null }] },
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    };
+    useInfiniteQuery.mockReturnValueOnce(query).mockReturnValueOnce(query);
+
+    const html = renderToStaticMarkup(
+      createElement(ThreadHistory, {
+        currentId: "active-thread",
+        onPick: vi.fn(),
+        showSearch: true,
+      }),
+    );
+
+    expect(html).toContain('placeholder="Search sessions"');
+  });
+
+  it("shows local display names and compact session actions only when requested", () => {
+    const query = {
+      data: {
+        pages: [
+          {
+            threads: [{ id: "session", title: "Original name", updatedAt: 30 }],
+            nextCursor: null,
+          },
+        ],
+      },
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    };
+    useInfiniteQuery.mockReturnValueOnce(query).mockReturnValueOnce({
+      ...query,
+      data: { pages: [{ threads: [], nextCursor: null }] },
+    });
+
+    const html = renderToStaticMarkup(
+      createElement(ThreadHistory, {
+        currentId: "active-thread",
+        onPick: vi.fn(),
+        titleOverrides: { session: "Launch plan" },
+        onRename: vi.fn().mockResolvedValue(undefined),
+        onDelete: vi.fn().mockResolvedValue(undefined),
+      }),
+    );
+
+    expect(html).toContain("Launch plan");
+    expect(html).not.toContain("Original name");
+    expect(html).toContain("Session actions for Launch plan");
   });
 });

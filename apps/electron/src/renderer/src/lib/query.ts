@@ -47,6 +47,9 @@ export const queryKeys = {
     available: ["models", "available"] as const,
     configured: ["models", "configured"] as const,
   },
+  apiKeys: ["api-keys"] as const,
+  whisperStatus: ["whisper-status"] as const,
+  mlxStatus: ["mlx-status"] as const,
 
   /** Experimental feature flags (`GET /api/config`). */
   config: ["config"] as const,

@@ -1,7 +1,15 @@
+import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { DataSkeleton } from "./data-skeleton";
+
+const stylesPath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "data-skeleton.css",
+);
 
 describe("DataSkeleton", () => {
   it("exposes an accessible busy label and reserves multiple rows", () => {
@@ -11,5 +19,32 @@ describe("DataSkeleton", () => {
     expect(html).toContain('aria-busy="true"');
     expect(html).toContain('aria-label="Loading conversations"');
     expect(html.match(/tavern-data-skeleton-row/g)).toHaveLength(3);
+  });
+
+  it("uses the active app theme rather than Tavern's fixed palette", async () => {
+    const styles = await readFile(stylesPath, "utf8");
+
+    expect(styles).toContain("var(--card, var(--tavern-card))");
+    expect(styles).toContain("var(--secondary, var(--tavern-wash))");
+    expect(styles).toContain("var(--muted-foreground, var(--tavern-wash))");
+    expect(styles).not.toContain("#f8efd9");
+  });
+
+  it("uses the matching visual structure for workspace content", () => {
+    const tasks = renderToStaticMarkup(
+      createElement(DataSkeleton, { label: "Loading todos", variant: "tasks" }),
+    );
+    const notes = renderToStaticMarkup(
+      createElement(DataSkeleton, { label: "Loading notes", variant: "notes" }),
+    );
+    const files = renderToStaticMarkup(
+      createElement(DataSkeleton, { label: "Loading files", variant: "files" }),
+    );
+
+    expect(tasks).toContain("is-tasks");
+    expect(tasks).toContain("tavern-data-skeleton-check");
+    expect(notes).toContain("is-notes");
+    expect(files).toContain("is-files");
+    expect(files).toContain("tavern-data-skeleton-file-mark");
   });
 });

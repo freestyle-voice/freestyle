@@ -30,8 +30,9 @@ describe("workspace switcher", () => {
     expect(shell).toContain('isFullscreen ? "h-0" : "h-8"');
     expect(shell).toContain("WORKSPACE_STORAGE_KEY");
     expect(shell).toContain('from "@renderer/lib/workspace"');
+    expect(shell).toContain("const isSettingsRoute =");
     expect(shell).toContain(
-      'const isRemixSidebar = sidebarWorkspace === "remix";',
+      'const isRemixSidebar = !isSettingsRoute && sidebarWorkspace === "remix";',
     );
     expect(shell).toContain("workspace={sidebarWorkspace}");
     expect(shell).not.toContain(

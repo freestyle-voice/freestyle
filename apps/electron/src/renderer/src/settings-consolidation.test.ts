@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const rendererRoot = dirname(fileURLToPath(import.meta.url));
+const shellPath = resolve(rendererRoot, "shell.tsx");
+const dashboardPath = resolve(rendererRoot, "dashboard.tsx");
 
 describe("settings consolidation", () => {
   it("keeps the former Remix-only data controls in dedicated Settings", async () => {
@@ -31,6 +33,23 @@ describe("settings consolidation", () => {
     expect(panel).not.toContain('aria-label="Settings"');
     expect(panel).not.toContain("remix-inline-settings");
     expect(remixStyles).not.toContain("remix-inline-settings");
+  });
+
+  it("uses the app sidebar as the only settings navigation", async () => {
+    const [settings, shell, dashboard] = await Promise.all([
+      readFile(resolve(rendererRoot, "pages/settings.tsx"), "utf8"),
+      readFile(shellPath, "utf8"),
+      readFile(dashboardPath, "utf8"),
+    ]);
+
+    expect(settings).toContain("useParams");
+    expect(settings).not.toContain("function SettingsSidebar");
+    expect(shell).toContain("function SettingsSidebar");
+    expect(shell).toContain('to: "/settings/transcription"');
+    expect(shell).toContain('to: "/settings/apps"');
+    expect(dashboard).toMatch(
+      /<Route\s+path="\/settings\/:section"\s+element=\{<SettingsPage\s*\/>\}\s*\/>/s,
+    );
   });
 
   it("uses an account-management view instead of plan comparisons for Pro", async () => {

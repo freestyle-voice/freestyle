@@ -36,17 +36,24 @@ import type { PluginInfo } from "@shared/plugins";
 import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
+  ArrowLeft,
+  Bell,
   Book,
   BookOpen,
   ChevronDown,
   CircleHelp,
   Cpu,
+  CreditCard,
+  Database,
   FileText,
   Mic,
+  Paintbrush,
+  PlugZap,
   Plus,
   Puzzle,
   Search,
   Settings,
+  ShieldCheck,
   Wand2,
   Zap,
 } from "lucide-react";
@@ -120,6 +127,44 @@ const STATIC_NAV: {
   },
 ];
 
+const SETTINGS_NAV_GROUPS: {
+  label: string;
+  items: { to: string; label: string; icon: LucideIcon }[];
+}[] = [
+  {
+    label: "Dictation",
+    items: [
+      { to: "/settings/transcription", label: "Transcription", icon: Mic },
+      { to: "/settings/vocabulary", label: "Vocabulary", icon: Book },
+      { to: "/settings/dictionary", label: "Dictionary", icon: Zap },
+      { to: "/settings/tone", label: "Tone", icon: FileText },
+      { to: "/settings/models", label: "Models", icon: Cpu },
+    ],
+  },
+  {
+    label: "Remix",
+    items: [
+      { to: "/settings/remix", label: "Remix", icon: Wand2 },
+      { to: "/settings/apps", label: "Connected apps", icon: PlugZap },
+      { to: "/settings/notifications", label: "Notifications", icon: Bell },
+    ],
+  },
+  {
+    label: "Desktop",
+    items: [
+      { to: "/settings/appearance", label: "Appearance", icon: Paintbrush },
+      { to: "/settings/application", label: "Application", icon: Settings },
+      { to: "/settings/permissions", label: "Permissions", icon: ShieldCheck },
+      { to: "/settings/data", label: "Data", icon: Database },
+      { to: "/settings/billing", label: "Usage & billing", icon: CreditCard },
+    ],
+  },
+  {
+    label: "Extensions",
+    items: [{ to: "/plugins", label: "Plugins", icon: Puzzle }],
+  },
+];
+
 function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
   return (
     <nav
@@ -178,6 +223,95 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
         );
       })}
     </nav>
+  );
+}
+
+function SettingsSidebar({
+  workspace,
+  onBack,
+}: {
+  workspace: Workspace;
+  onBack: () => void;
+}): React.JSX.Element {
+  const [query, setQuery] = useState("");
+  const normalizedQuery = query.trim().toLowerCase();
+  const groups = SETTINGS_NAV_GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter(
+      (item) =>
+        !normalizedQuery ||
+        `${group.label} ${item.label}`.toLowerCase().includes(normalizedQuery),
+    ),
+  })).filter((group) => group.items.length > 0);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col" data-workspace={workspace}>
+      <div className="px-4 pt-2 pb-3">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-[11px] transition-colors"
+        >
+          <ArrowLeft className="size-3.5" aria-hidden="true" />
+          Back to app
+        </button>
+        <p className="text-foreground mt-3 px-1 text-[17px] font-semibold tracking-[-0.02em]">
+          Settings
+        </p>
+        <label className="border-border bg-card/55 text-muted-foreground mt-3 flex h-8 items-center gap-2 rounded-[8px] border px-2.5 focus-within:border-primary/70">
+          <Search className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="sr-only">Search settings</span>
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search settings"
+            className="min-w-0 flex-1 bg-transparent text-[11.5px] text-foreground outline-none placeholder:text-muted-foreground"
+          />
+        </label>
+      </div>
+      <nav
+        className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pb-4"
+        aria-label="Settings"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        {groups.map((group) => (
+          <section key={group.label} className="mb-4 last:mb-0">
+            <h2 className="text-muted-foreground mono mb-1.5 px-2 text-[9px] font-semibold tracking-[0.14em] uppercase">
+              {group.label}
+            </h2>
+            <div className="flex flex-col gap-px">
+              {group.items.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    end={item.to === "/plugins"}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex items-center gap-2 rounded-[7px] border px-2 py-1.5 text-[12px] transition-colors",
+                        isActive
+                          ? "glass-nav-active text-foreground font-medium"
+                          : "border-transparent text-secondary-foreground/80 hover:bg-card/50",
+                      )
+                    }
+                  >
+                    <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{item.label}</span>
+                  </NavLink>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+        {groups.length === 0 ? (
+          <p className="text-muted-foreground px-2 pt-2 text-[11.5px]">
+            No settings found.
+          </p>
+        ) : null}
+      </nav>
+    </div>
   );
 }
 
@@ -464,12 +598,17 @@ export default function AppShell(): React.JSX.Element {
   const { t } = useTranslation();
   const { user } = useCloudAuth();
   const isRemixRoute = location.pathname === "/remix";
+  const isSettingsRoute =
+    location.pathname === "/settings" ||
+    location.pathname.startsWith("/settings/") ||
+    location.pathname === "/plugins" ||
+    location.pathname.startsWith("/plugins/");
   const [sidebarWorkspace, setSidebarWorkspace] = usePersistentState<Workspace>(
     WORKSPACE_STORAGE_KEY,
     isRemixRoute ? "remix" : DEFAULT_WORKSPACE,
     isWorkspace,
   );
-  const isRemixSidebar = sidebarWorkspace === "remix";
+  const isRemixSidebar = !isSettingsRoute && sidebarWorkspace === "remix";
   const [remixSessionSearch, setRemixSessionSearch] = useState("");
   const [isSessionSearchOpen, setIsSessionSearchOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -542,6 +681,7 @@ export default function AppShell(): React.JSX.Element {
   // Cmd/Ctrl+1..9 jumps between sidebar items
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (isSettingsRoute) return;
       if (!(e.metaKey || e.ctrlKey)) return;
       const idx = Number(e.key) - 1;
       if (idx >= 0 && idx < staticNav.length) {
@@ -551,7 +691,7 @@ export default function AppShell(): React.JSX.Element {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [navigate, staticNav]);
+  }, [isSettingsRoute, navigate, staticNav]);
 
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
@@ -571,69 +711,78 @@ export default function AppShell(): React.JSX.Element {
             isFullscreen ? "h-0" : "h-8",
           )}
         />
-        <div
-          className="remix-sidebar-titlebar"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          <WorkspaceSwitcher
+        {isSettingsRoute ? (
+          <SettingsSidebar
             workspace={sidebarWorkspace}
-            onWorkspaceChange={changeWorkspace}
+            onBack={() => navigate(workspaceHomeRoute(sidebarWorkspace))}
           />
-          {import.meta.env.DEV && (
-            <Badge
-              variant="outline"
-              className="mono h-5 border-yellow-500/30 bg-yellow-500/15 px-1.5 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
-            >
-              dev
-            </Badge>
-          )}
-          {isRemixSidebar ? (
-            <button
-              type="button"
-              aria-label="Search sessions"
-              title="Search sessions"
-              onClick={() => handleSessionSearchOpenChange(true)}
-              className="remix-session-search-trigger"
-            >
-              <Search aria-hidden="true" />
-            </button>
-          ) : null}
-        </div>
-
-        <div
-          className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          {isRemixSidebar ? (
-            <RemixSidebarSessions searchQuery="" />
-          ) : (
-            <>
-              <NavList items={mainNav} />
-              {pluginNav.length > 0 ? (
-                <>
-                  <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-                  <NavList items={pluginNav} />
-                </>
-              ) : null}
-            </>
-          )}
-        </div>
-        {!isRemixSidebar && !user ? (
+        ) : (
           <>
-            {pluginNav.length > 0 ? (
-              <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+            <div
+              className="remix-sidebar-titlebar"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            >
+              <WorkspaceSwitcher
+                workspace={sidebarWorkspace}
+                onWorkspaceChange={changeWorkspace}
+              />
+              {import.meta.env.DEV && (
+                <Badge
+                  variant="outline"
+                  className="mono h-5 border-yellow-500/30 bg-yellow-500/15 px-1.5 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
+                >
+                  dev
+                </Badge>
+              )}
+              {isRemixSidebar ? (
+                <button
+                  type="button"
+                  aria-label="Search sessions"
+                  title="Search sessions"
+                  onClick={() => handleSessionSearchOpenChange(true)}
+                  className="remix-session-search-trigger"
+                >
+                  <Search aria-hidden="true" />
+                </button>
+              ) : null}
+            </div>
+
+            <div
+              className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            >
+              {isRemixSidebar ? (
+                <RemixSidebarSessions searchQuery="" />
+              ) : (
+                <>
+                  <NavList items={mainNav} />
+                  {pluginNav.length > 0 ? (
+                    <>
+                      <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+                      <NavList items={pluginNav} />
+                    </>
+                  ) : null}
+                </>
+              )}
+            </div>
+            {!isRemixSidebar && !user ? (
+              <>
+                {pluginNav.length > 0 ? (
+                  <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+                ) : null}
+                <NavList items={footerNav} />
+              </>
             ) : null}
-            <NavList items={footerNav} />
+            <UpgradeCtaCard />
+            <div
+              className="border-sidebar-border mx-3 mt-2 border-t pt-2"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            >
+              <CloudProfileButton />
+            </div>
+            <div className="h-3" />
           </>
-        ) : null}
-        <UpgradeCtaCard />
-        <div
-          className="border-sidebar-border mx-3 mt-2 border-t pt-2"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          <CloudProfileButton />
-        </div>
-        <div className="h-3" />
+        )}
       </aside>
       <SidebarResizeHandle
         width={sidebarWidth}

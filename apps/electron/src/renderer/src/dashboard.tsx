@@ -179,11 +179,25 @@ function mount(): void {
                                 <Route path="/remix" element={<RemixPage />} />
                                 <Route
                                   path="/settings"
+                                  element={
+                                    <Navigate
+                                      to="/settings/transcription"
+                                      replace
+                                    />
+                                  }
+                                />
+                                <Route
+                                  path="/settings/:section"
                                   element={<SettingsPage />}
                                 />
                                 <Route
                                   path="/settings/general"
-                                  element={<Navigate to="/settings" replace />}
+                                  element={
+                                    <Navigate
+                                      to="/settings/application"
+                                      replace
+                                    />
+                                  }
                                 />
                                 <Route
                                   path="/settings/models"
@@ -209,7 +223,9 @@ function mount(): void {
                                 />
                                 <Route
                                   path="/settings/history"
-                                  element={<Navigate to="/today" replace />}
+                                  element={
+                                    <Navigate to="/settings/data" replace />
+                                  }
                                 />
                                 <Route path="/help" element={<HelpPage />} />
                                 <Route
@@ -227,10 +243,6 @@ function mount(): void {
                                 <Route
                                   path="/plugins/:slug/:pageId"
                                   element={<PluginPage />}
-                                />
-                                <Route
-                                  path="/settings/permissions"
-                                  element={<Navigate to="/settings" replace />}
                                 />
                               </Route>
                             </Route>

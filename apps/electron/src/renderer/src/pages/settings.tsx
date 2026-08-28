@@ -100,7 +100,7 @@ import {
   useForm,
 } from "react-hook-form";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router";
+import { useNavigate, useParams } from "react-router";
 import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
@@ -158,17 +158,21 @@ const settingsSectionIds = [
 
 type SettingsSectionId = (typeof settingsSectionIds)[number];
 
-// Network tab temporarily disabled.
-const hiddenSettingsSectionIds: readonly SettingsSectionId[] = ["network"];
+const settingsRouteSections = {
+  transcription: "recording",
+  remix: "remix",
+  application: "application",
+  appearance: "display",
+  permissions: "permissions",
+  notifications: "notifications",
+  apps: "connectedApps",
+  data: "data",
+  billing: "billing",
+} as const satisfies Record<string, SettingsSectionId>;
 
-const visibleSettingsSectionIds = settingsSectionIds.filter(
-  (id) => !hiddenSettingsSectionIds.includes(id),
-);
-
-function parseSettingsSection(hash: string): SettingsSectionId {
-  const id = hash.replace(/^#/, "");
-  return (visibleSettingsSectionIds as readonly string[]).includes(id)
-    ? (id as SettingsSectionId)
+function parseSettingsSection(section: string | undefined): SettingsSectionId {
+  return section && section in settingsRouteSections
+    ? settingsRouteSections[section as keyof typeof settingsRouteSections]
     : "recording";
 }
 
@@ -203,6 +207,7 @@ export default function SettingsPage(): React.JSX.Element {
   const { theme, setTheme } = useTheme();
   const { user } = useCloudAuth();
   const navigate = useNavigate();
+  const { section } = useParams();
   const { startNewThread, switchThread } = useRemixSession();
   const { data: cloudConfig } = useCloudConfig(!!user);
   const [devices, setDevices] = useState<AudioDevice[]>([]);
@@ -234,9 +239,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [companionForm, setCompanionForm] = useState<CompanionForm>(
     DEFAULT_COMPANION_FORM,
   );
-  const [activeSection, setActiveSection] = useState<SettingsSectionId>(() =>
-    parseSettingsSection(window.location.hash),
-  );
+  const activeSection = parseSettingsSection(section);
   // Radix SelectItem cannot use an empty-string value, so the "system default"
   // microphone (stored as "") is represented by this sentinel at the Select
   // boundary only. Use an unlikely string to avoid colliding with a real
@@ -297,22 +300,6 @@ export default function SettingsPage(): React.JSX.Element {
   const supportsBackgroundAudio = isMac || isLinux || isWindows;
   // macOS and Windows can deep-link to the OS mic privacy settings.
   const canOpenMicSettings = isMac || isWindows;
-
-  const selectSection = useCallback((id: SettingsSectionId) => {
-    setActiveSection(id);
-    const nextHash = `#${id}`;
-    if (window.location.hash !== nextHash) {
-      window.history.replaceState(null, "", nextHash);
-    }
-  }, []);
-
-  useEffect(() => {
-    const onHashChange = () => {
-      setActiveSection(parseSettingsSection(window.location.hash));
-    };
-    window.addEventListener("hashchange", onHashChange);
-    return () => window.removeEventListener("hashchange", onHashChange);
-  }, []);
 
   const checkPermissions = useCallback(async () => {
     try {
@@ -851,615 +838,618 @@ export default function SettingsPage(): React.JSX.Element {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <DragSpacer />
-      <div className="responsive-page-scroll grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] gap-x-10 gap-y-6 !pb-0 min-[900px]:grid-cols-[180px_minmax(0,1fr)]">
-        <div className="min-[900px]:col-span-2">
-          <div className="mb-7">
-            <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-              <span className="serif-italic text-primary">
-                {t("settings.title")}
-              </span>
-              <span>. </span>
+      <div className="responsive-page-scroll min-h-0 flex-1 !pb-0">
+        <div className="mx-auto flex w-full max-w-5xl min-h-0 flex-col">
+          <header className="border-border mb-7 border-b pb-6">
+            <p className="text-muted-foreground mono mb-2 text-[10px] font-semibold tracking-[0.16em] uppercase">
+              {t("settings.title")}
+            </p>
+            <h1 className="serif text-foreground m-0 text-[36px] font-normal leading-none tracking-[-0.025em]">
+              {activeSectionLabel}
             </h1>
-          </div>
-        </div>
+          </header>
 
-        <SettingsSidebar active={activeSection} onSelect={selectSection} />
-
-        <div className="min-h-0 overflow-y-auto px-1 -mx-1">
-          <h2 className="text-foreground mb-6 text-[22px] font-medium tracking-[-0.02em]">
-            {activeSectionLabel}
-          </h2>
-
-          {activeSection === "application" && (
-            <SettingsPanel>
-              <Row
-                label={t("settings.interfaceLanguage.label")}
-                desc={t("settings.interfaceLanguage.desc")}
-              >
-                <LanguageSelector />
-              </Row>
-              <Row
-                label={t("settings.application.autoUpdate")}
-                desc={t("settings.application.autoUpdateDesc")}
-              >
-                <Switch
-                  checked={autoUpdate}
-                  onCheckedChange={handleAutoUpdateToggle}
-                />
-              </Row>
-              <Row
-                label={t("settings.application.launchAtStartup")}
-                desc={t("settings.application.launchAtStartupDesc")}
-              >
-                <Switch
-                  checked={launchAtStartup}
-                  onCheckedChange={handleLaunchAtStartupToggle}
-                />
-              </Row>
-              <Row
-                label={t("settings.application.showOnLaunch")}
-                desc={t("settings.application.showOnLaunchDesc")}
-              >
-                <Switch
-                  checked={showOnLaunch}
-                  onCheckedChange={handleShowOnLaunchToggle}
-                />
-              </Row>
-              <Row
-                label="Desktop companion"
-                desc="Choose the optional local companion shown on your desktop."
-                last
-              >
-                <Select
-                  value={companionForm}
-                  onValueChange={(form) => {
-                    const next = form as CompanionForm;
-                    setCompanionForm(next);
-                    window.api.setCompanionForm(next);
-                  }}
-                >
-                  <SelectTrigger className="w-full max-w-md">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.values(SPRITES_INFO).map((sprite) => (
-                      <SelectItem key={sprite.id} value={sprite.id}>
-                        {sprite.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Row>
-            </SettingsPanel>
-          )}
-
-          {activeSection === "recording" && (
-            <SettingsPanel>
-              <Row
-                label={t("settings.recording.hotkey")}
-                desc={
-                  hotkeyMode === "toggle"
-                    ? t("settings.recording.hotkeyDescToggle")
-                    : t("settings.recording.hotkeyDescHold")
-                }
-              >
-                {recorderState === "idle" ? (
-                  <div className="relative inline-flex">
-                    <Button
-                      variant="outline"
-                      onClick={startHotkeyRecording}
-                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                    >
-                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                      <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {t("common.change")}
-                      </span>
-                    </Button>
-                    {(invalidReleaseNotice || blockedNotice) && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {blockedNotice
-                          ? t("settings.recording.conflict")
-                          : t("settings.recording.needsModifier")}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
-                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                    {draftKeys.length > 0 ? (
-                      <>
-                        <KeyComboDisplay keys={draftKeys} variant="dim" />
-                        <span className="text-muted-foreground text-xs">
-                          {captureHint}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground animate-pulse text-sm">
-                        {captureHint}
-                      </span>
-                    )}
-                    {invalidReleaseNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {t("settings.recording.needsModifier")}
-                      </div>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={cancelHotkeyRecording}
-                      className="ml-1"
-                    >
-                      {t("common.cancel")}
-                    </Button>
-                  </div>
-                )}
-              </Row>
-
-              <Row
-                label={t("settings.recording.activation")}
-                desc={
-                  hotkeyMode === "toggle"
-                    ? t("settings.recording.activationDescToggle")
-                    : t("settings.recording.activationDescHold")
-                }
-              >
-                <SegmentedControl
-                  value={hotkeyMode}
-                  onValueChange={(v) =>
-                    handleHotkeyModeChange(v as "hold" | "toggle")
-                  }
-                  options={[
-                    {
-                      value: "hold",
-                      label: t("settings.recording.activationHold"),
-                    },
-                    {
-                      value: "toggle",
-                      label: t("settings.recording.activationToggle"),
-                    },
-                  ]}
-                />
-              </Row>
-
-              <Row
-                label={t("settings.recording.microphone")}
-                desc={t("settings.recording.microphoneDesc")}
-              >
-                <Select
-                  value={
-                    selectedDevice === "" ? SYSTEM_DEFAULT_MIC : selectedDevice
-                  }
-                  onValueChange={(v) =>
-                    handleDeviceChange(v === SYSTEM_DEFAULT_MIC ? "" : v)
-                  }
-                >
-                  <SelectTrigger
-                    id="settings-microphone"
-                    className="w-full max-w-md"
-                  >
-                    <Mic className="text-muted-foreground size-4 shrink-0" />
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {microphoneOptions.map((o) => (
-                      <SelectItem
-                        key={o.value}
-                        value={o.value === "" ? SYSTEM_DEFAULT_MIC : o.value}
-                      >
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Row>
-
-              <Row
-                label={t("settings.recording.language")}
-                desc={
-                  languages.length === 0
-                    ? t("settings.recording.languageDescAuto")
-                    : languages.length > 1
-                      ? t("settings.recording.languageDescMulti")
-                      : translateMode
-                        ? t("settings.recording.languageDescEnforced", {
-                            language: languageLabel,
-                          })
-                        : t("settings.recording.languageDescHint", {
-                            language: languageLabel,
-                          })
-                }
-              >
-                <LanguageMultiSelect
-                  id="settings-language"
-                  values={languages}
-                  onChange={handleLanguagesChange}
-                  options={languageOptions}
-                  className="w-full max-w-md"
-                />
-              </Row>
-
-              <Row
-                label={t("settings.recording.translateMode")}
-                desc={t("settings.recording.translateModeDesc")}
-              >
-                <Switch
-                  id="settings-translate-mode"
-                  checked={translateMode && languages.length === 1}
-                  disabled={languages.length !== 1}
-                  onCheckedChange={persistTranslateMode}
-                />
-              </Row>
-
-              <Row
-                label={t("settings.recording.outputMode")}
-                desc={t("settings.recording.outputModeDesc")}
-              >
-                <Segment
-                  compact
-                  options={[
-                    {
-                      id: "paste",
-                      label: t("settings.recording.outputModePaste"),
-                    },
-                    {
-                      id: "clipboard",
-                      label: t("settings.recording.outputModeClipboard"),
-                    },
-                  ]}
-                  active={outputMode}
-                  onSelect={handleOutputModeChange}
-                />
-              </Row>
-
-              <Row
-                last={!supportsBackgroundAudio}
-                label={t("settings.recording.sound")}
-                desc={t("settings.recording.soundDesc")}
-              >
-                <div className="flex items-center gap-2.5">
-                  {soundEnabled ? (
-                    <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
-                  ) : (
-                    <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
-                  )}
-                  <Switch
-                    checked={soundEnabled}
-                    onCheckedChange={handleSoundToggle}
-                  />
-                </div>
-              </Row>
-
-              {supportsBackgroundAudio ? (
+          <div className="min-h-0 px-1 -mx-1">
+            {activeSection === "application" && (
+              <SettingsPanel>
                 <Row
-                  label="Background audio"
-                  desc={
-                    isLinux
-                      ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
-                      : "Duck lowers volume. Pause pauses current media and lowers volume."
-                  }
-                  last
+                  label={t("settings.interfaceLanguage.label")}
+                  desc={t("settings.interfaceLanguage.desc")}
                 >
-                  <Segment
-                    compact
-                    options={audioPlaybackOptions}
-                    active={audioPlaybackMode}
-                    onSelect={handleAudioPlaybackModeChange}
+                  <LanguageSelector />
+                </Row>
+                <Row
+                  label={t("settings.application.autoUpdate")}
+                  desc={t("settings.application.autoUpdateDesc")}
+                >
+                  <Switch
+                    checked={autoUpdate}
+                    onCheckedChange={handleAutoUpdateToggle}
                   />
                 </Row>
-              ) : null}
-            </SettingsPanel>
-          )}
-
-          {activeSection === "remix" && (
-            <SettingsPanel>
-              <Row
-                label={t("settings.remix.hotkey")}
-                desc={
-                  remixHotkey === hotkey
-                    ? t("settings.remix.conflict")
-                    : t("settings.remix.hotkeyDesc")
-                }
-              >
-                {remixRecorderState === "idle" ? (
-                  <div className="relative inline-flex">
-                    <Button
-                      variant="outline"
-                      onClick={startRemixHotkeyRecording}
-                      className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
-                    >
-                      <Keyboard className="text-muted-foreground size-4 shrink-0" />
-                      <KeyComboDisplay
-                        keys={formatAcceleratorKeys(remixHotkey)}
-                      />
-                      <span className="text-muted-foreground ml-1 text-xs">
-                        {t("common.change")}
-                      </span>
-                    </Button>
-                    {remixBlockedNotice && (
-                      <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
-                        {t("settings.remix.conflict")}
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
-                    <Keyboard className="text-primary h-4 w-4 shrink-0" />
-                    {remixDraftKeys.length > 0 ? (
-                      <>
-                        <KeyComboDisplay keys={remixDraftKeys} variant="dim" />
-                        <span className="text-muted-foreground text-xs">
-                          {remixCaptureHint}
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-muted-foreground animate-pulse text-sm">
-                        {remixCaptureHint}
-                      </span>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={cancelRemixHotkeyRecording}
-                      className="ml-1"
-                    >
-                      {t("common.cancel")}
-                    </Button>
-                  </div>
-                )}
-              </Row>
-
-              <Row
-                label={t("settings.remix.bar")}
-                desc={t("settings.remix.barDesc")}
-                last
-              >
-                <Switch
-                  checked={remixBarEnabled}
-                  onCheckedChange={handleRemixBarToggle}
-                />
-              </Row>
-            </SettingsPanel>
-          )}
-
-          {activeSection === "display" && (
-            <SettingsPanel>
-              <Row
-                label={t("settings.display.theme")}
-                desc={t("settings.display.themeDesc")}
-              >
-                <Segment
-                  options={themeOptions.map((o) => ({
-                    id: o.value,
-                    label: t(
-                      `settings.display.theme${o.value.charAt(0).toUpperCase()}${o.value.slice(1)}`,
-                    ),
-                    icon: o.icon,
-                  }))}
-                  active={theme ?? "system"}
-                  onSelect={handleThemeChange}
-                />
-              </Row>
-              <Row
-                label={t("settings.display.widgetPosition")}
-                desc={t("settings.display.widgetPositionDesc")}
-              >
-                <Segment
-                  compact
-                  wrap
-                  options={positionOptions}
-                  active={pillPosition}
-                  onSelect={handlePillPositionChange}
-                />
-              </Row>
-              <Row
-                label={t("settings.display.cancelButton")}
-                desc={t("settings.display.cancelButtonDesc")}
-                last
-              >
-                <Segment
-                  compact
-                  options={cancelButtonOptions}
-                  active={pillCancel}
-                  onSelect={handlePillCancelChange}
-                />
-              </Row>
-            </SettingsPanel>
-          )}
-
-          {activeSection === "permissions" && (
-            <SettingsPanel>
-              <Row
-                label={t("settings.permissions.microphone")}
-                desc={t("settings.permissions.microphoneDesc")}
-              >
-                <PermissionControl
-                  granted={micStatus === "granted"}
-                  checking={micStatus === "unknown"}
-                  actionLabel={
-                    micStatus === "denied" && canOpenMicSettings
-                      ? t("common.openSettings")
-                      : micStatus === "granted"
-                        ? null
-                        : t("common.allow")
-                  }
-                  external={micStatus === "denied" && canOpenMicSettings}
-                  onAction={
-                    micStatus === "denied" && canOpenMicSettings
-                      ? openMicSettings
-                      : requestMic
-                  }
-                  onManage={canOpenMicSettings ? openMicSettings : undefined}
-                />
-              </Row>
-              <Row
-                label={t("settings.permissions.accessibility")}
-                desc={
-                  isMac
-                    ? t("settings.permissions.accessibilityDescMac")
-                    : t("settings.permissions.accessibilityDescOther")
-                }
-                last
-              >
-                <PermissionControl
-                  granted={accessibilityStatus === true}
-                  checking={accessibilityStatus === null}
-                  actionLabel={
-                    accessibilityStatus === true
-                      ? null
-                      : isMac
-                        ? t("common.openSettings")
-                        : null
-                  }
-                  external={isMac}
-                  onAction={openAccessibility}
-                  onManage={isMac ? openAccessibility : undefined}
-                  note={
-                    !isMac && accessibilityStatus !== true
-                      ? t("settings.permissions.autoGranted")
-                      : undefined
-                  }
-                />
-              </Row>
-            </SettingsPanel>
-          )}
-          {activeSection === "data" && (
-            <SettingsPanel>
-              <Row
-                label={t("settings.data.pauseHistory")}
-                desc={t("settings.data.pauseHistoryDesc")}
-              >
-                <Switch
-                  checked={historyPaused}
-                  onCheckedChange={handleHistoryPausedToggle}
-                />
-              </Row>
-              <Row
-                label={t("settings.data.autoDelete")}
-                desc={t("settings.data.autoDeleteDesc")}
-              >
-                <div className="flex min-w-0 items-center gap-2">
+                <Row
+                  label={t("settings.application.launchAtStartup")}
+                  desc={t("settings.application.launchAtStartupDesc")}
+                >
+                  <Switch
+                    checked={launchAtStartup}
+                    onCheckedChange={handleLaunchAtStartupToggle}
+                  />
+                </Row>
+                <Row
+                  label={t("settings.application.showOnLaunch")}
+                  desc={t("settings.application.showOnLaunchDesc")}
+                >
+                  <Switch
+                    checked={showOnLaunch}
+                    onCheckedChange={handleShowOnLaunchToggle}
+                  />
+                </Row>
+                <Row
+                  label="Desktop companion"
+                  desc="Choose the optional local companion shown on your desktop."
+                  last
+                >
                   <Select
-                    value={historyRetention}
-                    onValueChange={handleHistoryRetentionChange}
+                    value={companionForm}
+                    onValueChange={(form) => {
+                      const next = form as CompanionForm;
+                      setCompanionForm(next);
+                      window.api.setCompanionForm(next);
+                    }}
                   >
-                    <SelectTrigger
-                      id="settings-history-retention"
-                      className="w-36"
-                    >
+                    <SelectTrigger className="w-full max-w-md">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {retentionOptions.map((o) => (
-                        <SelectItem key={o.value} value={o.value}>
+                      {Object.values(SPRITES_INFO).map((sprite) => (
+                        <SelectItem key={sprite.id} value={sprite.id}>
+                          {sprite.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Row>
+              </SettingsPanel>
+            )}
+
+            {activeSection === "recording" && (
+              <SettingsPanel>
+                <Row
+                  label={t("settings.recording.hotkey")}
+                  desc={
+                    hotkeyMode === "toggle"
+                      ? t("settings.recording.hotkeyDescToggle")
+                      : t("settings.recording.hotkeyDescHold")
+                  }
+                >
+                  {recorderState === "idle" ? (
+                    <div className="relative inline-flex">
+                      <Button
+                        variant="outline"
+                        onClick={startHotkeyRecording}
+                        className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
+                      >
+                        <Keyboard className="text-muted-foreground size-4 shrink-0" />
+                        <KeyComboDisplay keys={formatAcceleratorKeys(hotkey)} />
+                        <span className="text-muted-foreground ml-1 text-xs">
+                          {t("common.change")}
+                        </span>
+                      </Button>
+                      {(invalidReleaseNotice || blockedNotice) && (
+                        <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                          {blockedNotice
+                            ? t("settings.recording.conflict")
+                            : t("settings.recording.needsModifier")}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+                      <Keyboard className="text-primary h-4 w-4 shrink-0" />
+                      {draftKeys.length > 0 ? (
+                        <>
+                          <KeyComboDisplay keys={draftKeys} variant="dim" />
+                          <span className="text-muted-foreground text-xs">
+                            {captureHint}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground animate-pulse text-sm">
+                          {captureHint}
+                        </span>
+                      )}
+                      {invalidReleaseNotice && (
+                        <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                          {t("settings.recording.needsModifier")}
+                        </div>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={cancelHotkeyRecording}
+                        className="ml-1"
+                      >
+                        {t("common.cancel")}
+                      </Button>
+                    </div>
+                  )}
+                </Row>
+
+                <Row
+                  label={t("settings.recording.activation")}
+                  desc={
+                    hotkeyMode === "toggle"
+                      ? t("settings.recording.activationDescToggle")
+                      : t("settings.recording.activationDescHold")
+                  }
+                >
+                  <SegmentedControl
+                    value={hotkeyMode}
+                    onValueChange={(v) =>
+                      handleHotkeyModeChange(v as "hold" | "toggle")
+                    }
+                    options={[
+                      {
+                        value: "hold",
+                        label: t("settings.recording.activationHold"),
+                      },
+                      {
+                        value: "toggle",
+                        label: t("settings.recording.activationToggle"),
+                      },
+                    ]}
+                  />
+                </Row>
+
+                <Row
+                  label={t("settings.recording.microphone")}
+                  desc={t("settings.recording.microphoneDesc")}
+                >
+                  <Select
+                    value={
+                      selectedDevice === ""
+                        ? SYSTEM_DEFAULT_MIC
+                        : selectedDevice
+                    }
+                    onValueChange={(v) =>
+                      handleDeviceChange(v === SYSTEM_DEFAULT_MIC ? "" : v)
+                    }
+                  >
+                    <SelectTrigger
+                      id="settings-microphone"
+                      className="w-full max-w-md"
+                    >
+                      <Mic className="text-muted-foreground size-4 shrink-0" />
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {microphoneOptions.map((o) => (
+                        <SelectItem
+                          key={o.value}
+                          value={o.value === "" ? SYSTEM_DEFAULT_MIC : o.value}
+                        >
                           {o.label}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {historyRetention === "custom" && (
-                    <>
-                      <Input
-                        inputMode="numeric"
-                        value={customRetentionDays}
-                        onChange={(e) =>
-                          handleCustomRetentionDaysChange(e.target.value)
-                        }
-                        className="w-16 text-center"
-                        aria-label={t("settings.data.autoDeleteDays")}
-                      />
-                      <span className="text-muted-foreground text-xs">
-                        {t("settings.data.autoDeleteDays")}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </Row>
-              <Row
-                label={t("settings.data.history")}
-                desc={t("settings.data.historyDesc")}
-              >
-                <Button variant="destructive" size="sm" onClick={clearHistory}>
-                  <Trash2 data-icon="inline-start" />
-                  {t("settings.data.clearHistory")}
-                </Button>
-              </Row>
-              <Row
-                label="Remix conversations"
-                desc="Delete every Remix conversation from this device and start a new one."
-              >
-                <AsyncActionButton
-                  variant="destructive"
-                  label="Clear conversations"
-                  action={clearConversations}
-                />
-              </Row>
-              <Row
-                label="Export Brain"
-                desc="Download a JSON copy of your memories, notes, tasks, and files."
-              >
-                <AsyncActionButton
-                  variant="outline"
-                  label="Download export"
-                  action={exportBrain}
-                />
-              </Row>
-              <Row
-                label="Reset Brain"
-                desc="Permanently delete every memory, note, task, and file in Brain."
-              >
-                <AsyncActionButton
-                  variant="destructive"
-                  label="Clear Brain"
-                  action={clearBrain}
-                />
-              </Row>
-              <Row
-                label={t("settings.data.logs")}
-                desc={t("settings.data.logsDesc")}
-                last
-              >
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    void window.api.openLogsFolder();
-                  }}
+                </Row>
+
+                <Row
+                  label={t("settings.recording.language")}
+                  desc={
+                    languages.length === 0
+                      ? t("settings.recording.languageDescAuto")
+                      : languages.length > 1
+                        ? t("settings.recording.languageDescMulti")
+                        : translateMode
+                          ? t("settings.recording.languageDescEnforced", {
+                              language: languageLabel,
+                            })
+                          : t("settings.recording.languageDescHint", {
+                              language: languageLabel,
+                            })
+                  }
                 >
-                  <FolderOpen data-icon="inline-start" />
-                  {t("settings.data.openLogs")}
-                </Button>
-              </Row>
-            </SettingsPanel>
-          )}
+                  <LanguageMultiSelect
+                    id="settings-language"
+                    values={languages}
+                    onChange={handleLanguagesChange}
+                    options={languageOptions}
+                    className="w-full max-w-md"
+                  />
+                </Row>
 
-          {activeSection === "notifications" && (
-            <SettingsPanel>
-              <p className="text-muted-foreground border-border border-b pb-5 text-[13px] leading-[1.6]">
-                Updates from scheduled work and completed Remix runs. Select one
-                to reopen its conversation.
-              </p>
-              <div className="pt-5">
-                <NotificationsHistory onOpenThread={openNotificationThread} />
-              </div>
-            </SettingsPanel>
-          )}
+                <Row
+                  label={t("settings.recording.translateMode")}
+                  desc={t("settings.recording.translateModeDesc")}
+                >
+                  <Switch
+                    id="settings-translate-mode"
+                    checked={translateMode && languages.length === 1}
+                    disabled={languages.length !== 1}
+                    onCheckedChange={persistTranslateMode}
+                  />
+                </Row>
 
-          {activeSection === "connectedApps" && (
-            <SettingsPanel>
-              <p className="text-muted-foreground border-border border-b pb-5 text-[13px] leading-[1.6]">
-                Connect the apps Freestyle can use when a Remix task needs them.
-                Remix will ask before it uses a connected app.
-              </p>
-              <div className="settings-connected-apps pt-5">
-                <ConnectedApps />
-              </div>
-            </SettingsPanel>
-          )}
+                <Row
+                  label={t("settings.recording.outputMode")}
+                  desc={t("settings.recording.outputModeDesc")}
+                >
+                  <Segment
+                    compact
+                    options={[
+                      {
+                        id: "paste",
+                        label: t("settings.recording.outputModePaste"),
+                      },
+                      {
+                        id: "clipboard",
+                        label: t("settings.recording.outputModeClipboard"),
+                      },
+                    ]}
+                    active={outputMode}
+                    onSelect={handleOutputModeChange}
+                  />
+                </Row>
 
-          {activeSection === "billing" && <BillingPanel />}
+                <Row
+                  last={!supportsBackgroundAudio}
+                  label={t("settings.recording.sound")}
+                  desc={t("settings.recording.soundDesc")}
+                >
+                  <div className="flex items-center gap-2.5">
+                    {soundEnabled ? (
+                      <Volume2 className="text-muted-foreground h-4 w-4 shrink-0" />
+                    ) : (
+                      <VolumeOff className="text-muted-foreground h-4 w-4 shrink-0" />
+                    )}
+                    <Switch
+                      checked={soundEnabled}
+                      onCheckedChange={handleSoundToggle}
+                    />
+                  </div>
+                </Row>
 
-          {activeSection === "network" && <NetworkPanel />}
+                {supportsBackgroundAudio ? (
+                  <Row
+                    label="Background audio"
+                    desc={
+                      isLinux
+                        ? "Duck lowers system volume. Pause pauses MPRIS media and lowers volume."
+                        : "Duck lowers volume. Pause pauses current media and lowers volume."
+                    }
+                    last
+                  >
+                    <Segment
+                      compact
+                      options={audioPlaybackOptions}
+                      active={audioPlaybackMode}
+                      onSelect={handleAudioPlaybackModeChange}
+                    />
+                  </Row>
+                ) : null}
+              </SettingsPanel>
+            )}
+
+            {activeSection === "remix" && (
+              <SettingsPanel>
+                <Row
+                  label={t("settings.remix.hotkey")}
+                  desc={
+                    remixHotkey === hotkey
+                      ? t("settings.remix.conflict")
+                      : t("settings.remix.hotkeyDesc")
+                  }
+                >
+                  {remixRecorderState === "idle" ? (
+                    <div className="relative inline-flex">
+                      <Button
+                        variant="outline"
+                        onClick={startRemixHotkeyRecording}
+                        className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
+                      >
+                        <Keyboard className="text-muted-foreground size-4 shrink-0" />
+                        <KeyComboDisplay
+                          keys={formatAcceleratorKeys(remixHotkey)}
+                        />
+                        <span className="text-muted-foreground ml-1 text-xs">
+                          {t("common.change")}
+                        </span>
+                      </Button>
+                      {remixBlockedNotice && (
+                        <div className="bg-popover text-popover-foreground border-border shadow-soft absolute top-[calc(100%+6px)] right-0 z-20 whitespace-nowrap rounded-md border px-2.5 py-1.5 text-xs">
+                          {t("settings.remix.conflict")}
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="border-primary/60 bg-primary/5 relative inline-flex max-w-full flex-wrap items-center gap-3 rounded-lg border px-3.5 py-2">
+                      <Keyboard className="text-primary h-4 w-4 shrink-0" />
+                      {remixDraftKeys.length > 0 ? (
+                        <>
+                          <KeyComboDisplay
+                            keys={remixDraftKeys}
+                            variant="dim"
+                          />
+                          <span className="text-muted-foreground text-xs">
+                            {remixCaptureHint}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground animate-pulse text-sm">
+                          {remixCaptureHint}
+                        </span>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={cancelRemixHotkeyRecording}
+                        className="ml-1"
+                      >
+                        {t("common.cancel")}
+                      </Button>
+                    </div>
+                  )}
+                </Row>
+
+                <Row
+                  label={t("settings.remix.bar")}
+                  desc={t("settings.remix.barDesc")}
+                  last
+                >
+                  <Switch
+                    checked={remixBarEnabled}
+                    onCheckedChange={handleRemixBarToggle}
+                  />
+                </Row>
+              </SettingsPanel>
+            )}
+
+            {activeSection === "display" && (
+              <SettingsPanel>
+                <Row
+                  label={t("settings.display.theme")}
+                  desc={t("settings.display.themeDesc")}
+                >
+                  <Segment
+                    options={themeOptions.map((o) => ({
+                      id: o.value,
+                      label: t(
+                        `settings.display.theme${o.value.charAt(0).toUpperCase()}${o.value.slice(1)}`,
+                      ),
+                      icon: o.icon,
+                    }))}
+                    active={theme ?? "system"}
+                    onSelect={handleThemeChange}
+                  />
+                </Row>
+                <Row
+                  label={t("settings.display.widgetPosition")}
+                  desc={t("settings.display.widgetPositionDesc")}
+                >
+                  <Segment
+                    compact
+                    wrap
+                    options={positionOptions}
+                    active={pillPosition}
+                    onSelect={handlePillPositionChange}
+                  />
+                </Row>
+                <Row
+                  label={t("settings.display.cancelButton")}
+                  desc={t("settings.display.cancelButtonDesc")}
+                  last
+                >
+                  <Segment
+                    compact
+                    options={cancelButtonOptions}
+                    active={pillCancel}
+                    onSelect={handlePillCancelChange}
+                  />
+                </Row>
+              </SettingsPanel>
+            )}
+
+            {activeSection === "permissions" && (
+              <SettingsPanel>
+                <Row
+                  label={t("settings.permissions.microphone")}
+                  desc={t("settings.permissions.microphoneDesc")}
+                >
+                  <PermissionControl
+                    granted={micStatus === "granted"}
+                    checking={micStatus === "unknown"}
+                    actionLabel={
+                      micStatus === "denied" && canOpenMicSettings
+                        ? t("common.openSettings")
+                        : micStatus === "granted"
+                          ? null
+                          : t("common.allow")
+                    }
+                    external={micStatus === "denied" && canOpenMicSettings}
+                    onAction={
+                      micStatus === "denied" && canOpenMicSettings
+                        ? openMicSettings
+                        : requestMic
+                    }
+                    onManage={canOpenMicSettings ? openMicSettings : undefined}
+                  />
+                </Row>
+                <Row
+                  label={t("settings.permissions.accessibility")}
+                  desc={
+                    isMac
+                      ? t("settings.permissions.accessibilityDescMac")
+                      : t("settings.permissions.accessibilityDescOther")
+                  }
+                  last
+                >
+                  <PermissionControl
+                    granted={accessibilityStatus === true}
+                    checking={accessibilityStatus === null}
+                    actionLabel={
+                      accessibilityStatus === true
+                        ? null
+                        : isMac
+                          ? t("common.openSettings")
+                          : null
+                    }
+                    external={isMac}
+                    onAction={openAccessibility}
+                    onManage={isMac ? openAccessibility : undefined}
+                    note={
+                      !isMac && accessibilityStatus !== true
+                        ? t("settings.permissions.autoGranted")
+                        : undefined
+                    }
+                  />
+                </Row>
+              </SettingsPanel>
+            )}
+            {activeSection === "data" && (
+              <SettingsPanel>
+                <Row
+                  label={t("settings.data.pauseHistory")}
+                  desc={t("settings.data.pauseHistoryDesc")}
+                >
+                  <Switch
+                    checked={historyPaused}
+                    onCheckedChange={handleHistoryPausedToggle}
+                  />
+                </Row>
+                <Row
+                  label={t("settings.data.autoDelete")}
+                  desc={t("settings.data.autoDeleteDesc")}
+                >
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Select
+                      value={historyRetention}
+                      onValueChange={handleHistoryRetentionChange}
+                    >
+                      <SelectTrigger
+                        id="settings-history-retention"
+                        className="w-36"
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {retentionOptions.map((o) => (
+                          <SelectItem key={o.value} value={o.value}>
+                            {o.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {historyRetention === "custom" && (
+                      <>
+                        <Input
+                          inputMode="numeric"
+                          value={customRetentionDays}
+                          onChange={(e) =>
+                            handleCustomRetentionDaysChange(e.target.value)
+                          }
+                          className="w-16 text-center"
+                          aria-label={t("settings.data.autoDeleteDays")}
+                        />
+                        <span className="text-muted-foreground text-xs">
+                          {t("settings.data.autoDeleteDays")}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </Row>
+                <Row
+                  label={t("settings.data.history")}
+                  desc={t("settings.data.historyDesc")}
+                >
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={clearHistory}
+                  >
+                    <Trash2 data-icon="inline-start" />
+                    {t("settings.data.clearHistory")}
+                  </Button>
+                </Row>
+                <Row
+                  label="Remix conversations"
+                  desc="Delete every Remix conversation from this device and start a new one."
+                >
+                  <AsyncActionButton
+                    variant="destructive"
+                    label="Clear conversations"
+                    action={clearConversations}
+                  />
+                </Row>
+                <Row
+                  label="Export Brain"
+                  desc="Download a JSON copy of your memories, notes, tasks, and files."
+                >
+                  <AsyncActionButton
+                    variant="outline"
+                    label="Download export"
+                    action={exportBrain}
+                  />
+                </Row>
+                <Row
+                  label="Reset Brain"
+                  desc="Permanently delete every memory, note, task, and file in Brain."
+                >
+                  <AsyncActionButton
+                    variant="destructive"
+                    label="Clear Brain"
+                    action={clearBrain}
+                  />
+                </Row>
+                <Row
+                  label={t("settings.data.logs")}
+                  desc={t("settings.data.logsDesc")}
+                  last
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void window.api.openLogsFolder();
+                    }}
+                  >
+                    <FolderOpen data-icon="inline-start" />
+                    {t("settings.data.openLogs")}
+                  </Button>
+                </Row>
+              </SettingsPanel>
+            )}
+
+            {activeSection === "notifications" && (
+              <SettingsPanel>
+                <p className="text-muted-foreground border-border border-b pb-5 text-[13px] leading-[1.6]">
+                  Updates from scheduled work and completed Remix runs. Select
+                  one to reopen its conversation.
+                </p>
+                <div className="pt-5">
+                  <NotificationsHistory onOpenThread={openNotificationThread} />
+                </div>
+              </SettingsPanel>
+            )}
+
+            {activeSection === "connectedApps" && (
+              <SettingsPanel>
+                <p className="text-muted-foreground border-border border-b pb-5 text-[13px] leading-[1.6]">
+                  Connect the apps Freestyle can use when a Remix task needs
+                  them. Remix will ask before it uses a connected app.
+                </p>
+                <div className="settings-connected-apps pt-5">
+                  <ConnectedApps />
+                </div>
+              </SettingsPanel>
+            )}
+
+            {activeSection === "billing" && <BillingPanel />}
+
+            {activeSection === "network" && <NetworkPanel />}
+          </div>
         </div>
       </div>
     </div>
@@ -1469,39 +1459,6 @@ export default function SettingsPage(): React.JSX.Element {
 // ---------------------------------------------------------------------------
 // Layout primitives — Section / Row pattern from r-settings.jsx GeneralP1
 // ---------------------------------------------------------------------------
-
-function SettingsSidebar({
-  active,
-  onSelect,
-}: {
-  active: SettingsSectionId;
-  onSelect: (id: SettingsSectionId) => void;
-}): React.JSX.Element {
-  const { t } = useTranslation();
-
-  return (
-    <nav className="border-border flex h-full min-h-0 shrink-0 gap-1 overflow-x-auto pb-1 min-[900px]:flex-col min-[900px]:overflow-visible min-[900px]:border-r min-[900px]:pr-4 min-[900px]:pb-0">
-      {visibleSettingsSectionIds.map((id) => {
-        const isActive = id === active;
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => onSelect(id)}
-            className={cn(
-              "shrink-0 rounded-[7px] border px-2.5 py-1.5 text-left text-[13px] transition-colors min-[900px]:w-full",
-              isActive
-                ? "border-border bg-card text-foreground font-medium"
-                : "text-secondary-foreground/80 hover:bg-card/50 border-transparent font-normal",
-            )}
-          >
-            {t(`settings.sections.${id}`)}
-          </button>
-        );
-      })}
-    </nav>
-  );
-}
 
 function SettingsPanel({ children }: { children: React.ReactNode }) {
   return <div className="flex flex-col">{children}</div>;

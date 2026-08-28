@@ -1,6 +1,18 @@
 import { capture, captureSuggestion } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import { applyOpenerTemplate } from "@renderer/lib/openers";
+import {
+  ArrowUpRight,
+  Brain,
+  Check,
+  Code2,
+  FilePenLine,
+  ListChecks,
+  Lock,
+  type LucideIcon,
+  Search,
+  Sparkles,
+} from "lucide-react";
 import type React from "react";
 import { useEffect, useState } from "react";
 
@@ -19,6 +31,32 @@ interface CapabilityGroup {
   title: string;
   blurb: string;
   items: CapabilityItem[];
+}
+
+function capabilityIcon(item: CapabilityItem, groupId: string): LucideIcon {
+  const terms = `${groupId} ${item.id} ${item.title}`.toLowerCase();
+  if (item.locked) return Lock;
+  if (/(code|repo|engineer|debug)/.test(terms)) return Code2;
+  if (/(research|look.?up|search)/.test(terms)) return Search;
+  if (/(brain|remember|learn)/.test(terms)) return Brain;
+  if (/(task|list|procedure)/.test(terms)) return ListChecks;
+  if (/(draft|reply|message|email|write)/.test(terms)) return FilePenLine;
+  return Sparkles;
+}
+
+function CapabilityGlyph({
+  item,
+  groupId,
+}: {
+  item: CapabilityItem;
+  groupId: string;
+}): React.JSX.Element {
+  const Icon = capabilityIcon(item, groupId);
+  return (
+    <span className="tavern-cap-glyph" aria-hidden="true">
+      <Icon />
+    </span>
+  );
 }
 
 export function Capabilities({
@@ -127,23 +165,46 @@ export function Capabilities({
             <span className="tavern-cap-title">{group.title}</span>
             <span className="tavern-cap-blurb">{group.blurb}</span>
           </div>
-          {group.items.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              className={`tavern-cap${item.locked ? " is-locked" : ""}`}
-              onClick={() => run(item)}
-            >
-              <span className="tavern-cap-item-title">
-                {item.title}
-                {item.templateId && applied.has(item.templateId) ? " ✓" : ""}
-                {item.templateId && failed.has(item.templateId)
-                  ? " · couldn't set up, tap to retry"
-                  : ""}
-              </span>
-              <span className="tavern-cap-item-sub">{item.subtitle}</span>
-            </button>
-          ))}
+          <div className="tavern-cap-grid">
+            {group.items.map((item) => {
+              const isApplied = Boolean(
+                item.templateId && applied.has(item.templateId),
+              );
+              const hasFailed = Boolean(
+                item.templateId && failed.has(item.templateId),
+              );
+              const action = item.locked
+                ? "Connect"
+                : hasFailed
+                  ? "Retry"
+                  : isApplied
+                    ? "Ready"
+                    : "Run";
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`tavern-cap${item.locked ? " is-locked" : ""}${isApplied ? " is-applied" : ""}${hasFailed ? " is-failed" : ""}`}
+                  onClick={() => run(item)}
+                >
+                  <CapabilityGlyph item={item} groupId={group.id} />
+                  <span className="tavern-cap-copy">
+                    <span className="tavern-cap-item-title">{item.title}</span>
+                    <span className="tavern-cap-item-sub">{item.subtitle}</span>
+                  </span>
+                  <span className="tavern-cap-action">
+                    {isApplied ? (
+                      <Check aria-hidden="true" />
+                    ) : (
+                      <ArrowUpRight aria-hidden="true" />
+                    )}
+                    {action}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
       ))}
     </>

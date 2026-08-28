@@ -1,3 +1,5 @@
+import "./shell.css";
+
 import {
   CloudProfileButton,
   UpgradeCtaCard,

@@ -8,8 +8,18 @@ const workspaceStylesPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "remix-workspace.css",
 );
+const shellStylesPath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "shell.css",
+);
 
 describe("workspace switcher", () => {
+  it("loads shared sidebar styles before a lazy Remix route resolves", async () => {
+    const shell = await readFile(shellPath, "utf8");
+
+    expect(shell).toContain('import "./shell.css"');
+  });
+
   it("keeps the workspace switcher as a plain, prominent titlebar control", async () => {
     const shell = await readFile(shellPath, "utf8");
 
@@ -34,7 +44,7 @@ describe("workspace switcher", () => {
   });
 
   it("keeps the workspace selector close to the native titlebar controls", async () => {
-    const styles = await readFile(workspaceStylesPath, "utf8");
+    const styles = await readFile(shellStylesPath, "utf8");
 
     expect(styles).toContain("padding: 10px 20px 8px;");
   });

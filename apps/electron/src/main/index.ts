@@ -439,7 +439,6 @@ function getServerBaseUrl(): string {
  */
 function broadcastServerChanged(): void {
   panelWindow?.webContents.send("server:changed");
-  companionWindow?.webContents.send("server:changed");
   notificationWindow()?.webContents.send("server:changed");
   invalidatePluginViews();
 }
@@ -450,7 +449,6 @@ function broadcastUpdateStatus(): void {
     downloadState: updateDownloadState,
   };
   panelWindow?.webContents.send("updater:status", status);
-  companionWindow?.webContents.send("updater:status", status);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1724,7 +1722,7 @@ app.whenReady().then(async () => {
   });
 
   // IPC: dictation-relevant settings changed in the dashboard — push the
-  // fresh prefs to the companion, which owns the dictation pipeline.
+  // fresh prefs to the pill, which owns the dictation pipeline.
   ipcMain.on("settings:output-mode-changed", () => broadcastDictationPrefs());
 
   ipcMain.on("settings:audio-ducking-changed", () => broadcastDictationPrefs());
@@ -3430,11 +3428,6 @@ ipcMain.on("companion:set-hot-rect", (event, rect: PillHotRect | null) => {
   setCompanionHotRect(rect);
 });
 
-ipcMain.on("companion:hover", (event) => {
-  if (event.sender !== companionWindow?.webContents) return;
-  openPanelSettings();
-});
-
 function forwardDictation(
   kind: "partial" | "final" | "error",
   text: string,
@@ -3848,8 +3841,6 @@ function createCompanionWindow(): void {
 
   companionWindow.on("closed", () => {
     stopCompanionHotPoll();
-    dictationInProgress = false;
-    updateDictationEscape();
     companionWindow = null;
   });
 

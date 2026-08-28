@@ -67,7 +67,6 @@ declare global {
       companionSetHotRect: (
         rect: { x: number; y: number; width: number; height: number } | null,
       ) => void;
-      companionHover: () => void;
       setCompanionForm: (form: CompanionForm) => void;
       panelOpenForDictation: () => void;
       panelDictationPartial: (text: string) => void;

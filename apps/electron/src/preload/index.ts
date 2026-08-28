@@ -215,7 +215,6 @@ const api = {
   companionSetHotRect: (
     rect: { x: number; y: number; width: number; height: number } | null,
   ): void => ipcRenderer.send("companion:set-hot-rect", rect),
-  companionHover: (): void => ipcRenderer.send("companion:hover"),
   setCompanionForm: (form: CompanionForm): void =>
     ipcRenderer.send("companion:set-form", form),
   panelOpenForDictation: (): void =>

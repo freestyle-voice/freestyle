@@ -1,4 +1,3 @@
-import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import {
   DropdownMenu,
@@ -57,7 +56,7 @@ function ProfileAvatar({
         src={image}
         alt=""
         referrerPolicy="no-referrer"
-        className="size-7 shrink-0 rounded-full object-cover"
+        className="size-6 shrink-0 rounded-full object-cover"
         onError={() => setImageFailed(true)}
       />
     );
@@ -66,7 +65,7 @@ function ProfileAvatar({
   return (
     <span
       aria-hidden="true"
-      className="bg-primary/15 text-primary flex size-7 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold"
+      className="bg-primary/15 text-primary flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold"
     >
       {initial}
     </span>
@@ -112,7 +111,7 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
 
 export function CloudProfileButton(): React.JSX.Element {
   const { user, loading, signingIn, signIn, signOut } = useCloudAuth();
-  const { isPro, balance, openBillingPortal } = useCloudUsage(!!user);
+  const { isPro, openBillingPortal } = useCloudUsage(!!user);
   const { data: activeOrg } = useActiveOrganization(!!user);
   const { data: orgs } = useListOrganizations(!!user);
   const setActiveOrg = useSetActiveOrganization();
@@ -183,15 +182,6 @@ export function CloudProfileButton(): React.JSX.Element {
               {user.name || user.email}
             </span>
           </span>
-          {balance == null ? null : isPro ? (
-            <Badge className="mono h-4 shrink-0 px-1.5 text-[9px] uppercase tracking-[0.12em]">
-              Pro
-            </Badge>
-          ) : (
-            <span className="text-muted-foreground shrink-0 text-[10px]">
-              Free
-            </span>
-          )}
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent
@@ -202,17 +192,13 @@ export function CloudProfileButton(): React.JSX.Element {
       >
         <DropdownMenuItem
           onSelect={() => navigate("/profile")}
-          className="flex items-center gap-1.5 rounded-b-none"
+          className="rounded-b-none"
         >
           <div className="min-w-0 flex-1">
             <div className="text-foreground truncate text-[13px] font-medium">
               {user.name || user.email}
             </div>
-            <div className="text-muted-foreground truncate text-[11px]">
-              {user.email}
-            </div>
           </div>
-          <Settings className="text-muted-foreground size-3.5 shrink-0" />
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         {hasMultipleOrgs ? (

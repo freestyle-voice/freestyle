@@ -63,11 +63,13 @@ export { type TextTransformer, transform } from "./transform.js";
 export {
   type PluginContributes,
   type PluginManifest,
+  type PluginPillPanel,
   type PluginSettingField,
   type PluginUIPage,
   parsePluginDisplayName,
   parsePluginIcon,
   parsePluginPages,
+  parsePluginPillPanel,
   parsePluginSettingsFields,
   pluginSlug,
 } from "./ui.js";

@@ -144,7 +144,7 @@ const SETTINGS_NAV_GROUPS: {
     ],
   },
   {
-    label: "Desktop",
+    label: "General",
     items: [
       { to: "/settings/appearance", label: "Appearance", icon: Paintbrush },
       { to: "/settings/application", label: "Application", icon: Settings },

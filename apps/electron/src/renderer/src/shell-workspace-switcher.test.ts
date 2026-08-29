@@ -32,9 +32,10 @@ describe("workspace switcher", () => {
     expect(shell).toContain('from "@renderer/lib/workspace"');
     expect(shell).toContain("const isSettingsRoute =");
     expect(shell).toContain(
-      'const isRemixSidebar = !isSettingsRoute && sidebarWorkspace === "remix";',
+      'const isRemixSidebar = activeWorkspace === "remix";',
     );
-    expect(shell).toContain("workspace={sidebarWorkspace}");
+    expect(shell).toContain("workspace={activeWorkspace}");
+    expect(shell).toContain("workspaceForAppPath(location.pathname)");
     expect(shell).not.toContain(
       'const isRemixWorkspace = location.pathname === "/remix";',
     );

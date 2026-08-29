@@ -243,8 +243,8 @@ export default function ModelsPage(): React.JSX.Element {
     name: string,
     engine?: "whisper" | "mlx",
   ): void => {
-    void m.selectLocalVoice(defId, name, engine).then(() => {
-      if (modal?.kind === "list") closeModal();
+    void m.selectLocalVoice(defId, name, engine).then((selected) => {
+      if (selected && modal?.kind === "list") closeModal();
     });
   };
 

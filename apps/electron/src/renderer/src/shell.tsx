@@ -26,6 +26,7 @@ import {
   isWorkspace,
   WORKSPACE_STORAGE_KEY,
   type Workspace,
+  workspaceForAppPath,
   workspaceHomeRoute,
 } from "@renderer/lib/workspace";
 import {
@@ -47,6 +48,7 @@ import {
   Database,
   FileText,
   Mic,
+  Network,
   Paintbrush,
   PlugZap,
   Plus,
@@ -154,6 +156,7 @@ const SETTINGS_NAV_GROUPS: {
     items: [
       { to: "/settings/appearance", label: "Appearance", icon: Paintbrush },
       { to: "/settings/application", label: "Application", icon: Settings },
+      { to: "/settings/network", label: "Network", icon: Network },
       { to: "/settings/permissions", label: "Permissions", icon: ShieldCheck },
       { to: "/settings/data", label: "Data", icon: Database },
       { to: "/settings/billing", label: "Usage & billing", icon: CreditCard },
@@ -608,7 +611,12 @@ export default function AppShell(): React.JSX.Element {
     isRemixRoute ? "remix" : DEFAULT_WORKSPACE,
     isWorkspace,
   );
-  const isRemixSidebar = !isSettingsRoute && sidebarWorkspace === "remix";
+  // Browser/Electron can restore a previous hash route before local storage
+  // hydrates. Derive the visible workspace from that route synchronously so a
+  // Dictate sidebar never appears next to the Remix chat (or vice versa).
+  const routeWorkspace = workspaceForAppPath(location.pathname);
+  const activeWorkspace = routeWorkspace ?? sidebarWorkspace;
+  const isRemixSidebar = activeWorkspace === "remix";
   const [remixSessionSearch, setRemixSessionSearch] = useState("");
   const [isSessionSearchOpen, setIsSessionSearchOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -631,6 +639,14 @@ export default function AppShell(): React.JSX.Element {
     },
     [navigate, setSidebarWorkspace],
   );
+
+  // Keep the persisted selection in sync after direct navigation, while
+  // retaining it unchanged for Settings and plugin routes.
+  useEffect(() => {
+    if (routeWorkspace && routeWorkspace !== sidebarWorkspace) {
+      setSidebarWorkspace(routeWorkspace);
+    }
+  }, [routeWorkspace, setSidebarWorkspace, sidebarWorkspace]);
 
   useEffect(() => {
     if (!isRemixSidebar) {
@@ -723,7 +739,7 @@ export default function AppShell(): React.JSX.Element {
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
               <WorkspaceSwitcher
-                workspace={sidebarWorkspace}
+                workspace={activeWorkspace}
                 onWorkspaceChange={changeWorkspace}
               />
               {import.meta.env.DEV && (

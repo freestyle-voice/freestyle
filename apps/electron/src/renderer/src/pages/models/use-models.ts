@@ -87,6 +87,8 @@ export interface UseModels {
   deletingKeys: Set<string>;
   /** Providers with an in-flight key/model delete. */
   deletingProviders: Set<string>;
+  /** A failed local-model action that needs to be shown in the model picker. */
+  localActionError: string | null;
 
   // Derived
   keyProviders: Set<string>;
@@ -111,12 +113,12 @@ export interface UseModels {
     defId: string,
     name: string,
     engine?: "whisper" | "mlx",
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   retryLocalMlx: (defId: string) => Promise<void>;
-  downloadLocal: (defId: string, engine?: "whisper" | "mlx") => void;
-  cancelLocal: (defId: string, engine?: "whisper" | "mlx") => void;
+  downloadLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
+  cancelLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
   deleteLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
-  selectLocalLlmModel: (modelName: string) => Promise<void>;
+  selectLocalLlmModel: (modelName: string) => Promise<boolean>;
   setCleanup: (next: boolean) => void;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   deleteProvider: (provider: string) => Promise<void>;
@@ -234,6 +236,7 @@ export function useModels(): UseModels {
   const [deletingProviders, setDeletingProviders] = useState<Set<string>>(
     new Set(),
   );
+  const [localActionError, setLocalActionError] = useState<string | null>(null);
 
   // Seed editable state from persisted settings once, when the settings query
   // first resolves. Mutations update this local state directly, so we don't
@@ -433,66 +436,111 @@ export function useModels(): UseModels {
   const selectLocalVoice = useCallback(
     async (defId: string, name: string, engine?: "whisper" | "mlx") => {
       const provider = engine === "mlx" ? "local-mlx" : "local-whisper";
-      const response = await getClient().api.models.configured.$post({
-        json: {
-          provider,
-          model_id: `${provider}/${defId}`,
-          model_name: name,
-          type: "voice",
-          is_default: true,
-        },
-      });
-      await requireOk(response, "Could not select the local model.");
-      if (engine === "mlx") {
-        getClient()
-          .api["mlx-asr"].server.start.$post({ json: { modelId: defId } })
-          .catch(() => {});
-      } else {
-        getClient()
-          .api.whisper.server.start.$post({ json: { modelId: defId } })
-          .catch(() => {});
+      setLocalActionError(null);
+      try {
+        // Do not make a model the default until its local runtime has accepted
+        // the start request. Otherwise the UI can report a selected voice that
+        // cannot actually transcribe.
+        const startResponse =
+          engine === "mlx"
+            ? await getClient().api["mlx-asr"].server.start.$post({
+                json: { modelId: defId },
+              })
+            : await getClient().api.whisper.server.start.$post({
+                json: { modelId: defId },
+              });
+        await requireOk(startResponse, "Could not start the local model.");
+
+        const response = await getClient().api.models.configured.$post({
+          json: {
+            provider,
+            model_id: `${provider}/${defId}`,
+            model_name: name,
+            type: "voice",
+            is_default: true,
+          },
+        });
+        await requireOk(response, "Could not select the local model.");
+        await loadData();
+        return true;
+      } catch (error) {
+        setLocalActionError(
+          error instanceof Error
+            ? error.message
+            : "Could not select the local model.",
+        );
+        return false;
       }
-      await loadData();
     },
     [loadData],
   );
 
-  const downloadLocal = useCallback(
-    (defId: string, engine?: "whisper" | "mlx") => {
-      if (engine === "mlx") {
-        void getClient()
-          .api["mlx-asr"].models[":model"].download.$post({
-            param: { model: defId },
-          })
-          .then(() => loadMlxStatus());
-      } else {
-        void getClient()
-          .api.whisper.models[":model"].download.$post({
-            param: { model: defId },
-          })
-          .then(() => loadWhisperStatus());
+  const runLocalMutation = useCallback(
+    async (
+      request: () => Promise<Response>,
+      refresh: () => Promise<unknown>,
+      fallback: string,
+    ): Promise<void> => {
+      setLocalActionError(null);
+      try {
+        const response = await request();
+        await requireOk(response, fallback);
+        await refresh();
+      } catch (error) {
+        setLocalActionError(error instanceof Error ? error.message : fallback);
       }
     },
-    [loadMlxStatus, loadWhisperStatus],
+    [],
+  );
+
+  const downloadLocal = useCallback(
+    async (defId: string, engine?: "whisper" | "mlx") => {
+      if (engine === "mlx") {
+        await runLocalMutation(
+          () =>
+            getClient().api["mlx-asr"].models[":model"].download.$post({
+              param: { model: defId },
+            }),
+          loadMlxStatus,
+          "Could not start the local model download.",
+        );
+      } else {
+        await runLocalMutation(
+          () =>
+            getClient().api.whisper.models[":model"].download.$post({
+              param: { model: defId },
+            }),
+          loadWhisperStatus,
+          "Could not start the local model download.",
+        );
+      }
+    },
+    [loadMlxStatus, loadWhisperStatus, runLocalMutation],
   );
 
   const cancelLocal = useCallback(
-    (defId: string, engine?: "whisper" | "mlx") => {
+    async (defId: string, engine?: "whisper" | "mlx") => {
       if (engine === "mlx") {
-        void getClient()
-          .api["mlx-asr"].models[":model"].cancel.$post({
-            param: { model: defId },
-          })
-          .then(() => loadMlxStatus());
+        await runLocalMutation(
+          () =>
+            getClient().api["mlx-asr"].models[":model"].cancel.$post({
+              param: { model: defId },
+            }),
+          loadMlxStatus,
+          "Could not cancel the local model download.",
+        );
       } else {
-        void getClient()
-          .api.whisper.models[":model"].cancel.$post({
-            param: { model: defId },
-          })
-          .then(() => loadWhisperStatus());
+        await runLocalMutation(
+          () =>
+            getClient().api.whisper.models[":model"].cancel.$post({
+              param: { model: defId },
+            }),
+          loadWhisperStatus,
+          "Could not cancel the local model download.",
+        );
       }
     },
-    [loadMlxStatus, loadWhisperStatus],
+    [loadMlxStatus, loadWhisperStatus, runLocalMutation],
   );
 
   const deleteLocal = useCallback(
@@ -518,6 +566,12 @@ export function useModels(): UseModels {
           await loadWhisperStatus();
         }
         await loadData();
+      } catch (error) {
+        setLocalActionError(
+          error instanceof Error
+            ? error.message
+            : "Could not delete the local model.",
+        );
       } finally {
         setDeletingKeys((prev) => {
           const next = new Set(prev);
@@ -535,7 +589,7 @@ export function useModels(): UseModels {
       if (!data?.canRun) return;
       const status = data.models?.find((m) => m.model === defId);
       if (status?.status !== "ready") {
-        downloadLocal(defId, "mlx");
+        await downloadLocal(defId, "mlx");
         return;
       }
       const name =
@@ -547,17 +601,28 @@ export function useModels(): UseModels {
 
   const selectLocalLlmModel = useCallback(
     async (modelName: string) => {
-      const response = await getClient().api.models.configured.$post({
-        json: {
-          provider: "local-llm",
-          model_id: `local-llm/${modelName}`,
-          model_name: modelName,
-          type: "llm",
-          is_default: true,
-        },
-      });
-      await requireOk(response, "Could not select the local model.");
-      await loadData();
+      setLocalActionError(null);
+      try {
+        const response = await getClient().api.models.configured.$post({
+          json: {
+            provider: "local-llm",
+            model_id: `local-llm/${modelName}`,
+            model_name: modelName,
+            type: "llm",
+            is_default: true,
+          },
+        });
+        await requireOk(response, "Could not select the local model.");
+        await loadData();
+        return true;
+      } catch (error) {
+        setLocalActionError(
+          error instanceof Error
+            ? error.message
+            : "Could not select the local model.",
+        );
+        return false;
+      }
     },
     [loadData],
   );
@@ -656,6 +721,7 @@ export function useModels(): UseModels {
     mlxKeepAliveMinutes,
     deletingKeys,
     deletingProviders,
+    localActionError,
     keyProviders,
     defaultVoice,
     defaultLlm,

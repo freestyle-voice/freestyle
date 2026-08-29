@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
-
+import { workspaceForAppPath } from "./workspace";
 import {
   compactActivitySummary,
   workspaceNavigationMode,
 } from "./workspace-navigation";
+
+describe("workspaceForAppPath", () => {
+  it("makes the restored app route authoritative over a stale sidebar preference", () => {
+    expect(workspaceForAppPath("/remix")).toBe("remix");
+    expect(workspaceForAppPath("/today")).toBe("dictate");
+    expect(workspaceForAppPath("/vocabulary")).toBe("dictate");
+  });
+
+  it("leaves settings and plugin routes on the previously selected workspace", () => {
+    expect(workspaceForAppPath("/settings/transcription")).toBeNull();
+    expect(workspaceForAppPath("/plugins/example/page")).toBeNull();
+  });
+});
 
 describe("workspaceNavigationMode", () => {
   it("keeps conversation history in a persistent rail when the panel is wide enough", () => {

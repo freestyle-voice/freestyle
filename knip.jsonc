@@ -8,11 +8,13 @@
     "enumMembers": "off",
     "namespaceMembers": "off"
   },
-  "ignoreBinaries": ["pactl", "pkg-config", "powershell.exe", "python3"],
+  "ignoreBinaries": ["pkg-config", "powershell.exe", "python3"],
   "ignoreFiles": [
     "apps/electron/src/preload/*.d.ts",
     "apps/electron/src/renderer/src/env.d.ts",
-    "plugins/*/ui/vite-env.d.ts",
+    // This plugin's standalone HTML entry owns its stylesheet; Knip follows
+    // TypeScript imports but not the HTML <link> edge.
+    "plugins/audio-transcription/ui/src/styles.css",
     // Templates are standalone starter projects downloaded by create-freestyle-plugin,
     // not workspace code. They are never imported or built within the monorepo.
     "templates/**"
@@ -23,9 +25,13 @@
         "electron.vite.config.ts",
         "src/main/index.ts",
         "src/preload/index.ts",
+        "src/preload/plugin-bridge.ts",
+        "src/renderer/src/dashboard.tsx",
         "src/renderer/src/components/panel.tsx",
         "src/renderer/src/components/companion.tsx",
         "src/renderer/src/components/notification.tsx",
+        "src/renderer/src/components/pill.tsx",
+        "src/renderer/src/components/remix-bar.tsx",
         "tests/**/*.ts",
         "scripts/**/*.{js,mjs}"
       ],
@@ -49,12 +55,7 @@
     },
     "apps/server": {
       "entry": ["src/startup.ts", "tests/**/*.test.ts"],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "scripts/**/*.ts",
-        "tests/**/*.ts",
-        "*.config.ts"
-      ],
+      "project": ["src/**/*.{ts,tsx}", "tests/**/*.ts", "*.config.ts"],
       "paths": {
         "freestyle-voice": ["../../packages/sdk/src/index.ts"],
         "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
@@ -88,11 +89,7 @@
     },
     "plugins/*": {
       "entry": ["src/index.ts", "ui/src/main.{ts,tsx}"],
-      "project": [
-        "src/**/*.{ts,tsx}",
-        "ui/src/**/*.{ts,tsx,css}",
-        "ui/vite-env.d.ts"
-      ]
+      "project": ["src/**/*.{ts,tsx}", "ui/src/**/*.{ts,tsx,css}"]
     }
   }
 }

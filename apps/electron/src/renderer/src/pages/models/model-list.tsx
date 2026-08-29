@@ -211,7 +211,10 @@ function buildLlmRows(
         m.defaultLlm?.provider === "local-llm" &&
         m.defaultLlm?.model_id === modelId,
       status: "ready",
-      onSelect: () => void m.selectLocalLlmModel(name).then(h.onClose),
+      onSelect: () =>
+        void m.selectLocalLlmModel(name).then((selected) => {
+          if (selected) h.onClose();
+        }),
     });
   }
 

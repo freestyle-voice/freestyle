@@ -168,6 +168,7 @@ const settingsRouteSections = {
   apps: "connectedApps",
   data: "data",
   billing: "billing",
+  network: "network",
 } as const satisfies Record<string, SettingsSectionId>;
 
 function parseSettingsSection(section: string | undefined): SettingsSectionId {

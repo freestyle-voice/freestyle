@@ -47,6 +47,8 @@ describe("settings consolidation", () => {
     expect(shell).toContain("function SettingsSidebar");
     expect(shell).toContain('to: "/settings/transcription"');
     expect(shell).toContain('to: "/settings/apps"');
+    expect(shell).toContain('to: "/settings/network"');
+    expect(settings).toContain('network: "network"');
     expect(dashboard).toMatch(
       /<Route\s+path="\/settings\/:section"\s+element=\{<SettingsPage\s*\/>\}\s*\/>/s,
     );

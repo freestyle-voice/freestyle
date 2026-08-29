@@ -2104,7 +2104,9 @@ app.whenReady().then(async () => {
       .catch(() => null);
     // A signed-out launch always needs the sign-in gate. Signed-in users can
     // opt out of the restored desktop workspace opening automatically.
-    if (!user && !shouldOpenDashboard) openPanel();
+    // The auth probe can outlive an E2E shutdown or a fast user quit. Do not
+    // touch Electron's display APIs once teardown has started.
+    if (!isQuitting && !user && !shouldOpenDashboard) openPanel();
   })();
 
   createTray();
@@ -3558,7 +3560,7 @@ const panelRendererMessages = new PanelRendererMessageQueue((message) => {
 const DASHBOARD_DEFAULT_WIDTH = 1080;
 const DASHBOARD_DEFAULT_HEIGHT = 760;
 const DASHBOARD_MIN_WIDTH = 760;
-const DASHBOARD_MIN_HEIGHT = 560;
+const DASHBOARD_MIN_HEIGHT = 680;
 
 function panelPosition(display: Display): {
   x: number;

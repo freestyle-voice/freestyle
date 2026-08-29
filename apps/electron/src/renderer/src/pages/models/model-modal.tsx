@@ -144,6 +144,15 @@ export function ModelModal({
         onPickLocalVoice={onPickLocalVoice}
         onRequestDeleteLocal={onRequestDeleteLocal}
       />
+      {m.localActionError && (
+        <div
+          className="border-destructive/30 bg-destructive/10 text-destructive mx-5 mb-4 flex items-start gap-2 rounded-md px-3 py-2 text-xs"
+          role="alert"
+        >
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{m.localActionError}</span>
+        </div>
+      )}
     </Backdrop>
   );
 }

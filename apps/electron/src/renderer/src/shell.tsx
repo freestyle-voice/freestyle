@@ -106,11 +106,6 @@ const STATIC_NAV: {
     labelKey: "shell.nav.tone",
   },
   {
-    to: "/models",
-    icon: Cpu,
-    labelKey: "shell.nav.models",
-  },
-  {
     to: "/plugins",
     icon: Puzzle,
     labelKey: "shell.nav.plugins",
@@ -135,7 +130,10 @@ const SETTINGS_NAV_GROUPS: {
 }[] = [
   {
     label: "Dictation",
-    items: [{ to: "/settings/transcription", label: "Dictation", icon: Mic }],
+    items: [
+      { to: "/settings/transcription", label: "Dictation", icon: Mic },
+      { to: "/settings/models", label: "Models", icon: Cpu },
+    ],
   },
   {
     label: "Remix",

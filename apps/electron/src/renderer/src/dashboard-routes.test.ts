@@ -20,7 +20,6 @@ describe("dashboard routes", () => {
       ["/vocabulary", "VocabularyPage"],
       ["/dictionary", "DictionaryPage"],
       ["/tone", "TonePage"],
-      ["/models", "ModelsPage"],
       ["/plugins", "PluginsPage"],
       ["/plugins/:slug", "PluginDetailPage"],
       ["/plugins/:slug/:pageId", "PluginPage"],
@@ -36,14 +35,13 @@ describe("dashboard routes", () => {
     }
   });
 
-  it("keeps old Dictate settings links as redirects instead of a second sidebar", async () => {
+  it("keeps Models in Settings and redirects the retired Dictate URL", async () => {
     const dashboard = await readFile(dashboardPath, "utf8");
 
     for (const [legacyPath, appPath] of [
       ["/settings/vocabulary", "/vocabulary"],
       ["/settings/dictionary", "/dictionary"],
       ["/settings/tone", "/tone"],
-      ["/settings/models", "/models"],
     ]) {
       expect(dashboard).toMatch(
         new RegExp(
@@ -52,13 +50,20 @@ describe("dashboard routes", () => {
         ),
       );
     }
+
+    expect(dashboard).toMatch(
+      /<Route\s+path="\/settings\/models"\s+element=\{<ModelsPage\s*\/>\}\s*\/>/s,
+    );
+    expect(dashboard).toMatch(
+      /<Route\s+path="\/models"\s+element=\{\s*<Navigate\s+to="\/settings\/models"\s+replace\s*\/>\s*\}\s*\/>/s,
+    );
   });
 
-  it("keeps Dictate cross-links out of Settings", async () => {
+  it("takes Dictate cleanup controls to the shared model settings", async () => {
     const tone = await readFile(tonePath, "utf8");
 
-    expect(tone).toContain('<Link to="/models">');
-    expect(tone).not.toContain('to="/settings/models"');
+    expect(tone).toContain('<Link to="/settings/models">');
+    expect(tone).not.toContain('to="/models"');
   });
 
   it("loads the legacy Models page as a route-level chunk", async () => {

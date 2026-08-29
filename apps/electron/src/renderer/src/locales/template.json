@@ -625,6 +625,7 @@
   },
   "models": {
     "title": "Models",
+    "subtitle": "Configure transcription and assistant models in one place.",
     "loading": "Loading models…",
     "apiKeys": "API keys",
     "noApiKeys": "No API keys yet — choose a cloud model above and you'll be prompted for a key.",

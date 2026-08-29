@@ -68,12 +68,12 @@ describe("settings consolidation", () => {
     expect(settingsNavigation).not.toContain('to: "/settings/vocabulary"');
     expect(settingsNavigation).not.toContain('to: "/settings/dictionary"');
     expect(settingsNavigation).not.toContain('to: "/settings/tone"');
-    expect(settingsNavigation).not.toContain('to: "/settings/models"');
+    expect(settingsNavigation).toContain('to: "/settings/models"');
     expect(settingsNavigation).not.toContain('to: "/plugins"');
     expect(shell).toContain('to: "/vocabulary"');
     expect(shell).toContain('to: "/dictionary"');
     expect(shell).toContain('to: "/tone"');
-    expect(shell).toContain('to: "/models"');
+    expect(shell).not.toContain('to: "/models"');
     expect(settings).toContain("responsive-page-scroll min-h-0 flex-1");
     expect(globals).toMatch(
       /\.responsive-page-scroll\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior:\s*contain;/s,

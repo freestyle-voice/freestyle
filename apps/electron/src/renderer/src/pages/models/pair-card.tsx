@@ -8,9 +8,9 @@ import type { ConfiguredModel } from "./types";
 import { displayName } from "./utils";
 
 // ---------------------------------------------------------------------------
-// PairCard — the current model pair: Voice (required) + cleanup model.
-// Side-by-side layout; each "Change" opens the shared model modal. The cleanup
-// side owns the on/off switch for post-processing (llm_cleanup).
+// PairCard — the current model pair: transcription (required) + AI assistant.
+// Side-by-side layout; each "Change" opens the shared model modal. The assistant
+// side owns the dictation-cleanup switch (the persisted `llm_cleanup` setting).
 // ---------------------------------------------------------------------------
 
 export function PairCard({
@@ -60,8 +60,8 @@ export function PairCard({
         <PairSide
           kicker={
             cleanupLocked
-              ? t("models.pair.cleanupKickerLocked")
-              : t("models.pair.cleanupKicker")
+              ? t("models.pair.assistantKickerLocked")
+              : t("models.pair.assistantKicker")
           }
           modelName={cleanupOn ? llm?.model_name : undefined}
           providerName={

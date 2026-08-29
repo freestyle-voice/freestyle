@@ -304,7 +304,7 @@ export default function ModelsPage(): React.JSX.Element {
   if (m.loading) {
     return (
       <PageShell>
-        <PageHeader title={t("models.title")} />
+        <PageHeader title={t("models.title")} subtitle={t("models.subtitle")} />
         <ModelsLoadingSkeleton />
       </PageShell>
     );
@@ -312,7 +312,7 @@ export default function ModelsPage(): React.JSX.Element {
 
   return (
     <PageShell>
-      <PageHeader title={t("models.title")} />
+      <PageHeader title={t("models.title")} subtitle={t("models.subtitle")} />
       <div className="space-y-6">
         <PairCard
           voice={m.defaultVoice}

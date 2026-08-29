@@ -201,7 +201,9 @@ function mount(): void {
                                 />
                                 <Route
                                   path="/models"
-                                  element={<ModelsPage />}
+                                  element={
+                                    <Navigate to="/settings/models" replace />
+                                  }
                                 />
                                 <Route
                                   path="/dictionary"
@@ -218,7 +220,7 @@ function mount(): void {
                                 <Route path="/tone" element={<TonePage />} />
                                 <Route
                                   path="/settings/models"
-                                  element={<Navigate to="/models" replace />}
+                                  element={<ModelsPage />}
                                 />
                                 <Route
                                   path="/settings/dictionary"

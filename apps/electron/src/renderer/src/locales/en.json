@@ -625,6 +625,7 @@
   },
   "models": {
     "title": "Models",
+    "subtitle": "Configure transcription and assistant models in one place.",
     "loading": "Loading models…",
     "apiKeys": "API keys",
     "noApiKeys": "No API keys yet — choose a cloud model above and you'll be prompted for a key.",
@@ -641,8 +642,8 @@
     "deleteProviderCurrentSuffix": ", including a model you're currently using",
     "pair": {
       "transcriptionKicker": "Transcription · required",
-      "cleanupKicker": "AI cleanup · optional",
-      "cleanupKickerLocked": "AI cleanup · included",
+      "assistantKicker": "AI assistant · optional",
+      "assistantKickerLocked": "AI assistant · included",
       "changeVoice": "Change voice transcription model",
       "changeVoiceShort": "Change model",
       "change": "Change",

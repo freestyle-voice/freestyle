@@ -676,11 +676,15 @@ function createPillWindow(): void {
   void mainWindow.loadURL(rendererUrl("pill.html"));
 }
 
-function showPill(): void {
+/**
+ * Registers the small Electron-local settings contract before either renderer
+ * can request it. This must be called exactly once during app startup:
+ * showPill() is invoked for every hotkey press.
+ */
+function registerPillPositionIpc(): void {
   // -- Pill position (Electron-local, needed before the server is ready) --
   // Both the pill and the Settings surface read this at startup through the
-  // preload bridge. Register before either renderer is created so a fast dev
-  // load can never invoke an unregistered channel.
+  // preload bridge.
   ipcMain.handle("settings:pill-position", () => {
     const position = readSettings().pillPosition;
     if (position === "custom") return getPillAlignmentForCustom();
@@ -722,7 +726,9 @@ function showPill(): void {
       broadcast,
     );
   });
+}
 
+function showPill(): void {
   createPillWindow();
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
@@ -1691,6 +1697,11 @@ app.on("second-instance", () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
+  // Register before creating the pill window so its preload bridge is ready
+  // even during a fast renderer load. This is deliberately not in showPill:
+  // showPill runs for every hotkey press.
+  registerPillPositionIpc();
+
   void startLinuxPasteHelper();
   void recoverDuckedVolumeFromCrash();
 

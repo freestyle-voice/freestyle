@@ -52,7 +52,7 @@ describe("preload contract", () => {
     expect(unsafeOptionalCalls).toEqual([]);
   });
 
-  it("registers the local pill-position IPC contract used at startup", async () => {
+  it("registers the local pill-position IPC contract once at startup", async () => {
     const [preload, main] = await Promise.all([
       readFile(preloadPath, "utf8"),
       readFile(mainPath, "utf8"),
@@ -64,9 +64,27 @@ describe("preload contract", () => {
     );
     expect(main).toContain('ipcMain.handle("settings:pill-position"');
     expect(main).toContain('ipcMain.on("settings:set-pill-position"');
-    expect(
-      main.indexOf('ipcMain.handle("settings:pill-position"'),
-    ).toBeLessThan(main.indexOf("createPillWindow();"));
+    expect([
+      ...main.matchAll(/ipcMain\.handle\("settings:pill-position"/g),
+    ]).toHaveLength(1);
+    expect([
+      ...main.matchAll(/ipcMain\.on\("settings:set-pill-position"/g),
+    ]).toHaveLength(1);
+
+    const startup = main.slice(
+      main.indexOf("app.whenReady().then(async () => {"),
+      main.indexOf("registerSummonShortcut();"),
+    );
+    expect(startup.indexOf("registerPillPositionIpc();")).toBeLessThan(
+      startup.indexOf("createPillWindow();"),
+    );
+
+    const showPill = main.slice(
+      main.indexOf("function showPill(): void {"),
+      main.indexOf("function openPanelSettings(): void {"),
+    );
+    expect(showPill).not.toContain('ipcMain.handle("settings:pill-position"');
+    expect(showPill).not.toContain('ipcMain.on("settings:set-pill-position"');
   });
 
   it("registers every preload invoke channel in the main process", async () => {

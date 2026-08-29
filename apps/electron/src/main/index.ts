@@ -677,6 +677,52 @@ function createPillWindow(): void {
 }
 
 function showPill(): void {
+  // -- Pill position (Electron-local, needed before the server is ready) --
+  // Both the pill and the Settings surface read this at startup through the
+  // preload bridge. Register before either renderer is created so a fast dev
+  // load can never invoke an unregistered channel.
+  ipcMain.handle("settings:pill-position", () => {
+    const position = readSettings().pillPosition;
+    if (position === "custom") return getPillAlignmentForCustom();
+    return typeof position === "string" ? position : "bottom-center";
+  });
+
+  ipcMain.on("settings:set-pill-position", (_event, position: unknown) => {
+    if (
+      position !== "top-center" &&
+      position !== "top-right" &&
+      position !== "bottom-center" &&
+      position !== "bottom-right" &&
+      position !== "custom"
+    ) {
+      return;
+    }
+
+    writeSettings({
+      pillPosition: position,
+      ...(position === "custom" ? {} : { pillCustomPosition: undefined }),
+    });
+
+    const win = mainWindow;
+    if (win && !win.isDestroyed()) {
+      // Position changes always collapse first: a placement is defined by the
+      // capsule slot, not the larger transient card bounds.
+      setPillExpanded(false);
+      const display = screen.getDisplayMatching(win.getBounds());
+      const target = pillPositionForDisplay(display);
+      win.setPosition(target.x, target.y);
+    }
+
+    const broadcast =
+      position === "custom" ? getPillAlignmentForCustom() : position;
+    mainWindow?.webContents.send("settings:pill-position-changed", broadcast);
+    panelWindow?.webContents.send("settings:pill-position-changed", broadcast);
+    settingsWindow?.webContents.send(
+      "settings:pill-position-changed",
+      broadcast,
+    );
+  });
+
   createPillWindow();
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
@@ -2303,52 +2349,6 @@ app.whenReady().then(async () => {
       writeSettings({ showDashboardOnLaunch: enabled });
     },
   );
-
-  // -- Pill position (Electron-local, needed before the server is ready) --
-  // Both the pill and the Settings surface read this at startup through the
-  // preload bridge, so this must remain a main-process IPC contract rather
-  // than a server-backed setting.
-  ipcMain.handle("settings:pill-position", () => {
-    const position = readSettings().pillPosition;
-    if (position === "custom") return getPillAlignmentForCustom();
-    return typeof position === "string" ? position : "bottom-center";
-  });
-
-  ipcMain.on("settings:set-pill-position", (_event, position: unknown) => {
-    if (
-      position !== "top-center" &&
-      position !== "top-right" &&
-      position !== "bottom-center" &&
-      position !== "bottom-right" &&
-      position !== "custom"
-    ) {
-      return;
-    }
-
-    writeSettings({
-      pillPosition: position,
-      ...(position === "custom" ? {} : { pillCustomPosition: undefined }),
-    });
-
-    const win = mainWindow;
-    if (win && !win.isDestroyed()) {
-      // Position changes always collapse first: a placement is defined by the
-      // capsule slot, not the larger transient card bounds.
-      setPillExpanded(false);
-      const display = screen.getDisplayMatching(win.getBounds());
-      const target = pillPositionForDisplay(display);
-      win.setPosition(target.x, target.y);
-    }
-
-    const broadcast =
-      position === "custom" ? getPillAlignmentForCustom() : position;
-    mainWindow?.webContents.send("settings:pill-position-changed", broadcast);
-    panelWindow?.webContents.send("settings:pill-position-changed", broadcast);
-    settingsWindow?.webContents.send(
-      "settings:pill-position-changed",
-      broadcast,
-    );
-  });
 
   // -- Remix session display names (Electron-local only) --
   // Titles remain a presentation preference during the desktop redesign

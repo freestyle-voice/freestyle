@@ -64,6 +64,9 @@ describe("preload contract", () => {
     );
     expect(main).toContain('ipcMain.handle("settings:pill-position"');
     expect(main).toContain('ipcMain.on("settings:set-pill-position"');
+    expect(
+      main.indexOf('ipcMain.handle("settings:pill-position"'),
+    ).toBeLessThan(main.indexOf("createPillWindow();"));
   });
 
   it("registers every preload invoke channel in the main process", async () => {

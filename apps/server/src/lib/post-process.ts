@@ -45,7 +45,7 @@ import {
 } from "./plugins/index.js";
 import { createHookApi } from "./plugins/pipeline.js";
 import { capture, captureException } from "./posthog.js";
-import { createConfiguredModel, getDefaultModels } from "./providers.js";
+import { createCleanupModel, getDefaultModels } from "./providers.js";
 import { getSessionToken } from "./sessions.js";
 
 const log = createAppLogger("post-process");
@@ -361,10 +361,7 @@ export async function postProcess(
         const finalPrompt = promptHook.prompt ?? prompt;
         handoffMs = Date.now() - handoffStart;
 
-        const chatModel = await createConfiguredModel(
-          llm.provider,
-          llm.model_id,
-        );
+        const chatModel = await createCleanupModel(llm.provider, llm.model_id);
         let cleanupError: unknown;
         const result = await cleanupWithModel({
           model: chatModel,

@@ -83,13 +83,11 @@ export async function createChatModel(
 }
 
 /**
- * Resolve a model from the user's configured Models preference. This is
- * deliberately separate from `createChatModel`: plugin hooks stay Cloud-only,
- * while product-owned flows such as dictation cleanup and the local Remix
- * assistant can use the user's chosen provider without exposing that provider
- * to plugins.
+ * Resolve a locally configured cleanup model. This is deliberately separate
+ * from `createChatModel`: plugin hooks stay Cloud-only while the legacy Models
+ * page can continue to route dictation cleanup through local and BYOK models.
  */
-export async function createConfiguredModel(
+export async function createCleanupModel(
   providerId: string,
   modelId: string,
 ): Promise<LanguageModel> {

@@ -3,7 +3,6 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
 import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
-import { runLocalAgent } from "../lib/local-agent.js";
 import { getSessionToken, invalidateSession } from "../lib/sessions.js";
 
 const log = createAppLogger("agent");
@@ -28,35 +27,6 @@ const agentRequestSchema = z.object({
 const agentRoute = new Hono()
   .post("/", zValidator("json", agentRequestSchema), async (c) => {
     const { messages, firstTurn, id, threadId } = c.req.valid("json");
-
-    // Keep one public chat endpoint. Choosing a local model makes this route
-    // the execution boundary instead of a Cloud proxy, so the renderer's
-    // streaming contract stays unchanged and no Cloud session is needed.
-    // Avoid initializing the local-model registry for durable Cloud-only
-    // endpoints (snapshot/approval/cancel), which do not need it.
-    const { getDefaultModels } = await import("../lib/providers.js");
-    const llm = getDefaultModels().llm;
-    if (llm?.provider === "local-llm") {
-      try {
-        return await runLocalAgent(
-          messages,
-          { provider: "local-llm", modelId: llm.model_id },
-          c.req.raw.signal,
-        );
-      } catch (err) {
-        log.error(`Local agent request failed: ${err}`);
-        return c.json(
-          {
-            error: "local_model_unavailable",
-            detail:
-              err instanceof Error
-                ? err.message
-                : "The configured local model is unavailable.",
-          },
-          502,
-        );
-      }
-    }
 
     const token = getSessionToken();
     if (!token) return c.json({ error: "cloud_auth_required" }, 401);

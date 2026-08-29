@@ -194,6 +194,11 @@ export function CloudProfileButton(): React.JSX.Element {
           onSelect={() => navigate("/profile")}
           className="rounded-b-none"
         >
+          <ProfileAvatar
+            name={user.name}
+            email={user.email}
+            image={user.image}
+          />
           <div className="min-w-0 flex-1">
             <div className="text-foreground truncate text-[13px] font-medium">
               {user.name || user.email}

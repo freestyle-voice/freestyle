@@ -21,6 +21,7 @@ describe("CloudProfileButton", () => {
 
     expect(source).not.toContain("<Badge");
     expect(source).toContain("size-6 shrink-0 rounded-full");
+    expect(profileItem).toContain("<ProfileAvatar");
     expect(profileItem).not.toContain("text-[11px]");
     expect(profileItem).not.toContain("<Settings");
   });

@@ -91,22 +91,22 @@ const STATIC_NAV: {
 }[] = [
   { to: "/today", icon: BookOpen, labelKey: "shell.nav.today" },
   {
-    to: "/settings/vocabulary",
+    to: "/vocabulary",
     icon: Book,
     labelKey: "shell.nav.vocabulary",
   },
   {
-    to: "/settings/dictionary",
+    to: "/dictionary",
     icon: Zap,
     labelKey: "shell.nav.dictionary",
   },
   {
-    to: "/settings/tone",
+    to: "/tone",
     icon: FileText,
     labelKey: "shell.nav.tone",
   },
   {
-    to: "/settings/models",
+    to: "/models",
     icon: Cpu,
     labelKey: "shell.nav.models",
   },
@@ -135,13 +135,7 @@ const SETTINGS_NAV_GROUPS: {
 }[] = [
   {
     label: "Dictation",
-    items: [
-      { to: "/settings/transcription", label: "Transcription", icon: Mic },
-      { to: "/settings/vocabulary", label: "Vocabulary", icon: Book },
-      { to: "/settings/dictionary", label: "Dictionary", icon: Zap },
-      { to: "/settings/tone", label: "Tone", icon: FileText },
-      { to: "/settings/models", label: "Models", icon: Cpu },
-    ],
+    items: [{ to: "/settings/transcription", label: "Dictation", icon: Mic }],
   },
   {
     label: "Remix",
@@ -161,10 +155,6 @@ const SETTINGS_NAV_GROUPS: {
       { to: "/settings/data", label: "Data", icon: Database },
       { to: "/settings/billing", label: "Usage & billing", icon: CreditCard },
     ],
-  },
-  {
-    label: "Extensions",
-    items: [{ to: "/plugins", label: "Plugins", icon: Puzzle }],
   },
 ];
 
@@ -249,7 +239,10 @@ function SettingsSidebar({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-workspace={workspace}>
-      <div className="px-4 pt-2 pb-3">
+      <div
+        className="px-4 pt-2 pb-3"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
         <button
           type="button"
           onClick={onBack}
@@ -603,9 +596,7 @@ export default function AppShell(): React.JSX.Element {
   const isRemixRoute = location.pathname === "/remix";
   const isSettingsRoute =
     location.pathname === "/settings" ||
-    location.pathname.startsWith("/settings/") ||
-    location.pathname === "/plugins" ||
-    location.pathname.startsWith("/plugins/");
+    location.pathname.startsWith("/settings/");
   const [sidebarWorkspace, setSidebarWorkspace] = usePersistentState<Workspace>(
     WORKSPACE_STORAGE_KEY,
     isRemixRoute ? "remix" : DEFAULT_WORKSPACE,

@@ -7,16 +7,20 @@ const dashboardPath = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "dashboard.tsx",
 );
+const tonePath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "pages/tone.tsx",
+);
 
 describe("dashboard routes", () => {
   it("keeps every Dictate sidebar destination on its dedicated page", async () => {
     const dashboard = await readFile(dashboardPath, "utf8");
 
     const routes = [
-      ["/settings/vocabulary", "VocabularyPage"],
-      ["/settings/dictionary", "DictionaryPage"],
-      ["/settings/tone", "TonePage"],
-      ["/settings/models", "ModelsPage"],
+      ["/vocabulary", "VocabularyPage"],
+      ["/dictionary", "DictionaryPage"],
+      ["/tone", "TonePage"],
+      ["/models", "ModelsPage"],
       ["/plugins", "PluginsPage"],
       ["/plugins/:slug", "PluginDetailPage"],
       ["/plugins/:slug/:pageId", "PluginPage"],
@@ -30,6 +34,31 @@ describe("dashboard routes", () => {
         ),
       );
     }
+  });
+
+  it("keeps old Dictate settings links as redirects instead of a second sidebar", async () => {
+    const dashboard = await readFile(dashboardPath, "utf8");
+
+    for (const [legacyPath, appPath] of [
+      ["/settings/vocabulary", "/vocabulary"],
+      ["/settings/dictionary", "/dictionary"],
+      ["/settings/tone", "/tone"],
+      ["/settings/models", "/models"],
+    ]) {
+      expect(dashboard).toMatch(
+        new RegExp(
+          `<Route\\s+path="${legacyPath}"\\s+element=\\{\\s*<Navigate\\s+to="${appPath}"\\s+replace\\s*\\/>\\s*\\}\\s*\\/>`,
+          "s",
+        ),
+      );
+    }
+  });
+
+  it("keeps Dictate cross-links out of Settings", async () => {
+    const tone = await readFile(tonePath, "utf8");
+
+    expect(tone).toContain('<Link to="/models">');
+    expect(tone).not.toContain('to="/settings/models"');
   });
 
   it("loads the legacy Models page as a route-level chunk", async () => {

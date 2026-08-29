@@ -6,6 +6,7 @@ import { describe, expect, it } from "vitest";
 const rendererRoot = dirname(fileURLToPath(import.meta.url));
 const shellPath = resolve(rendererRoot, "shell.tsx");
 const dashboardPath = resolve(rendererRoot, "dashboard.tsx");
+const globalsPath = resolve(rendererRoot, "globals.css");
 
 describe("settings consolidation", () => {
   it("keeps the former Remix-only data controls in dedicated Settings", async () => {
@@ -36,10 +37,11 @@ describe("settings consolidation", () => {
   });
 
   it("uses the app sidebar as the only settings navigation", async () => {
-    const [settings, shell, dashboard] = await Promise.all([
+    const [settings, shell, dashboard, globals] = await Promise.all([
       readFile(resolve(rendererRoot, "pages/settings.tsx"), "utf8"),
       readFile(shellPath, "utf8"),
       readFile(dashboardPath, "utf8"),
+      readFile(globalsPath, "utf8"),
     ]);
 
     expect(settings).toContain("useParams");
@@ -48,6 +50,27 @@ describe("settings consolidation", () => {
     expect(shell).toContain('to: "/settings/transcription"');
     expect(shell).toContain('to: "/settings/apps"');
     expect(shell).toContain('to: "/settings/network"');
+    const settingsNavigation = shell.slice(
+      shell.indexOf("const SETTINGS_NAV_GROUPS"),
+      shell.indexOf("function NavList"),
+    );
+    expect(settingsNavigation).not.toContain('to: "/settings/vocabulary"');
+    expect(settingsNavigation).not.toContain('to: "/settings/dictionary"');
+    expect(settingsNavigation).not.toContain('to: "/settings/tone"');
+    expect(settingsNavigation).not.toContain('to: "/settings/models"');
+    expect(settingsNavigation).not.toContain('to: "/plugins"');
+    expect(shell).toContain('to: "/vocabulary"');
+    expect(shell).toContain('to: "/dictionary"');
+    expect(shell).toContain('to: "/tone"');
+    expect(shell).toContain('to: "/models"');
+    expect(settings).toContain("responsive-page-scroll min-h-0 flex-1");
+    expect(globals).toMatch(
+      /\.responsive-page-scroll\s*\{[^}]*min-height:\s*0;[^}]*overflow-y:\s*auto;[^}]*overscroll-behavior:\s*contain;/s,
+    );
+    expect(shell).toContain("onClick={onBack}");
+    expect(shell).toMatch(
+      /style=\{\{ WebkitAppRegion: "no-drag" \} as React\.CSSProperties\}/,
+    );
     expect(settings).toContain('network: "network"');
     expect(dashboard).toMatch(
       /<Route\s+path="\/settings\/:section"\s+element=\{<SettingsPage\s*\/>\}\s*\/>/s,

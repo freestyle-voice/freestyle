@@ -12,9 +12,9 @@ describe("workspaceForAppPath", () => {
     expect(workspaceForAppPath("/vocabulary")).toBe("dictate");
   });
 
-  it("leaves settings and plugin routes on the previously selected workspace", () => {
+  it("leaves settings routes on the previously selected workspace and keeps plugins in Dictate", () => {
     expect(workspaceForAppPath("/settings/transcription")).toBeNull();
-    expect(workspaceForAppPath("/plugins/example/page")).toBeNull();
+    expect(workspaceForAppPath("/plugins/example/page")).toBe("dictate");
   });
 });
 

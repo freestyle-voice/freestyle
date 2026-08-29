@@ -200,26 +200,41 @@ function mount(): void {
                                   }
                                 />
                                 <Route
-                                  path="/settings/models"
+                                  path="/models"
                                   element={<ModelsPage />}
                                 />
                                 <Route
-                                  path="/settings/dictionary"
+                                  path="/dictionary"
                                   element={<DictionaryPage />}
                                 />
                                 <Route
-                                  path="/settings/vocabulary"
+                                  path="/vocabulary"
                                   element={<VocabularyPage />}
                                 />
                                 <Route
                                   path="/settings/formats"
+                                  element={<Navigate to="/tone" replace />}
+                                />
+                                <Route path="/tone" element={<TonePage />} />
+                                <Route
+                                  path="/settings/models"
+                                  element={<Navigate to="/models" replace />}
+                                />
+                                <Route
+                                  path="/settings/dictionary"
                                   element={
-                                    <Navigate to="/settings/tone" replace />
+                                    <Navigate to="/dictionary" replace />
+                                  }
+                                />
+                                <Route
+                                  path="/settings/vocabulary"
+                                  element={
+                                    <Navigate to="/vocabulary" replace />
                                   }
                                 />
                                 <Route
                                   path="/settings/tone"
-                                  element={<TonePage />}
+                                  element={<Navigate to="/tone" replace />}
                                 />
                                 <Route
                                   path="/settings/history"

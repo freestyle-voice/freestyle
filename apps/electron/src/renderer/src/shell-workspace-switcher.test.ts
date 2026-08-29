@@ -39,7 +39,7 @@ describe("workspace switcher", () => {
     expect(shell).not.toContain(
       'const isRemixWorkspace = location.pathname === "/remix";',
     );
-    expect(shell).toContain('to: "/settings/models"');
+    expect(shell).toContain('to: "/models"');
     expect(shell).toContain("icon: Cpu");
     expect(shell).not.toContain("advancedMode");
     expect(shell).not.toContain("settingsQueryOptions");

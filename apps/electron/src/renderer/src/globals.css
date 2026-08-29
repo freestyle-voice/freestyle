@@ -343,6 +343,9 @@
   }
 
   .responsive-page-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
     padding-inline: 3rem;
     padding-bottom: 3rem;
   }

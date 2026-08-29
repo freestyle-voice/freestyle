@@ -685,9 +685,7 @@ function CleanupDisabledBanner({
           </Button>
         ) : null}
         <Button asChild variant="outline" size="sm">
-          <Link to="/settings/models">
-            {t("tone.disabledBanner.goToModels")}
-          </Link>
+          <Link to="/models">{t("tone.disabledBanner.goToModels")}</Link>
         </Button>
       </div>
     </div>
@@ -710,7 +708,7 @@ function CleanupNoModelBanner(): React.JSX.Element {
         </p>
       </div>
       <Button asChild variant="outline" size="sm">
-        <Link to="/settings/models">{t("tone.cleanup.noModelCta")}</Link>
+        <Link to="/models">{t("tone.cleanup.noModelCta")}</Link>
       </Button>
     </div>
   );

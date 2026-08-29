@@ -237,6 +237,7 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
+  const [petEnabled, setPetEnabled] = useState(false);
   const [companionForm, setCompanionForm] = useState<CompanionForm>(
     DEFAULT_COMPANION_FORM,
   );
@@ -549,6 +550,10 @@ export default function SettingsPage(): React.JSX.Element {
     void window.api
       .companionForm()
       .then(setCompanionForm)
+      .catch(() => {});
+    void window.api
+      .petEnabled()
+      .then(setPetEnabled)
       .catch(() => {});
     return window.api.onCompanionForm(setCompanionForm);
   }, []);
@@ -887,12 +892,29 @@ export default function SettingsPage(): React.JSX.Element {
                   />
                 </Row>
                 <Row
-                  label="Desktop companion"
-                  desc="Choose the optional local companion shown on your desktop."
+                  label="Show desktop companion"
+                  desc="An optional local observer in the corner. It never records or controls your dictation."
+                >
+                  <Switch
+                    checked={petEnabled}
+                    onCheckedChange={(enabled) => {
+                      setPetEnabled(enabled);
+                      window.api.setPetEnabled(enabled);
+                    }}
+                  />
+                </Row>
+                <Row
+                  label="Companion appearance"
+                  desc={
+                    petEnabled
+                      ? "Choose the companion shown on your desktop."
+                      : "Turn on the desktop companion to choose its appearance."
+                  }
                   last
                 >
                   <Select
                     value={companionForm}
+                    disabled={!petEnabled}
                     onValueChange={(form) => {
                       const next = form as CompanionForm;
                       setCompanionForm(next);

@@ -3553,8 +3553,13 @@ ipcMain.on("panel:pointer-entered", (event) => {
 });
 
 ipcMain.on("settings:open", (event) => {
-  if (event.sender !== panelWindow?.webContents) return;
+  if (
+    event.sender !== panelWindow?.webContents &&
+    event.sender !== companionWindow?.webContents
+  )
+    return;
   openSettingsWindow();
+  rearmCompanionHotRect();
 });
 
 ipcMain.on("settings:close", (event) => {

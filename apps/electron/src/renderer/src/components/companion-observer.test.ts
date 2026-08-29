@@ -18,6 +18,7 @@ test("companion observes presentation events without dictation ownership", async
   const source = await readFile(companionPath, "utf8");
 
   expect(source).toContain("window.api.onCompanionState");
+  expect(source).toContain("window.api.openSettings()");
   expect(source).not.toMatch(
     /DictationController|useDictation|onHotkey(?:Down|Up)|onTalk(?:Down|Up)|onDictationCancel|dictationPrefs|onDictationPrefs|setDictationPhase|panelDictation|reconnectServer/,
   );

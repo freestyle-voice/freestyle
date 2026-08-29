@@ -88,10 +88,26 @@ function CompanionRoot(): React.JSX.Element | null {
 
   if (!form) return null;
   const def = SPRITES[form];
-  return def.kind === "sheet" ? (
-    <SpriteStage def={def} state={state} />
-  ) : (
-    <SparkStage state={state} />
+  return (
+    <button
+      type="button"
+      aria-label="Open Settings"
+      onClick={() => window.api.openSettings()}
+      style={{
+        display: "block",
+        margin: 0,
+        padding: 0,
+        border: 0,
+        background: "transparent",
+        cursor: "pointer",
+      }}
+    >
+      {def.kind === "sheet" ? (
+        <SpriteStage def={def} state={state} />
+      ) : (
+        <SparkStage state={state} />
+      )}
+    </button>
   );
 }
 

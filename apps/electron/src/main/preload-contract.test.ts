@@ -91,4 +91,15 @@ describe("preload contract", () => {
 
     expect([...invoked].filter((channel) => !handled.has(channel))).toEqual([]);
   });
+
+  it("allows the local companion to open the restored Settings window", async () => {
+    const main = await readFile(mainPath, "utf8");
+    const settingsOpenHandler = main.slice(
+      main.indexOf('ipcMain.on("settings:open"'),
+      main.indexOf('ipcMain.on("settings:close"'),
+    );
+
+    expect(settingsOpenHandler).toContain("companionWindow?.webContents");
+    expect(settingsOpenHandler).toContain("openSettingsWindow()");
+  });
 });

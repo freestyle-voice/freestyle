@@ -159,38 +159,39 @@ function ContextTasks({
       ) : (
         <p className="remix-context-empty">Nothing waiting on you.</p>
       )}
-      <div className="remix-context-card-foot">
-        {items.length > PREVIEW_LIMIT ? (
-          <button type="button" onClick={() => setExpanded((value) => !value)}>
-            {expanded ? "Show less" : `View all ${items.length}`}
-            <ChevronDown
-              className={expanded ? "is-open" : ""}
-              aria-hidden="true"
-            />
-          </button>
-        ) : (
-          <span />
-        )}
-        <label className="remix-context-add">
-          <Plus aria-hidden="true" />
-          <input
-            value={draft}
-            placeholder="Add task"
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key !== "Enter") return;
-              const text = draft.trim();
-              if (!text) return;
-              event.preventDefault();
-              setDraft("");
-              const next = [...lines];
-              while (next.at(-1)?.trim() === "") next.pop();
-              next.push(`- [ ] ${text}`, "");
-              save(next);
-            }}
+      {items.length > PREVIEW_LIMIT ? (
+        <button
+          className="remix-context-view-all"
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+        >
+          {expanded ? "Show less" : `View all ${items.length}`}
+          <ChevronDown
+            className={expanded ? "is-open" : ""}
+            aria-hidden="true"
           />
-        </label>
-      </div>
+        </button>
+      ) : null}
+      <label className="remix-context-add">
+        <Plus aria-hidden="true" />
+        <input
+          aria-label="Add a task"
+          value={draft}
+          placeholder="Add a task…"
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            const text = draft.trim();
+            if (!text) return;
+            event.preventDefault();
+            setDraft("");
+            const next = [...lines];
+            while (next.at(-1)?.trim() === "") next.pop();
+            next.push(`- [ ] ${text}`, "");
+            save(next);
+          }}
+        />
+      </label>
     </ContextCard>
   );
 }

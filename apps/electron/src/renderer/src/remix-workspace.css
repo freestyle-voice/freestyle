@@ -718,7 +718,6 @@
 }
 
 .remix-context-row:focus-visible,
-.remix-context-card-foot button:focus-visible,
 .remix-context-view-all:focus-visible {
   position: relative;
   z-index: 1;
@@ -758,19 +757,6 @@
   white-space: normal;
 }
 
-.remix-context-card-foot {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  padding: 8px 10px;
-  background: color-mix(in srgb, var(--secondary) 42%, transparent);
-}
-
-.remix-context-card-foot > button,
 .remix-context-view-all {
   display: inline-flex;
   min-width: 0;
@@ -785,35 +771,51 @@
   text-align: left;
 }
 
-.remix-context-card-foot > button:hover,
 .remix-context-view-all:hover {
   color: var(--foreground);
 }
 
-.remix-context-card-foot svg,
 .remix-context-view-all svg {
   width: 12px;
   height: 12px;
   transition: transform 140ms ease;
 }
 
-.remix-context-card-foot svg.is-open,
 .remix-context-view-all svg.is-open {
   transform: rotate(180deg);
 }
 
 .remix-context-add {
+  position: relative;
+  z-index: 1;
   display: flex;
+  min-height: 32px;
   min-width: 0;
   align-items: center;
-  gap: 3px;
-  color: var(--muted-foreground);
+  gap: 7px;
+  margin: 8px 10px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, var(--remix-context-accent));
+  border-radius: 8px;
+  padding: 0 9px;
+  background: color-mix(in srgb, var(--background) 34%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 88%, var(--remix-context-accent));
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.remix-context-add:focus-within {
+  border-color: color-mix(in srgb, var(--remix-context-accent) 64%, var(--border));
+  background: color-mix(in srgb, var(--remix-context-accent) 8%, var(--background));
+  color: var(--remix-context-accent);
 }
 
 .remix-context-add svg {
-  width: 12px;
-  height: 12px;
+  width: 13px;
+  height: 13px;
   flex: 0 0 auto;
+  stroke-width: 1.8;
 }
 
 .remix-context-add input {
@@ -824,7 +826,7 @@
   background: transparent;
   color: var(--foreground);
   font: inherit;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .remix-context-add input::placeholder {

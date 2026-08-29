@@ -712,6 +712,46 @@
   gap: 2px;
 }
 
+.remix-context-file {
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.remix-context-file-icon {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--remix-context-accent));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--remix-context-accent) 8%, transparent);
+  color: color-mix(in srgb, var(--remix-context-accent) 78%, var(--foreground));
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.remix-context-file-icon svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.7;
+}
+
+.remix-context-file-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.remix-context-file:hover .remix-context-file-icon,
+.remix-context-file.is-selected .remix-context-file-icon {
+  border-color: color-mix(in srgb, var(--remix-context-accent) 58%, var(--border));
+  background: color-mix(in srgb, var(--remix-context-accent) 16%, transparent);
+  color: var(--remix-context-accent);
+}
+
 .remix-context-row:hover,
 .remix-context-row.is-selected {
   background: color-mix(in srgb, var(--remix-context-accent) 8%, var(--secondary));

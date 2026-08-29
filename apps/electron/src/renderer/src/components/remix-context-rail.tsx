@@ -56,6 +56,19 @@ function fileLabel(path: string): string {
   );
 }
 
+function brainFileTitle(path: string): string {
+  return fileLabel(path)
+    .toLocaleLowerCase()
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toLocaleUpperCase());
+}
+
+function brainFileMeta(path: string, modified: number): string {
+  const segments = path.replace(/\\/g, "/").split("/");
+  const folder = segments.slice(0, -1).join("/") || "Workspace";
+  return `${folder} · Updated ${dateLabel(modified)}`;
+}
+
 function ContextCard({
   kind,
   title,
@@ -316,14 +329,15 @@ function ContextBrain({
             <button
               key={file.path}
               type="button"
-              className={`remix-context-row${selectedPath === file.path ? " is-selected" : ""}`}
+              className={`remix-context-row remix-context-file${selectedPath === file.path ? " is-selected" : ""}`}
               onClick={() => setSelectedPath(file.path)}
             >
-              <strong>{fileLabel(file.path)}</strong>
-              <span>
-                {file.path.replace(/\\/g, "/")} ·{" "}
-                {file.path.endsWith(".md") ? "Markdown" : "File"} ·{" "}
-                {dateLabel(file.modified)}
+              <span className="remix-context-file-icon">
+                <FileText aria-hidden="true" />
+              </span>
+              <span className="remix-context-file-copy">
+                <strong>{brainFileTitle(file.path)}</strong>
+                <span>{brainFileMeta(file.path, file.modified)}</span>
               </span>
             </button>
           ))}

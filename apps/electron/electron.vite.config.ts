@@ -77,7 +77,6 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve("src/renderer/index.html"),
-          bar: resolve("src/renderer/bar.html"),
           companion: resolve("src/renderer/companion.html"),
           notification: resolve("src/renderer/notification.html"),
           panel: resolve("src/renderer/panel.html"),

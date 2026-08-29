@@ -469,8 +469,10 @@ let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let hotkeyRecorder: HotkeyRecorder | null = null;
 /** Own listener process — native binaries only take one accelerator each. */
 let remixKeyListener: NativeKeyListener | null = null;
+let remixPressed = false;
 /** User-configured accel (may differ from what's listening while parked/off). */
 let remixHotkeyPreference: string | undefined;
+let currentRemixAccel: string | null = null;
 /** False until server settings are read once (don't spawn on defaults). */
 let remixInitialized = false;
 /** Onboarding practice: allow Remix to target Freestyle's own window. */
@@ -1113,12 +1115,13 @@ function hidePill(): void {
     hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
   }
+  remixPressed = false;
   clearRemixStuckWatchdog();
   setRemixRouteKeys(false);
   // Chat may have set focusable; clear it when hiding.
   try {
+    mainWindow?.setFocusable(false);
   } catch {}
-  updateRemixBar();
   updateDictationEscape();
 }
 
@@ -2424,6 +2427,9 @@ app.whenReady().then(async () => {
   // accelerator + activation mode (only if they differ, to avoid a needless
   // native-listener rebuild).
   scheduleHotkeyRegistration(DEFAULT_HOTKEY);
+  // Register the unobtrusive Remix hold control at startup too. Settings may
+  // refine it later, but a cold server must never leave this path inert.
+  scheduleRemixHotkeyRegistration(getDefaultRemixHotkey());
   void waitForServerReady().then(async () => {
     // One request for both keys, instead of a read per key. Skip if the server
     // never answered — the default registered above stands.
@@ -2812,9 +2818,6 @@ app.whenReady().then(async () => {
   ipcMain.on("remix:set-route-keys", (_event, open: unknown) => {
     setRemixRouteKeys(open === true);
   });
-
-  // The pill is retired; accept the legacy channel as a no-op.
-  ipcMain.on("remix:set-chat-focus", () => {});
 });
 
 interface FrontmostContext {
@@ -3573,6 +3576,15 @@ ipcMain.on("settings:open", (event) => {
   rearmCompanionHotRect();
 });
 
+ipcMain.on("remix:open-workspace", (event) => {
+  if (event.sender !== mainWindow?.webContents) return;
+  // The pill is a status surface, not a second workspace. Moving into Remix
+  // is an explicit user action, so hide the overlay before showing the durable
+  // chat window at its Remix route.
+  hidePill();
+  openRemixWorkspaceWindow();
+});
+
 ipcMain.on("settings:close", (event) => {
   if (event.sender !== settingsWindow?.webContents) return;
   settingsWindow?.hide();
@@ -3831,7 +3843,7 @@ function destroyPanelWindow(): void {
  * Its renderer reuses the current settings feature module and server contract;
  * only its window ownership and presentation are different.
  */
-function openSettingsWindow(): void {
+function openSettingsWindow(route: "/settings" | "/remix" = "/settings"): void {
   if (!settingsWindow || settingsWindow.isDestroyed()) {
     settingsWindow = new BrowserWindow({
       width: 760,
@@ -3859,11 +3871,16 @@ function openSettingsWindow(): void {
     });
     // The restored legacy renderer owns Settings as a route in the same dark
     // desktop shell. Hash routing keeps packaged app:// URLs intact.
-    void settingsWindow.loadURL(`${rendererUrl("panel.html")}#/settings`);
+    void settingsWindow.loadURL(`${rendererUrl("panel.html")}#${route}`);
     return;
   }
+  settingsWindow.webContents.send("dashboard:navigate", route);
   settingsWindow.show();
   settingsWindow.focus();
+}
+
+function openRemixWorkspaceWindow(): void {
+  openSettingsWindow("/remix");
 }
 
 function createCompanionWindow(): void {
@@ -3932,10 +3949,6 @@ function destroyCompanionWindow(): void {
 export function setCompanionState(state: CompanionState): void {
   companionWindow?.webContents.send("companion:state", state);
 }
-
-// The remix bar is retired with the pill. Call sites that used to
-// reposition or toggle it remain; there is nothing left to update.
-function updateRemixBar(): void {}
 
 function applyRemixSettings(settings: Record<string, string>): void {
   remixInitialized = true;
@@ -4086,6 +4099,16 @@ function clearRemixStuckWatchdog(): void {
   }
 }
 
+function armRemixStuckWatchdog(): void {
+  clearRemixStuckWatchdog();
+  remixStuckTimer = setTimeout(() => {
+    remixStuckTimer = null;
+    if (!remixPressed) return;
+    hotkeyLog.warn("Remix hold saw no key-up for 5 minutes; forcing release.");
+    handleRemixHotkeyUp();
+  }, HOTKEY_STUCK_TIMEOUT_MS);
+}
+
 /** Remix chord + digit routes; claimed while the card is up. Spell modifiers
  *  (Control is physically down); Fn isn't expressible as an accelerator. */
 const REMIX_ROUTE_MODIFIER =
@@ -4129,38 +4152,79 @@ function scheduleRemixHotkeyRegistration(hotkey?: string): void {
   });
 }
 
-/** Start the remix native listener. No globalShortcut fallback (needs hold/tap). */
-/**
- * The talk key went down: start listening into the Tavern. The panel itself
- * opens on release, when the transcript lands — while holding, the listening
- * HUD is the only surface.
- *
- * Fn+Control shares Fn with dictation, so a slow chord press starts a rogue
- * cursor-dictation first; supersede it — the renderer cancels that session
- * and restarts as a talk session, and clearing hotkeyPressed here keeps the
- * later Fn release from double-finishing it.
- */
-function handleTavernTalkDown(): void {
+/** False if the Remix chord includes C — injected Copy would collide with it. */
+function canCopySelectionWhileHeld(): boolean {
+  const parts = currentRemixAccel?.split("+") ?? [];
+  return !parts.some((part) => part.trim().toLowerCase() === "c");
+}
+
+let remixSelectionRequested = false;
+
+function captureRemixSelection(): void {
+  if (remixSelectionRequested) return;
+  remixSelectionRequested = true;
+
+  void Promise.allSettled([
+    isSecureInputActive().then((secure) =>
+      secure
+        ? Promise.reject(new Error("secure-input"))
+        : copySelectionFromFocusedApp(),
+    ),
+    getFrontmostContext(),
+  ]).then(([selection, front]) => {
+    const context =
+      front.status === "fulfilled"
+        ? front.value
+        : { appName: null, windowTitle: null, url: null };
+    remixAnchor = { ...context, capturedAt: Date.now() };
+    if (selection.status === "rejected") {
+      hotkeyLog.warn(`Remix selection capture failed: ${selection.reason}`);
+    }
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return;
+    win.webContents.send("remix:selection", {
+      text: selection.status === "fulfilled" ? selection.value : null,
+      ...clipboardPreviewFields(),
+      ...remixAnchor,
+    });
+  });
+}
+
+/** The Remix hold key always stays in the unobtrusive pill lane. */
+function handleRemixHotkeyDown(): void {
+  if (remixPressed) return;
+  remixPressed = true;
+
+  // Fn+Control shares Fn with dictation. Supersede a partial plain-Fn press
+  // without hiding the pill that is about to become the Remix surface.
   if (hotkeyPressed) {
     hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
+    mainWindow?.webContents.send("remix:supersede");
   }
+
+  setRemixRouteKeys(true);
+  armRemixStuckWatchdog();
+  remixSelectionRequested = false;
   showPill();
   anchorPillForDictation();
   const win = mainWindow;
-  if (win && !win.isDestroyed()) win.webContents.send("talk:down");
+  if (win && !win.isDestroyed()) win.webContents.send("remix:down");
+
+  // Capture on press so an empty selection is known before listening begins.
+  if (canCopySelectionWhileHeld()) captureRemixSelection();
 }
 
-function handleTavernTalkUp(): void {
+function handleRemixHotkeyUp(): void {
+  if (!remixPressed) return;
+  remixPressed = false;
+  clearRemixStuckWatchdog();
   const win = mainWindow;
-  if (win && !win.isDestroyed()) win.webContents.send("talk:up");
+  if (win && !win.isDestroyed()) win.webContents.send("remix:up");
+  captureRemixSelection();
 }
 
-/**
- * The old Remix hotkey, rebound: hold it to summon the Tavern panel with
- * dictation streaming straight into the composer, release to finish. Same
- * setting key, same default chord (Fn+Control on macOS), new destination.
- */
+/** Start the Remix native listener. No globalShortcut fallback (needs hold/tap). */
 async function registerRemixHotkey(hotkey?: string): Promise<void> {
   if (remixKeyListener) {
     remixKeyListener.stop();
@@ -4175,28 +4239,30 @@ async function registerRemixHotkey(hotkey?: string): Promise<void> {
       : null;
   const accel = normalized ?? getDefaultRemixHotkey();
 
-  // Dictation wins on chord clash; the talk key stays off until Settings
+  // Dictation wins on chord clash; the Remix key stays off until Settings
   // resolves it.
   if (currentHotkeyAccel && accel === currentHotkeyAccel) {
     hotkeyLog.warn(
-      `Talk hotkey "${accel}" is already the dictation hotkey; talk key disabled.`,
+      `Remix hotkey "${accel}" is already the dictation hotkey; remix disabled.`,
     );
     return;
   }
 
+  currentRemixAccel = accel;
+
   const listener = new NativeKeyListener({
     hotkey: accel,
-    onKeyDown: handleTavernTalkDown,
-    onKeyUp: handleTavernTalkUp,
+    onKeyDown: handleRemixHotkeyDown,
+    onKeyUp: handleRemixHotkeyUp,
     onError: (error) => {
-      hotkeyLog.error(`Talk key listener error: ${error}`);
+      hotkeyLog.error(`Remix key listener error: ${error}`);
     },
     onReady: () => {
-      hotkeyLog.debug(`Talk key listener ready for "${accel}"`);
+      hotkeyLog.debug(`Remix key listener ready for "${accel}"`);
     },
     onPermanentFailure: () => {
       if (remixKeyListener !== listener) return;
-      hotkeyLog.error("Talk key listener permanently failed; talk key off.");
+      hotkeyLog.error("Remix key listener permanently failed; remix off.");
       listener.stop();
       remixKeyListener = null;
     },
@@ -4204,7 +4270,7 @@ async function registerRemixHotkey(hotkey?: string): Promise<void> {
   remixKeyListener = listener;
   const started = await listener.start();
   if (!started) {
-    hotkeyLog.warn(`Talk key listener did not start for "${accel}"`);
+    hotkeyLog.warn(`Remix key listener did not start for "${accel}"`);
     listener.stop();
     if (remixKeyListener === listener) remixKeyListener = null;
   }

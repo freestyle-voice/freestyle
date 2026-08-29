@@ -76,7 +76,7 @@ export interface RemixChatProps {
   minimized: boolean;
   onMiniHeightChange?: (height: number) => void;
   anchor: RemixChatAnchor;
-  onExpand: () => void;
+  onOpenWorkspace: () => void;
   onMinimize: () => void;
   onClose: () => void;
 }
@@ -88,12 +88,6 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
   const [initialInstruction, setInitialInstruction] = useState(
     props.initialInstruction,
   );
-
-  // Pill is focusable:false; follow the card so the composer can take keyboard.
-  useEffect(() => {
-    window.api?.setRemixChatFocus?.(!props.minimized);
-    return () => window.api?.setRemixChatFocus?.(false);
-  }, [props.minimized]);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,7 +142,12 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
 
   if (loadFailed) {
     if (props.minimized) {
-      return <MiniStrip text="Remix couldn't open" onEnter={props.onExpand} />;
+      return (
+        <MiniStrip
+          text="Remix couldn't open"
+          onOpenWorkspace={props.onOpenWorkspace}
+        />
+      );
     }
     return (
       <div style={{ padding: 14, fontSize: 12.5, color: INK_DIM }}>
@@ -159,7 +158,13 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
   }
   if (!thread) {
     if (props.minimized) {
-      return <MiniStrip text="Opening Remix…" busy onEnter={props.onExpand} />;
+      return (
+        <MiniStrip
+          text="Opening Remix…"
+          busy
+          onOpenWorkspace={props.onOpenWorkspace}
+        />
+      );
     }
     return (
       <div style={{ padding: 14, fontSize: 12.5, color: INK_FAINT }}>
@@ -176,7 +181,7 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
       initialInstruction={initialInstruction}
       minimized={props.minimized}
       anchor={props.anchor}
-      onExpand={props.onExpand}
+      onOpenWorkspace={props.onOpenWorkspace}
       onMinimize={props.onMinimize}
       onClose={props.onClose}
       onNewThread={startNewThread}
@@ -189,14 +194,15 @@ function MiniStrip(props: {
   text: string;
   busy?: boolean;
   failed?: boolean;
-  onEnter?: () => void;
+  onOpenWorkspace: () => void;
 }): React.JSX.Element {
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: expand also via hotkey/bar
-    <div
+    <button
+      type="button"
       className="remix-chat dark"
       data-testid="remix-chat-mini"
-      onMouseEnter={props.onEnter}
+      onClick={props.onOpenWorkspace}
+      aria-label="Open Remix workspace"
     >
       <style>{REMIX_CHAT_CSS}</style>
       <div className="remix-mini" role="status" aria-live="polite">
@@ -206,8 +212,9 @@ function MiniStrip(props: {
           data-failed={props.failed === true}
         />
         <span className="remix-mini-text">{props.text}</span>
+        <span className="remix-mini-action">Open</span>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -217,7 +224,7 @@ interface RemixThreadProps {
   initialInstruction: string | null;
   minimized: boolean;
   anchor: RemixChatAnchor;
-  onExpand: () => void;
+  onOpenWorkspace: () => void;
   onMinimize: () => void;
   onClose: () => void;
   onNewThread: () => void;
@@ -238,7 +245,7 @@ const MINI_STRIP_PAD = 24; // .remix-mini[data-full] vertical padding
 const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
 
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
-  const { thread, minimized, anchor, onExpand, onMinimize, onClose } = props;
+  const { thread, minimized, anchor, onMinimize, onClose } = props;
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [actions, setActions] = useState<ActionRow[]>([]);
@@ -503,8 +510,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   useEffect(() => clearMinimizeTimer, [clearMinimizeTimer]);
   const handleMouseEnter = useCallback(() => {
     clearMinimizeTimer();
-    if (minimized) onExpand();
-  }, [clearMinimizeTimer, minimized, onExpand]);
+  }, [clearMinimizeTimer]);
   useEffect(() => {
     if (minimized) return;
     const handleOver = (): void => {
@@ -718,7 +724,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       className="remix-chat dark"
       data-minimized={minimized}
       data-testid={minimized ? "remix-chat-mini" : "remix-chat"}
-      onMouseEnter={handleMouseEnter}
+      onMouseEnter={minimized ? undefined : handleMouseEnter}
     >
       <style>{REMIX_CHAT_CSS}</style>
       {/* domMax for layout projection; strict requires m.* not motion.* */}
@@ -731,7 +737,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           })}
           aria-hidden={!minimized}
         >
-          <div className="remix-mini" data-full={showFullFinal}>
+          <button
+            type="button"
+            className="remix-mini remix-mini-trigger"
+            data-full={showFullFinal}
+            onClick={props.onOpenWorkspace}
+            aria-label="Open Remix workspace"
+          >
             <span
               className="remix-mini-dot"
               data-busy={busy || !settled}
@@ -750,7 +762,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                 {notice ?? latestActivity(messages, false)}
               </span>
             )}
-          </div>
+            <span className="remix-mini-action">Open</span>
+          </button>
         </div>
 
         <div
@@ -1223,6 +1236,14 @@ const REMIX_CHAT_CSS = `
     font-size: 12.5px;
     color: ${INK};
   }
+  button.remix-chat {
+    display: block;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+  }
 
   .remix-chat-face-strip {
     opacity: 0;
@@ -1257,6 +1278,15 @@ const REMIX_CHAT_CSS = `
     gap: 9px;
     height: 100%;
     padding: 0 16px 0 13px;
+  }
+  .remix-mini-trigger {
+    width: 100%;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
   }
   .remix-mini-dot {
     flex-shrink: 0;
@@ -1299,6 +1329,19 @@ const REMIX_CHAT_CSS = `
     text-overflow: ellipsis;
   }
   .remix-mini-text { color: ${INK_DIM}; }
+  .remix-mini-action {
+    margin-left: auto;
+    color: ${OLIVE};
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    opacity: 0;
+    transition: opacity 140ms ease;
+  }
+  .remix-mini-trigger:hover .remix-mini-action,
+  .remix-mini-trigger:focus-visible .remix-mini-action,
+  button.remix-chat:hover .remix-mini-action,
+  button.remix-chat:focus-visible .remix-mini-action { opacity: 1; }
 
   /* No -webkit-app-region:drag — it would swallow leave events for minimize. */
   .remix-chat-head {

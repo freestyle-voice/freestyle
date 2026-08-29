@@ -36,6 +36,17 @@ describe("settings consolidation", () => {
     expect(remixStyles).not.toContain("remix-inline-settings");
   });
 
+  it("keeps the remix workspace affordance out of Settings", async () => {
+    const settings = await readFile(
+      resolve(rendererRoot, "pages/settings.tsx"),
+      "utf8",
+    );
+
+    expect(settings).not.toContain("remix_bar_enabled");
+    expect(settings).not.toContain("remixBarEnabled");
+    expect(settings).not.toContain('label="Remix bar"');
+  });
+
   it("uses the app sidebar as the only settings navigation", async () => {
     const [settings, shell, dashboard, globals] = await Promise.all([
       readFile(resolve(rendererRoot, "pages/settings.tsx"), "utf8"),

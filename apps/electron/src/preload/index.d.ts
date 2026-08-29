@@ -43,8 +43,6 @@ declare global {
       onServerChanged: (callback: () => void) => () => void;
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
-      onTalkDown: (cb: () => void) => () => void;
-      onTalkUp: (cb: () => void) => () => void;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
       onDictationCancel: (callback: () => void) => () => void;
@@ -60,6 +58,7 @@ declare global {
       remixSetClipboard: (text: string) => Promise<RemixPrimitiveResult>;
       remixPasteClipboard: () => Promise<RemixPrimitiveResult>;
       remixGetClipboard: () => Promise<RemixCopyResult>;
+      openRemixWorkspace: () => void;
       companionForm: () => Promise<CompanionForm>;
       petEnabled: () => Promise<boolean>;
       setPetEnabled: (enabled: boolean) => void;
@@ -94,6 +93,9 @@ declare global {
       panelPointerLeft: () => void;
       panelPointerEntered: () => void;
       onPanelFocusComposer: (callback: () => void) => () => void;
+      onDashboardNavigate: (
+        callback: (route: "/settings" | "/remix") => void,
+      ) => () => void;
       notificationPresent: (payload: {
         messageId: string;
         title: string;

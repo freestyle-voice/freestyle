@@ -10,7 +10,7 @@ const shellPath = resolve(
 );
 
 function sourceForFunction(source: string, name: string): string {
-  const start = source.indexOf(`function ${name}()`);
+  const start = source.indexOf(`function ${name}(`);
   const nextFunction = source.indexOf("\nfunction ", start + 1);
   return source.slice(start, nextFunction === -1 ? undefined : nextFunction);
 }

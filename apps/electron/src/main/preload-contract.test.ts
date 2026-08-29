@@ -87,6 +87,29 @@ describe("preload contract", () => {
     expect(showPill).not.toContain('ipcMain.on("settings:set-pill-position"');
   });
 
+  it("routes the Remix hold hotkey through the pill's live event contract", async () => {
+    const [main, preload, pill] = await Promise.all([
+      readFile(mainPath, "utf8"),
+      readFile(preloadPath, "utf8"),
+      readFile(join(rendererRoot, "pages/app.tsx"), "utf8"),
+    ]);
+
+    const handlers = main.slice(
+      main.indexOf("function handleRemixHotkeyDown(): void {"),
+      main.indexOf("async function registerRemixHotkey"),
+    );
+
+    expect(handlers).toContain('webContents.send("remix:down")');
+    expect(handlers).toContain('webContents.send("remix:up")');
+    expect(handlers).toContain("captureRemixSelection()");
+    expect(handlers).not.toContain('webContents.send("talk:down")');
+    expect(handlers).not.toContain('webContents.send("talk:up")');
+    expect(preload).toContain('ipcRenderer.on("remix:down"');
+    expect(preload).toContain('ipcRenderer.on("remix:up"');
+    expect(pill).toContain("window.api.onRemixDown(beginRemix)");
+    expect(pill).toContain("window.api.onRemixUp(finishRemixPress)");
+  });
+
   it("registers every preload invoke channel in the main process", async () => {
     const [preload, mainSources] = await Promise.all([
       readFile(preloadPath, "utf8"),

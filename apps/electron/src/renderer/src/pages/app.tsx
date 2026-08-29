@@ -1970,11 +1970,9 @@ export default function AppPage(): React.JSX.Element {
   );
 
   const closeRemix = useCallback(() => endRemix(), [endRemix]);
-  const expandRemixChat = useCallback(() => {
-    if (remixRef.current?.minimized !== false) {
-      patchRemix({ minimized: false });
-    }
-  }, [patchRemix]);
+  const openRemixWorkspace = useCallback(() => {
+    window.api.openRemixWorkspace();
+  }, []);
   const minimizeRemixChat = useCallback(() => {
     if (remixRef.current && remixRef.current.minimized !== true) {
       patchRemix({ minimized: true });
@@ -2355,10 +2353,10 @@ export default function AppPage(): React.JSX.Element {
 
     const heldMs = performance.now() - remixDownAtRef.current;
     if (heldMs < REMIX_HOLD_THRESHOLD_MS) {
-      // A tap. Throw the fragment of audio away and open the chat card — the
-      // ChatGPT-style input, with the presets as chips inside it.
+      // A tap. Throw the fragment away and leave a compact status affordance;
+      // opening the full workspace is always an explicit click.
       remixStreamerRef.current?.cancel();
-      openRemixChat(null);
+      openRemixChat(null, { minimized: true });
       return;
     }
     void runSpokenRemix();
@@ -3118,14 +3116,6 @@ export default function AppPage(): React.JSX.Element {
     [],
   );
   const rearmHotRect = useCallback(() => reportHotRectRef.current(), []);
-  useEffect(() => {
-    return window.api?.onPillHotEnter?.(() => {
-      if (remixRef.current?.phase === "chat" && remixRef.current.minimized) {
-        expandRemixChat();
-      }
-    });
-  }, [expandRemixChat]);
-
   return (
     <div className="relative h-screen w-screen select-none overflow-hidden">
       <style>
@@ -3971,7 +3961,7 @@ export default function AppPage(): React.JSX.Element {
                       v: pillAlign === "start" ? "top" : "bottom",
                       h: pillSide === "right" ? "right" : "center",
                     }}
-                    onExpand={expandRemixChat}
+                    onOpenWorkspace={openRemixWorkspace}
                     onMinimize={minimizeRemixChat}
                     onClose={closeRemix}
                     onMiniHeightChange={setRemixMiniHeight}

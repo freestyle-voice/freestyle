@@ -116,11 +116,9 @@ const api = {
     ipcRenderer.invoke("remix:press-key", key, times),
   remixPasteText: (text: string): Promise<RemixPrimitiveResult> =>
     ipcRenderer.invoke("remix:paste-text", text),
-  setRemixChatFocus: (focus: boolean): void =>
-    ipcRenderer.send("remix:set-chat-focus", focus),
   setRemixRouteKeys: (open: boolean): void =>
     ipcRenderer.send("remix:set-route-keys", open),
-  remixBarHover: (): void => ipcRenderer.send("remix:bar-hover"),
+  openRemixWorkspace: (): void => ipcRenderer.send("remix:open-workspace"),
   pasteText: (text: string, appContext?: string | null): Promise<void> =>
     ipcRenderer.invoke("paste:text", text, appContext ?? null),
   copyText: (text: string, appContext?: string | null): Promise<void> =>
@@ -155,16 +153,6 @@ const api = {
     ipcRenderer.invoke("logs:open-folder"),
   openExternal: (url: string): Promise<boolean> =>
     ipcRenderer.invoke("open:external", url),
-  onTalkDown: (cb: () => void) => {
-    const listener = (): void => cb();
-    ipcRenderer.on("talk:down", listener);
-    return () => ipcRenderer.removeListener("talk:down", listener);
-  },
-  onTalkUp: (cb: () => void) => {
-    const listener = (): void => cb();
-    ipcRenderer.on("talk:up", listener);
-    return () => ipcRenderer.removeListener("talk:up", listener);
-  },
   onHotkeyDown: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("hotkey:down", handler);
@@ -265,6 +253,12 @@ const api = {
     const handler = (): void => callback();
     ipcRenderer.on("panel:focus-composer", handler);
     return () => ipcRenderer.removeListener("panel:focus-composer", handler);
+  },
+  onDashboardNavigate: (callback: (route: "/settings" | "/remix") => void) => {
+    const handler = (_e: unknown, route: "/settings" | "/remix"): void =>
+      callback(route);
+    ipcRenderer.on("dashboard:navigate", handler);
+    return () => ipcRenderer.removeListener("dashboard:navigate", handler);
   },
   notificationPresent: (payload: {
     messageId: string;

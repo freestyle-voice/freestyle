@@ -631,6 +631,14 @@ export default function AppShell(): React.JSX.Element {
     [navigate, setSidebarWorkspace],
   );
 
+  useEffect(
+    () =>
+      window.api.onDashboardNavigate((route) => {
+        navigate(route);
+      }),
+    [navigate],
+  );
+
   // Keep the persisted selection in sync after direct navigation, while
   // retaining it unchanged for Settings and plugin routes.
   useEffect(() => {

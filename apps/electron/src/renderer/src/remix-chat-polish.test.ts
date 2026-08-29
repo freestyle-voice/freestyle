@@ -33,4 +33,16 @@ describe("Remix chat polish", () => {
       /\.remix-agent \.tavern-input\s*\{[^}]*border:\s*0;/s,
     );
   });
+
+  it("keeps the compact pill passive until the user explicitly opens Remix", async () => {
+    const [chat, pill] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),
+    ]);
+
+    expect(chat).toContain("Open Remix workspace");
+    expect(chat).not.toContain("onMouseEnter={props.onEnter}");
+    expect(pill).toContain("window.api.openRemixWorkspace()");
+    expect(pill).not.toContain("onPillHotEnter");
+  });
 });

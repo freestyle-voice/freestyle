@@ -132,7 +132,6 @@ const themeOptions = [
 // while Settings is ported to the current settings schema. They do not expand
 // the shared Cloud contract.
 const LEGACY_SETTING_KEYS = {
-  remixBarEnabled: "remix_bar_enabled",
   pillCancelButton: "pill_cancel_button",
   theme: "theme",
 } as const;
@@ -217,7 +216,6 @@ export default function SettingsPage(): React.JSX.Element {
     window.api?.defaultHotkey ?? getDefaultHotkey(),
   );
   const [hotkeyMode, setHotkeyMode] = useState<"hold" | "toggle">("hold");
-  const [remixBarEnabled, setRemixBarEnabled] = useState(true);
   const [remixHotkey, setRemixHotkey] = useState(
     window.api?.defaultRemixHotkey ?? getDefaultRemixHotkey(),
   );
@@ -380,17 +378,6 @@ export default function SettingsPage(): React.JSX.Element {
       .catch(() => {});
   }, []);
 
-  const handleRemixBarToggle = useCallback((enabled: boolean) => {
-    setRemixBarEnabled(enabled);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: LEGACY_SETTING_KEYS.remixBarEnabled },
-        json: { value: String(enabled) },
-      })
-      .then(() => window.api?.reloadRemixHotkey?.())
-      .catch(() => {});
-  }, []);
-
   // The remix listener re-reads its accelerator from the server rather than
   // being handed one, so the reload has to wait for the write to land.
   const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
@@ -452,7 +439,6 @@ export default function SettingsPage(): React.JSX.Element {
     if (s[SETTINGS_KEYS.hotkeyMode] === "toggle") setHotkeyMode("toggle");
     if (s[SETTINGS_KEYS.remixHotkey])
       setRemixHotkey(s[SETTINGS_KEYS.remixHotkey]);
-    setRemixBarEnabled(s[LEGACY_SETTING_KEYS.remixBarEnabled] !== "false");
     setLanguages(parseLanguagesSetting(s));
     if (s[SETTINGS_KEYS.translateMode] === "true") setTranslateMode(true);
     if (s[SETTINGS_KEYS.outputMode]) setOutputMode(s[SETTINGS_KEYS.outputMode]);
@@ -1215,17 +1201,6 @@ export default function SettingsPage(): React.JSX.Element {
                       </Button>
                     </div>
                   )}
-                </Row>
-
-                <Row
-                  label={t("settings.remix.bar")}
-                  desc={t("settings.remix.barDesc")}
-                  last
-                >
-                  <Switch
-                    checked={remixBarEnabled}
-                    onCheckedChange={handleRemixBarToggle}
-                  />
                 </Row>
               </SettingsPanel>
             )}

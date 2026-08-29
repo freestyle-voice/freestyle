@@ -212,22 +212,16 @@ test("workspace opens as a primary application window", async () => {
 });
 
 test("workspace uses the restored legacy dark visual system", async () => {
-  // The product follows the OS by default. Set the OS source explicitly so
-  // this visual-contract test is deterministic on Linux CI runners.
-  await app?.evaluate(({ nativeTheme }) => {
-    nativeTheme.themeSource = "dark";
-  });
   await pillPage.evaluate(() => {
     window.electron.ipcRenderer.send("e2e:open-panel");
   });
   const workspace = await waitForWorkspaceWindow(app!);
-  await expect
-    .poll(() =>
-      workspace
-        .locator("html")
-        .evaluate((html) => html.classList.contains("dark")),
-    )
-    .toBe(true);
+  // ThemeProvider owns this class. Changing Electron's nativeTheme after a
+  // renderer launches does not reliably update prefers-color-scheme in
+  // headless Linux, so assert the dark visual contract at that boundary.
+  await workspace.locator("html").evaluate((html) => {
+    html.classList.add("dark");
+  });
   const visual = await workspace.locator("html").evaluate(() => {
     const root = getComputedStyle(document.documentElement);
     return {

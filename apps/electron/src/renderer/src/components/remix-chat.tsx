@@ -75,7 +75,7 @@ export interface RemixChatProps {
   minimized: boolean;
   onMiniHeightChange?: (height: number) => void;
   anchor: RemixChatAnchor;
-  onOpenWorkspace: () => void;
+  onOpenWorkspace: (threadId: string) => void;
   onMinimize: () => void;
   onClose: () => void;
 }
@@ -123,7 +123,7 @@ interface RemixThreadProps {
   initialInstruction: string | null;
   minimized: boolean;
   anchor: RemixChatAnchor;
-  onOpenWorkspace: () => void;
+  onOpenWorkspace: (threadId: string) => void;
   onMinimize: () => void;
   onClose: () => void;
   onNewThread: () => void;
@@ -190,6 +190,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         prepareSendMessagesRequest: ({ messages }) => ({
           body: {
             messages,
+            threadId: thread.id,
             context: {
               selection: contextRef.current.text,
               appName: contextRef.current.appName,
@@ -201,7 +202,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           },
         }),
       }),
-    [],
+    [thread.id],
   );
 
   const executeTool = useCallback(
@@ -632,7 +633,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             type="button"
             className="remix-mini remix-mini-trigger"
             data-full={showFullFinal}
-            onClick={props.onOpenWorkspace}
+            onClick={() => props.onOpenWorkspace(thread.id)}
             aria-label="Open Remix workspace"
           >
             <span

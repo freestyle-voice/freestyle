@@ -58,7 +58,7 @@ declare global {
       remixSetClipboard: (text: string) => Promise<RemixPrimitiveResult>;
       remixPasteClipboard: () => Promise<RemixPrimitiveResult>;
       remixGetClipboard: () => Promise<RemixCopyResult>;
-      openRemixWorkspace: () => void;
+      openRemixWorkspace: (threadId: string) => void;
       companionForm: () => Promise<CompanionForm>;
       petEnabled: () => Promise<boolean>;
       setPetEnabled: (enabled: boolean) => void;

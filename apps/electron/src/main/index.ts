@@ -3581,13 +3581,22 @@ ipcMain.on("settings:open", (event) => {
   rearmCompanionHotRect();
 });
 
-ipcMain.on("remix:open-workspace", (event) => {
-  if (event.sender !== mainWindow?.webContents) return;
-  // The pill is a status surface, not a second workspace. Moving into Remix
-  // is an explicit user action, so hide the overlay before showing the durable
-  // chat window at its Remix route.
+ipcMain.on("remix:open-workspace", (event, threadId: unknown) => {
+  if (
+    event.sender !== mainWindow?.webContents ||
+    typeof threadId !== "string" ||
+    threadId.length === 0 ||
+    threadId.length > 100
+  )
+    return;
+  // The pill is only a compact control surface. Opening a conversation returns
+  // to the existing workspace window and selects that exact durable thread.
   hidePill();
-  openRemixWorkspaceWindow();
+  openPanel({ focusComposer: true, trigger: "other" });
+  panelRendererMessages.send({
+    channel: "panel:open-thread",
+    payload: threadId,
+  });
 });
 
 ipcMain.on("settings:close", (event) => {
@@ -3882,10 +3891,6 @@ function openSettingsWindow(route: "/settings" | "/remix" = "/settings"): void {
   settingsWindow.webContents.send("dashboard:navigate", route);
   settingsWindow.show();
   settingsWindow.focus();
-}
-
-function openRemixWorkspaceWindow(): void {
-  openSettingsWindow("/remix");
 }
 
 function createCompanionWindow(): void {

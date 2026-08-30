@@ -112,6 +112,9 @@ export type RemixContext = z.infer<typeof remixContextSchema>;
  */
 export const remixAgentRequestSchema = z.object({
   messages: z.array(z.unknown()).min(1).max(80),
+  /** Stable desktop conversation id. When present, Cloud persists this run
+   * alongside the ordinary Remix workspace thread history. */
+  threadId: z.string().min(1).max(100).optional(),
   context: remixContextSchema,
 });
 

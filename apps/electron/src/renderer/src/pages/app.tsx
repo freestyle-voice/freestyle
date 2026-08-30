@@ -1970,8 +1970,8 @@ export default function AppPage(): React.JSX.Element {
   );
 
   const closeRemix = useCallback(() => endRemix(), [endRemix]);
-  const openRemixWorkspace = useCallback(() => {
-    window.api.openRemixWorkspace();
+  const openRemixWorkspace = useCallback((threadId: string) => {
+    window.api.openRemixWorkspace(threadId);
   }, []);
   const minimizeRemixChat = useCallback(() => {
     if (remixRef.current && remixRef.current.minimized !== true) {

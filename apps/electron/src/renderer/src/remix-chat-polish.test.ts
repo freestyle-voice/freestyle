@@ -42,7 +42,7 @@ describe("Remix chat polish", () => {
 
     expect(chat).toContain("Open Remix workspace");
     expect(chat).not.toContain("onMouseEnter={props.onEnter}");
-    expect(pill).toContain("window.api.openRemixWorkspace()");
+    expect(pill).toContain("window.api.openRemixWorkspace(threadId)");
     expect(pill).not.toContain("onPillHotEnter");
   });
 });

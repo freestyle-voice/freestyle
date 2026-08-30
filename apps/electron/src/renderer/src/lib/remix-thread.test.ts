@@ -14,6 +14,8 @@ describe("Remix pill agent contract", () => {
 
     expect(chat).toContain('api: "/api/remix"');
     expect(chat).toContain('apiFetch("/api/remix"');
+    expect(chat).toContain("threadId: thread.id");
+    expect(chat).toContain("onOpenWorkspace(thread.id)");
     expect(chat).not.toContain('"/api/remix/thread');
     expect(chat).not.toContain('"/api/remix/agent');
   });

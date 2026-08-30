@@ -125,6 +125,25 @@ describe("preload contract", () => {
     expect(main).not.toContain("function anchorPillForDictation(): void {");
   });
 
+  it("opens a pill conversation in the existing workspace window", async () => {
+    const [main, preload] = await Promise.all([
+      readFile(mainPath, "utf8"),
+      readFile(preloadPath, "utf8"),
+    ]);
+    const workspace = main.slice(
+      main.indexOf('ipcMain.on("remix:open-workspace"'),
+      main.indexOf('ipcMain.on("settings:close"'),
+    );
+
+    expect(preload).toContain(
+      "openRemixWorkspace: (threadId: string): void =>",
+    );
+    expect(workspace).toContain("openPanel({ focusComposer: true");
+    expect(workspace).toContain('channel: "panel:open-thread"');
+    expect(workspace).not.toContain("openRemixWorkspaceWindow()");
+    expect(main).not.toContain("function openRemixWorkspaceWindow(): void {");
+  });
+
   it("registers every preload invoke channel in the main process", async () => {
     const [preload, mainSources] = await Promise.all([
       readFile(preloadPath, "utf8"),

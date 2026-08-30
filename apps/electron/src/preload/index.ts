@@ -118,7 +118,8 @@ const api = {
     ipcRenderer.invoke("remix:paste-text", text),
   setRemixRouteKeys: (open: boolean): void =>
     ipcRenderer.send("remix:set-route-keys", open),
-  openRemixWorkspace: (): void => ipcRenderer.send("remix:open-workspace"),
+  openRemixWorkspace: (threadId: string): void =>
+    ipcRenderer.send("remix:open-workspace", threadId),
   pasteText: (text: string, appContext?: string | null): Promise<void> =>
     ipcRenderer.invoke("paste:text", text, appContext ?? null),
   copyText: (text: string, appContext?: string | null): Promise<void> =>

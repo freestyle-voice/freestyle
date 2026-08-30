@@ -69,13 +69,26 @@ interface ThreadState {
   messages: UIMessage[];
 }
 
+export interface RemixQueuedInstruction {
+  id: number;
+  text: string;
+}
+
+export type RemixChatVoiceStatus = "listening" | "transcribing" | null;
+
 export interface RemixChatProps {
   context: RemixSelectionPayload;
   initialInstruction: string | null;
+  queuedInstructions: RemixQueuedInstruction[];
+  voiceStatus: RemixChatVoiceStatus;
+  voiceTranscript: string | null;
+  voiceNotice: string | null;
   minimized: boolean;
   onMiniHeightChange?: (height: number) => void;
   anchor: RemixChatAnchor;
   onOpenWorkspace: (threadId: string) => void;
+  onInstructionConsumed: (instructionId: number) => void;
+  onVoiceNoticeDismiss: () => void;
   onMinimize: () => void;
   onClose: () => void;
 }
@@ -106,9 +119,15 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
       thread={thread}
       context={props.context}
       initialInstruction={initialInstruction}
+      queuedInstructions={props.queuedInstructions}
+      voiceStatus={props.voiceStatus}
+      voiceTranscript={props.voiceTranscript}
+      voiceNotice={props.voiceNotice}
       minimized={props.minimized}
       anchor={props.anchor}
       onOpenWorkspace={props.onOpenWorkspace}
+      onInstructionConsumed={props.onInstructionConsumed}
+      onVoiceNoticeDismiss={props.onVoiceNoticeDismiss}
       onMinimize={props.onMinimize}
       onClose={props.onClose}
       onNewThread={startNewThread}
@@ -121,9 +140,15 @@ interface RemixThreadProps {
   thread: ThreadState;
   context: RemixSelectionPayload;
   initialInstruction: string | null;
+  queuedInstructions: RemixQueuedInstruction[];
+  voiceStatus: RemixChatVoiceStatus;
+  voiceTranscript: string | null;
+  voiceNotice: string | null;
   minimized: boolean;
   anchor: RemixChatAnchor;
   onOpenWorkspace: (threadId: string) => void;
+  onInstructionConsumed: (instructionId: number) => void;
+  onVoiceNoticeDismiss: () => void;
   onMinimize: () => void;
   onClose: () => void;
   onNewThread: () => void;
@@ -320,6 +345,31 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     });
 
   const busy = status === "submitted" || status === "streaming";
+  const dispatchInFlightRef = useRef(false);
+  const sawBusySinceDispatchRef = useRef(false);
+  const dispatchInstruction = useCallback(
+    (text: string, source: "dictated" | "typed") => {
+      dispatchInFlightRef.current = true;
+      setNotice(null);
+      props.onVoiceNoticeDismiss();
+      clearError();
+      lastInstructionRef.current = text;
+      void sendMessage({ text });
+      capture("remix_message_sent", { source });
+    },
+    [clearError, props.onVoiceNoticeDismiss, sendMessage],
+  );
+
+  useEffect(() => {
+    if (busy) {
+      sawBusySinceDispatchRef.current = true;
+      return;
+    }
+    if (sawBusySinceDispatchRef.current) {
+      dispatchInFlightRef.current = false;
+      sawBusySinceDispatchRef.current = false;
+    }
+  }, [busy]);
 
   const narrating = useMemo(
     () =>
@@ -362,10 +412,21 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     const instruction = props.initialInstruction?.trim();
     if (!instruction) return;
     sentInitialRef.current = true;
-    lastInstructionRef.current = instruction;
-    void sendMessage({ text: instruction });
-    capture("remix_message_sent", { source: "dictated" });
-  }, [props.initialInstruction, sendMessage]);
+    dispatchInstruction(instruction, "dictated");
+  }, [dispatchInstruction, props.initialInstruction]);
+
+  useEffect(() => {
+    if (busy || dispatchInFlightRef.current) return;
+    const instruction = props.queuedInstructions[0];
+    if (!instruction?.text.trim()) return;
+    props.onInstructionConsumed(instruction.id);
+    dispatchInstruction(instruction.text.trim(), "dictated");
+  }, [
+    busy,
+    dispatchInstruction,
+    props.onInstructionConsumed,
+    props.queuedInstructions,
+  ]);
 
   // Seed from restored thread so reloaded history never recounts tools.
   const seenToolCallsRef = useRef<Set<string> | null>(null);
@@ -462,8 +523,21 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     }
     return null;
   }, [messages, busy]);
+  const voiceLabel =
+    props.voiceStatus === "listening"
+      ? props.voiceTranscript?.trim()
+        ? `Listening: ${props.voiceTranscript.trim()}`
+        : "Listening…"
+      : props.voiceStatus === "transcribing"
+        ? "Transcribing…"
+        : null;
+  const displayNotice = notice ?? props.voiceNotice;
   const showFullFinal =
-    minimized && settled && notice === null && finalText !== null;
+    minimized &&
+    settled &&
+    displayNotice === null &&
+    props.voiceStatus === null &&
+    finalText !== null;
   const miniStripHeight = showFullFinal
     ? Math.min(
         Math.max(
@@ -493,10 +567,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   }, [minimized, showFullFinal, finalText]);
 
   useEffect(() => {
-    if (!minimized || !settled || pointerOverChat) return;
+    if (!minimized || !settled || pointerOverChat || props.voiceStatus) return;
     const timer = setTimeout(onClose, MINI_SETTLED_DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [minimized, settled, onClose, pointerOverChat]);
+  }, [minimized, settled, onClose, pointerOverChat, props.voiceStatus]);
 
   const refreshContext = useCallback(async () => {
     try {
@@ -522,22 +596,18 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
   const sendText = useCallback(
     (text: string) => {
-      setNotice(null);
-      clearError();
-      lastInstructionRef.current = text;
-      void sendMessage({ text });
+      dispatchInstruction(text, "typed");
     },
-    [clearError, sendMessage],
+    [dispatchInstruction],
   );
 
   const submit = useCallback(() => {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || dispatchInFlightRef.current) return;
     setInput("");
     const el = inputRef.current;
     if (el) el.style.height = "auto";
     void sendText(text);
-    capture("remix_message_sent", { source: "typed" });
   }, [busy, input, sendText]);
 
   const presetRunningRef = useRef(false);
@@ -640,11 +710,16 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               <span className="remix-mini-identity">
                 <span
                   className="remix-mini-dot"
-                  data-busy={busy || !settled}
-                  data-failed={notice !== null}
+                  data-busy={busy || !settled || voiceLabel !== null}
+                  data-failed={displayNotice !== null}
                 />
                 <span>Remix</span>
               </span>
+              {voiceLabel ? (
+                <span className="remix-mini-progress" aria-hidden="true">
+                  {voiceLabel}
+                </span>
+              ) : null}
               <button
                 type="button"
                 className="remix-mini-open"
@@ -724,6 +799,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             </span>
           </div>
 
+          {voiceLabel ? (
+            <div className="remix-chat-voice-status" aria-hidden="true">
+              <span aria-hidden="true" />
+              {voiceLabel}
+            </div>
+          ) : null}
+
           <MessageScroller
             className="remix-chat-scroll"
             viewportRef={scrollRef}
@@ -761,9 +843,9 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             )}
           </MessageScroller>
 
-          {notice && (
+          {displayNotice && (
             <div className="remix-chat-notice" role="alert">
-              {notice}
+              {displayNotice}
             </div>
           )}
 
@@ -1171,6 +1253,17 @@ const REMIX_CHAT_CSS = `
     letter-spacing: 0.13em;
     text-transform: uppercase;
   }
+  .remix-mini-progress {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    color: ${INK_FAINT};
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.01em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .remix-mini-open {
     flex-shrink: 0;
     border: 0;
@@ -1242,6 +1335,23 @@ const REMIX_CHAT_CSS = `
     font-size: 20px;
     line-height: 1;
     color: ${INK};
+  }
+  .remix-chat-voice-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin: -1px 18px 8px;
+    color: ${INK_DIM};
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .remix-chat-voice-status > span {
+    width: 6px;
+    height: 6px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: ${OLIVE};
+    animation: remix-mini-pulse 1.1s ease-in-out infinite;
   }
   .remix-chat-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
   .remix-chat-icon {

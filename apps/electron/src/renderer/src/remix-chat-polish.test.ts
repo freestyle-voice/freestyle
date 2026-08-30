@@ -58,7 +58,7 @@ describe("Remix chat polish", () => {
     expect(chat).toContain('.remix-mini[data-full="true"] .remix-mini-head');
     expect(chat).toContain(".remix-mini-message {");
     expect(chat).toContain(
-      "max-height: ${MINI_STRIP_MAX - MINI_STRIP_HEADER_HEIGHT}px;",
+      `max-height: \${MINI_STRIP_MAX - MINI_STRIP_HEADER_HEIGHT}px;`,
     );
     expect(chat).not.toContain("remix-mini-action");
   });
@@ -70,7 +70,24 @@ describe("Remix chat polish", () => {
     );
 
     expect(chat).toContain("const [pointerOverChat, setPointerOverChat]");
-    expect(chat).toContain("if (!minimized || !settled || pointerOverChat)");
+    expect(chat).toContain(
+      "if (!minimized || !settled || pointerOverChat || props.voiceStatus)",
+    );
     expect(chat).toContain("onMouseLeave={handleMouseLeave}");
+  });
+
+  it("keeps a spoken hotkey request in the open pill conversation", async () => {
+    const [chat, pill] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),
+    ]);
+
+    expect(pill).toContain("isRemixChatPhase(remixRef.current?.phase)");
+    expect(pill).toContain('phase: "chat-capturing"');
+    expect(pill).toContain("chatInstructions:");
+    expect(pill).toContain("if (remixRef.current && !chatWasOpen)");
+    expect(chat).toContain("queuedInstructions");
+    expect(chat).toContain("onInstructionConsumed");
+    expect(chat).toContain("voiceStatus");
   });
 });

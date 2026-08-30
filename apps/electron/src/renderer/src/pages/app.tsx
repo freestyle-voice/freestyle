@@ -426,7 +426,49 @@ interface QueueEntry {
  * both — the card is up and the mic is running — and the key going up decides
  * which of the two the user meant.
  */
-type RemixPhase = "capturing" | "listening" | "running" | "chat" | "error";
+type RemixPhase =
+  | "capturing"
+  | "listening"
+  | "running"
+  | "chat"
+  | "chat-capturing"
+  | "chat-listening"
+  | "chat-transcribing"
+  | "error";
+
+type RemixVoiceStatus = "listening" | "transcribing";
+
+interface RemixChatInstruction {
+  id: number;
+  text: string;
+}
+
+function isRemixChatPhase(phase: RemixPhase | undefined): boolean {
+  return (
+    phase === "chat" ||
+    phase === "chat-capturing" ||
+    phase === "chat-listening" ||
+    phase === "chat-transcribing"
+  );
+}
+
+function isRemixCapturePhase(phase: RemixPhase | undefined): boolean {
+  return (
+    phase === "capturing" ||
+    phase === "listening" ||
+    phase === "chat-capturing" ||
+    phase === "chat-listening"
+  );
+}
+
+function remixVoiceStatus(
+  phase: RemixPhase | undefined,
+): RemixVoiceStatus | null {
+  if (phase === "chat-capturing" || phase === "chat-listening")
+    return "listening";
+  if (phase === "chat-transcribing") return "transcribing";
+  return null;
+}
 
 interface RemixSession {
   id: number;
@@ -440,6 +482,10 @@ interface RemixSession {
   body?: string;
   /** A spoken or typed instruction the chat card sends on open. */
   initialInstruction?: string | null;
+  /** Spoken follow-ups captured while this conversation is already open. */
+  chatInstructions?: RemixChatInstruction[];
+  /** A capture failure shown without replacing the open conversation. */
+  chatNotice?: string | null;
   /**
    * The chat collapsed to its one-line activity strip. Voice runs start here
    * — the user asked for something to happen, not for a chat window — and
@@ -512,6 +558,7 @@ export default function AppPage(): React.JSX.Element {
   }, []);
   const remixDownAtRef = useRef(0);
   const remixSeqRef = useRef(0);
+  const remixChatInstructionSeqRef = useRef(0);
   const remixMicGenRef = useRef<number | null>(null);
   /** Resolved by the `remix:selection` IPC, awaited by whatever runs. */
   const remixSelectionRef = useRef<Deferred<string | null> | null>(null);
@@ -1978,6 +2025,21 @@ export default function AppPage(): React.JSX.Element {
       patchRemix({ minimized: true });
     }
   }, [patchRemix]);
+  const consumeRemixChatInstruction = useCallback(
+    (instructionId: number) => {
+      const session = remixRef.current;
+      if (!session?.chatInstructions?.length) return;
+      patchRemix({
+        chatInstructions: session.chatInstructions.filter(
+          (instruction) => instruction.id !== instructionId,
+        ),
+      });
+    },
+    [patchRemix],
+  );
+  const clearRemixChatNotice = useCallback(() => {
+    if (remixRef.current?.chatNotice) patchRemix({ chatNotice: null });
+  }, [patchRemix]);
 
   /**
    * Show a failure and leave the card up. Unlike the phases above this one
@@ -1997,6 +2059,15 @@ export default function AppPage(): React.JSX.Element {
       remixStreamerRef.current?.cancel();
       window.api?.setRemixRouteKeys?.(false);
       stopVisualization();
+      if (isRemixChatPhase(remixRef.current?.phase)) {
+        patchRemix({
+          phase: "chat",
+          transcript: undefined,
+          label: undefined,
+          chatNotice: `${title}. ${body}`,
+        });
+        return;
+      }
       setRemix({
         id: remixRef.current?.id ?? ++remixSeqRef.current,
         phase: "error",
@@ -2005,7 +2076,7 @@ export default function AppPage(): React.JSX.Element {
         body,
       });
     },
-    [clearRemixHoldTimer, setRemix, stopVisualization],
+    [clearRemixHoldTimer, patchRemix, setRemix, stopVisualization],
   );
 
   /**
@@ -2156,6 +2227,8 @@ export default function AppPage(): React.JSX.Element {
    */
   const openRemixChat = useCallback(
     (instruction: string | null, options: { minimized?: boolean } = {}) => {
+      const session = remixRef.current;
+      if (!session) return;
       clearRemixHoldTimer();
       remixRunningRef.current = false;
       if (remixMicGenRef.current !== null) {
@@ -2165,6 +2238,32 @@ export default function AppPage(): React.JSX.Element {
       }
       stopVisualization();
       window.api?.setRemixRouteKeys?.(false);
+
+      // A follow-up hotkey belongs to the conversation already on screen. It
+      // must not remount the chat (which would discard its messages) or reuse
+      // initialInstruction (which is intentionally consumed exactly once).
+      if (isRemixChatPhase(session.phase)) {
+        const nextInstruction = instruction?.trim();
+        patchRemix({
+          phase: "chat",
+          transcript: undefined,
+          label: undefined,
+          chatNotice: null,
+          ...(nextInstruction
+            ? {
+                chatInstructions: [
+                  ...(session.chatInstructions ?? []),
+                  {
+                    id: ++remixChatInstructionSeqRef.current,
+                    text: nextInstruction,
+                  },
+                ],
+              }
+            : {}),
+        });
+        return;
+      }
+
       patchRemix({
         phase: "chat",
         initialInstruction: instruction,
@@ -2191,7 +2290,10 @@ export default function AppPage(): React.JSX.Element {
     if (!session) return;
     const micGen = remixMicGenRef.current;
     const durationMs = Math.round(performance.now() - remixDownAtRef.current);
-    patchRemix({ phase: "running", label: "Transcribing…" });
+    patchRemix({
+      phase: isRemixChatPhase(session.phase) ? "chat-transcribing" : "running",
+      label: "Transcribing…",
+    });
     startBarAnimation("speaking");
     // The dictation stop cue, at the same moment: the held instruction has
     // been committed. Remix never ducks system audio, so no restore first.
@@ -2277,17 +2379,29 @@ export default function AppPage(): React.JSX.Element {
       window.api?.setRemixRouteKeys?.(false);
       return;
     }
+    const chatWasOpen = isRemixChatPhase(remixRef.current?.phase);
     // A second press while an error card is up means "try again", so tear the
-    // old session down first rather than merging into it.
-    if (remixRef.current) endRemix({ hide: false });
+    // old session down first rather than merging into it. An open chat is the
+    // exception: its hotkey follow-up belongs to that same thread.
+    if (remixRef.current && !chatWasOpen) endRemix({ hide: false });
 
     remixDownAtRef.current = performance.now();
     remixSelectionRef.current = deferred<string | null>();
-    setRemix({
-      id: ++remixSeqRef.current,
-      phase: "capturing",
-      selection: null,
-    });
+    if (chatWasOpen) {
+      patchRemix({
+        phase: "chat-capturing",
+        selection: null,
+        transcript: undefined,
+        label: undefined,
+        chatNotice: null,
+      });
+    } else {
+      setRemix({
+        id: ++remixSeqRef.current,
+        phase: "capturing",
+        selection: null,
+      });
+    }
 
     // Once the press has outlived the tap threshold it can only be a hold, so
     // the card commits to that reading rather than waiting for the release —
@@ -2295,8 +2409,11 @@ export default function AppPage(): React.JSX.Element {
     clearRemixHoldTimer();
     remixHoldTimerRef.current = setTimeout(() => {
       remixHoldTimerRef.current = null;
-      if (remixRef.current?.phase === "capturing") {
-        patchRemix({ phase: "listening" });
+      const phase = remixRef.current?.phase;
+      if (phase === "capturing" || phase === "chat-capturing") {
+        patchRemix({
+          phase: phase === "chat-capturing" ? "chat-listening" : "listening",
+        });
         // The same audio cue dictation gives on recording start — played at
         // the hold threshold so a tap (which opens the chat) stays silent.
         void playTone("start");
@@ -2323,7 +2440,7 @@ export default function AppPage(): React.JSX.Element {
           if (remixMicGenRef.current === micGen) remixMicGenRef.current = null;
           return;
         }
-        if (session.phase === "capturing" || session.phase === "listening") {
+        if (isRemixCapturePhase(session.phase)) {
           startListening(stream);
           void getRemixStreamer().startCapture(stream);
         }
@@ -2349,18 +2466,22 @@ export default function AppPage(): React.JSX.Element {
     clearRemixHoldTimer();
     const session = remixRef.current;
     if (!session) return;
-    if (session.phase !== "capturing" && session.phase !== "listening") return;
+    if (!isRemixCapturePhase(session.phase)) return;
 
     const heldMs = performance.now() - remixDownAtRef.current;
     if (heldMs < REMIX_HOLD_THRESHOLD_MS) {
       // A tap. Throw the fragment away and leave a compact status affordance;
       // opening the full workspace is always an explicit click.
       remixStreamerRef.current?.cancel();
+      if (isRemixChatPhase(session.phase)) {
+        patchRemix({ phase: "chat", transcript: undefined });
+        return;
+      }
       openRemixChat(null, { minimized: true });
       return;
     }
     void runSpokenRemix();
-  }, [clearRemixHoldTimer, openRemixChat, runSpokenRemix]);
+  }, [clearRemixHoldTimer, openRemixChat, patchRemix, runSpokenRemix]);
 
   // ---- Preferences ----
   const applyPillPosition = useCallback((pos: string | null | undefined) => {
@@ -2586,7 +2707,7 @@ export default function AppPage(): React.JSX.Element {
         !preset ||
         !phase ||
         phase === "running" ||
-        phase === "chat" ||
+        isRemixChatPhase(phase) ||
         phase === "error"
       ) {
         return;
@@ -2696,7 +2817,7 @@ export default function AppPage(): React.JSX.Element {
   // A remix replaces the capsule outright: its own card carries the waveform,
   // so there is nothing left for the capsule to say while one is up.
   const showRemixCard = remix !== null;
-  const showRemixChat = remix?.phase === "chat";
+  const showRemixChat = isRemixChatPhase(remix?.phase);
   const remixChatMini = showRemixChat && remix?.minimized === true;
   const showCard = showErrorCard || showRemixCard;
   const active = state !== "idle" || showRemixCard;
@@ -2812,8 +2933,12 @@ export default function AppPage(): React.JSX.Element {
         ? `Applying ${remix.label ?? "remix"}`
         : remix.phase === "listening" || remix.phase === "capturing"
           ? "Listening for a remix"
-          : remix?.phase === "chat"
-            ? "Remix chat"
+          : isRemixChatPhase(remix?.phase)
+            ? remixVoiceStatus(remix?.phase) === "transcribing"
+              ? "Transcribing for Remix"
+              : remixVoiceStatus(remix?.phase) === "listening"
+                ? "Listening for Remix"
+                : "Remix chat"
             : "Remix";
 
   const accessibleStatus = remixStatus
@@ -3015,7 +3140,7 @@ export default function AppPage(): React.JSX.Element {
   }, [remix, remixView]);
   const remixOpen = showRemixCard && roomReady;
 
-  const viewIsChat = remixView?.phase === "chat";
+  const viewIsChat = isRemixChatPhase(remixView?.phase);
 
   // The dictation card and the chat are separate surface layers, each
   // latching the last content it showed: a phase flip animates the old
@@ -3023,7 +3148,7 @@ export default function AppPage(): React.JSX.Element {
   // instant restyle of one box.
   const [cardView, setCardView] = useState<RemixSession | null>(null);
   const liveCardView =
-    remixView && remixView.phase !== "chat" ? remixView : null;
+    remixView && !isRemixChatPhase(remixView.phase) ? remixView : null;
   if (liveCardView && liveCardView !== cardView) setCardView(liveCardView);
   useEffect(() => {
     if (liveCardView || !cardView) return;
@@ -3032,7 +3157,7 @@ export default function AppPage(): React.JSX.Element {
   }, [liveCardView, cardView]);
 
   const [chatView, setChatView] = useState<RemixSession | null>(null);
-  const liveChatView = remixView?.phase === "chat" ? remixView : null;
+  const liveChatView = isRemixChatPhase(remixView?.phase) ? remixView : null;
   if (liveChatView && liveChatView !== chatView) setChatView(liveChatView);
   useEffect(() => {
     if (liveChatView || !chatView) return;
@@ -3956,12 +4081,18 @@ export default function AppPage(): React.JSX.Element {
                       }
                     }
                     initialInstruction={chatView.initialInstruction ?? null}
+                    queuedInstructions={chatView.chatInstructions ?? []}
+                    voiceStatus={remixVoiceStatus(chatView.phase)}
+                    voiceTranscript={chatView.transcript ?? null}
+                    voiceNotice={chatView.chatNotice ?? null}
                     minimized={chatMiniVisual}
                     anchor={{
                       v: pillAlign === "start" ? "top" : "bottom",
                       h: pillSide === "right" ? "right" : "center",
                     }}
                     onOpenWorkspace={openRemixWorkspace}
+                    onInstructionConsumed={consumeRemixChatInstruction}
+                    onVoiceNoticeDismiss={clearRemixChatNotice}
                     onMinimize={minimizeRemixChat}
                     onClose={closeRemix}
                     onMiniHeightChange={setRemixMiniHeight}

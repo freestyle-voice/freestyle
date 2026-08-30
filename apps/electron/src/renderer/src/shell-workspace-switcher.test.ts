@@ -49,6 +49,11 @@ describe("workspace switcher", () => {
     const styles = await readFile(shellStylesPath, "utf8");
 
     expect(styles).toContain("padding: 10px 20px 8px;");
+    expect(styles).toContain(
+      '.remix-workspace-switcher:is(:hover, [data-state="open"])',
+    );
+    expect(styles).toContain("background: var(--secondary);");
+    expect(styles).toContain("box-shadow: inset 0 0 0 1px var(--border);");
   });
 
   it("gives the Remix session list a deliberate, compact reading rhythm", async () => {

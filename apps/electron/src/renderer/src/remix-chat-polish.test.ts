@@ -45,4 +45,15 @@ describe("Remix chat polish", () => {
     expect(pill).toContain("window.api.openRemixWorkspace(threadId)");
     expect(pill).not.toContain("onPillHotEnter");
   });
+
+  it("keeps a settled compact response open while it is being inspected", async () => {
+    const chat = await readFile(
+      resolve(rendererRoot, "components/remix-chat.tsx"),
+      "utf8",
+    );
+
+    expect(chat).toContain("const [pointerOverChat, setPointerOverChat]");
+    expect(chat).toContain("if (!minimized || !settled || pointerOverChat)");
+    expect(chat).toContain("onMouseLeave={handleMouseLeave}");
+  });
 });

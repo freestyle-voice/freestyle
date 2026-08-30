@@ -147,6 +147,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [actions, setActions] = useState<ActionRow[]>([]);
+  const [pointerOverChat, setPointerOverChat] = useState(false);
   const actionSeqRef = useRef(0);
 
   const contextRef = useRef<RemixSelectionPayload>(props.context);
@@ -401,8 +402,12 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   }, []);
   useEffect(() => clearMinimizeTimer, [clearMinimizeTimer]);
   const handleMouseEnter = useCallback(() => {
+    setPointerOverChat(true);
     clearMinimizeTimer();
   }, [clearMinimizeTimer]);
+  const handleMouseLeave = useCallback(() => {
+    setPointerOverChat(false);
+  }, []);
   useEffect(() => {
     if (minimized) return;
     const handleOver = (): void => {
@@ -488,10 +493,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   }, [minimized, showFullFinal, finalText]);
 
   useEffect(() => {
-    if (!minimized || !settled) return;
+    if (!minimized || !settled || pointerOverChat) return;
     const timer = setTimeout(onClose, MINI_SETTLED_DISMISS_MS);
     return () => clearTimeout(timer);
-  }, [minimized, settled, onClose]);
+  }, [minimized, settled, onClose, pointerOverChat]);
 
   const refreshContext = useCallback(async () => {
     try {
@@ -616,7 +621,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       className="remix-chat dark"
       data-minimized={minimized}
       data-testid={minimized ? "remix-chat-mini" : "remix-chat"}
-      onMouseEnter={minimized ? undefined : handleMouseEnter}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       <style>{REMIX_CHAT_CSS}</style>
       {/* domMax for layout projection; strict requires m.* not motion.* */}

@@ -626,7 +626,6 @@
   "models": {
     "title": "Models",
     "subtitle": "Configure transcription and assistant models in one place.",
-    "settingsGeneral": "Settings · General",
     "loading": "Loading models…",
     "apiKeys": "API keys",
     "apiKeysHint": "Keys are only requested when the model you choose needs one.",

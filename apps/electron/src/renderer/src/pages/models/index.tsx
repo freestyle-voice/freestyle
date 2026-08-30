@@ -454,13 +454,8 @@ function ModelsSettingsHeader({
   title: string;
   subtitle: string;
 }): React.JSX.Element {
-  const { t } = useTranslation();
-
   return (
     <header className="border-border mb-6 border-b pb-5 sm:mb-7 sm:pb-6">
-      <p className="text-muted-foreground mono mb-2 text-[10px] font-semibold tracking-[0.16em] uppercase">
-        {t("models.settingsGeneral")}
-      </p>
       <h1 className="serif text-foreground m-0 text-[30px] font-normal leading-none tracking-[-0.025em] sm:text-[36px]">
         {title}
       </h1>

@@ -46,6 +46,7 @@ describe("workspace switcher", () => {
   });
 
   it("keeps the workspace selector close to the native titlebar controls", async () => {
+    const shell = await readFile(shellPath, "utf8");
     const styles = await readFile(shellStylesPath, "utf8");
 
     expect(styles).toContain("padding: 10px 20px 8px;");
@@ -54,6 +55,10 @@ describe("workspace switcher", () => {
     );
     expect(styles).toContain("background: var(--secondary);");
     expect(styles).toContain("box-shadow: inset 0 0 0 1px var(--border);");
+    expect(shell).toContain('className="remix-dev-badge"');
+    expect(shell).toContain('title="Development build"');
+    expect(styles).toContain(".remix-dev-badge");
+    expect(styles).toContain("height: 18px;");
   });
 
   it("gives the Remix session list a deliberate, compact reading rhythm", async () => {

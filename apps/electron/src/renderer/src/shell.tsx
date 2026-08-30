@@ -739,12 +739,9 @@ export default function AppShell(): React.JSX.Element {
                 onWorkspaceChange={changeWorkspace}
               />
               {import.meta.env.DEV && (
-                <Badge
-                  variant="outline"
-                  className="mono h-5 border-yellow-500/30 bg-yellow-500/15 px-1.5 text-[9px] text-yellow-700 uppercase tracking-[0.12em] dark:text-yellow-300"
-                >
-                  dev
-                </Badge>
+                <span className="remix-dev-badge" title="Development build">
+                  DEV
+                </span>
               )}
               {isRemixSidebar && !authLoading && user ? (
                 <button

@@ -52,6 +52,24 @@
   color: var(--primary);
 }
 
+/* A quiet environment marker that reads as part of the titlebar, not a button. */
+.remix-dev-badge {
+  display: inline-flex;
+  height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--primary) 58%, var(--border));
+  border-radius: 999px;
+  padding: 0 6px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: var(--primary);
+  font-family: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+}
+
 .remix-session-search-trigger {
   display: grid;
   width: 30px;

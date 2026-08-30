@@ -734,6 +734,11 @@ function showPill(): void {
   createPillWindow();
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
+  // A previous Remix card can still be handing its room back when another
+  // hotkey arrives. Always return to the collapsed slot before calculating a
+  // new position; otherwise the expanded window's origin is mistaken for the
+  // pill's origin and the next surface visibly drifts.
+  setPillExpanded(false);
   const { x, y } = pillPositionForDisplay(
     screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),
   );
@@ -3231,7 +3236,7 @@ let activeDictationDisplay: Display | null = null;
  * Cursor is only an immediate fallback; the accessibility lookup corrects it
  * for keyboard-first, multi-display users without involving the optional pet.
  */
-function anchorPillForDictation(): void {
+function anchorPillForHotkey(): void {
   const request = dictationDisplayRequests.begin();
   const cursorDisplay = screen.getDisplayNearestPoint(
     screen.getCursorScreenPoint(),
@@ -4077,7 +4082,7 @@ function sendHotkeyDown(): void {
     return;
   }
   showPill();
-  anchorPillForDictation();
+  anchorPillForHotkey();
   relayServerEvent({ type: FreestyleEventType.RecordingStarted });
   for (const win of dictationTargets()) {
     win.webContents.send("hotkey:down");
@@ -4207,7 +4212,7 @@ function handleRemixHotkeyDown(): void {
   armRemixStuckWatchdog();
   remixSelectionRequested = false;
   showPill();
-  anchorPillForDictation();
+  anchorPillForHotkey();
   const win = mainWindow;
   if (win && !win.isDestroyed()) win.webContents.send("remix:down");
 

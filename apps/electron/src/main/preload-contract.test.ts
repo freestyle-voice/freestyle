@@ -110,6 +110,21 @@ describe("preload contract", () => {
     expect(pill).toContain("window.api.onRemixUp(finishRemixPress)");
   });
 
+  it("resets stale expanded bounds before placing either hotkey pill", async () => {
+    const main = await readFile(mainPath, "utf8");
+    const showPill = main.slice(
+      main.indexOf("function showPill(): void {"),
+      main.indexOf("function openPanelSettings(): void {"),
+    );
+
+    expect(showPill.indexOf("setPillExpanded(false);")).toBeGreaterThan(-1);
+    expect(showPill.indexOf("setPillExpanded(false);")).toBeLessThan(
+      showPill.indexOf("pillPositionForDisplay("),
+    );
+    expect(main).toContain("function anchorPillForHotkey(): void {");
+    expect(main).not.toContain("function anchorPillForDictation(): void {");
+  });
+
   it("registers every preload invoke channel in the main process", async () => {
     const [preload, mainSources] = await Promise.all([
       readFile(preloadPath, "utf8"),

@@ -33,6 +33,7 @@ import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
 import pricing from "./pricing.js";
+import remixRoute from "./remix.js";
 import scheduledRoute from "./scheduled.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
@@ -109,6 +110,7 @@ const apiRouter = new Hono()
   // route which would otherwise treat the literal "list" and "latest" as ids.
   .route("/agent/thread", agentThreadsRoute)
   .route("/agent", agentRoute)
+  .route("/remix", remixRoute)
   .route("/agent-os", agentOsRoute)
   .route("/brain", brainRoute)
   .route("/notifications", notificationsRoute)

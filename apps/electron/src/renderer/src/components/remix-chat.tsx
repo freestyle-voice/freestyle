@@ -6,7 +6,7 @@ import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
 import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
 import { MessageScroller } from "@renderer/components/agents/message-scroller";
 import { capture } from "@renderer/lib/analytics";
-import { apiFetch } from "@renderer/lib/api";
+import { apiFetch, initApiBase } from "@renderer/lib/api";
 import {
   DefaultChatTransport,
   type DynamicToolUIPart,
@@ -65,8 +65,7 @@ function anchoredLayerStyle(
 }
 
 interface ThreadState {
-  threadId: number;
-  resumed: boolean;
+  id: string;
   messages: UIMessage[];
 }
 
@@ -82,45 +81,14 @@ export interface RemixChatProps {
 }
 
 export function RemixChat(props: RemixChatProps): React.JSX.Element {
-  const [thread, setThread] = useState<ThreadState | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [thread, setThread] = useState<ThreadState>(() => ({
+    id: crypto.randomUUID(),
+    messages: [],
+  }));
   // State (not props) so "New" can clear it without a remount re-sending.
   const [initialInstruction, setInitialInstruction] = useState(
     props.initialInstruction,
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch("/api/remix/thread")
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`thread fetch ${res.status}`);
-        const data = (await res.json()) as ThreadState & {
-          threadId: number | null;
-        };
-        if (data.threadId !== null) {
-          if (!cancelled) setThread(data as ThreadState);
-          return;
-        }
-        const created = await apiFetch("/api/remix/thread/new", {
-          method: "POST",
-        });
-        if (!created.ok) throw new Error(`thread new ${created.status}`);
-        const fresh = (await created.json()) as ThreadState;
-        if (!cancelled) setThread(fresh);
-      })
-      .catch(() => {
-        if (!cancelled) setLoadFailed(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!loadFailed || !props.minimized) return;
-    const timer = setTimeout(props.onClose, MINI_IDLE_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [loadFailed, props.minimized, props.onClose]);
 
   useEffect(() => {
     if (props.initialInstruction) {
@@ -130,52 +98,11 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
 
   const startNewThread = useCallback(() => {
     setInitialInstruction(null);
-    setThread(null);
-    setLoadFailed(false);
-    apiFetch("/api/remix/thread/new", { method: "POST" })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`thread new ${res.status}`);
-        setThread((await res.json()) as ThreadState);
-      })
-      .catch(() => setLoadFailed(true));
+    setThread({ id: crypto.randomUUID(), messages: [] });
   }, []);
-
-  if (loadFailed) {
-    if (props.minimized) {
-      return (
-        <MiniStrip
-          text="Remix couldn't open"
-          onOpenWorkspace={props.onOpenWorkspace}
-        />
-      );
-    }
-    return (
-      <div style={{ padding: 14, fontSize: 12.5, color: INK_DIM }}>
-        <style>{REMIX_CHAT_CSS}</style>
-        Couldn't open Remix. Is the Freestyle server running?
-      </div>
-    );
-  }
-  if (!thread) {
-    if (props.minimized) {
-      return (
-        <MiniStrip
-          text="Opening Remix…"
-          busy
-          onOpenWorkspace={props.onOpenWorkspace}
-        />
-      );
-    }
-    return (
-      <div style={{ padding: 14, fontSize: 12.5, color: INK_FAINT }}>
-        <style>{REMIX_CHAT_CSS}</style>
-        Opening Remix…
-      </div>
-    );
-  }
   return (
     <RemixThread
-      key={thread.threadId}
+      key={thread.id}
       thread={thread}
       context={props.context}
       initialInstruction={initialInstruction}
@@ -187,34 +114,6 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
       onNewThread={startNewThread}
       onMiniHeightChange={props.onMiniHeightChange}
     />
-  );
-}
-
-function MiniStrip(props: {
-  text: string;
-  busy?: boolean;
-  failed?: boolean;
-  onOpenWorkspace: () => void;
-}): React.JSX.Element {
-  return (
-    <button
-      type="button"
-      className="remix-chat dark"
-      data-testid="remix-chat-mini"
-      onClick={props.onOpenWorkspace}
-      aria-label="Open Remix workspace"
-    >
-      <style>{REMIX_CHAT_CSS}</style>
-      <div className="remix-mini" role="status" aria-live="polite">
-        <span
-          className="remix-mini-dot"
-          data-busy={props.busy === true}
-          data-failed={props.failed === true}
-        />
-        <span className="remix-mini-text">{props.text}</span>
-        <span className="remix-mini-action">Open</span>
-      </div>
-    </button>
   );
 }
 
@@ -239,7 +138,6 @@ interface ActionRow {
 }
 
 const MINIMIZE_GRACE_MS = 380;
-const MINI_IDLE_DISMISS_MS = 7000;
 const MINI_SETTLED_DISMISS_MS = 3000;
 const MINI_STRIP_PAD = 24; // .remix-mini[data-full] vertical padding
 const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
@@ -266,10 +164,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const transport = useMemo(
     () =>
       new DefaultChatTransport<UIMessage>({
-        api: "/api/remix/agent",
+        api: "/api/remix",
 
         fetch: (async (_input: unknown, init?: RequestInit) => {
-          const res = await apiFetch("/api/remix/agent", init ?? {});
+          // The pill is often the first renderer to contact the server after
+          // launch. Resolve the configured target before its first agent turn.
+          await initApiBase();
+          const res = await apiFetch("/api/remix", init ?? {});
           if (res.status === 401) {
             void window.api?.cloudPromptSignIn?.();
             throw new Error("Sign in to Freestyle Cloud to use Remix.");
@@ -393,7 +294,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   );
   const { messages, sendMessage, addToolResult, status, stop, clearError } =
     useChat<UIMessage>({
-      id: `remix-thread-${thread.threadId}`,
+      id: thread.id,
       messages: thread.messages,
       transport,
       sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
@@ -413,16 +314,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       },
       onError: (err) => {
         setNotice(err.message || "Remix failed.");
-      },
-      onFinish: ({ messages: finished }) => {
-        void apiFetch("/api/remix/thread/sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            threadId: thread.threadId,
-            messages: finished,
-          }),
-        }).catch(() => {});
       },
     });
 

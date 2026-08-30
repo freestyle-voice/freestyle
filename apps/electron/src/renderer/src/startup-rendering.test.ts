@@ -46,4 +46,33 @@ describe("dashboard startup rendering", () => {
     expect(upgrade).toContain("useCheckoutState");
     expect(upgrade).toContain('open || checkoutStatus === "pending"');
   });
+
+  it("lets the notification token request establish availability", async () => {
+    const [notification, courierSession] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/notification.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "lib/courier-session.ts"), "utf8"),
+    ]);
+
+    expect(notification).not.toContain("initApiBase();");
+    expect(courierSession).toContain("await resolveApiBase();");
+    expect(courierSession).not.toContain("await initApiBase();");
+  });
+
+  it("shares main-process readiness while startup consumers wait for the server", async () => {
+    const main = await readFile(
+      resolve(rendererRoot, "../../main/index.ts"),
+      "utf8",
+    );
+
+    expect(main).toContain(
+      "let serverReadyPromise: Promise<boolean> | null = null;",
+    );
+    expect(main).toContain(
+      "if (!getServerUrl()) serverReadyPromise = Promise.resolve(true);",
+    );
+    expect(main.match(/waitForServerReady\(\)/g)).toHaveLength(2);
+    expect(main).not.toContain(
+      "for (let attempt = 0; attempt < 20; attempt++)",
+    );
+  });
 });

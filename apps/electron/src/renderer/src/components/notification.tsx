@@ -2,7 +2,7 @@ import "../overlay.css";
 import "../tavern.css";
 
 import { capture } from "@renderer/lib/analytics";
-import { initApiBase, refreshApiBase } from "@renderer/lib/api";
+import { refreshApiBase } from "@renderer/lib/api";
 import type { CourierNotificationItem } from "@renderer/lib/courier-notifications";
 import {
   CourierNotificationsProvider,
@@ -138,7 +138,6 @@ function NotificationStack(): React.JSX.Element | null {
   );
 }
 
-initApiBase();
 installGlobalErrorHandlers();
 
 function NotificationRoot(): React.JSX.Element {

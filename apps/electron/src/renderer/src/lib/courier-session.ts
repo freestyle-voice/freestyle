@@ -1,4 +1,4 @@
-import { getClient, initApiBase } from "./api";
+import { getClient, resolveApiBase } from "./api";
 
 export const COURIER_TOKEN_REFRESH_MS = 50 * 60 * 1000;
 export const SIGNED_OUT_RETRY_MS = 5_000;
@@ -16,7 +16,10 @@ export type CourierSessionResult =
 
 export async function loadCourierSession(): Promise<CourierSessionResult> {
   try {
-    await initApiBase();
+    // The token request is the real availability and authentication check.
+    // Resolving the target is enough here; an extra health preflight only
+    // duplicates startup traffic from this hidden renderer.
+    await resolveApiBase();
     const response = await getClient().api.notifications.token.$post();
     if (response.status === 401) return { status: "signed-out" };
     if (!response.ok) return { status: "unavailable" };

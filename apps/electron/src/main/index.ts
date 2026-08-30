@@ -1257,6 +1257,11 @@ async function probeServerHealth(
   }
 }
 
+// Hotkey configuration and the signed-out fallback both need the same answer
+// during startup. Keep one result for this boot rather than sending a separate
+// health request for every consumer.
+let serverReadyPromise: Promise<boolean> | null = null;
+
 /**
  * Resolve once the current server target answers `/api/health`, or after
  * `timeoutMs`. Used at boot before the first settings read, since the local
@@ -1265,12 +1270,17 @@ async function probeServerHealth(
 async function waitForServerReady(
   timeoutMs = SERVER_READY_TIMEOUT_MS,
 ): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await probeServerHealth(getServerBaseUrl(), 1000)) return true;
-    await wait(150);
+  if (!serverReadyPromise) {
+    serverReadyPromise = (async () => {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        if (await probeServerHealth(getServerBaseUrl(), 1000)) return true;
+        await wait(150);
+      }
+      return false;
+    })();
   }
-  return false;
+  return serverReadyPromise;
 }
 
 // Dev-only: reset every sector tone to off and cleanup intensity to medium.
@@ -2122,6 +2132,10 @@ app.whenReady().then(async () => {
 
   if (existingServer) {
     serverPort = DEFAULT_PORT;
+    // The collision probe already confirmed this exact target is ready, so
+    // startup consumers can reuse that answer instead of probing it again.
+    // A configured remote server is a different target and must still verify.
+    if (!getServerUrl()) serverReadyPromise = Promise.resolve(true);
     log.warn(
       `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
     );
@@ -2169,21 +2183,22 @@ app.whenReady().then(async () => {
   // A signed-out launch still surfaces the panel when the signed-in preference
   // says not to open it. This keeps first-run/sign-out behavior intact without
   // holding a normal startup behind the server health/auth round-trip.
-  void (async () => {
-    for (let attempt = 0; attempt < 20; attempt++) {
-      if (await probeServerHealth(getServerBaseUrl(), 1000)) break;
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    const user = await serverClient()
-      .api.auth.status.$get()
-      .then(async (res) => (res.ok ? ((await res.json()).user ?? null) : null))
-      .catch(() => null);
-    // A signed-out launch always needs the sign-in gate. Signed-in users can
-    // opt out of the restored desktop workspace opening automatically.
-    // The auth probe can outlive an E2E shutdown or a fast user quit. Do not
-    // touch Electron's display APIs once teardown has started.
-    if (!isQuitting && !user && !shouldOpenDashboard) openPanel();
-  })();
+  if (!shouldOpenDashboard) {
+    void (async () => {
+      await waitForServerReady();
+      const user = await serverClient()
+        .api.auth.status.$get()
+        .then(async (res) =>
+          res.ok ? ((await res.json()).user ?? null) : null,
+        )
+        .catch(() => null);
+      // A signed-out launch always needs the sign-in gate. Signed-in users can
+      // opt out of the restored desktop workspace opening automatically.
+      // The auth probe can outlive an E2E shutdown or a fast user quit. Do not
+      // touch Electron's display APIs once teardown has started.
+      if (!isQuitting && !user) openPanel();
+    })();
+  }
 
   createTray();
 

@@ -119,7 +119,7 @@ describe("preload contract", () => {
 
     expect(showPill.indexOf("setPillExpanded(false);")).toBeGreaterThan(-1);
     expect(showPill.indexOf("setPillExpanded(false);")).toBeLessThan(
-      showPill.indexOf("pillPositionForDisplay("),
+      showPill.indexOf("movePillToDisplaySlot("),
     );
     expect(main).toContain("function anchorPillForHotkey(): void {");
     expect(main).not.toContain("function anchorPillForDictation(): void {");

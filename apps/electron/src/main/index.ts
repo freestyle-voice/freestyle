@@ -142,6 +142,7 @@ import {
   missingDictationPermission,
   resolveAccessibilityPermission,
 } from "./permission-checks";
+import { windowPositionForPillSlot } from "./pill-position";
 import {
   FreestyleEventType,
   OutputMode,
@@ -590,9 +591,12 @@ function setPillExpanded(
     // Offset is from the collapsed slot; rebase before applying (may already be expanded).
     const slotX = x + previousOffset.dx;
     const slotY = y + previousOffset.dy;
+    const position = windowPositionForPillSlot(
+      { x: slotX, y: slotY },
+      pillExpandOffset,
+    );
     target = {
-      x: slotX - pillExpandOffset.dx,
-      y: slotY - pillExpandOffset.dy,
+      ...position,
       width,
       height,
     };
@@ -641,6 +645,15 @@ function pillPositionForDisplay(display: Display): { x: number; y: number } {
   if (position === "top-right") return { x: rightX, y: y + 12 };
   if (position === "bottom-right") return { x: rightX, y: bottomY };
   return { x: centerX, y: bottomY };
+}
+
+/** Move the current window to a collapsed-pill slot, preserving expansion. */
+function movePillToDisplaySlot(display: Display): void {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const slot = pillPositionForDisplay(display);
+  const position = windowPositionForPillSlot(slot, pillExpandOffset);
+  win.setPosition(position.x, position.y);
 }
 
 function createPillWindow(): void {
@@ -715,8 +728,7 @@ function registerPillPositionIpc(): void {
       // capsule slot, not the larger transient card bounds.
       setPillExpanded(false);
       const display = screen.getDisplayMatching(win.getBounds());
-      const target = pillPositionForDisplay(display);
-      win.setPosition(target.x, target.y);
+      movePillToDisplaySlot(display);
     }
 
     const broadcast =
@@ -739,10 +751,9 @@ function showPill(): void {
   // new position; otherwise the expanded window's origin is mistaken for the
   // pill's origin and the next surface visibly drifts.
   setPillExpanded(false);
-  const { x, y } = pillPositionForDisplay(
+  movePillToDisplaySlot(
     screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),
   );
-  win.setPosition(x, y);
   win.showInactive();
 }
 /** Open the panel with the Settings view showing — the successor to every
@@ -3246,8 +3257,7 @@ function anchorPillForHotkey(): void {
     activeDictationDisplay = display;
     const win = mainWindow;
     if (!win || win.isDestroyed()) return;
-    const { x, y } = pillPositionForDisplay(display);
-    win.setPosition(x, y);
+    movePillToDisplaySlot(display);
   };
   movePill(cursorDisplay);
 

@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
-import { Eyebrow, PageHeader, PageShell } from "./page-chrome";
+import { Eyebrow, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
 import {
   FREESTYLE_CLOUD_CLEANUP,
@@ -304,121 +304,170 @@ export default function ModelsPage(): React.JSX.Element {
   if (m.loading) {
     return (
       <PageShell>
-        <PageHeader title={t("models.title")} subtitle={t("models.subtitle")} />
-        <ModelsLoadingSkeleton />
+        <ModelsSettingsFrame>
+          <ModelsSettingsHeader
+            title={t("models.title")}
+            subtitle={t("models.subtitle")}
+          />
+          <ModelsLoadingSkeleton />
+        </ModelsSettingsFrame>
       </PageShell>
     );
   }
 
   return (
     <PageShell>
-      <PageHeader title={t("models.title")} subtitle={t("models.subtitle")} />
-      <div className="space-y-6">
-        <PairCard
-          voice={m.defaultVoice}
-          llm={m.defaultLlm}
-          llmCleanup={m.llmCleanup}
-          cleanupLocked={freestyleVoiceActive}
-          onToggleCleanup={onToggleCleanup}
-          onChangeVoice={openVoice}
-          onChangeLlm={openLlm}
-          onConfigureWarming={
-            showMlxWarming ? () => setWarmingOpen(true) : undefined
-          }
+      <ModelsSettingsFrame>
+        <ModelsSettingsHeader
+          title={t("models.title")}
+          subtitle={t("models.subtitle")}
         />
+        <div className="space-y-5">
+          <PairCard
+            voice={m.defaultVoice}
+            llm={m.defaultLlm}
+            llmCleanup={m.llmCleanup}
+            cleanupLocked={freestyleVoiceActive}
+            onToggleCleanup={onToggleCleanup}
+            onChangeVoice={openVoice}
+            onChangeLlm={openLlm}
+            onConfigureWarming={
+              showMlxWarming ? () => setWarmingOpen(true) : undefined
+            }
+          />
 
-        <KeysSection
-          apiKeys={m.apiKeys}
-          configured={m.configured}
-          deletingProviders={m.deletingProviders}
-          onEdit={(provider) =>
-            setModal({
-              kind: "key",
-              type: null,
-              provider,
-              pendingModel: null,
-            })
-          }
-          onDelete={setPendingProviderDelete}
-        />
-      </div>
+          <KeysSection
+            apiKeys={m.apiKeys}
+            configured={m.configured}
+            deletingProviders={m.deletingProviders}
+            onEdit={(provider) =>
+              setModal({
+                kind: "key",
+                type: null,
+                provider,
+                pendingModel: null,
+              })
+            }
+            onDelete={setPendingProviderDelete}
+          />
+        </div>
 
-      {warmingOpen && (
-        <MlxWarmingDialog
-          keepAliveMinutes={m.mlxKeepAliveMinutes}
-          blockedReason={m.mlxStatus?.blockedReason ?? null}
-          onChange={m.saveMlxKeepAliveMinutes}
-          onClose={() => setWarmingOpen(false)}
-        />
-      )}
+        {warmingOpen && (
+          <MlxWarmingDialog
+            keepAliveMinutes={m.mlxKeepAliveMinutes}
+            blockedReason={m.mlxStatus?.blockedReason ?? null}
+            onChange={m.saveMlxKeepAliveMinutes}
+            onClose={() => setWarmingOpen(false)}
+          />
+        )}
 
-      {modal && (
-        <ModelModal
-          modal={modal}
-          m={m}
-          saving={saving}
-          keyError={keyError}
-          cloudBusy={cloudBusy}
-          onClose={closeModal}
-          onPickCloud={onPickCloud}
-          onPickLocalVoice={onPickLocalVoice}
-          onRequestDeleteLocal={onRequestDeleteLocal}
-          onBack={onBack}
-          onSaveKey={onSaveKey}
-        />
-      )}
+        {modal && (
+          <ModelModal
+            modal={modal}
+            m={m}
+            saving={saving}
+            keyError={keyError}
+            cloudBusy={cloudBusy}
+            onClose={closeModal}
+            onPickCloud={onPickCloud}
+            onPickLocalVoice={onPickLocalVoice}
+            onRequestDeleteLocal={onRequestDeleteLocal}
+            onBack={onBack}
+            onSaveKey={onSaveKey}
+          />
+        )}
 
-      {pendingLocalDelete && (
-        <ConfirmDialog
-          title={t("models.deleteLocalTitle")}
-          message={
-            <Trans
-              i18nKey="models.deleteLocalMsg"
-              values={{
-                name: pendingLocalDelete.name,
-                phrase: ON_DEVICE_PHRASE,
-              }}
-              components={{
-                b: <span className="text-foreground/80 font-medium" />,
-              }}
-            />
-          }
-          onCancel={() => setPendingLocalDelete(null)}
-          onConfirm={() => {
-            const { defId, engine } = pendingLocalDelete;
-            setPendingLocalDelete(null);
-            void m.deleteLocal(defId, engine);
-          }}
-        />
-      )}
-
-      {pendingProviderDelete && (
-        <ConfirmDialog
-          title={t("models.deleteProviderTitle")}
-          message={
-            <>
+        {pendingLocalDelete && (
+          <ConfirmDialog
+            title={t("models.deleteLocalTitle")}
+            message={
               <Trans
-                i18nKey="models.deleteProviderMsgBase"
-                values={{ provider: displayName(pendingProviderDelete) }}
+                i18nKey="models.deleteLocalMsg"
+                values={{
+                  name: pendingLocalDelete.name,
+                  phrase: ON_DEVICE_PHRASE,
+                }}
                 components={{
                   b: <span className="text-foreground/80 font-medium" />,
                 }}
               />
-              {(m.defaultVoice?.provider === pendingProviderDelete ||
-                m.defaultLlm?.provider === pendingProviderDelete) &&
-                t("models.deleteProviderCurrentSuffix")}
-              .
-            </>
-          }
-          onCancel={() => setPendingProviderDelete(null)}
-          onConfirm={() => {
-            const provider = pendingProviderDelete;
-            setPendingProviderDelete(null);
-            void m.deleteProvider(provider);
-          }}
-        />
-      )}
+            }
+            onCancel={() => setPendingLocalDelete(null)}
+            onConfirm={() => {
+              const { defId, engine } = pendingLocalDelete;
+              setPendingLocalDelete(null);
+              void m.deleteLocal(defId, engine);
+            }}
+          />
+        )}
+
+        {pendingProviderDelete && (
+          <ConfirmDialog
+            title={t("models.deleteProviderTitle")}
+            message={
+              <>
+                <Trans
+                  i18nKey="models.deleteProviderMsgBase"
+                  values={{ provider: displayName(pendingProviderDelete) }}
+                  components={{
+                    b: <span className="text-foreground/80 font-medium" />,
+                  }}
+                />
+                {(m.defaultVoice?.provider === pendingProviderDelete ||
+                  m.defaultLlm?.provider === pendingProviderDelete) &&
+                  t("models.deleteProviderCurrentSuffix")}
+                .
+              </>
+            }
+            onCancel={() => setPendingProviderDelete(null)}
+            onConfirm={() => {
+              const provider = pendingProviderDelete;
+              setPendingProviderDelete(null);
+              void m.deleteProvider(provider);
+            }}
+          />
+        )}
+      </ModelsSettingsFrame>
     </PageShell>
+  );
+}
+
+function ModelsSettingsFrame({
+  children,
+}: {
+  children: React.ReactNode;
+}): React.JSX.Element {
+  return (
+    <div
+      className="mx-auto flex w-full max-w-5xl flex-col pb-8"
+      data-testid="models-settings-page"
+    >
+      {children}
+    </div>
+  );
+}
+
+function ModelsSettingsHeader({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle: string;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+
+  return (
+    <header className="border-border mb-6 border-b pb-5 sm:mb-7 sm:pb-6">
+      <p className="text-muted-foreground mono mb-2 text-[10px] font-semibold tracking-[0.16em] uppercase">
+        {t("models.settingsGeneral")}
+      </p>
+      <h1 className="serif text-foreground m-0 text-[30px] font-normal leading-none tracking-[-0.025em] sm:text-[36px]">
+        {title}
+      </h1>
+      <p className="text-muted-foreground mt-2 max-w-xl text-[13px] leading-[1.55]">
+        {subtitle}
+      </p>
+    </header>
   );
 }
 
@@ -431,7 +480,7 @@ function SkeletonLine({
     <div
       className={cn(
         "bg-muted/60 relative overflow-hidden rounded-full",
-        "before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.4s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent",
+        "before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.4s_infinite] before:bg-gradient-to-r before:from-transparent before:via-foreground/10 before:to-transparent",
         className,
       )}
     />
@@ -446,14 +495,14 @@ function ModelsLoadingSkeleton(): React.JSX.Element {
           100% { transform: translateX(100%); }
         }
       `}</style>
-      <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
+      <section className="border-border bg-card/55 grid grid-cols-1 overflow-hidden rounded-[12px] border min-[820px]:grid-cols-2">
         {["voice", "cleanup"].map((key) => (
           <div
             key={key}
             className={cn(
-              "flex min-h-[140px] flex-col gap-3",
+              "flex min-h-[132px] flex-col gap-3 p-4 sm:p-5",
               key === "cleanup" &&
-                "border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0",
+                "border-border border-t min-[820px]:border-l min-[820px]:border-t-0",
             )}
           >
             <SkeletonLine className="h-3 w-40" />
@@ -504,23 +553,25 @@ function KeysSection({
   deletingProviders: Set<string>;
   onEdit: (provider: string) => void;
   onDelete: (provider: string) => void;
-}): React.JSX.Element | null {
+}): React.JSX.Element {
   const { t } = useTranslation();
-  if (apiKeys.length === 0) {
-    return (
-      <p className="text-muted-foreground text-[13px]">
-        {t("models.noApiKeys")}
-      </p>
-    );
-  }
-
   return (
-    <section>
-      <div className="mb-3">
+    <section
+      className="border-border bg-card/55 overflow-hidden rounded-[12px] border"
+      data-testid="models-api-keys"
+    >
+      <div className="border-border border-b px-4 py-3.5 sm:px-5">
         <Eyebrow text={t("models.apiKeys")} />
+        <p className="text-muted-foreground mt-1 text-[12px] leading-[1.5]">
+          {t("models.apiKeysHint")}
+        </p>
       </div>
-      <div className="border-border bg-card overflow-hidden rounded-[12px] border">
-        {apiKeys.map((entry, i) => (
+      {apiKeys.length === 0 ? (
+        <p className="text-muted-foreground px-4 py-4 text-[13px] sm:px-5">
+          {t("models.noApiKeys")}
+        </p>
+      ) : (
+        apiKeys.map((entry, i) => (
           <KeyRow
             key={entry.provider}
             entry={entry}
@@ -532,8 +583,8 @@ function KeysSection({
             onEdit={() => onEdit(entry.provider)}
             onDelete={() => onDelete(entry.provider)}
           />
-        ))}
-      </div>
+        ))
+      )}
     </section>
   );
 }
@@ -558,7 +609,7 @@ function KeyRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 px-[18px] py-[13px]",
+        "flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3.5 sm:flex-nowrap sm:px-5",
         !first && "border-border border-t",
       )}
     >
@@ -585,7 +636,7 @@ function KeyRow({
           )}
         </div>
       </div>
-      <span className="text-muted-foreground text-[11.5px]">
+      <span className="text-muted-foreground order-3 w-full text-[11.5px] sm:order-none sm:w-auto">
         {count}{" "}
         {count === 1 ? t("models.modelSingular") : t("models.modelPlural")}
       </span>

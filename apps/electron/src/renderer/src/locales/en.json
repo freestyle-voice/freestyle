@@ -143,13 +143,13 @@
     },
     "sections": {
       "application": "Application",
-      "recording": "Transcription",
-      "display": "Display",
+      "recording": "Dictation",
+      "display": "Appearance",
       "permissions": "Permissions",
       "notifications": "Notifications",
       "connectedApps": "Connected apps",
       "data": "Data",
-      "billing": "Usage and Billing",
+      "billing": "Usage & billing",
       "network": "Network",
       "remix": "Remix"
     },
@@ -626,8 +626,10 @@
   "models": {
     "title": "Models",
     "subtitle": "Configure transcription and assistant models in one place.",
+    "settingsGeneral": "Settings · General",
     "loading": "Loading models…",
     "apiKeys": "API keys",
+    "apiKeysHint": "Keys are only requested when the model you choose needs one.",
     "noApiKeys": "No API keys yet — choose a cloud model above and you'll be prompted for a key.",
     "onDevice": "On-device",
     "keyInvalid": "Key invalid — update or delete",

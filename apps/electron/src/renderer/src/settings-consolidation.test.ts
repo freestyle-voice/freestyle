@@ -69,6 +69,16 @@ describe("settings consolidation", () => {
     expect(settingsNavigation).not.toContain('to: "/settings/dictionary"');
     expect(settingsNavigation).not.toContain('to: "/settings/tone"');
     expect(settingsNavigation).toContain('to: "/settings/models"');
+    const dictationGroup = settingsNavigation.slice(
+      settingsNavigation.indexOf('label: "Dictation"'),
+      settingsNavigation.indexOf('label: "Remix"'),
+    );
+    const generalGroup = settingsNavigation.slice(
+      settingsNavigation.indexOf('label: "General"'),
+      settingsNavigation.indexOf("function NavList"),
+    );
+    expect(dictationGroup).not.toContain('to: "/settings/models"');
+    expect(generalGroup).toContain('to: "/settings/models"');
     expect(settingsNavigation).not.toContain('to: "/plugins"');
     expect(shell).toContain('to: "/vocabulary"');
     expect(shell).toContain('to: "/dictionary"');

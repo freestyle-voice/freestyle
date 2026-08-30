@@ -38,7 +38,10 @@ export function PairCard({
   const cleanupOn = cleanupLocked || llmCleanup;
 
   return (
-    <section className="border-border bg-card grid grid-cols-1 gap-6 rounded-[14px] border p-6 min-[820px]:grid-cols-2">
+    <section
+      className="border-border bg-card/55 grid grid-cols-1 overflow-hidden rounded-[12px] border min-[820px]:grid-cols-2"
+      data-testid="models-configuration"
+    >
       <PairSide
         kicker={t("models.pair.transcriptionKicker")}
         modelName={voice?.model_name}
@@ -56,7 +59,7 @@ export function PairCard({
             : undefined
         }
       />
-      <div className="border-border border-t pt-6 min-[820px]:border-l min-[820px]:border-t-0 min-[820px]:pl-6 min-[820px]:pt-0">
+      <div className="border-border border-t min-[820px]:border-l min-[820px]:border-t-0">
         <PairSide
           kicker={
             cleanupLocked
@@ -121,7 +124,7 @@ function PairSide({
   return (
     <div
       className={cn(
-        "flex h-full flex-col gap-4 transition-opacity",
+        "flex h-full min-h-[152px] flex-col gap-3 p-4 transition-opacity sm:p-5",
         dimmed && "opacity-60",
       )}
     >
@@ -137,34 +140,16 @@ function PairSide({
       </div>
       <div>
         {modelName ? (
-          <div
-            className="serif text-foreground"
-            style={{
-              fontSize: 34,
-              lineHeight: 1.05,
-              letterSpacing: "-0.02em",
-              fontWeight: 400,
-            }}
-          >
+          <div className="text-foreground text-[19px] leading-[1.2] font-semibold tracking-[-0.015em]">
             {modelName}
           </div>
         ) : (
-          <div
-            className="serif-italic text-muted-foreground"
-            style={{ fontSize: 30, lineHeight: 1.1 }}
-          >
+          <div className="text-muted-foreground text-[15px] leading-[1.35]">
             {noneLabel}
           </div>
         )}
         {providerName && (
-          <div
-            className={cn(
-              "mt-1.5 text-[13px]",
-              providerIsIncluded
-                ? "text-muted-foreground"
-                : "text-muted-foreground",
-            )}
-          >
+          <div className="text-muted-foreground mt-1 text-[12.5px]">
             {providerIsIncluded ? (
               providerName
             ) : (
@@ -178,7 +163,7 @@ function PairSide({
           </div>
         )}
       </div>
-      <div className="mt-auto flex flex-col items-start gap-2.5 pt-1">
+      <div className="mt-auto flex flex-col items-start gap-2 pt-2">
         <Button
           variant="outline"
           size="sm"

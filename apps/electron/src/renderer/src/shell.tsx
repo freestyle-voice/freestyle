@@ -130,10 +130,7 @@ const SETTINGS_NAV_GROUPS: {
 }[] = [
   {
     label: "Dictation",
-    items: [
-      { to: "/settings/transcription", label: "Dictation", icon: Mic },
-      { to: "/settings/models", label: "Models", icon: Cpu },
-    ],
+    items: [{ to: "/settings/transcription", label: "Dictation", icon: Mic }],
   },
   {
     label: "Remix",
@@ -146,6 +143,7 @@ const SETTINGS_NAV_GROUPS: {
   {
     label: "General",
     items: [
+      { to: "/settings/models", label: "Models", icon: Cpu },
       { to: "/settings/appearance", label: "Appearance", icon: Paintbrush },
       { to: "/settings/application", label: "Application", icon: Settings },
       { to: "/settings/network", label: "Network", icon: Network },

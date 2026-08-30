@@ -2,7 +2,7 @@ import { Button } from "@renderer/components/ui/button";
 import { cn } from "@renderer/lib/utils";
 import { Check, ChevronRight, type LucideIcon, X } from "lucide-react";
 
-export const PICKER_MODAL_BODY = "space-y-5 px-6 py-6";
+export const PICKER_MODAL_BODY = "space-y-5 px-4 py-5 sm:px-6 sm:py-6";
 
 export function PickerModalHeader({
   icon: Icon,

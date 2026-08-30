@@ -24,4 +24,18 @@ describe("Models shared assistant role", () => {
       '"assistantKickerLocked": "AI assistant · included"',
     );
   });
+
+  it("uses the compact Settings frame instead of a standalone editorial page", async () => {
+    const [page, pairCard, modal] = await Promise.all([
+      readFile(resolve(modelsRoot, "index.tsx"), "utf8"),
+      readFile(resolve(modelsRoot, "pair-card.tsx"), "utf8"),
+      readFile(resolve(modelsRoot, "model-modal.tsx"), "utf8"),
+    ]);
+
+    expect(page).toContain('data-testid="models-settings-page"');
+    expect(page).toContain('data-testid="models-api-keys"');
+    expect(pairCard).toContain('data-testid="models-configuration"');
+    expect(pairCard).not.toContain("fontSize: 34");
+    expect(modal).toContain("max-h-[calc(100dvh-2rem)]");
+  });
 });

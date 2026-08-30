@@ -832,11 +832,11 @@ export default function SettingsPage(): React.JSX.Element {
       <DragSpacer />
       <div className="responsive-page-scroll min-h-0 flex-1 !pb-0">
         <div className="mx-auto flex w-full max-w-5xl min-h-0 flex-col">
-          <header className="border-border mb-7 border-b pb-6">
+          <header className="border-border mb-6 border-b pb-5 sm:mb-7 sm:pb-6">
             <p className="text-muted-foreground mono mb-2 text-[10px] font-semibold tracking-[0.16em] uppercase">
               {t("settings.title")}
             </p>
-            <h1 className="serif text-foreground m-0 text-[36px] font-normal leading-none tracking-[-0.025em]">
+            <h1 className="serif text-foreground m-0 text-[30px] font-normal leading-none tracking-[-0.025em] sm:text-[36px]">
               {activeSectionLabel}
             </h1>
           </header>

@@ -67,7 +67,7 @@ function Backdrop({
       <DialogContent
         aria-label={label}
         showCloseButton={false}
-        className="flex max-h-[80vh] w-full max-w-2xl flex-col overflow-hidden p-0 sm:max-w-2xl"
+        className="flex max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-2xl flex-col overflow-hidden p-0 sm:max-w-2xl"
       >
         <DialogTitle className="sr-only">{label}</DialogTitle>
         {children}

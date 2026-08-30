@@ -139,7 +139,7 @@ interface ActionRow {
 
 const MINIMIZE_GRACE_MS = 380;
 const MINI_SETTLED_DISMISS_MS = 3000;
-const MINI_STRIP_PAD = 24; // .remix-mini[data-full] vertical padding
+const MINI_STRIP_HEADER_HEIGHT = 44;
 const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
 
 function RemixThread(props: RemixThreadProps): React.JSX.Element {
@@ -489,7 +489,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     }
     const el = miniMessageRef.current;
     if (!el) return;
-    setMiniContentHeight(el.scrollHeight + MINI_STRIP_PAD);
+    setMiniContentHeight(el.scrollHeight + MINI_STRIP_HEADER_HEIGHT);
   }, [minimized, showFullFinal, finalText]);
 
   useEffect(() => {
@@ -635,33 +635,31 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           })}
           aria-hidden={!minimized}
         >
-          <button
-            type="button"
-            className="remix-mini remix-mini-trigger"
-            data-full={showFullFinal}
-            onClick={() => props.onOpenWorkspace(thread.id)}
-            aria-label="Open Remix workspace"
-          >
-            <span
-              className="remix-mini-dot"
-              data-busy={busy || !settled}
-              data-failed={notice !== null}
-            />
+          <div className="remix-mini" data-full={showFullFinal}>
+            <div className="remix-mini-head">
+              <span className="remix-mini-identity">
+                <span
+                  className="remix-mini-dot"
+                  data-busy={busy || !settled}
+                  data-failed={notice !== null}
+                />
+                <span>Remix</span>
+              </span>
+              <button
+                type="button"
+                className="remix-mini-open"
+                onClick={() => props.onOpenWorkspace(thread.id)}
+                aria-label="Open Remix workspace"
+              >
+                Open
+              </button>
+            </div>
             {showFullFinal ? (
               <div className="remix-mini-message" ref={miniMessageRef}>
                 <Markdown text={finalText ?? ""} />
               </div>
-            ) : busy || !settled ? (
-              <ThinkingShimmer className="remix-mini-line">
-                {notice ?? latestActivity(messages, true)}
-              </ThinkingShimmer>
-            ) : (
-              <span className="remix-mini-line remix-mini-text">
-                {notice ?? latestActivity(messages, false)}
-              </span>
-            )}
-            <span className="remix-mini-action">Open</span>
-          </button>
+            ) : null}
+          </div>
         </div>
 
         <div
@@ -893,31 +891,6 @@ const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
   web_search: { doing: "Searching the web…", done: "Searched the web" },
   image_search: { doing: "Searching images…", done: "Searched images" },
 };
-
-function latestActivity(messages: UIMessage[], busy: boolean): string {
-  for (let m = messages.length - 1; m >= 0; m--) {
-    const message = messages[m];
-    for (let i = message.parts.length - 1; i >= 0; i--) {
-      const part = message.parts[i];
-      if (isToolOrDynamicToolUIPart(part)) {
-        const name = getToolOrDynamicToolName(part);
-        const labels = TOOL_LABELS[name] ?? {
-          doing: `Running ${name}…`,
-          done: `Ran ${name}`,
-        };
-        const finished =
-          part.state === "output-available" || part.state === "output-error";
-        return finished && !busy ? labels.done : labels.doing;
-      }
-      if (isTextUIPart(part) && part.text.trim()) {
-        const line = part.text.trim().split("\n")[0] ?? "";
-        if (message.role === "user") return busy ? "Thinking…" : `“${line}”`;
-        return line;
-      }
-    }
-  }
-  return busy ? "Thinking…" : "Freestyle Remix";
-}
 
 const MessageRow = memo(function MessageRow({
   message,
@@ -1172,19 +1145,55 @@ const REMIX_CHAT_CSS = `
 
   .remix-mini {
     display: flex;
-    align-items: center;
-    gap: 9px;
+    flex-direction: column;
     height: 100%;
-    padding: 0 16px 0 13px;
   }
-  .remix-mini-trigger {
+  .remix-mini-head {
+    display: flex;
+    flex: 0 0 ${MINI_STRIP_HEADER_HEIGHT}px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
     width: 100%;
+    padding: 0 12px 0 13px;
+  }
+  .remix-mini[data-full="true"] .remix-mini-head {
+    border-bottom: 1px solid rgba(245, 241, 228, 0.10);
+  }
+  .remix-mini-identity {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: ${INK_DIM};
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+  .remix-mini-open {
+    flex-shrink: 0;
     border: 0;
-    background: transparent;
-    color: inherit;
+    border-radius: 5px;
+    padding: 5px 7px;
+    background: rgba(138, 182, 42, 0.12);
+    color: ${OLIVE};
     font: inherit;
-    text-align: left;
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 0.04em;
+    line-height: 1;
     cursor: pointer;
+    transition: background 140ms ease, color 140ms ease;
+  }
+  .remix-mini-open:hover,
+  .remix-mini-open:focus-visible {
+    background: rgba(138, 182, 42, 0.22);
+    color: ${INK};
+    outline: none;
+  }
+  .remix-mini-open:focus-visible {
+    box-shadow: 0 0 0 2px rgba(138, 182, 42, 0.6);
   }
   .remix-mini-dot {
     flex-shrink: 0;
@@ -1202,45 +1211,17 @@ const REMIX_CHAT_CSS = `
     0%, 100% { opacity: 0.35; transform: scale(0.8); }
     50% { opacity: 1; transform: scale(1); }
   }
-  .remix-mini[data-full="true"] {
-    align-items: flex-start;
-    height: 100%;
-    padding: 12px 16px;
-  }
-  .remix-mini[data-full="true"] .remix-mini-dot { margin-top: 5px; }
   .remix-mini-message {
     flex: 1;
-    min-width: 0;
-    max-height: ${MINI_STRIP_MAX - MINI_STRIP_PAD}px;
+    min-height: 0;
+    width: 100%;
+    max-height: ${MINI_STRIP_MAX - MINI_STRIP_HEADER_HEIGHT}px;
     overflow-y: auto;
+    padding: 10px 14px 14px;
+    color: ${INK_DIM};
     font-size: 12.5px;
     line-height: 1.5;
-    color: ${INK_DIM};
   }
-  /* No color here — TextShimmer paints via background-clip; color would hide it. */
-  .remix-mini-line {
-    flex: 1;
-    min-width: 0;
-    font-size: 12px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .remix-mini-text { color: ${INK_DIM}; }
-  .remix-mini-action {
-    margin-left: auto;
-    color: ${OLIVE};
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    opacity: 0;
-    transition: opacity 140ms ease;
-  }
-  .remix-mini-trigger:hover .remix-mini-action,
-  .remix-mini-trigger:focus-visible .remix-mini-action,
-  button.remix-chat:hover .remix-mini-action,
-  button.remix-chat:focus-visible .remix-mini-action { opacity: 1; }
-
   /* No -webkit-app-region:drag — it would swallow leave events for minimize. */
   .remix-chat-head {
     display: flex;

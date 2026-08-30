@@ -588,7 +588,7 @@ export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const { user } = useCloudAuth();
+  const { user, loading: authLoading } = useCloudAuth();
   const isRemixRoute = location.pathname === "/remix";
   const isSettingsRoute =
     location.pathname === "/settings" ||
@@ -668,6 +668,7 @@ export default function AppShell(): React.JSX.Element {
   const { data: plugins = [] } = useQuery({
     queryKey: queryKeys.plugins,
     queryFn: () => listPlugins(),
+    enabled: !authLoading && !!user,
   });
 
   const pluginNav = usePluginNavItems(plugins);
@@ -745,7 +746,7 @@ export default function AppShell(): React.JSX.Element {
                   dev
                 </Badge>
               )}
-              {isRemixSidebar ? (
+              {isRemixSidebar && !authLoading && user ? (
                 <button
                   type="button"
                   aria-label="Search sessions"
@@ -762,7 +763,7 @@ export default function AppShell(): React.JSX.Element {
               className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
-              {isRemixSidebar ? (
+              {isRemixSidebar && !authLoading && user ? (
                 <RemixSidebarSessions searchQuery="" />
               ) : (
                 <>
@@ -800,7 +801,7 @@ export default function AppShell(): React.JSX.Element {
         onWidthChange={setSidebarWidth}
       />
 
-      {isRemixSidebar ? (
+      {isRemixSidebar && !authLoading && user ? (
         <SessionSearchDialog
           open={isSessionSearchOpen}
           onOpenChange={handleSessionSearchOpenChange}

@@ -14,8 +14,10 @@ let _client: ReturnType<typeof hc<AppType>> | null = null;
 let _clientBase = "";
 let _clientToken = "";
 let initialized = false;
-// The in-flight init, shared so concurrent callers (e.g. the module-load
-// prefetch and the auth provider) don't each run a redundant refreshApiBase().
+let apiBaseResolved = false;
+let apiBaseResolution: Promise<void> | null = null;
+// The in-flight health probe, shared so concurrent callers do not each run a
+// redundant server check during the same startup tick.
 let initPromise: Promise<void> | null = null;
 
 /** Base URL of the locally-run server (used when no server URL is configured). */
@@ -51,20 +53,60 @@ export function apiFetch(
   path: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const headers = new Headers(init.headers);
-  // Additive — never clobber a header the caller set explicitly.
-  for (const [key, value] of Object.entries(bearerAuthHeaders(serverToken))) {
-    if (!headers.has(key)) headers.set(key, value);
+  return resolveApiBase().then(() => {
+    const headers = new Headers(init.headers);
+    // Additive — never clobber a header the caller set explicitly.
+    for (const [key, value] of Object.entries(bearerAuthHeaders(serverToken))) {
+      if (!headers.has(key)) headers.set(key, value);
+    }
+    return fetch(`${getApiBase()}${path}`, { ...init, headers });
+  });
+}
+
+async function readApiBaseConfiguration(): Promise<void> {
+  try {
+    // Main returns an already-validated, normalized value.
+    serverUrl = await window.api.getServerUrl();
+  } catch {
+    serverUrl = "";
   }
-  return fetch(`${getApiBase()}${path}`, { ...init, headers });
+  try {
+    serverToken = await window.api.getServerToken();
+  } catch {
+    serverToken = "";
+  }
+  if (!serverUrl) {
+    try {
+      resolvedPort = await window.api.getServerPort();
+    } catch {
+      resolvedPort = DEFAULT_PORT;
+    }
+  }
+}
+
+/**
+ * Resolve the configured server target without waiting on its health probe.
+ * Startup callers need the correct base URL/token before they issue a request,
+ * but the request itself can establish server availability in parallel.
+ */
+export async function resolveApiBase(): Promise<void> {
+  if (apiBaseResolved) return;
+  if (!apiBaseResolution) {
+    apiBaseResolution = readApiBaseConfiguration().finally(() => {
+      apiBaseResolved = true;
+      apiBaseResolution = null;
+    });
+  }
+  await apiBaseResolution;
 }
 
 export async function initApiBase(): Promise<void> {
   if (initialized) return;
-  // Dedupe concurrent first-callers onto a single refreshApiBase() so startup
-  // doesn't fire the server-URL/token/health probe twice in the same tick.
+  // Dedupe concurrent first-callers onto a single health probe so startup does
+  // not fire duplicate checks in the same tick.
   if (!initPromise) {
-    initPromise = refreshApiBase()
+    initPromise = resolveApiBase()
+      .then(() => checkServerHealth(getApiBase(), HEALTH_TIMEOUT_MS))
       .then((healthy) => {
         initialized = healthy;
       })
@@ -120,24 +162,8 @@ export async function checkServerAuth(
 
 /** Re-read the server location/token and verify it's reachable. */
 export async function refreshApiBase(): Promise<boolean> {
-  try {
-    // Main returns an already-validated, normalized value.
-    serverUrl = await window.api.getServerUrl();
-  } catch {
-    serverUrl = "";
-  }
-  try {
-    serverToken = await window.api.getServerToken();
-  } catch {
-    serverToken = "";
-  }
-  if (!serverUrl) {
-    try {
-      resolvedPort = await window.api.getServerPort();
-    } catch {
-      resolvedPort = DEFAULT_PORT;
-    }
-  }
+  await readApiBaseConfiguration();
+  apiBaseResolved = true;
   return checkServerHealth(getApiBase(), HEALTH_TIMEOUT_MS);
 }
 

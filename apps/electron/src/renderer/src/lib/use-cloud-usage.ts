@@ -70,6 +70,15 @@ function updateCheckout(next: Partial<CheckoutStore>): void {
   for (const listener of checkoutListeners) listener();
 }
 
+/**
+ * Subscribe to checkout progress without starting a usage query. The global
+ * upgrade host uses this to keep checkout polling alive after its dialog is
+ * dismissed, without fetching pricing or usage during application startup.
+ */
+export function useCheckoutState(): CheckoutStore {
+  return useSyncExternalStore(subscribeCheckout, getCheckoutStore);
+}
+
 export interface UseCloudUsageResult {
   /** Latest fetched balance, or null when not signed in / fetch failed. */
   balance: CloudUsageBalance | null;
@@ -113,10 +122,7 @@ export function usagePercent(balance: CloudUsageBalance): number {
 }
 
 export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
-  const { status: checkoutStatus, error: checkoutError } = useSyncExternalStore(
-    subscribeCheckout,
-    getCheckoutStore,
-  );
+  const { status: checkoutStatus, error: checkoutError } = useCheckoutState();
   const [portalOpening, setPortalOpening] = useState(false);
   const queryClient = useQueryClient();
 

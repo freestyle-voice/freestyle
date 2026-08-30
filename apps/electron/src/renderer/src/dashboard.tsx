@@ -9,14 +9,9 @@ import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { UpgradeModalProvider } from "@renderer/components/upgrade-modal";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import i18n, { initI18n } from "@renderer/i18n";
-import { initApiBase } from "@renderer/lib/api";
+import { resolveApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider } from "@renderer/lib/auth-context";
-import { listPlugins } from "@renderer/lib/plugins-api";
-import {
-  createQueryClient,
-  queryKeys,
-  settingsQueryOptions,
-} from "@renderer/lib/query";
+import { createQueryClient, settingsQueryOptions } from "@renderer/lib/query";
 import {
   installGlobalErrorHandlers,
   reportError,
@@ -97,6 +92,15 @@ function PagePad(): React.JSX.Element {
   );
 }
 
+/** Keep the shared shell visible while auth protects the route content. */
+function ProtectedOutlet(): React.JSX.Element {
+  return (
+    <LoginGate>
+      <Outlet />
+    </LoginGate>
+  );
+}
+
 /**
  * Resolve the startup route from the same local preference as the sidebar.
  * This keeps a restored Dictate sidebar and its right-hand page in lockstep
@@ -115,18 +119,11 @@ function DashboardHomeRedirect(): React.JSX.Element {
 // the renderer ships no analytics SDK.
 installGlobalErrorHandlers();
 
-// Resolve the server base, then warm the auth-independent content queries. The
-// content subtree (AppShell + pages) only mounts once auth resolves, so its
-// queries would otherwise wait for GET /api/auth/status before even starting —
-// serializing the whole panel behind auth. Prefetching here races the auth
-// check, so settings + plugins are cached or in-flight by the time the subtree
-// mounts. Failures are swallowed — the real useQuery hooks retry on mount.
-void initApiBase().then(() => {
+// Resolve the target first, then warm the local settings snapshot. A health
+// probe is useful for diagnostics but must not delay the visible desktop shell
+// or this background fetch.
+void resolveApiBase().then(() => {
   void queryClient.prefetchQuery(settingsQueryOptions());
-  void queryClient.prefetchQuery({
-    queryKey: queryKeys.plugins,
-    queryFn: () => listPlugins(),
-  });
 });
 
 // Opt into the translucent "glass" surfaces only on macOS, where the window is
@@ -167,100 +164,102 @@ function mount(): void {
                               element={<Navigate to="/today" replace />}
                             />
 
-                            <Route
-                              element={
-                                <LoginGate>
-                                  <AppShell />
-                                </LoginGate>
-                              }
-                            >
-                              <Route path="/today" element={<HistoryPage />} />
-                              <Route element={<PagePad />}>
-                                <Route path="/remix" element={<RemixPage />} />
+                            <Route element={<AppShell />}>
+                              <Route element={<ProtectedOutlet />}>
                                 <Route
-                                  path="/settings"
-                                  element={
-                                    <Navigate
-                                      to="/settings/transcription"
-                                      replace
-                                    />
-                                  }
+                                  path="/today"
+                                  element={<HistoryPage />}
                                 />
-                                <Route
-                                  path="/settings/:section"
-                                  element={<SettingsPage />}
-                                />
-                                <Route
-                                  path="/settings/general"
-                                  element={
-                                    <Navigate
-                                      to="/settings/application"
-                                      replace
-                                    />
-                                  }
-                                />
-                                <Route
-                                  path="/models"
-                                  element={
-                                    <Navigate to="/settings/models" replace />
-                                  }
-                                />
-                                <Route
-                                  path="/dictionary"
-                                  element={<DictionaryPage />}
-                                />
-                                <Route
-                                  path="/vocabulary"
-                                  element={<VocabularyPage />}
-                                />
-                                <Route
-                                  path="/settings/formats"
-                                  element={<Navigate to="/tone" replace />}
-                                />
-                                <Route path="/tone" element={<TonePage />} />
-                                <Route
-                                  path="/settings/models"
-                                  element={<ModelsPage />}
-                                />
-                                <Route
-                                  path="/settings/dictionary"
-                                  element={
-                                    <Navigate to="/dictionary" replace />
-                                  }
-                                />
-                                <Route
-                                  path="/settings/vocabulary"
-                                  element={
-                                    <Navigate to="/vocabulary" replace />
-                                  }
-                                />
-                                <Route
-                                  path="/settings/tone"
-                                  element={<Navigate to="/tone" replace />}
-                                />
-                                <Route
-                                  path="/settings/history"
-                                  element={
-                                    <Navigate to="/settings/data" replace />
-                                  }
-                                />
-                                <Route path="/help" element={<HelpPage />} />
-                                <Route
-                                  path="/profile"
-                                  element={<ProfilePage />}
-                                />
-                                <Route
-                                  path="/plugins"
-                                  element={<PluginsPage />}
-                                />
-                                <Route
-                                  path="/plugins/:slug"
-                                  element={<PluginDetailPage />}
-                                />
-                                <Route
-                                  path="/plugins/:slug/:pageId"
-                                  element={<PluginPage />}
-                                />
+                                <Route element={<PagePad />}>
+                                  <Route
+                                    path="/remix"
+                                    element={<RemixPage />}
+                                  />
+                                  <Route
+                                    path="/settings"
+                                    element={
+                                      <Navigate
+                                        to="/settings/transcription"
+                                        replace
+                                      />
+                                    }
+                                  />
+                                  <Route
+                                    path="/settings/:section"
+                                    element={<SettingsPage />}
+                                  />
+                                  <Route
+                                    path="/settings/general"
+                                    element={
+                                      <Navigate
+                                        to="/settings/application"
+                                        replace
+                                      />
+                                    }
+                                  />
+                                  <Route
+                                    path="/models"
+                                    element={
+                                      <Navigate to="/settings/models" replace />
+                                    }
+                                  />
+                                  <Route
+                                    path="/dictionary"
+                                    element={<DictionaryPage />}
+                                  />
+                                  <Route
+                                    path="/vocabulary"
+                                    element={<VocabularyPage />}
+                                  />
+                                  <Route
+                                    path="/settings/formats"
+                                    element={<Navigate to="/tone" replace />}
+                                  />
+                                  <Route path="/tone" element={<TonePage />} />
+                                  <Route
+                                    path="/settings/models"
+                                    element={<ModelsPage />}
+                                  />
+                                  <Route
+                                    path="/settings/dictionary"
+                                    element={
+                                      <Navigate to="/dictionary" replace />
+                                    }
+                                  />
+                                  <Route
+                                    path="/settings/vocabulary"
+                                    element={
+                                      <Navigate to="/vocabulary" replace />
+                                    }
+                                  />
+                                  <Route
+                                    path="/settings/tone"
+                                    element={<Navigate to="/tone" replace />}
+                                  />
+                                  <Route
+                                    path="/settings/history"
+                                    element={
+                                      <Navigate to="/settings/data" replace />
+                                    }
+                                  />
+                                  <Route path="/help" element={<HelpPage />} />
+                                  <Route
+                                    path="/profile"
+                                    element={<ProfilePage />}
+                                  />
+                                  <Route
+                                    path="/plugins"
+                                    element={<PluginsPage />}
+                                  />
+                                  <Route
+                                    path="/plugins/:slug"
+                                    element={<PluginDetailPage />}
+                                  />
+                                  <Route
+                                    path="/plugins/:slug/:pageId"
+                                    element={<PluginPage />}
+                                  />
+                                </Route>
                               </Route>
                             </Route>
 

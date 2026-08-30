@@ -1,5 +1,5 @@
 import { type InfiniteData, QueryClient } from "@tanstack/react-query";
-import { getClient } from "./api";
+import { getClient, resolveApiBase } from "./api";
 import { listNoteSummaries } from "./brain-views";
 import {
   type ConnectorCatalogPage,
@@ -140,6 +140,7 @@ export function settingsQueryOptions() {
   return {
     queryKey: queryKeys.settings,
     queryFn: async (): Promise<Record<string, string>> => {
+      await resolveApiBase();
       const res = await getClient().api.settings.$get();
       if (!res.ok) throw new Error("Failed to load settings");
       return (await res.json()) as Record<string, string>;

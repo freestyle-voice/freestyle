@@ -11,6 +11,7 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
   type BillingPeriod,
   type CheckoutStatus,
+  useCheckoutState,
   useCloudUsage,
 } from "@renderer/lib/use-cloud-usage";
 import { usePricing } from "@renderer/lib/use-pricing";
@@ -60,6 +61,7 @@ export function UpgradeModalProvider({
 }): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const { status: checkoutStatus } = useCheckoutState();
 
   useEffect(() => {
     if (!searchParams.has("upgrade")) return;
@@ -75,7 +77,9 @@ export function UpgradeModalProvider({
   return (
     <UpgradeModalContext.Provider value={value}>
       {children}
-      <UpgradeModal open={open} onOpenChange={setOpen} />
+      {open || checkoutStatus === "pending" ? (
+        <UpgradeModal open={open} onOpenChange={setOpen} />
+      ) : null}
     </UpgradeModalContext.Provider>
   );
 }

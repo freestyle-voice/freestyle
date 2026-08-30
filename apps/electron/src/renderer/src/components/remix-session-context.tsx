@@ -1,3 +1,4 @@
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
   invalidateThreads,
   latestThreadQueryOptions,
@@ -49,7 +50,11 @@ export function RemixSessionProvider({
   const [thread, setThread] = useState<ThreadState | null>(null);
   const [localTitles, setLocalTitles] = useState<Record<string, string>>({});
   const queryClient = useQueryClient();
-  const latestQuery = useQuery(latestThreadQueryOptions());
+  const { user, loading } = useCloudAuth();
+  const latestQuery = useQuery({
+    ...latestThreadQueryOptions(),
+    enabled: !loading && !!user,
+  });
   const selectionRef = useRef(0);
 
   const switchThread = useCallback((next: ThreadState) => {
@@ -63,13 +68,18 @@ export function RemixSessionProvider({
   );
 
   useEffect(() => {
+    if (loading || !user) {
+      setThread(null);
+      setLocalTitles({});
+      return;
+    }
     // Development can briefly run a renderer compiled against a newer preload.
     // Keep the workspace usable until Electron reloads its preload bridge.
     void window.api
       ?.getRemixSessionTitles?.()
       .then((titles) => setLocalTitles(titles))
       .catch(() => {});
-  }, []);
+  }, [loading, user]);
 
   const renameThread = useCallback(async (threadId: string, title: string) => {
     const nextTitle = title.trim();
@@ -95,6 +105,7 @@ export function RemixSessionProvider({
   );
 
   useEffect(() => {
+    if (loading || !user) return;
     const off = window.api.onPanelOpenThread((threadId) => {
       const selection = ++selectionRef.current;
       void invalidateThreads(queryClient);
@@ -107,7 +118,7 @@ export function RemixSessionProvider({
         });
     });
     return () => off?.();
-  }, [queryClient]);
+  }, [loading, queryClient, user]);
 
   useEffect(() => {
     if (latestQuery.isPending) return;

@@ -1,4 +1,8 @@
-import { type InfiniteData, QueryClient } from "@tanstack/react-query";
+import {
+  type InfiniteData,
+  QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
 import { getClient, resolveApiBase } from "./api";
 import { listNoteSummaries } from "./brain-views";
 import {
@@ -16,6 +20,7 @@ import {
   listThreads,
   type ThreadOrigin,
   type ThreadPage,
+  type ThreadState,
   type ThreadSummary,
 } from "./threads";
 
@@ -24,6 +29,7 @@ export const ONE_HOUR = 60 * 60 * 1000;
 
 /** Entry shape for the plugin-updates query key (name + installed version). */
 type PluginUpdateEntry = { name: string; currentVersion: string };
+const THREAD_LIST_QUERY_KEY = ["threads", "list"] as const;
 
 /**
  * Single source of truth for every React Query key in the renderer.
@@ -96,7 +102,8 @@ export const queryKeys = {
   threads: {
     all: ["threads"] as const,
     latest: ["threads", "latest"] as const,
-    list: (origin: ThreadOrigin) => ["threads", "list", origin] as const,
+    lists: THREAD_LIST_QUERY_KEY,
+    list: (origin: ThreadOrigin) => [...THREAD_LIST_QUERY_KEY, origin] as const,
     detail: (id: string) => ["threads", "detail", id] as const,
   },
   brain: {
@@ -322,6 +329,81 @@ export function prependThreadToHistory(
       return { ...data, pages: [{ ...first, threads }, ...rest] };
     },
   );
+}
+
+/** Remove a session from every cached history page before a delete reaches the
+ * server. The mutation restores its snapshots if that request fails. */
+export function removeThreadFromHistory(
+  queryClient: QueryClient,
+  threadId: string,
+): void {
+  queryClient.setQueriesData<InfiniteData<ThreadPage, number | null>>(
+    { queryKey: queryKeys.threads.lists },
+    (data) => {
+      if (!data) return data;
+      return {
+        ...data,
+        pages: data.pages.map((page) => ({
+          ...page,
+          threads: page.threads.filter((thread) => thread.id !== threadId),
+        })),
+      };
+    },
+  );
+}
+
+export type ThreadDeletionSnapshot = {
+  history: Array<
+    [QueryKey, InfiniteData<ThreadPage, number | null> | undefined]
+  >;
+  detail: ThreadState | null | undefined;
+  latest: ThreadState | null | undefined;
+  localTitles: Record<string, string>;
+};
+
+/**
+ * Apply the visible part of a session deletion synchronously. Cancelling
+ * active thread reads starts immediately, but is deliberately not awaited:
+ * the user should leave the deleted session before the Cloud proxy replies.
+ */
+export function optimisticallyDeleteThread(
+  queryClient: QueryClient,
+  threadId: string,
+  localTitles: Record<string, string>,
+): ThreadDeletionSnapshot {
+  void queryClient.cancelQueries({ queryKey: queryKeys.threads.all });
+  const history = queryClient.getQueriesData<
+    InfiniteData<ThreadPage, number | null>
+  >({ queryKey: queryKeys.threads.lists });
+  const detail = queryClient.getQueryData<ThreadState | null>(
+    queryKeys.threads.detail(threadId),
+  );
+  const latest = queryClient.getQueryData<ThreadState | null>(
+    queryKeys.threads.latest,
+  );
+
+  removeThreadFromHistory(queryClient, threadId);
+  queryClient.removeQueries({
+    queryKey: queryKeys.threads.detail(threadId),
+  });
+  if (latest?.id === threadId) {
+    queryClient.setQueryData(queryKeys.threads.latest, null);
+  }
+
+  return { history, detail, latest, localTitles };
+}
+
+/** Restore the exact cache snapshot only if the asynchronous deletion fails. */
+export function restoreOptimisticallyDeletedThread(
+  queryClient: QueryClient,
+  threadId: string,
+  snapshot: ThreadDeletionSnapshot,
+): void {
+  for (const [key, data] of snapshot.history) {
+    queryClient.setQueryData(key, data);
+  }
+  queryClient.setQueryData(queryKeys.threads.detail(threadId), snapshot.detail);
+  queryClient.setQueryData(queryKeys.threads.latest, snapshot.latest);
 }
 
 export function brainFileQueryOptions(path: string) {

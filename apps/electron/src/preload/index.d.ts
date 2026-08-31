@@ -1,6 +1,11 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
-import type { CompanionForm, CompanionState } from "../shared/companion";
+import type {
+  CompanionFacing,
+  CompanionForm,
+  CompanionState,
+  CompanionStatus,
+} from "../shared/companion";
 import type { DictationPrefs } from "../shared/dictation-prefs";
 import type { PetState } from "../shared/pet";
 import type {
@@ -60,6 +65,8 @@ declare global {
       remixGetClipboard: () => Promise<RemixCopyResult>;
       openRemixWorkspace: (threadId: string) => void;
       companionForm: () => Promise<CompanionForm>;
+      companionOrientation: () => Promise<CompanionFacing>;
+      companionStatus: () => Promise<CompanionStatus | null>;
       petEnabled: () => Promise<boolean>;
       setPetEnabled: (enabled: boolean) => void;
       wakeCompanion: () => void;
@@ -67,6 +74,7 @@ declare global {
       beginCompanionPositionDrag: () => void;
       companionPointerLeft: () => void;
       setPetState: (state: PetState) => void;
+      setCompanionStatus: (status: CompanionStatus | null) => void;
       companionSetHotRect: (
         rect: { x: number; y: number; width: number; height: number } | null,
       ) => void;
@@ -118,6 +126,12 @@ declare global {
       onCompanionForm: (callback: (form: CompanionForm) => void) => () => void;
       onCompanionState: (
         callback: (state: CompanionState) => void,
+      ) => () => void;
+      onCompanionOrientation: (
+        callback: (facing: CompanionFacing) => void,
+      ) => () => void;
+      onCompanionStatus: (
+        callback: (status: CompanionStatus | null) => void,
       ) => () => void;
       onCompanionHotEnter: (callback: () => void) => () => void;
       spriteEvent: (ev: SpriteEvent) => void;

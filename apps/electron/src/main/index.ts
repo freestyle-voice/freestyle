@@ -81,14 +81,20 @@ import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import {
+  COMPANION_DOCK_CLEARANCE,
+  type CompanionFacing,
   type CompanionForm,
   type CompanionState,
+  type CompanionStatus,
   parseCompanionForm,
+  parseCompanionStatus,
   parseDictationDestination,
 } from "../shared/companion";
 import {
   type CompanionDisplayPositions,
   clampCompanionPosition,
+  companionFacingForBounds,
+  companionHomePosition,
   createDictationDisplayRequestTracker,
   invalidateDictationDisplayRequest,
   positionForCompanionDisplay,
@@ -745,10 +751,25 @@ function registerPillPositionIpc(): void {
   });
 }
 
-function showPill(): void {
+function showPill(options: { preserveRemixRoom?: boolean } = {}): void {
   createPillWindow();
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
+
+  // A Remix follow-up is delivered to the chat that is already on screen.
+  // The generic hotkey path intentionally resets to the compact 160×60 slot,
+  // but doing that here clips the still-live chat renderer before it can paint
+  // its listening and transcribing states. Keep the existing Remix room until
+  // that conversation is actually closed.
+  const keepRemixRoom =
+    options.preserveRemixRoom === true &&
+    win.isVisible() &&
+    pillExpansion === "remix-chat" &&
+    (pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0);
+  if (keepRemixRoom) {
+    win.showInactive();
+    return;
+  }
   // A previous Remix card can still be handing its room back when another
   // hotkey arrives. Always return to the collapsed slot before calculating a
   // new position; otherwise the expanded window's origin is mistaken for the
@@ -3169,6 +3190,7 @@ async function activateAnchorApp(appName: string): Promise<void> {
 // Remix bar — bottom-edge sliver; hides while the pill is up.
 
 let companionWindow: BrowserWindow | null = null;
+let companionStatus: CompanionStatus | null = null;
 let companionHotRect: PillHotRect | null = null;
 let companionLastRect: PillHotRect | null = null;
 let companionHotPollTimer: NodeJS.Timeout | null = null;
@@ -3245,30 +3267,56 @@ function stopCompanionPositionSave(): void {
 function companionPosition(display?: Display): { x: number; y: number } {
   const targetDisplay =
     display ?? screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const { x: waX, y: waY, height } = targetDisplay.workArea;
   const info = SPRITES_INFO[companionFormSetting()];
-  // Sheet sprites have transparent margin around the drawn body; the anchor
-  // hangs the window off the work area so the BODY touches the corner.
-  const fallback = info.anchor
-    ? {
-        x: waX + info.anchor.margin - info.anchor.bodyLeft,
-        y:
-          waY +
-          height -
-          info.windowSize +
-          info.anchor.bodyBottom -
-          info.anchor.margin,
-      }
-    : {
-        x: waX,
-        y: waY + height - info.windowSize,
-      };
+  // Sheet sprites have transparent margin around the drawn body. Reserve the
+  // dock beneath it as well, otherwise the position handle lands below the
+  // display work area and becomes invisible.
+  const fallback = companionHomePosition(
+    targetDisplay,
+    info,
+    info.anchor ? COMPANION_DOCK_CLEARANCE : 0,
+  );
   return positionForCompanionDisplay(
     targetDisplay,
     { width: info.windowSize, height: info.windowSize },
     companionSavedPositions(),
     fallback,
   );
+}
+
+function companionFacing(bounds?: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): CompanionFacing {
+  const target = bounds ?? companionWindow?.getBounds();
+  if (!target) return "right";
+  return companionFacingForBounds(target, screen.getDisplayMatching(target));
+}
+
+/** Keep the sheet sprite facing into the display without moving its overlay. */
+function publishCompanionFacing(bounds?: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): void {
+  companionWindow?.webContents.send(
+    "companion:orientation",
+    companionFacing(bounds),
+  );
+}
+
+function setCompanionStatus(status: CompanionStatus | null): void {
+  if (
+    companionStatus?.source === status?.source &&
+    companionStatus?.label === status?.label
+  ) {
+    return;
+  }
+  companionStatus = status;
+  companionWindow?.webContents.send("companion:status", status);
 }
 
 async function getNativeFocusedWindowBounds(
@@ -3467,6 +3515,10 @@ ipcMain.on("dictation:reload-prefs", () => broadcastDictationPrefs());
 
 ipcMain.handle("companion:form", () => companionFormSetting());
 
+ipcMain.handle("companion:orientation", () => companionFacing());
+
+ipcMain.handle("companion:status", () => companionStatus);
+
 ipcMain.handle("pet:enabled", () => petEnabled());
 
 ipcMain.on("pet:set-enabled", (event, enabled: unknown) => {
@@ -3520,6 +3572,11 @@ ipcMain.on("pet:set-state", (event, state: PetState) => {
   );
 });
 
+ipcMain.on("companion:set-status", (event, status: unknown) => {
+  if (event.sender !== mainWindow?.webContents) return;
+  setCompanionStatus(parseCompanionStatus(status));
+});
+
 ipcMain.on("companion:set-form", (event, form: unknown) => {
   if (
     event.sender !== panelWindow?.webContents &&
@@ -3540,6 +3597,7 @@ ipcMain.on("companion:set-form", (event, form: unknown) => {
     const { x, y } = companionPosition();
     win.setBounds({ x, y, width: size, height: size });
     win.webContents.send("companion:form", next);
+    publishCompanionFacing();
   }
   // The panel's head badge mirrors the active sprite too.
   panelWindow?.webContents.send("companion:form", next);
@@ -4140,7 +4198,10 @@ function createCompanionWindow(): void {
   // emits `will-move` for manual movement on macOS/Windows; the renderer's
   // drag-start IPC supplies the same signal on Linux.
   companionWindow.on("will-move", () => armCompanionPositionSave());
-  companionWindow.on("move", () => queueCompanionPositionSave());
+  companionWindow.on("move", () => {
+    queueCompanionPositionSave();
+    publishCompanionFacing();
+  });
 
   companionWindow.on("closed", () => {
     stopCompanionHotPoll();
@@ -4155,6 +4216,7 @@ function createCompanionWindow(): void {
   });
 
   companionWindow.once("ready-to-show", () => {
+    publishCompanionFacing();
     companionWindow?.showInactive();
   });
 
@@ -4170,6 +4232,7 @@ function wakeCompanion(): void {
   const size = SPRITES_INFO[companionFormSetting()].windowSize;
   const { x, y } = companionPosition();
   win.setBounds({ x, y, width: size, height: size });
+  publishCompanionFacing();
   win.setAlwaysOnTop(true, "screen-saver");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   if (!win.isVisible()) win.showInactive();
@@ -4447,8 +4510,12 @@ function handleRemixHotkeyDown(): void {
   setRemixRouteKeys(true);
   armRemixStuckWatchdog();
   remixSelectionRequested = false;
-  showPill();
-  anchorPillForHotkey();
+  showPill({ preserveRemixRoom: true });
+  // A preserved chat already owns a stable on-screen position. Re-anchoring
+  // it to the cursor here would make the conversation jump between turns.
+  if (pillExpandOffset.dx === 0 && pillExpandOffset.dy === 0) {
+    anchorPillForHotkey();
+  }
   const win = mainWindow;
   if (win && !win.isDestroyed()) win.webContents.send("remix:down");
 

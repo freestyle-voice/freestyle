@@ -40,9 +40,12 @@ describe("Remix chat polish", () => {
       readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),
     ]);
 
-    expect(chat).toContain("Open Remix workspace");
+    expect(chat).toContain('aria-label="Open Remix workspace"');
+    expect(chat).toContain('aria-label="Close Remix"');
     expect(chat).toContain('className="remix-mini-head"');
-    expect(chat).toContain('className="remix-mini-open"');
+    expect(chat).toContain('className="remix-mini-actions"');
+    expect(chat).toContain('className="remix-mini-icon"');
+    expect(chat).not.toContain(">Open</button>");
     expect(chat).not.toContain("onMouseEnter={props.onEnter}");
     expect(pill).toContain("window.api.openRemixWorkspace(threadId)");
     expect(pill).not.toContain("onPillHotEnter");
@@ -60,20 +63,30 @@ describe("Remix chat polish", () => {
     expect(chat).toContain(
       `max-height: \${MINI_STRIP_MAX - MINI_STRIP_HEADER_HEIGHT}px;`,
     );
-    expect(chat).not.toContain("remix-mini-action");
+    expect(chat).not.toContain('className="remix-mini-action"');
   });
 
-  it("keeps a settled compact response open while it is being inspected", async () => {
+  it("keeps a settled compact conversation available until the user ends it", async () => {
     const chat = await readFile(
       resolve(rendererRoot, "components/remix-chat.tsx"),
       "utf8",
     );
 
-    expect(chat).toContain("const [pointerOverChat, setPointerOverChat]");
-    expect(chat).toContain(
-      "if (!minimized || !settled || pointerOverChat || props.voiceStatus)",
-    );
+    expect(chat).toContain("const pointerOverChatRef = useRef(false)");
     expect(chat).toContain("onMouseLeave={handleMouseLeave}");
+    expect(chat).not.toContain("MINI_SETTLED_DISMISS_MS");
+    expect(chat).not.toContain("setTimeout(onClose");
+  });
+
+  it("does not minimize the expanded chat after a transient window mouseout while it is hovered", async () => {
+    const chat = await readFile(
+      resolve(rendererRoot, "components/remix-chat.tsx"),
+      "utf8",
+    );
+
+    expect(chat).toContain("const pointerOverChatRef = useRef(false)");
+    expect(chat).toContain("pointerOverChatRef.current = true");
+    expect(chat).toContain("if (pointerOverChatRef.current) return;");
   });
 
   it("keeps a spoken hotkey request in the open pill conversation", async () => {
@@ -91,6 +104,36 @@ describe("Remix chat polish", () => {
     expect(chat).toContain("voiceStatus");
   });
 
+  it("promotes a compact conversation before recording a spoken follow-up", async () => {
+    const [pill, chat] = await Promise.all([
+      readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+    ]);
+    const followUpStart = pill.indexOf("if (chatWasOpen) {");
+    const followUpBranch = pill.slice(
+      followUpStart,
+      pill.indexOf("} else {", followUpStart),
+    );
+
+    expect(followUpBranch).toContain('phase: "chat-capturing"');
+    expect(followUpBranch).toContain("minimized: false");
+    expect(chat).toContain("const activeTurnRef = useRef(");
+    expect(chat).toContain("if (activeTurnRef.current) return;");
+  });
+
+  it("drives a follow-up chat surface from the live Remix session", async () => {
+    const pill = await readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8");
+
+    // A follow-up changes phase and expands in one render. Retaining a second
+    // chat session or a second minimized flag lets the outer card, inner chat,
+    // and window disagree and produces an empty surface.
+    expect(pill).toContain(
+      "const chatPresentation = resolveRemixChatPresentation(",
+    );
+    expect(pill).not.toContain("const [chatView, setChatView]");
+    expect(pill).not.toContain("const [chatMiniVisual, setChatMiniVisual]");
+  });
+
   it("keeps the compact pill and companion informed while Remix works", async () => {
     const [chat, pill] = await Promise.all([
       readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
@@ -99,9 +142,27 @@ describe("Remix chat polish", () => {
 
     expect(chat).toContain("onActivityChange");
     expect(chat).toContain("agentProgressLabel(messages, busy)");
+    expect(chat).toContain("latestAssistantPreview(messages)");
+    expect(chat).toContain("const message = messages.at(-1)");
     expect(chat).toContain("const miniProgress =");
     expect(pill).toContain("petStateFor");
-    expect(pill).toContain("onActivityChange={setRemixAgentWorking}");
+    expect(pill).toContain("onActivityChange={handleRemixActivity}");
+    expect(pill).toContain("setCompanionStatus");
+  });
+
+  it("keeps the full chat surface after a spoken follow-up is transcribed", async () => {
+    const pill = await readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8");
+    const chatHandoff = pill.slice(
+      pill.indexOf("if (isRemixChatPhase(session.phase)) {"),
+      pill.indexOf(
+        "return;",
+        pill.indexOf("if (isRemixChatPhase(session.phase)) {"),
+      ),
+    );
+
+    expect(chatHandoff).toContain('phase: "chat"');
+    expect(chatHandoff).toContain("minimized: false");
+    expect(chatHandoff).toContain("chatInstructions:");
   });
 
   it("uses rotating, shimmering pre-response copy instead of a static thinking label", async () => {

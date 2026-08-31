@@ -1,7 +1,12 @@
 import { electronAPI } from "@electron-toolkit/preload";
 import { contextBridge, ipcRenderer } from "electron";
 import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
-import type { CompanionForm, CompanionState } from "../shared/companion";
+import type {
+  CompanionFacing,
+  CompanionForm,
+  CompanionState,
+  CompanionStatus,
+} from "../shared/companion";
 import type { DictationPrefs } from "../shared/dictation-prefs";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { PetState } from "../shared/pet";
@@ -196,6 +201,10 @@ const api = {
     ipcRenderer.invoke("remix:get-clipboard"),
   companionForm: (): Promise<CompanionForm> =>
     ipcRenderer.invoke("companion:form"),
+  companionOrientation: (): Promise<CompanionFacing> =>
+    ipcRenderer.invoke("companion:orientation"),
+  companionStatus: (): Promise<CompanionStatus | null> =>
+    ipcRenderer.invoke("companion:status"),
   petEnabled: (): Promise<boolean> => ipcRenderer.invoke("pet:enabled"),
   setPetEnabled: (enabled: boolean): void =>
     ipcRenderer.send("pet:set-enabled", enabled),
@@ -207,6 +216,8 @@ const api = {
   companionPointerLeft: (): void => ipcRenderer.send("companion:pointer-left"),
   setPetState: (state: PetState): void =>
     ipcRenderer.send("pet:set-state", state),
+  setCompanionStatus: (status: CompanionStatus | null): void =>
+    ipcRenderer.send("companion:set-status", status),
   companionSetHotRect: (
     rect: { x: number; y: number; width: number; height: number } | null,
   ): void => ipcRenderer.send("companion:set-hot-rect", rect),
@@ -313,6 +324,22 @@ const api = {
       callback(state);
     ipcRenderer.on("companion:state", handler);
     return () => ipcRenderer.removeListener("companion:state", handler);
+  },
+  onCompanionOrientation: (
+    callback: (facing: CompanionFacing) => void,
+  ): (() => void) => {
+    const handler = (_e: unknown, facing: CompanionFacing): void =>
+      callback(facing);
+    ipcRenderer.on("companion:orientation", handler);
+    return () => ipcRenderer.removeListener("companion:orientation", handler);
+  },
+  onCompanionStatus: (
+    callback: (status: CompanionStatus | null) => void,
+  ): (() => void) => {
+    const handler = (_e: unknown, status: CompanionStatus | null): void =>
+      callback(status);
+    ipcRenderer.on("companion:status", handler);
+    return () => ipcRenderer.removeListener("companion:status", handler);
   },
   onCompanionHotEnter: (callback: () => void): (() => void) => {
     const handler = (): void => callback();

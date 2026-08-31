@@ -5,9 +5,12 @@ import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import { SPRITES } from "@renderer/sprites/registry";
 import { SpriteStage } from "@renderer/sprites/stage";
 import {
+  COMPANION_DOCK,
   COMPANION_WINDOW_SIZE,
+  type CompanionFacing,
   type CompanionForm,
   type CompanionState,
+  type CompanionStatus,
   DEFAULT_COMPANION_FORM,
 } from "@shared/companion";
 import { SPRITES_INFO } from "@shared/sprites";
@@ -16,20 +19,55 @@ import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const SPARK_HOT_RECT = SPRITES_INFO.spark.body;
-const COMPANION_DOCK = { width: 38, height: 8, gap: 6 };
-
 type Rect = { x: number; y: number; width: number; height: number };
+// The visible dock stays deliberately slim; this is the forgiving area that
+// receives the native drag gesture around it.
+const COMPANION_DOCK_HIT_TARGET = { width: 44, height: 22 } as const;
 
-function companionInteractionRect(body: Rect, windowSize: number): Rect {
-  const dockTop = Math.min(
+/** Mirror DOM geometry with the sheet canvas when a companion faces left. */
+function companionRectForFacing(
+  rect: Rect,
+  windowSize: number,
+  facing: CompanionFacing,
+): Rect {
+  if (facing === "right") return rect;
+  return { ...rect, x: windowSize - rect.x - rect.width };
+}
+
+function companionDockTop(body: Rect, windowSize: number): number {
+  return Math.min(
     windowSize - COMPANION_DOCK.height,
     body.y + body.height + COMPANION_DOCK.gap,
   );
+}
+
+function companionDockHitRect(body: Rect, windowSize: number): Rect {
+  const dockTop = companionDockTop(body, windowSize);
+  const left = body.x + body.width / 2 - COMPANION_DOCK_HIT_TARGET.width / 2;
+  const top = Math.max(
+    0,
+    Math.min(
+      windowSize - COMPANION_DOCK_HIT_TARGET.height,
+      dockTop - (COMPANION_DOCK_HIT_TARGET.height - COMPANION_DOCK.height) / 2,
+    ),
+  );
   return {
-    x: body.x,
-    y: body.y,
-    width: body.width,
-    height: dockTop + COMPANION_DOCK.height - body.y,
+    x: left,
+    y: top,
+    width: COMPANION_DOCK_HIT_TARGET.width,
+    height: COMPANION_DOCK_HIT_TARGET.height,
+  };
+}
+
+function companionInteractionRect(body: Rect, windowSize: number): Rect {
+  const dock = companionDockHitRect(body, windowSize);
+  const right = Math.max(body.x + body.width, dock.x + dock.width);
+  const bottom = Math.max(body.y + body.height, dock.y + dock.height);
+  return {
+    x: Math.min(body.x, dock.x),
+    y: Math.min(body.y, dock.y),
+    width: right - Math.min(body.x, dock.x),
+    height: bottom - Math.min(body.y, dock.y),
   };
 }
 
@@ -40,16 +78,15 @@ function CompanionDock({
   body: Rect;
   windowSize: number;
 }): React.JSX.Element {
-  const top = Math.min(
-    windowSize - COMPANION_DOCK.height,
-    body.y + body.height + COMPANION_DOCK.gap,
-  );
-  const left = body.x + Math.round((body.width - COMPANION_DOCK.width) / 2);
+  const visualTop = companionDockTop(body, windowSize);
+  const hitRect = companionDockHitRect(body, windowSize);
+  const left = body.x + body.width / 2;
 
   return (
     <div
       aria-label="Drag to reposition companion"
       data-companion-dock
+      data-companion-dock-hit
       onMouseDown={() => {
         window.api.beginCompanionPositionDrag();
       }}
@@ -58,18 +95,109 @@ function CompanionDock({
         {
           position: "absolute",
           left,
-          top,
-          width: COMPANION_DOCK.width,
-          height: COMPANION_DOCK.height,
-          borderRadius: 999,
-          background: "rgba(10, 10, 10, 0.92)",
-          border: "1px solid rgba(255, 255, 255, 0.22)",
-          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
+          top: hitRect.y,
+          transform: "translateX(-50%)",
+          width: hitRect.width,
+          height: hitRect.height,
+          boxSizing: "border-box",
           cursor: "grab",
           WebkitAppRegion: "drag",
         } as React.CSSProperties
       }
-    />
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          position: "absolute",
+          left: "50%",
+          top: visualTop - hitRect.y,
+          transform: "translateX(-50%)",
+          width: COMPANION_DOCK.width,
+          height: COMPANION_DOCK.height,
+          boxSizing: "border-box",
+          borderRadius: 999,
+          background: "rgba(10, 10, 10, 0.92)",
+          border: "1px solid rgba(255, 255, 255, 0.22)",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
+          pointerEvents: "none",
+        }}
+      />
+    </div>
+  );
+}
+
+function CompanionStatusPill({
+  body,
+  facing,
+  status,
+  windowSize,
+}: {
+  body: Rect;
+  facing: CompanionFacing;
+  status: CompanionStatus;
+  windowSize: number;
+}): React.JSX.Element {
+  const statusWidth = 164;
+  const top = Math.max(8, body.y - 30);
+  const towardDisplay =
+    facing === "right"
+      ? { left: Math.max(8, body.x) }
+      : { right: Math.max(8, windowSize - body.x - body.width) };
+
+  return (
+    <div
+      aria-live="polite"
+      role="status"
+      style={{
+        position: "absolute",
+        top,
+        width: statusWidth,
+        minWidth: 0,
+        height: 22,
+        boxSizing: "border-box",
+        display: "flex",
+        alignItems: "center",
+        gap: 5,
+        padding: "0 8px",
+        border: "1px solid rgba(255, 255, 255, 0.14)",
+        borderRadius: 999,
+        background: "rgba(10, 10, 10, 0.94)",
+        boxShadow: "0 3px 12px rgba(0, 0, 0, 0.34)",
+        color: "rgba(245, 241, 228, 0.9)",
+        fontFamily: "var(--font-mono, ui-monospace, monospace)",
+        fontSize: 9,
+        lineHeight: 1,
+        letterSpacing: "0.03em",
+        pointerEvents: "none",
+        ...towardDisplay,
+      }}
+    >
+      <span
+        aria-hidden="true"
+        style={{
+          width: 5,
+          height: 5,
+          flex: "0 0 auto",
+          borderRadius: 999,
+          background: "#8ab62a",
+          boxShadow: "0 0 0 3px rgba(138, 182, 42, 0.12)",
+        }}
+      />
+      <span style={{ color: "rgba(138, 182, 42, 0.96)", flex: "0 0 auto" }}>
+        REMIX
+      </span>
+      <span
+        title={status.label}
+        style={{
+          minWidth: 0,
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {status.label}
+      </span>
+    </div>
   );
 }
 
@@ -134,28 +262,48 @@ function SparkStage({
 function CompanionRoot(): React.JSX.Element | null {
   const [form, setForm] = useState<CompanionForm | null>(null);
   const [state, setState] = useState<CompanionState>("idle");
+  const [facing, setFacing] = useState<CompanionFacing>("right");
+  const [status, setStatus] = useState<CompanionStatus | null>(null);
 
   useEffect(() => {
     window.api
       .companionForm()
       .then(setForm)
       .catch(() => setForm(DEFAULT_COMPANION_FORM));
+    void window.api
+      .companionOrientation()
+      .then(setFacing)
+      .catch(() => {});
+    void window.api
+      .companionStatus()
+      .then(setStatus)
+      .catch(() => {});
     const offForm = window.api.onCompanionForm(setForm);
     const offState = window.api.onCompanionState(setState);
+    const offOrientation = window.api.onCompanionOrientation(setFacing);
+    const offStatus = window.api.onCompanionStatus(setStatus);
     return () => {
       offForm?.();
       offState?.();
+      offOrientation?.();
+      offStatus?.();
     };
   }, []);
 
   const def = form ? SPRITES[form] : null;
-  const hotRect = useMemo(
+  const windowSize = def?.windowSize ?? COMPANION_WINDOW_SIZE;
+  const visualBody = useMemo(
     () =>
-      companionInteractionRect(
+      companionRectForFacing(
         def?.body ?? SPARK_HOT_RECT,
-        def?.windowSize ?? COMPANION_WINDOW_SIZE,
+        windowSize,
+        def?.kind === "sheet" ? facing : "right",
       ),
-    [def],
+    [def?.body, def?.kind, facing, windowSize],
+  );
+  const hotRect = useMemo(
+    () => companionInteractionRect(visualBody, windowSize),
+    [visualBody, windowSize],
   );
   if (!def) return null;
   return (
@@ -189,11 +337,24 @@ function CompanionRoot(): React.JSX.Element | null {
       type="button"
     >
       {def.kind === "sheet" ? (
-        <SpriteStage def={def} hotRect={hotRect} state={state} />
+        <SpriteStage
+          def={def}
+          facing={facing}
+          hotRect={hotRect}
+          state={state}
+        />
       ) : (
         <SparkStage hotRect={hotRect} state={state} />
       )}
-      <CompanionDock body={def.body} windowSize={def.windowSize} />
+      {status ? (
+        <CompanionStatusPill
+          body={visualBody}
+          facing={def.kind === "sheet" ? facing : "right"}
+          status={status}
+          windowSize={def.windowSize}
+        />
+      ) : null}
+      <CompanionDock body={visualBody} windowSize={def.windowSize} />
     </button>
   );
 }

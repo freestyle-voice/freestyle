@@ -83,6 +83,11 @@ export interface RemixQueuedInstruction {
 
 export type RemixChatVoiceStatus = "listening" | "transcribing" | null;
 
+export interface RemixChatActivity {
+  working: boolean;
+  label: string | null;
+}
+
 export interface RemixChatProps {
   context: RemixSelectionPayload;
   initialInstruction: string | null;
@@ -96,7 +101,7 @@ export interface RemixChatProps {
   onOpenWorkspace: (threadId: string) => void;
   onInstructionConsumed: (instructionId: number) => void;
   onVoiceNoticeDismiss: () => void;
-  onActivityChange: (working: boolean) => void;
+  onActivityChange: (activity: RemixChatActivity) => void;
   onMinimize: () => void;
   onClose: () => void;
 }
@@ -158,7 +163,7 @@ interface RemixThreadProps {
   onOpenWorkspace: (threadId: string) => void;
   onInstructionConsumed: (instructionId: number) => void;
   onVoiceNoticeDismiss: () => void;
-  onActivityChange: (working: boolean) => void;
+  onActivityChange: (activity: RemixChatActivity) => void;
   onMinimize: () => void;
   onClose: () => void;
   onNewThread: () => void;
@@ -173,7 +178,6 @@ interface ActionRow {
 }
 
 const MINIMIZE_GRACE_MS = 380;
-const MINI_SETTLED_DISMISS_MS = 3000;
 const MINI_STRIP_HEADER_HEIGHT = 44;
 const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
 
@@ -182,7 +186,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [actions, setActions] = useState<ActionRow[]>([]);
-  const [pointerOverChat, setPointerOverChat] = useState(false);
+  // Electron can report a window-level mouseout while the transparent pill is
+  // resizing beneath a stationary cursor. Keep this synchronously updated so
+  // the dismissal guard never waits for React to commit hover state.
+  const pointerOverChatRef = useRef(false);
   const actionSeqRef = useRef(0);
 
   const contextRef = useRef<RemixSelectionPayload>(props.context);
@@ -403,14 +410,34 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [messages],
   );
   const actionRunning = actions.some((action) => action.status === "running");
+  // A spoken follow-up begins while the cursor is still in the app the user
+  // was working in. That must not be treated as intent to collapse the chat:
+  // keep the full surface stable until voice capture and the agent turn end.
+  const hasActiveTurn =
+    props.voiceStatus !== null ||
+    busy ||
+    actionRunning ||
+    props.queuedInstructions.length > 0;
+  const activeTurnRef = useRef(hasActiveTurn);
+  activeTurnRef.current = hasActiveTurn;
   const onActivityChangeRef = useRef(props.onActivityChange);
   onActivityChangeRef.current = props.onActivityChange;
+  const activity = useMemo<RemixChatActivity>(
+    () => ({
+      working: busy || actionRunning,
+      label: busy
+        ? agentProgressLabel(messages, busy)
+        : (actions.find((action) => action.status === "running")?.label ??
+          null),
+    }),
+    [actionRunning, actions, busy, messages],
+  );
   useEffect(() => {
-    props.onActivityChange(busy || actionRunning);
-  }, [actionRunning, busy, props.onActivityChange]);
+    props.onActivityChange(activity);
+  }, [activity, props.onActivityChange]);
   useEffect(
     () => () => {
-      onActivityChangeRef.current(false);
+      onActivityChangeRef.current({ working: false, label: null });
     },
     [],
   );
@@ -492,11 +519,11 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   }, []);
   useEffect(() => clearMinimizeTimer, [clearMinimizeTimer]);
   const handleMouseEnter = useCallback(() => {
-    setPointerOverChat(true);
+    pointerOverChatRef.current = true;
     clearMinimizeTimer();
   }, [clearMinimizeTimer]);
   const handleMouseLeave = useCallback(() => {
-    setPointerOverChat(false);
+    pointerOverChatRef.current = false;
   }, []);
   useEffect(() => {
     if (minimized) return;
@@ -506,11 +533,15 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     };
     const handleOut = (event: MouseEvent): void => {
       if (event.relatedTarget) return;
+      if (pointerOverChatRef.current) return;
+      if (activeTurnRef.current) return;
       if (inputRef.current?.value.trim()) return;
       clearMinimizeTimer();
       minimizeTimerRef.current = setTimeout(() => {
         minimizeTimerRef.current = null;
         document.removeEventListener("mouseover", handleOver);
+        if (pointerOverChatRef.current) return;
+        if (activeTurnRef.current) return;
         onMinimize();
       }, MINIMIZE_GRACE_MS);
       document.addEventListener("mouseover", handleOver);
@@ -599,12 +630,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     if (!el) return;
     setMiniContentHeight(el.scrollHeight + MINI_STRIP_HEADER_HEIGHT);
   }, [minimized, showFullFinal, finalText]);
-
-  useEffect(() => {
-    if (!minimized || !settled || pointerOverChat || props.voiceStatus) return;
-    const timer = setTimeout(onClose, MINI_SETTLED_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [minimized, settled, onClose, pointerOverChat, props.voiceStatus]);
 
   const refreshContext = useCallback(async () => {
     try {
@@ -754,14 +779,56 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                   {miniProgress}
                 </span>
               ) : null}
-              <button
-                type="button"
-                className="remix-mini-open"
-                onClick={() => props.onOpenWorkspace(thread.id)}
-                aria-label="Open Remix workspace"
-              >
-                Open
-              </button>
+              <span className="remix-mini-actions">
+                <button
+                  type="button"
+                  className="remix-mini-icon"
+                  onClick={() => props.onOpenWorkspace(thread.id)}
+                  aria-label="Open Remix workspace"
+                  title="Open Remix workspace"
+                >
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 12 12"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M7 1h4v4M11 1 6.5 5.5M5 2H2.5A1.5 1.5 0 0 0 1 3.5v6A1.5 1.5 0 0 0 2.5 11h6A1.5 1.5 0 0 0 10 9.5V7"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="remix-mini-icon"
+                  onClick={() => {
+                    stop();
+                    onClose();
+                  }}
+                  aria-label="Close Remix"
+                  title="Close Remix"
+                >
+                  <svg
+                    width="11"
+                    height="11"
+                    viewBox="0 0 10 10"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M2 2l6 6M8 2l-6 6"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+              </span>
             </div>
             {showFullFinal ? (
               <div className="remix-mini-message" ref={miniMessageRef}>
@@ -1052,28 +1119,44 @@ function agentProgressLabel(
   busy: boolean,
 ): string | null {
   if (!busy) return null;
+  const preview = latestAssistantPreview(messages);
+  if (preview) return preview;
+  const latestAssistant = messages.at(-1);
+  if (latestAssistant?.role !== "assistant") return "Thinking…";
   for (
-    let messageIndex = messages.length - 1;
-    messageIndex >= 0;
-    messageIndex--
+    let partIndex = latestAssistant.parts.length - 1;
+    partIndex >= 0;
+    partIndex--
   ) {
-    const message = messages[messageIndex];
-    if (message.role !== "assistant") continue;
-    for (
-      let partIndex = message.parts.length - 1;
-      partIndex >= 0;
-      partIndex--
-    ) {
-      const part = message.parts[partIndex];
-      if (!isToolOrDynamicToolUIPart(part)) continue;
-      if (part.state === "output-available" || part.state === "output-error") {
-        continue;
-      }
-      const name = getToolOrDynamicToolName(part);
-      return TOOL_LABELS[name]?.doing ?? `Running ${name}…`;
+    const part = latestAssistant.parts[partIndex];
+    if (!isToolOrDynamicToolUIPart(part)) continue;
+    if (part.state === "output-available" || part.state === "output-error") {
+      continue;
     }
+    const name = getToolOrDynamicToolName(part);
+    return TOOL_LABELS[name]?.doing ?? `Running ${name}…`;
   }
   return "Thinking…";
+}
+
+function latestAssistantPreview(messages: UIMessage[]): string | null {
+  // A final answer from a prior turn must not make a fresh spoken request
+  // look complete before the new turn has streamed a response.
+  const message = messages.at(-1);
+  if (message?.role !== "assistant") return null;
+  const text = message.parts
+    .filter(isTextUIPart)
+    .map((part) => part.text)
+    .join("")
+    .trim();
+  if (!text) return null;
+  const line = text
+    .split(/\r?\n/)
+    .map((item) => item.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .at(-1);
+  if (!line) return null;
+  return line.length > 110 ? `…${line.slice(-109)}` : line;
 }
 
 const MessageRow = memo(function MessageRow({
@@ -1366,28 +1449,35 @@ const REMIX_CHAT_CSS = `
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .remix-mini-open {
+  .remix-mini-actions {
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 3px;
+  }
+  .remix-mini-icon {
+    width: 24px;
+    height: 24px;
     flex-shrink: 0;
     border: 0;
-    border-radius: 5px;
-    padding: 5px 7px;
-    background: rgba(138, 182, 42, 0.12);
-    color: ${OLIVE};
-    font: inherit;
-    font-size: 10px;
-    font-weight: 650;
-    letter-spacing: 0.04em;
-    line-height: 1;
+    border-radius: 7px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: ${INK_FAINT};
     cursor: pointer;
-    transition: background 140ms ease, color 140ms ease;
+    transition: background 140ms ease, color 140ms ease, transform 140ms ease;
   }
-  .remix-mini-open:hover,
-  .remix-mini-open:focus-visible {
+  .remix-mini-icon:hover,
+  .remix-mini-icon:focus-visible {
     background: rgba(138, 182, 42, 0.22);
     color: ${INK};
     outline: none;
   }
-  .remix-mini-open:focus-visible {
+  .remix-mini-icon:active { transform: scale(0.92); }
+  .remix-mini-icon:focus-visible {
     box-shadow: 0 0 0 2px rgba(138, 182, 42, 0.6);
   }
   .remix-mini-dot {

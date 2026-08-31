@@ -110,10 +110,30 @@ describe("preload contract", () => {
     expect(pill).toContain("window.api.onRemixUp(finishRemixPress)");
   });
 
+  it("preserves an open Remix chat's room for a spoken follow-up", async () => {
+    const main = await readFile(mainPath, "utf8");
+    const handlers = main.slice(
+      main.indexOf("function handleRemixHotkeyDown(): void {"),
+      main.indexOf("function handleRemixHotkeyUp(): void {"),
+    );
+    const showPill = main.slice(
+      main.indexOf("function showPill("),
+      main.indexOf("function openPanelSettings(): void {"),
+    );
+
+    // A generic hotkey starts from a fresh capsule. A Remix follow-up is
+    // different: collapsing the existing chat room races the live React
+    // surface and strands it inside the 160×60 window.
+    expect(handlers).toContain("showPill({ preserveRemixRoom: true })");
+    expect(showPill).toContain("preserveRemixRoom?: boolean");
+    expect(showPill).toContain('pillExpansion === "remix-chat"');
+    expect(showPill).toContain("setPillExpanded(false)");
+  });
+
   it("resets stale expanded bounds before placing either hotkey pill", async () => {
     const main = await readFile(mainPath, "utf8");
     const showPill = main.slice(
-      main.indexOf("function showPill(): void {"),
+      main.indexOf("function showPill("),
       main.indexOf("function openPanelSettings(): void {"),
     );
 

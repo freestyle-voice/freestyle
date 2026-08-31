@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clampCompanionPosition,
+  companionFacingForBounds,
   positionForCompanionDisplay,
 } from "./companion-position";
 
@@ -31,5 +32,14 @@ describe("companion display positions", () => {
     expect(
       positionForCompanionDisplay(secondaryDisplay, size, positions, fallback),
     ).toEqual(fallback);
+  });
+
+  it("faces the companion inward from either half of its display", () => {
+    expect(
+      companionFacingForBounds({ x: 72, width: size.width }, primaryDisplay),
+    ).toBe("right");
+    expect(
+      companionFacingForBounds({ x: 1_090, width: size.width }, primaryDisplay),
+    ).toBe("left");
   });
 });

@@ -1,5 +1,6 @@
 import { REMIX_PRESETS } from "@freestyle-voice/validations";
 import { FreestyleMark } from "@renderer/components/freestyle-mark";
+import type { RemixChatActivity } from "@renderer/components/remix-chat";
 import {
   REMIX_CHAT_STRIP,
   REMIX_CHAT_SURFACE,
@@ -32,6 +33,7 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
+import type { CompanionStatus } from "../../../shared/companion";
 import { petStateFor } from "../../../shared/pet";
 import {
   normalizePillCancelMode,
@@ -471,6 +473,23 @@ function remixVoiceStatus(
   return null;
 }
 
+/**
+ * One source of truth for the chat surface. `remixView` exists only to let a
+ * closing card animate out; it must never win over a live session. Otherwise
+ * a follow-up can size the outer card from new state while rendering stale
+ * minimized chat content, leaving an empty pill in between.
+ */
+function resolveRemixChatPresentation(
+  live: RemixSession | null,
+  retained: RemixSession | null,
+): { session: RemixSession | null; minimized: boolean } {
+  const session = live ?? retained;
+  if (!session || !isRemixChatPhase(session.phase)) {
+    return { session: null, minimized: true };
+  }
+  return { session, minimized: session.minimized === true };
+}
+
 interface RemixSession {
   id: number;
   phase: RemixPhase;
@@ -493,6 +512,28 @@ interface RemixSession {
    * hovering the strip is what opens the full conversation.
    */
   minimized?: boolean;
+}
+
+function companionStatusForRemix(
+  session: RemixSession | null,
+  activity: RemixChatActivity,
+): CompanionStatus | null {
+  if (!session || session.phase === "error") return null;
+  const voice = remixVoiceStatus(session.phase);
+  if (voice === "listening") return { source: "remix", label: "Listening…" };
+  if (voice === "transcribing") {
+    return { source: "remix", label: "Transcribing…" };
+  }
+  if (session.phase === "capturing" || session.phase === "listening") {
+    return { source: "remix", label: "Listening…" };
+  }
+  if (session.phase === "running") {
+    return { source: "remix", label: session.label ?? "Working…" };
+  }
+  if (activity.working) {
+    return { source: "remix", label: activity.label ?? "Thinking…" };
+  }
+  return null;
 }
 
 /** A promise that something else resolves. Used to await the selection. */
@@ -544,7 +585,8 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Remix ----
   const [remix, setRemixState] = useState<RemixSession | null>(null);
-  const [remixAgentWorking, setRemixAgentWorking] = useState(false);
+  const [remixAgentActivity, setRemixAgentActivity] =
+    useState<RemixChatActivity>({ working: false, label: null });
   const lastPetStateRef = useRef<string | null>(null);
   const remixRef = useRef<RemixSession | null>(null);
   const setRemix = useCallback((next: RemixSession | null) => {
@@ -559,6 +601,16 @@ export default function AppPage(): React.JSX.Element {
     remixRef.current = next;
     setRemixState(next);
   }, []);
+  const handleRemixActivity = useCallback((next: RemixChatActivity) => {
+    setRemixAgentActivity((current) =>
+      current.working === next.working && current.label === next.label
+        ? current
+        : next,
+    );
+  }, []);
+  useEffect(() => {
+    if (!remix) setRemixAgentActivity({ working: false, label: null });
+  }, [remix]);
   const remixDownAtRef = useRef(0);
   const remixSeqRef = useRef(0);
   const remixChatInstructionSeqRef = useRef(0);
@@ -577,6 +629,7 @@ export default function AppPage(): React.JSX.Element {
   // agent lane. Keep the signal derived from renderer-owned state so it cannot
   // get stuck in "working" when a card closes or a request fails.
   useEffect(() => {
+    const remixAgentWorking = remix !== null && remixAgentActivity.working;
     const remixWorking =
       remix !== null && remix.phase !== "chat" && remix.phase !== "error";
     const next = petStateFor({
@@ -594,7 +647,12 @@ export default function AppPage(): React.JSX.Element {
     if (lastPetStateRef.current === next) return;
     lastPetStateRef.current = next;
     window.api?.setPetState?.(next);
-  }, [remix, remixAgentWorking, state]);
+  }, [remix, remixAgentActivity, state]);
+
+  const companionStatus = companionStatusForRemix(remix, remixAgentActivity);
+  useEffect(() => {
+    window.api.setCompanionStatus(companionStatus);
+  }, [companionStatus]);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -2077,6 +2135,7 @@ export default function AppPage(): React.JSX.Element {
       if (isRemixChatPhase(remixRef.current?.phase)) {
         patchRemix({
           phase: "chat",
+          minimized: false,
           transcript: undefined,
           label: undefined,
           chatNotice: `${title}. ${body}`,
@@ -2261,6 +2320,10 @@ export default function AppPage(): React.JSX.Element {
         const nextInstruction = instruction?.trim();
         patchRemix({
           phase: "chat",
+          // The mic phase temporarily owns the same chat surface. Keep it
+          // full-size when the queued server turn takes over instead of
+          // allowing a stale compact flag to collapse the streamed response.
+          minimized: false,
           transcript: undefined,
           label: undefined,
           chatNotice: null,
@@ -2400,12 +2463,16 @@ export default function AppPage(): React.JSX.Element {
     remixDownAtRef.current = performance.now();
     remixSelectionRef.current = deferred<string | null>();
     if (chatWasOpen) {
+      // A follow-up is an active conversation, not a new glanceable run.
+      // Promote the previously settled strip before its microphone state can
+      // render, so the transcript and agent progress keep the full chat room.
       patchRemix({
         phase: "chat-capturing",
         selection: null,
         transcript: undefined,
         label: undefined,
         chatNotice: null,
+        minimized: false,
       });
     } else {
       setRemix({
@@ -2829,7 +2896,6 @@ export default function AppPage(): React.JSX.Element {
   // so there is nothing left for the capsule to say while one is up.
   const showRemixCard = remix !== null;
   const showRemixChat = isRemixChatPhase(remix?.phase);
-  const remixChatMini = showRemixChat && remix?.minimized === true;
   const showCard = showErrorCard || showRemixCard;
   const active = state !== "idle" || showRemixCard;
 
@@ -3151,8 +3217,6 @@ export default function AppPage(): React.JSX.Element {
   }, [remix, remixView]);
   const remixOpen = showRemixCard && roomReady;
 
-  const viewIsChat = isRemixChatPhase(remixView?.phase);
-
   // The dictation card and the chat are separate surface layers, each
   // latching the last content it showed: a phase flip animates the old
   // surface out underneath the new one rising — a handover, never an
@@ -3167,42 +3231,9 @@ export default function AppPage(): React.JSX.Element {
     return () => clearTimeout(timer);
   }, [liveCardView, cardView]);
 
-  const [chatView, setChatView] = useState<RemixSession | null>(null);
-  const liveChatView = isRemixChatPhase(remixView?.phase) ? remixView : null;
-  if (liveChatView && liveChatView !== chatView) setChatView(liveChatView);
-  useEffect(() => {
-    if (liveChatView || !chatView) return;
-    const timer = setTimeout(() => setChatView(null), 320);
-    return () => clearTimeout(timer);
-  }, [liveChatView, chatView]);
-
-  const [chatMiniVisual, setChatMiniVisual] = useState(true);
-  const chatWasLiveRef = useRef(false);
-  useEffect(() => {
-    const wasLive = chatWasLiveRef.current;
-    chatWasLiveRef.current = showRemixChat;
-    if (!viewIsChat) {
-      setChatMiniVisual(true);
-      return;
-    }
-    if (!showRemixChat) return;
-    if (!wasLive || remixChatMini) {
-      setChatMiniVisual(remixChatMini);
-      return;
-    }
-    let inner = 0;
-    const outer = requestAnimationFrame(() => {
-      inner = requestAnimationFrame(() => setChatMiniVisual(false));
-    });
-    // rAF only fires while the compositor produces frames; a throttled or
-    // occluded window would otherwise never finish the morph.
-    const fallback = window.setTimeout(() => setChatMiniVisual(false), 120);
-    return () => {
-      cancelAnimationFrame(outer);
-      cancelAnimationFrame(inner);
-      clearTimeout(fallback);
-    };
-  }, [viewIsChat, showRemixChat, remixChatMini]);
+  const chatPresentation = resolveRemixChatPresentation(remix, remixView);
+  const chatMiniVisual = chatPresentation.minimized;
+  const viewIsChat = chatPresentation.session !== null;
 
   const remixTranscript = cardView?.transcript?.trim() ?? "";
   const remixHint =
@@ -4080,22 +4111,30 @@ export default function AppPage(): React.JSX.Element {
                     }),
               }}
             >
-              {chatView && (
+              {chatPresentation.session && (
                 <Suspense fallback={null}>
                   <RemixChat
                     context={
                       remixContextRef.current ?? {
-                        text: chatView.selection,
+                        text: chatPresentation.session.selection,
                         appName: null,
                         windowTitle: null,
                         capturedAt: Date.now(),
                       }
                     }
-                    initialInstruction={chatView.initialInstruction ?? null}
-                    queuedInstructions={chatView.chatInstructions ?? []}
-                    voiceStatus={remixVoiceStatus(chatView.phase)}
-                    voiceTranscript={chatView.transcript ?? null}
-                    voiceNotice={chatView.chatNotice ?? null}
+                    initialInstruction={
+                      chatPresentation.session.initialInstruction ?? null
+                    }
+                    queuedInstructions={
+                      chatPresentation.session.chatInstructions ?? []
+                    }
+                    voiceStatus={remixVoiceStatus(
+                      chatPresentation.session.phase,
+                    )}
+                    voiceTranscript={
+                      chatPresentation.session.transcript ?? null
+                    }
+                    voiceNotice={chatPresentation.session.chatNotice ?? null}
                     minimized={chatMiniVisual}
                     anchor={{
                       v: pillAlign === "start" ? "top" : "bottom",
@@ -4104,7 +4143,7 @@ export default function AppPage(): React.JSX.Element {
                     onOpenWorkspace={openRemixWorkspace}
                     onInstructionConsumed={consumeRemixChatInstruction}
                     onVoiceNoticeDismiss={clearRemixChatNotice}
-                    onActivityChange={setRemixAgentWorking}
+                    onActivityChange={handleRemixActivity}
                     onMinimize={minimizeRemixChat}
                     onClose={closeRemix}
                     onMiniHeightChange={setRemixMiniHeight}

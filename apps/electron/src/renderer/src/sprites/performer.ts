@@ -23,6 +23,7 @@ export class Performer {
   private listening = false;
   private approvalPending = false;
   private traveling = false;
+  private dockFacing: "left" | "right" = "right";
   private wasAtDesk = false;
   private lastActivity = Date.now();
   private performing = false;
@@ -51,6 +52,12 @@ export class Performer {
   destroy(): void {
     clearInterval(this.sleepTimer);
     if (this.microTimer) clearTimeout(this.microTimer);
+  }
+
+  /** The companion rests facing into the display where it is docked. */
+  setDockFacing(facing: "left" | "right"): void {
+    this.dockFacing = facing;
+    if (!this.traveling) this.engine.facing = facing;
   }
 
   snapshot(): {
@@ -120,8 +127,8 @@ export class Performer {
           this.engine.setAmbient(this.travelState(ev.travelKind));
         } else {
           this.traveling = false;
-          // Land facing the audience.
-          this.engine.facing = "right";
+          // Return to the side-aware resting pose after a travel animation.
+          this.engine.facing = this.dockFacing;
           this.refreshAmbient();
         }
         return;
@@ -272,6 +279,7 @@ export class Performer {
     this.engine.playSequence(steps, () => {
       this.performing = false;
       this.lastActivity = Date.now();
+      if (!this.traveling) this.engine.facing = this.dockFacing;
       hooks?.onDone?.();
       const next = this.pending;
       this.pending = null;

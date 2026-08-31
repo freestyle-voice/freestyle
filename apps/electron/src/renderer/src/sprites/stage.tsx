@@ -1,4 +1,4 @@
-import type { CompanionState } from "@shared/companion";
+import type { CompanionFacing, CompanionState } from "@shared/companion";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { SheetEngine } from "./engine";
@@ -13,14 +13,18 @@ import type { SheetSpriteDefinition } from "./types";
 export function SpriteStage({
   def,
   state,
+  facing,
   hotRect = def.hotRect,
 }: {
   def: SheetSpriteDefinition;
   state: CompanionState;
+  facing: CompanionFacing;
   hotRect?: SheetSpriteDefinition["hotRect"];
 }): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const performerRef = useRef<Performer | null>(null);
+  const facingRef = useRef(facing);
+  facingRef.current = facing;
   const [shout, setShout] = useState<string | null>(null);
   const shoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -28,6 +32,7 @@ export function SpriteStage({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const engine = new SheetEngine(canvas, def);
+    engine.facing = facingRef.current;
     const performer = new Performer(
       engine,
       def,
@@ -63,6 +68,13 @@ export function SpriteStage({
       if (shoutTimer.current) clearTimeout(shoutTimer.current);
     };
   }, [def]);
+
+  useEffect(() => {
+    // This is the companion's resting direction. A short choreography may
+    // briefly choose a direction of its own, but the next dock update and the
+    // end of that performance return it to the display-facing pose.
+    performerRef.current?.setDockFacing(facing);
+  }, [facing]);
 
   useEffect(() => {
     window.api.companionSetHotRect(hotRect);

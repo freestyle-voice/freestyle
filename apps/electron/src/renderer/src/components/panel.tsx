@@ -906,9 +906,9 @@ function RemixChatHeader({
     if (!onDelete) return;
     if (!window.confirm(`Delete “${title}”? This can’t be undone.`)) return;
     setActionError(null);
-    void onDelete(thread.id).catch(() =>
-      setActionError("Couldn’t delete this session."),
-    );
+    // Session deletion owns its optimistic rollback and failure toast in the
+    // session provider, so this header never waits for the network round-trip.
+    void onDelete(thread.id).catch(() => {});
   };
 
   return (

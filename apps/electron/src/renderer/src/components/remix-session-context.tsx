@@ -2,14 +2,16 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
   invalidateThreads,
   latestThreadQueryOptions,
+  optimisticallyDeleteThread,
   queryKeys,
+  restoreOptimisticallyDeletedThread,
 } from "@renderer/lib/query";
 import {
   deleteThread as deleteStoredThread,
   getThread,
   type ThreadState,
 } from "@renderer/lib/threads";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -27,6 +29,13 @@ type RemixSessionContextValue = {
   localTitles: Record<string, string>;
   renameThread: (threadId: string, title: string) => Promise<void>;
   deleteThread: (threadId: string) => Promise<void>;
+};
+
+type ThreadDeletionVariables = {
+  threadId: string;
+  snapshot: ReturnType<typeof optimisticallyDeleteThread>;
+  selected: ThreadState | null;
+  replacementSelection: number | null;
 };
 
 const RemixSessionContext = createContext<RemixSessionContextValue | null>(
@@ -49,6 +58,7 @@ export function RemixSessionProvider({
 }): React.JSX.Element {
   const [thread, setThread] = useState<ThreadState | null>(null);
   const [localTitles, setLocalTitles] = useState<Record<string, string>>({});
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
   const queryClient = useQueryClient();
   const { user, loading } = useCloudAuth();
   const latestQuery = useQuery({
@@ -89,20 +99,71 @@ export function RemixSessionProvider({
     if (!saved) throw new Error("Could not save the session name.");
   }, []);
 
+  const deleteThreadMutation = useMutation({
+    mutationFn: ({ threadId }: ThreadDeletionVariables) =>
+      deleteStoredThread(threadId),
+    onMutate: (variables: ThreadDeletionVariables) => {
+      return variables;
+    },
+    onSuccess: (_result, { threadId }) => {
+      void window.api?.setRemixSessionTitle?.(threadId, null);
+    },
+    onError: (_error, { threadId }, context) => {
+      if (!context) return;
+      restoreOptimisticallyDeletedThread(
+        queryClient,
+        threadId,
+        context.snapshot,
+      );
+      setLocalTitles(context.snapshot.localTitles);
+      if (
+        context.selected &&
+        context.replacementSelection === selectionRef.current
+      ) {
+        switchThread(context.selected);
+      }
+      setDeleteNotice("Couldn’t delete this session. It has been restored.");
+    },
+    onSettled: () => {
+      void invalidateThreads(queryClient);
+    },
+  });
+
   const deleteThread = useCallback(
-    async (threadId: string) => {
-      await deleteStoredThread(threadId);
-      setLocalTitles((titles) => {
-        const next = { ...titles };
+    (threadId: string) => {
+      const selected = thread?.id === threadId ? thread : null;
+      const snapshot = optimisticallyDeleteThread(
+        queryClient,
+        threadId,
+        localTitles,
+      );
+      setLocalTitles((current) => {
+        const next = { ...current };
         delete next[threadId];
         return next;
       });
-      void window.api?.setRemixSessionTitle?.(threadId, null);
-      await invalidateThreads(queryClient);
-      if (thread?.id === threadId) switchThread(newThread());
+
+      let replacementSelection: number | null = null;
+      if (selected) {
+        switchThread(newThread());
+        replacementSelection = selectionRef.current;
+      }
+
+      return deleteThreadMutation.mutateAsync({
+        threadId,
+        snapshot,
+        selected,
+        replacementSelection,
+      });
     },
-    [queryClient, switchThread, thread?.id],
+    [deleteThreadMutation, localTitles, queryClient, switchThread, thread],
   );
+
+  useEffect(() => {
+    if (!deleteNotice) return;
+    const timeout = window.setTimeout(() => setDeleteNotice(null), 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [deleteNotice]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -147,6 +208,15 @@ export function RemixSessionProvider({
   return (
     <RemixSessionContext.Provider value={value}>
       {children}
+      {deleteNotice ? (
+        <div
+          className="fixed right-5 bottom-5 z-50 max-w-80 rounded-[10px] border border-destructive/45 bg-background/95 px-3 py-2.5 text-sm text-foreground shadow-xl backdrop-blur-sm"
+          role="status"
+          aria-live="polite"
+        >
+          {deleteNotice}
+        </div>
+      ) : null}
     </RemixSessionContext.Provider>
   );
 }

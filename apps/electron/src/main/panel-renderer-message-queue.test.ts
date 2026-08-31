@@ -51,6 +51,23 @@ describe("PanelRendererMessageQueue", () => {
     ]);
   });
 
+  it("navigates to Remix before delivering queued workspace interaction", () => {
+    const delivered: PanelRendererMessage[] = [];
+    const queue = new PanelRendererMessageQueue((message) => {
+      delivered.push(message);
+    });
+
+    queue.send({ channel: "dashboard:navigate", payload: "/remix" });
+    queue.send({ channel: "panel:focus-composer" });
+
+    queue.markReady();
+
+    expect(delivered).toEqual([
+      { channel: "dashboard:navigate", payload: "/remix" },
+      { channel: "panel:focus-composer" },
+    ]);
+  });
+
   it("keeps only the latest dictation state while the renderer is unready", () => {
     const delivered: PanelRendererMessage[] = [];
     const queue = new PanelRendererMessageQueue((message) => {

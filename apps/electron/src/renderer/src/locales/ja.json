@@ -124,6 +124,7 @@
     },
     "sections": {
       "application": "アプリケーション",
+      "companion": "コンパニオン",
       "recording": "文字起こし",
       "display": "表示",
       "permissions": "権限",

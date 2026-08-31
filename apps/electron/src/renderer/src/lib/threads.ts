@@ -1,7 +1,21 @@
 import { apiFetch } from "@renderer/lib/api";
 import type { UIMessage } from "ai";
 
-export type ThreadState = { id: string; messages: UIMessage[] };
+/** The canonical title is generated and persisted by the Remix agent. */
+export type ThreadState = {
+  id: string;
+  title?: string | null;
+  messages: UIMessage[];
+};
+
+/**
+ * Keep workspace chrome aligned with the server-owned conversation title. A
+ * new thread stays neutral while the agent is naming it rather than echoing
+ * the user's first message into the title bar.
+ */
+export function displayThreadTitle(thread: Pick<ThreadState, "title">): string {
+  return thread.title?.trim() || "New chat";
+}
 
 export type DurableThreadAction = {
   id: string;

@@ -124,6 +124,7 @@
     },
     "sections": {
       "application": "Applicazione",
+      "companion": "Compagno",
       "recording": "Trascrizione",
       "display": "Display",
       "permissions": "Autorizzazioni",

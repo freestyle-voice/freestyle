@@ -146,6 +146,7 @@ const settingsSectionIds = [
   "recording",
   "remix",
   "application",
+  "companion",
   "display",
   "permissions",
   "notifications",
@@ -161,6 +162,7 @@ const settingsRouteSections = {
   transcription: "recording",
   remix: "remix",
   application: "application",
+  companion: "companion",
   appearance: "display",
   permissions: "permissions",
   notifications: "notifications",
@@ -877,9 +879,14 @@ export default function SettingsPage(): React.JSX.Element {
                     onCheckedChange={handleShowOnLaunchToggle}
                   />
                 </Row>
+              </SettingsPanel>
+            )}
+
+            {activeSection === "companion" && (
+              <SettingsPanel>
                 <Row
                   label="Show desktop companion"
-                  desc="An optional local observer in the corner. It never records or controls your dictation."
+                  desc="An optional local observer: it never records or controls your dictation. Click it to return to Remix, or drag the black handle below it to place it independently on each display."
                 >
                   <Switch
                     checked={petEnabled}
@@ -896,7 +903,6 @@ export default function SettingsPage(): React.JSX.Element {
                       ? "Choose the companion shown on your desktop."
                       : "Turn on the desktop companion to choose its appearance."
                   }
-                  last
                 >
                   <Select
                     value={companionForm}
@@ -918,6 +924,25 @@ export default function SettingsPage(): React.JSX.Element {
                       ))}
                     </SelectContent>
                   </Select>
+                </Row>
+                <Row
+                  label="Wake companion"
+                  desc={
+                    petEnabled
+                      ? "Bring it back to the active display without interrupting your work."
+                      : "Turn on the companion first."
+                  }
+                  last
+                >
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!petEnabled}
+                    onClick={() => window.api.wakeCompanion()}
+                  >
+                    Wake companion
+                  </Button>
                 </Row>
               </SettingsPanel>
             )}

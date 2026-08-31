@@ -7,19 +7,19 @@ export function LoginGate({
   children: React.ReactNode;
 }): React.JSX.Element | null {
   const { user, loading } = useCloudAuth();
-  // AppShell remains mounted while this check runs, so the workspace switcher
-  // and static navigation paint immediately. Keep the protected route content
-  // empty until we know whether the signed-in app or sign-in screen belongs
-  // there; this avoids exposing user data during an auth transition.
+  // AppShell supplies a neutral, full-window signed-out frame while this
+  // check runs. Keep protected content empty until we know whether the app or
+  // sign-in screen belongs there; this avoids exposing user data during an
+  // auth transition without briefly rendering the app sidebar.
   if (loading) return <StartupContentPlaceholder />;
   if (!user) return <LoginPage />;
   return <>{children}</>;
 }
 
 /**
- * The surrounding AppShell is already visible during auth verification. This
- * intentionally occupies only its content pane, leaving no fake skeleton to
- * replace once the authenticated route mounts.
+ * The surrounding signed-out shell is already visible during auth
+ * verification. This intentionally leaves it empty rather than rendering a
+ * fake skeleton before the sign-in page or authenticated route mounts.
  */
 function StartupContentPlaceholder(): React.JSX.Element {
   return <div className="min-h-0 flex-1" aria-busy="true" />;

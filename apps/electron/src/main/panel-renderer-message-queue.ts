@@ -6,7 +6,8 @@ export type PanelDictationEvent = {
 export type PanelRendererMessage =
   | { channel: "panel:focus-composer" }
   | { channel: "panel:dictation"; payload: PanelDictationEvent }
-  | { channel: "panel:open-thread"; payload: string };
+  | { channel: "panel:open-thread"; payload: string }
+  | { channel: "dashboard:navigate"; payload: "/remix" };
 
 /**
  * Holds panel messages until React has registered its IPC listeners. Electron's
@@ -19,6 +20,7 @@ export class PanelRendererMessageQueue {
   private focusComposerPending = false;
   private pendingDictation: PanelRendererMessage | null = null;
   private pendingOpenThread: PanelRendererMessage | null = null;
+  private pendingNavigation: PanelRendererMessage | null = null;
 
   constructor(
     private readonly deliver: (message: PanelRendererMessage) => void,
@@ -37,6 +39,10 @@ export class PanelRendererMessageQueue {
       this.pendingOpenThread = message;
       return;
     }
+    if (message.channel === "dashboard:navigate") {
+      this.pendingNavigation = message;
+      return;
+    }
     // The final transcript supersedes every prior partial. Retaining only the
     // newest event avoids unbounded buffering if a renderer fails to mount.
     this.pendingDictation = message;
@@ -45,6 +51,7 @@ export class PanelRendererMessageQueue {
   markReady(): void {
     if (this.ready) return;
     this.ready = true;
+    if (this.pendingNavigation) this.deliver(this.pendingNavigation);
     if (this.focusComposerPending)
       this.deliver({ channel: "panel:focus-composer" });
     if (this.pendingDictation) this.deliver(this.pendingDictation);
@@ -52,6 +59,7 @@ export class PanelRendererMessageQueue {
     this.focusComposerPending = false;
     this.pendingDictation = null;
     this.pendingOpenThread = null;
+    this.pendingNavigation = null;
   }
 
   handleNavigationStart(): void {
@@ -72,5 +80,6 @@ export class PanelRendererMessageQueue {
     this.focusComposerPending = false;
     this.pendingDictation = null;
     this.pendingOpenThread = null;
+    this.pendingNavigation = null;
   }
 }

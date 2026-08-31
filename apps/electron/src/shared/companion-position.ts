@@ -3,6 +3,43 @@ export interface CompanionDisplay {
   workArea: { x: number; y: number; width: number; height: number };
 }
 
+export interface CompanionWindowSize {
+  width: number;
+  height: number;
+}
+
+export type CompanionDisplayPositions = Record<
+  string,
+  { x: number; y: number }
+>;
+
+/** Keep a manually placed companion wholly reachable on its display. */
+export function clampCompanionPosition<T extends CompanionDisplay>(
+  position: { x: number; y: number },
+  display: T,
+  size: CompanionWindowSize,
+): { x: number; y: number } {
+  const { x, y, width, height } = display.workArea;
+  return {
+    x: Math.min(Math.max(position.x, x), x + Math.max(0, width - size.width)),
+    y: Math.min(Math.max(position.y, y), y + Math.max(0, height - size.height)),
+  };
+}
+
+/**
+ * A companion remembers a manually placed slot per display. A screen without
+ * a saved slot deliberately falls back to the caller's bottom-left home.
+ */
+export function positionForCompanionDisplay<T extends CompanionDisplay>(
+  display: T,
+  size: CompanionWindowSize,
+  positions: CompanionDisplayPositions,
+  fallback: { x: number; y: number },
+): { x: number; y: number } {
+  const saved = positions[String(display.id)];
+  return saved ? clampCompanionPosition(saved, display, size) : fallback;
+}
+
 /**
  * The display to use when moving the companion for a dictation session.
  *

@@ -17,6 +17,7 @@ import {
   type ToolUIPart,
   type UIMessage,
 } from "ai";
+import { LoaderCircle } from "lucide-react";
 import { domMax, LazyMotion } from "motion/react";
 import type React from "react";
 import {
@@ -42,6 +43,12 @@ const INK = "rgba(245, 241, 228, 0.92)";
 const INK_DIM = "rgba(245, 241, 228, 0.70)";
 const INK_FAINT = "rgba(245, 241, 228, 0.52)";
 const OLIVE = "#8AB62A";
+const REMIX_THINKING_MESSAGES = [
+  "Thinking…",
+  "Contemplating…",
+  "Finding the right thread…",
+  "One moment — bringing it together…",
+] as const;
 
 export {
   REMIX_CHAT_STRIP,
@@ -89,6 +96,7 @@ export interface RemixChatProps {
   onOpenWorkspace: (threadId: string) => void;
   onInstructionConsumed: (instructionId: number) => void;
   onVoiceNoticeDismiss: () => void;
+  onActivityChange: (working: boolean) => void;
   onMinimize: () => void;
   onClose: () => void;
 }
@@ -128,6 +136,7 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
       onOpenWorkspace={props.onOpenWorkspace}
       onInstructionConsumed={props.onInstructionConsumed}
       onVoiceNoticeDismiss={props.onVoiceNoticeDismiss}
+      onActivityChange={props.onActivityChange}
       onMinimize={props.onMinimize}
       onClose={props.onClose}
       onNewThread={startNewThread}
@@ -149,6 +158,7 @@ interface RemixThreadProps {
   onOpenWorkspace: (threadId: string) => void;
   onInstructionConsumed: (instructionId: number) => void;
   onVoiceNoticeDismiss: () => void;
+  onActivityChange: (working: boolean) => void;
   onMinimize: () => void;
   onClose: () => void;
   onNewThread: () => void;
@@ -354,7 +364,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       props.onVoiceNoticeDismiss();
       clearError();
       lastInstructionRef.current = text;
-      void sendMessage({ text });
+      void sendMessage({ text }).catch((err) => {
+        // A request that fails before useChat reaches `submitted` used to
+        // leave this guard set forever, so the next spoken instruction stayed
+        // queued behind a request that no longer existed.
+        dispatchInFlightRef.current = false;
+        setNotice(err instanceof Error ? err.message : "Remix failed.");
+      });
       capture("remix_message_sent", { source });
     },
     [clearError, props.onVoiceNoticeDismiss, sendMessage],
@@ -371,19 +387,32 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     }
   }, [busy]);
 
-  const narrating = useMemo(
+  const hasAssistantResponse = useMemo(
     () =>
       messages.some(
         (message) =>
           message.role === "assistant" &&
           message.parts.some(
             (part) =>
-              isToolOrDynamicToolUIPart(part) &&
-              part.state !== "output-available" &&
-              part.state !== "output-error",
+              (isTextUIPart(part) && part.text.trim().length > 0) ||
+              (isToolOrDynamicToolUIPart(part) &&
+                part.state !== "output-available" &&
+                part.state !== "output-error"),
           ),
       ),
     [messages],
+  );
+  const actionRunning = actions.some((action) => action.status === "running");
+  const onActivityChangeRef = useRef(props.onActivityChange);
+  onActivityChangeRef.current = props.onActivityChange;
+  useEffect(() => {
+    props.onActivityChange(busy || actionRunning);
+  }, [actionRunning, busy, props.onActivityChange]);
+  useEffect(
+    () => () => {
+      onActivityChangeRef.current(false);
+    },
+    [],
   );
 
   const [settled, setSettled] = useState(false);
@@ -532,6 +561,11 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         ? "Transcribing…"
         : null;
   const displayNotice = notice ?? props.voiceNotice;
+  const miniProgress =
+    voiceLabel ??
+    agentProgressLabel(messages, busy) ??
+    actions.find((action) => action.status === "running")?.label ??
+    null;
   const showFullFinal =
     minimized &&
     settled &&
@@ -710,14 +744,14 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               <span className="remix-mini-identity">
                 <span
                   className="remix-mini-dot"
-                  data-busy={busy || !settled || voiceLabel !== null}
+                  data-busy={busy || !settled || miniProgress !== null}
                   data-failed={displayNotice !== null}
                 />
                 <span>Remix</span>
               </span>
-              {voiceLabel ? (
+              {miniProgress ? (
                 <span className="remix-mini-progress" aria-hidden="true">
-                  {voiceLabel}
+                  {miniProgress}
                 </span>
               ) : null}
               <button
@@ -836,11 +870,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             {messages.map((message) => (
               <MessageRow key={message.id} message={message} busy={busy} />
             ))}
-            {busy && !narrating && (
-              <ThinkingShimmer className="remix-chat-busy">
-                Thinking…
-              </ThinkingShimmer>
-            )}
+            {busy && !hasAssistantResponse ? <RemixThinkingState /> : null}
           </MessageScroller>
 
           {displayNotice && (
@@ -973,6 +1003,78 @@ const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
   web_search: { doing: "Searching the web…", done: "Searched the web" },
   image_search: { doing: "Searching images…", done: "Searched images" },
 };
+
+/**
+ * A gentle acknowledgement while a turn is in flight but before the agent has
+ * produced text or disclosed a real tool step. Once either arrives, the
+ * conversation takes over so we never mask useful progress with decorative
+ * loading copy.
+ */
+function RemixThinkingState(): React.JSX.Element {
+  const [messageIndex, setMessageIndex] = useState(0);
+  const message = REMIX_THINKING_MESSAGES[messageIndex];
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setMessageIndex((index) => (index + 1) % REMIX_THINKING_MESSAGES.length);
+    }, 2_600);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="remix-chat-thinking mx-1 flex items-center gap-2 rounded-[9px] border border-border/70 bg-card/45 px-2.5 py-2 text-[12px] text-muted-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
+    >
+      <span
+        aria-hidden="true"
+        className="grid size-5 shrink-0 place-items-center rounded-full bg-primary/10 text-primary"
+      >
+        <LoaderCircle className="size-3.5 animate-spin" strokeWidth={1.8} />
+      </span>
+      <ThinkingShimmer
+        key={message}
+        duration={2.6}
+        className="animate-in fade-in-0 slide-in-from-bottom-0.5 font-medium duration-300"
+      >
+        {message}
+      </ThinkingShimmer>
+    </div>
+  );
+}
+
+/** The compact pill cannot render the full activity timeline, but it should
+ * still narrate the step currently happening instead of looking frozen. */
+function agentProgressLabel(
+  messages: UIMessage[],
+  busy: boolean,
+): string | null {
+  if (!busy) return null;
+  for (
+    let messageIndex = messages.length - 1;
+    messageIndex >= 0;
+    messageIndex--
+  ) {
+    const message = messages[messageIndex];
+    if (message.role !== "assistant") continue;
+    for (
+      let partIndex = message.parts.length - 1;
+      partIndex >= 0;
+      partIndex--
+    ) {
+      const part = message.parts[partIndex];
+      if (!isToolOrDynamicToolUIPart(part)) continue;
+      if (part.state === "output-available" || part.state === "output-error") {
+        continue;
+      }
+      const name = getToolOrDynamicToolName(part);
+      return TOOL_LABELS[name]?.doing ?? `Running ${name}…`;
+    }
+  }
+  return "Thinking…";
+}
 
 const MessageRow = memo(function MessageRow({
   message,

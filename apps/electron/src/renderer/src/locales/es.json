@@ -124,6 +124,7 @@
     },
     "sections": {
       "application": "Aplicación",
+      "companion": "Compañero",
       "recording": "Transcripción",
       "display": "Pantalla",
       "permissions": "Permisos",

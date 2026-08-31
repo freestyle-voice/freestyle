@@ -5,7 +5,12 @@ const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 vi.mock("@renderer/lib/api", () => ({ apiFetch }));
 
 import { threadHistoryInfiniteQueryOptions } from "./query";
-import { cancelDurableTurn, deleteThread, listThreads } from "./threads";
+import {
+  cancelDurableTurn,
+  deleteThread,
+  displayThreadTitle,
+  listThreads,
+} from "./threads";
 
 describe("thread client", () => {
   it("passes a cursor and preserves the server next cursor", async () => {
@@ -53,5 +58,17 @@ describe("thread client", () => {
     expect(apiFetch).toHaveBeenCalledWith("/api/agent/thread/thread%2Fone", {
       method: "DELETE",
     });
+  });
+});
+
+describe("displayThreadTitle", () => {
+  it("uses the persisted agent-generated title instead of replaying the first message", () => {
+    expect(displayThreadTitle({ title: "Ajmer weather outlook" })).toBe(
+      "Ajmer weather outlook",
+    );
+  });
+
+  it("keeps a new chat neutral until the agent has named it", () => {
+    expect(displayThreadTitle({ title: null })).toBe("New chat");
   });
 });

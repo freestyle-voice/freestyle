@@ -199,6 +199,12 @@ const api = {
   petEnabled: (): Promise<boolean> => ipcRenderer.invoke("pet:enabled"),
   setPetEnabled: (enabled: boolean): void =>
     ipcRenderer.send("pet:set-enabled", enabled),
+  wakeCompanion: (): void => ipcRenderer.send("companion:wake"),
+  openCompanionWorkspace: (): void =>
+    ipcRenderer.send("companion:open-workspace"),
+  beginCompanionPositionDrag: (): void =>
+    ipcRenderer.send("companion:position-drag-start"),
+  companionPointerLeft: (): void => ipcRenderer.send("companion:pointer-left"),
   setPetState: (state: PetState): void =>
     ipcRenderer.send("pet:set-state", state),
   companionSetHotRect: (
@@ -206,6 +212,7 @@ const api = {
   ): void => ipcRenderer.send("companion:set-hot-rect", rect),
   setCompanionForm: (form: CompanionForm): void =>
     ipcRenderer.send("companion:set-form", form),
+  companionContextMenu: (): void => ipcRenderer.send("companion:context-menu"),
   panelOpenForDictation: (): void =>
     ipcRenderer.send("panel:open-for-dictation"),
   panelDictationPartial: (text: string): void =>

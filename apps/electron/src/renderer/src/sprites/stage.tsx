@@ -13,9 +13,11 @@ import type { SheetSpriteDefinition } from "./types";
 export function SpriteStage({
   def,
   state,
+  hotRect = def.hotRect,
 }: {
   def: SheetSpriteDefinition;
   state: CompanionState;
+  hotRect?: SheetSpriteDefinition["hotRect"];
 }): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const performerRef = useRef<Performer | null>(null);
@@ -45,7 +47,6 @@ export function SpriteStage({
       snapshot: () => performer.snapshot(),
     };
 
-    window.api.companionSetHotRect(def.hotRect);
     const offEvents = window.api.onSpriteEvent((ev) => performer.handle(ev));
     const offHot = window.api.onCompanionHotEnter(() => performer.wake());
     const hitbox = document.getElementById("sprite-hitbox");
@@ -62,6 +63,10 @@ export function SpriteStage({
       if (shoutTimer.current) clearTimeout(shoutTimer.current);
     };
   }, [def]);
+
+  useEffect(() => {
+    window.api.companionSetHotRect(hotRect);
+  }, [hotRect]);
 
   useEffect(() => {
     performerRef.current?.handle({ kind: "thinking", on: state === "working" });

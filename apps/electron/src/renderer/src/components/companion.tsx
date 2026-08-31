@@ -12,15 +12,77 @@ import {
 } from "@shared/companion";
 import { SPRITES_INFO } from "@shared/sprites";
 import type React from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 const SPARK_HOT_RECT = SPRITES_INFO.spark.body;
+const COMPANION_DOCK = { width: 38, height: 8, gap: 6 };
 
-function SparkStage({ state }: { state: CompanionState }): React.JSX.Element {
+type Rect = { x: number; y: number; width: number; height: number };
+
+function companionInteractionRect(body: Rect, windowSize: number): Rect {
+  const dockTop = Math.min(
+    windowSize - COMPANION_DOCK.height,
+    body.y + body.height + COMPANION_DOCK.gap,
+  );
+  return {
+    x: body.x,
+    y: body.y,
+    width: body.width,
+    height: dockTop + COMPANION_DOCK.height - body.y,
+  };
+}
+
+function CompanionDock({
+  body,
+  windowSize,
+}: {
+  body: Rect;
+  windowSize: number;
+}): React.JSX.Element {
+  const top = Math.min(
+    windowSize - COMPANION_DOCK.height,
+    body.y + body.height + COMPANION_DOCK.gap,
+  );
+  const left = body.x + Math.round((body.width - COMPANION_DOCK.width) / 2);
+
+  return (
+    <div
+      aria-label="Drag to reposition companion"
+      data-companion-dock
+      onMouseDown={() => {
+        window.api.beginCompanionPositionDrag();
+      }}
+      role="img"
+      style={
+        {
+          position: "absolute",
+          left,
+          top,
+          width: COMPANION_DOCK.width,
+          height: COMPANION_DOCK.height,
+          borderRadius: 999,
+          background: "rgba(10, 10, 10, 0.92)",
+          border: "1px solid rgba(255, 255, 255, 0.22)",
+          boxShadow: "0 2px 8px rgba(0, 0, 0, 0.35)",
+          cursor: "grab",
+          WebkitAppRegion: "drag",
+        } as React.CSSProperties
+      }
+    />
+  );
+}
+
+function SparkStage({
+  state,
+  hotRect,
+}: {
+  state: CompanionState;
+  hotRect: Rect;
+}): React.JSX.Element {
   useEffect(() => {
-    window.api.companionSetHotRect(SPARK_HOT_RECT);
-  }, []);
+    window.api.companionSetHotRect(hotRect);
+  }, [hotRect]);
 
   return (
     <div
@@ -86,14 +148,37 @@ function CompanionRoot(): React.JSX.Element | null {
     };
   }, []);
 
-  if (!form) return null;
-  const def = SPRITES[form];
+  const def = form ? SPRITES[form] : null;
+  const hotRect = useMemo(
+    () =>
+      companionInteractionRect(
+        def?.body ?? SPARK_HOT_RECT,
+        def?.windowSize ?? COMPANION_WINDOW_SIZE,
+      ),
+    [def],
+  );
+  if (!def) return null;
   return (
     <button
-      type="button"
-      aria-label="Open Settings"
-      onClick={() => window.api.openSettings()}
+      aria-label="Open Remix workspace"
+      onClick={(event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest("[data-companion-dock]")
+        ) {
+          return;
+        }
+        window.api.openCompanionWorkspace();
+      }}
+      onContextMenu={(event) => {
+        event.preventDefault();
+        window.api.companionContextMenu();
+      }}
+      onMouseLeave={() => window.api.companionPointerLeft()}
       style={{
+        position: "relative",
+        width: def.windowSize,
+        height: def.windowSize,
         display: "block",
         margin: 0,
         padding: 0,
@@ -101,12 +186,14 @@ function CompanionRoot(): React.JSX.Element | null {
         background: "transparent",
         cursor: "pointer",
       }}
+      type="button"
     >
       {def.kind === "sheet" ? (
-        <SpriteStage def={def} state={state} />
+        <SpriteStage def={def} hotRect={hotRect} state={state} />
       ) : (
-        <SparkStage state={state} />
+        <SparkStage hotRect={hotRect} state={state} />
       )}
+      <CompanionDock body={def.body} windowSize={def.windowSize} />
     </button>
   );
 }

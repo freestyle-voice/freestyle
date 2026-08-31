@@ -167,14 +167,78 @@ describe("preload contract", () => {
     expect([...invoked].filter((channel) => !handled.has(channel))).toEqual([]);
   });
 
-  it("allows the local companion to open the restored Settings window", async () => {
-    const main = await readFile(mainPath, "utf8");
-    const settingsOpenHandler = main.slice(
-      main.indexOf('ipcMain.on("settings:open"'),
-      main.indexOf('ipcMain.on("settings:close"'),
+  it("returns companion clicks to the existing Remix workspace", async () => {
+    const [preload, main] = await Promise.all([
+      readFile(preloadPath, "utf8"),
+      readFile(mainPath, "utf8"),
+    ]);
+    const companionOpenHandler = main.slice(
+      main.indexOf('ipcMain.on("companion:open-workspace"'),
+      main.indexOf('ipcMain.on("pet:set-state"'),
     );
 
-    expect(settingsOpenHandler).toContain("companionWindow?.webContents");
-    expect(settingsOpenHandler).toContain("openSettingsWindow()");
+    expect(preload).toContain('ipcRenderer.send("companion:open-workspace")');
+    expect(companionOpenHandler).toContain("companionWindow?.webContents");
+    expect(companionOpenHandler).toContain("openRemixWorkspaceFromCompanion()");
+    expect(companionOpenHandler).not.toContain("openSettingsWindow()");
+  });
+
+  it("can wake an enabled companion from Settings without focusing it", async () => {
+    const [preload, main] = await Promise.all([
+      readFile(preloadPath, "utf8"),
+      readFile(mainPath, "utf8"),
+    ]);
+
+    expect(preload).toContain('ipcRenderer.send("companion:wake")');
+    expect(main).toContain('ipcMain.on("companion:wake"');
+    expect(main).toContain("function wakeCompanion(): void {");
+    const wake = main.slice(
+      main.indexOf("function wakeCompanion(): void {"),
+      main.indexOf("function destroyCompanionWindow(): void {"),
+    );
+    expect(wake).toContain("companionPosition()");
+    expect(wake).toContain("showInactive()");
+    expect(wake).toContain('setAlwaysOnTop(true, "screen-saver")');
+    expect(wake).not.toContain(".focus()");
+  });
+
+  it("accepts companion activity from the pill that owns Remix", async () => {
+    const main = await readFile(mainPath, "utf8");
+    const petStateHandler = main.slice(
+      main.indexOf('ipcMain.on("pet:set-state"'),
+      main.indexOf('ipcMain.on("companion:set-form"'),
+    );
+
+    expect(petStateHandler).toContain("mainWindow?.webContents");
+    expect(petStateHandler).toContain("setCompanionState(");
+  });
+
+  it("shows a fresh notification above the companion immediately", async () => {
+    const main = await readFile(mainPath, "utf8");
+    const present = main.slice(
+      main.indexOf('ipcMain.on("notifications:present"'),
+      main.indexOf('ipcMain.on("notifications:set-visible"'),
+    );
+
+    expect(present).toContain("showNotifications()");
+    expect(present).toContain('setCompanionState("suggestion")');
+  });
+
+  it("keeps companion controls scoped and closes their notification surface together", async () => {
+    const main = await readFile(mainPath, "utf8");
+    const formHandler = main.slice(
+      main.indexOf('ipcMain.on("companion:set-form"'),
+      main.indexOf('ipcMain.on("companion:context-menu"'),
+    );
+    const menuHandler = main.slice(
+      main.indexOf('ipcMain.on("companion:context-menu"'),
+      main.indexOf('ipcMain.on("sprite:event"'),
+    );
+
+    expect(formHandler).toContain("panelWindow?.webContents");
+    expect(formHandler).toContain("settingsWindow?.webContents");
+    expect(menuHandler.indexOf("hideNotifications()")).toBeLessThan(
+      menuHandler.indexOf("destroyCompanionWindow()"),
+    );
   });
 });

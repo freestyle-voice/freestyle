@@ -32,6 +32,7 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
+import { petStateFor } from "../../../shared/pet";
 import {
   normalizePillCancelMode,
   type PillCancelMode,
@@ -543,6 +544,8 @@ export default function AppPage(): React.JSX.Element {
 
   // ---- Remix ----
   const [remix, setRemixState] = useState<RemixSession | null>(null);
+  const [remixAgentWorking, setRemixAgentWorking] = useState(false);
+  const lastPetStateRef = useRef<string | null>(null);
   const remixRef = useRef<RemixSession | null>(null);
   const setRemix = useCallback((next: RemixSession | null) => {
     remixRef.current = next;
@@ -569,8 +572,29 @@ export default function AppPage(): React.JSX.Element {
   /** Flips the card from "capturing" to "listening" once a press is a hold. */
   const remixHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remixStreamerRef = useRef<Streamer | null>(null);
-  const remixTransportRef = useRef(false);
-  const remixFinalRef = useRef<Deferred<string> | null>(null);
+
+  // The companion is an observer of the pill, including the independent Remix
+  // agent lane. Keep the signal derived from renderer-owned state so it cannot
+  // get stuck in "working" when a card closes or a request fails.
+  useEffect(() => {
+    const remixWorking =
+      remix !== null && remix.phase !== "chat" && remix.phase !== "error";
+    const next = petStateFor({
+      working:
+        state === "recording" ||
+        state === "transcribing" ||
+        remixWorking ||
+        remixAgentWorking,
+      approvalNeeded: false,
+      attention:
+        state === "error" ||
+        remix?.phase === "error" ||
+        Boolean(remix?.chatNotice),
+    });
+    if (lastPetStateRef.current === next) return;
+    lastPetStateRef.current = next;
+    window.api?.setPetState?.(next);
+  }, [remix, remixAgentWorking, state]);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -1967,24 +1991,17 @@ export default function AppPage(): React.JSX.Element {
   const getRemixStreamer = useCallback((): Streamer => {
     if (!remixStreamerRef.current) {
       remixStreamerRef.current = new Streamer(getApiBase(), getServerToken(), {
-        onConfig: (config) => {
-          remixTransportRef.current = config.sessionTransport;
-        },
+        // Remix uses this stream for live listening feedback only. The final
+        // instruction is always transcribed from the completed recorder WAV
+        // below; a fresh socket can otherwise receive `commit` before its
+        // capture pipeline is ready and strand a follow-up in "Transcribing".
+        onConfig: () => {},
         onReady: () => {},
         onPartial: (text) => {
           if (remixRef.current && text) patchRemix({ transcript: text });
         },
-        onFinal: (text) => {
-          if (remixRef.current && text.trim()) {
-            patchRemix({ transcript: text });
-          }
-          remixFinalRef.current?.resolve(text);
-          remixFinalRef.current = null;
-        },
-        onError: () => {
-          remixFinalRef.current?.resolve("");
-          remixFinalRef.current = null;
-        },
+        onFinal: () => {},
+        onError: () => {},
       });
     }
     return remixStreamerRef.current;
@@ -1999,8 +2016,6 @@ export default function AppPage(): React.JSX.Element {
       // instead of hanging on a session that no longer exists.
       remixSelectionRef.current?.resolve(null);
       remixSelectionRef.current = null;
-      remixFinalRef.current?.resolve("");
-      remixFinalRef.current = null;
       remixContextRef.current = null;
       if (remixMicGenRef.current !== null) {
         recorderRef.current.cancel(remixMicGenRef.current);
@@ -2299,24 +2314,20 @@ export default function AppPage(): React.JSX.Element {
     // been committed. Remix never ducks system audio, so no restore first.
     void playTone("stop");
 
-    const streamer = remixStreamerRef.current;
-    let finalPromise: Promise<string> | null = null;
-    let final: Deferred<string> | null = null;
-    if (streamer?.isConnected() && remixTransportRef.current) {
-      final = deferred<string>();
-      remixFinalRef.current = final;
-      streamer.commit();
-      finalPromise = Promise.race([
-        final.promise,
-        new Promise<string>((resolve) => setTimeout(() => resolve(""), 8000)),
-      ]);
-    } else {
-      streamer?.cancel();
-    }
+    // The live WebSocket is deliberately preview-only for Remix. Its session
+    // start is asynchronous, and committing it while an AudioWorklet warms
+    // up can yield a partial final (or no final at all). The completed WAV is
+    // the one reliable representation of everything the user said.
+    remixStreamerRef.current?.cancel();
 
-    // Wait for the capture to land — the chat card needs the anchor even
-    // when the selection itself comes back empty.
-    await (remixSelectionRef.current?.promise ?? Promise.resolve(null));
+    // Selection capture is helpful context, not a prerequisite for an agent
+    // request. Bound it so an inaccessible or slow focused app never keeps
+    // the pill in its transcribing state indefinitely; a late capture still
+    // updates the active conversation through the IPC listener.
+    await Promise.race([
+      remixSelectionRef.current?.promise ?? Promise.resolve(null),
+      new Promise<void>((resolve) => setTimeout(resolve, 600)),
+    ]);
     if (remixRef.current?.id !== session.id) return;
 
     let wav: Blob | null = null;
@@ -2328,34 +2339,35 @@ export default function AppPage(): React.JSX.Element {
       wav = null;
     }
     recorderRef.current.releaseStream(micGen ?? undefined);
+    if (remixMicGenRef.current === micGen) remixMicGenRef.current = null;
     if (remixRef.current?.id !== session.id) return;
 
-    let instruction = "";
-    if (finalPromise) {
-      instruction = (await finalPromise).trim();
-      if (remixFinalRef.current === final) remixFinalRef.current = null;
-      if (remixRef.current?.id !== session.id) return;
+    if (!wav) {
+      failRemix(
+        "Didn't catch that",
+        "Nothing came through — hold the hotkey and say what to do.",
+      );
+      return;
     }
 
-    if (!instruction && wav) {
-      try {
-        const res = await apiFetch("/api/transcribe", {
-          method: "POST",
-          body: wav,
-          headers: {
-            "Content-Type": "audio/wav",
-            "x-audio-duration-ms": String(durationMs),
-            "x-skip-post-process": "true",
-          },
-        });
-        if (remixRef.current?.id !== session.id) return;
-        if (res.ok) {
-          const data = (await res.json()) as { raw?: string; cleaned?: string };
-          instruction = (data.raw || data.cleaned || "").trim();
-        }
-      } catch {
-        instruction = "";
+    let instruction = "";
+    try {
+      const res = await apiFetch("/api/transcribe", {
+        method: "POST",
+        body: wav,
+        headers: {
+          "Content-Type": "audio/wav",
+          "x-audio-duration-ms": String(durationMs),
+          "x-skip-post-process": "true",
+        },
+      });
+      if (remixRef.current?.id !== session.id) return;
+      if (res.ok) {
+        const data = (await res.json()) as { raw?: string; cleaned?: string };
+        instruction = (data.raw || data.cleaned || "").trim();
       }
+    } catch {
+      instruction = "";
     }
 
     if (remixRef.current?.id !== session.id) return;
@@ -2576,7 +2588,6 @@ export default function AppPage(): React.JSX.Element {
         getStreamer();
         remixStreamerRef.current?.destroy();
         remixStreamerRef.current = null;
-        remixTransportRef.current = false;
       });
     });
     return () => {
@@ -4093,6 +4104,7 @@ export default function AppPage(): React.JSX.Element {
                     onOpenWorkspace={openRemixWorkspace}
                     onInstructionConsumed={consumeRemixChatInstruction}
                     onVoiceNoticeDismiss={clearRemixChatNotice}
+                    onActivityChange={setRemixAgentWorking}
                     onMinimize={minimizeRemixChat}
                     onClose={closeRemix}
                     onMiniHeightChange={setRemixMiniHeight}

@@ -51,6 +51,7 @@ import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
   cancelDurableTurn,
   type DurableThreadAction,
+  displayThreadTitle,
   getThreadRuntime,
   sendDurableTurnCommand,
   type ThreadState,
@@ -423,17 +424,6 @@ function messageText(message: UIMessage): string {
         : [],
     )
     .join("\n\n");
-}
-
-function sessionTitle(thread: ThreadState): string {
-  const firstPrompt = thread.messages.find(
-    (message) => message.role === "user" && messageText(message).trim(),
-  );
-  const title = firstPrompt ? messageText(firstPrompt).trim() : "";
-  if (!title) return "New chat";
-
-  const firstLine = title.replace(/\s+/g, " ").trim();
-  return firstLine.length > 72 ? `${firstLine.slice(0, 71)}…` : firstLine;
 }
 
 function MessageActions({
@@ -850,7 +840,7 @@ export function RemixWorkspace(): React.JSX.Element {
         onSwitchThread={switchThread}
         onRenameSession={renameThread}
         onDeleteSession={deleteThread}
-        sessionTitle={localTitles[thread.id] ?? sessionTitle(thread)}
+        sessionTitle={localTitles[thread.id] ?? displayThreadTitle(thread)}
         desktop
       />
     </div>
@@ -1702,7 +1692,7 @@ function PanelInner({
         {desktop ? (
           <RemixChatHeader
             thread={thread}
-            title={currentSessionTitle ?? sessionTitle(thread)}
+            title={currentSessionTitle ?? displayThreadTitle(thread)}
             onRename={onRenameSession}
             onDelete={onDeleteSession}
           >

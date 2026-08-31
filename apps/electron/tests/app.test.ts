@@ -17,8 +17,6 @@ let app: ElectronApplication | undefined;
 let pillPage: Page;
 let serverPort: number;
 
-const DEFAULT_PORT = 4649;
-
 /** The pill is the only default boot surface; the pet is opt-in. */
 async function waitForPillWindow(
   electronApp: ElectronApplication,
@@ -56,7 +54,6 @@ async function waitForWorkspaceWindow(
 
 test.beforeAll(async () => {
   const userDataDir = mkdtempSync(join(tmpdir(), "freestyle-e2e-"));
-  const dbPath = join(userDataDir, "freestyle.db");
 
   try {
     app = await electron.launch({
@@ -64,8 +61,11 @@ test.beforeAll(async () => {
       env: {
         ...process.env,
         NODE_ENV: "development",
-        FREESTYLE_DB_PATH: dbPath,
         FREESTYLE_E2E: "1",
+        // The main process owns FREESTYLE_DB_PATH from Electron's user-data
+        // directory. Point Electron itself at the fixture so this test cannot
+        // inherit a developer's settings or local history.
+        FREESTYLE_USER_DATA: userDataDir,
         ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
       },
       timeout: 30_000,
@@ -74,20 +74,9 @@ test.beforeAll(async () => {
     await app.firstWindow();
     pillPage = await waitForPillWindow(app, 15_000);
 
-    // Resolve the actual server port by probing the default port from the
-    // main process. The server starts on DEFAULT_PORT and only falls back
-    // to a random port when DEFAULT_PORT is already in use.
-    const portResult = await app.evaluate(async (_electron, port) => {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-        if (res.ok) return port;
-      } catch {
-        // port not available
-      }
-      return 0;
-    }, DEFAULT_PORT);
-
-    serverPort = portResult || DEFAULT_PORT;
+    // Ask the app that was just launched rather than probing 4649. Isolated
+    // E2E uses a random port so it cannot attach to a developer's live app.
+    serverPort = await pillPage.evaluate(() => window.api.getServerPort());
   } catch (error) {
     console.error("Failed to launch Electron app:", error);
     if (app) {

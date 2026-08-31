@@ -120,15 +120,18 @@ describe("settings consolidation", () => {
   });
 
   it("makes the desktop companion an explicit local-only opt-in", async () => {
-    const settings = await readFile(
-      resolve(rendererRoot, "pages/settings.tsx"),
-      "utf8",
-    );
+    const [settings, shell] = await Promise.all([
+      readFile(resolve(rendererRoot, "pages/settings.tsx"), "utf8"),
+      readFile(shellPath, "utf8"),
+    ]);
 
     expect(settings).toMatch(/window\.api\s*\.petEnabled\(\)/);
     expect(settings).toContain("window.api.setPetEnabled(enabled)");
     expect(settings).toContain('label="Show desktop companion"');
     expect(settings).toContain("never records or controls your dictation");
     expect(settings).toContain("disabled={!petEnabled}");
+    expect(settings).toContain('activeSection === "companion"');
+    expect(settings).toContain("window.api.wakeCompanion()");
+    expect(shell).toContain('to: "/settings/companion"');
   });
 });

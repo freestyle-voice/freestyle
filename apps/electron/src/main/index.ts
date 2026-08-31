@@ -87,8 +87,11 @@ import {
   parseDictationDestination,
 } from "../shared/companion";
 import {
+  type CompanionDisplayPositions,
+  clampCompanionPosition,
   createDictationDisplayRequestTracker,
   invalidateDictationDisplayRequest,
+  positionForCompanionDisplay,
   resolveDictationPanelDisplay,
 } from "../shared/companion-position";
 import type { DictationPrefs } from "../shared/dictation-prefs";
@@ -2101,34 +2104,42 @@ app.whenReady().then(async () => {
   // (including autocaptured exceptions) carry the release they came from.
   process.env.FREESTYLE_APP_VERSION = app.getVersion();
 
-  // Start the Hono HTTP server with WebSocket support (or reuse an existing one)
-  const startServer = (port: number): void => {
-    startFreestyleServer({ port, host: "127.0.0.1" })
-      .then(({ server, port: boundPort }) => {
-        httpServer = server;
-        const changed = serverPort !== boundPort;
-        serverPort = boundPort;
-        log.info(`Server running on http://localhost:${boundPort}`);
-        if (changed) broadcastServerChanged();
-      })
-      .catch((err: NodeJS.ErrnoException) => {
-        if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
-          log.warn(`Port ${DEFAULT_PORT} in use, falling back to random port`);
-          startServer(0);
-        } else {
-          log.error(`Server failed to start: ${err}`);
-        }
+  // Start the Hono HTTP server with WebSocket support (or reuse an existing one).
+  // Returning the startup promise lets the isolated E2E process wait for its
+  // own random-port server before it creates renderers. Otherwise a developer's
+  // app already listening on 4649 can leak its data into the test window.
+  const startServer = async (port: number): Promise<boolean> => {
+    try {
+      const { server, port: boundPort } = await startFreestyleServer({
+        port,
+        host: "127.0.0.1",
       });
+      httpServer = server;
+      const changed = serverPort !== boundPort;
+      serverPort = boundPort;
+      log.info(`Server running on http://localhost:${boundPort}`);
+      if (changed) broadcastServerChanged();
+      return true;
+    } catch (error) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code === "EADDRINUSE" && port === DEFAULT_PORT) {
+        log.warn(`Port ${DEFAULT_PORT} in use, falling back to random port`);
+        return startServer(0);
+      }
+      log.error(`Server failed to start: ${err}`);
+      return false;
+    }
   };
 
   // Check if a Freestyle server is already running on the default port. The
   // 1.5s bound matters: a normal cold start fast-fails with ECONNREFUSED, but
   // without a timeout a half-open socket on the port could hang window/tray
-  // creation indefinitely.
-  const existingServer = await probeServerHealth(
-    `http://127.0.0.1:${DEFAULT_PORT}`,
-    1500,
-  );
+  // creation indefinitely. E2E must never reuse a developer's live server:
+  // its fixture owns an isolated user-data directory and database.
+  const existingServer =
+    process.env.FREESTYLE_E2E === "1"
+      ? false
+      : await probeServerHealth(`http://127.0.0.1:${DEFAULT_PORT}`, 1500);
 
   if (existingServer) {
     serverPort = DEFAULT_PORT;
@@ -2151,8 +2162,12 @@ app.whenReady().then(async () => {
       startServer(DEFAULT_PORT);
     }, EXTERNAL_SERVER_POLL_MS);
     watchdog.unref();
+  } else if (process.env.FREESTYLE_E2E === "1") {
+    // Start on a random port and wait before creating the first renderer. The
+    // preload bridge then reports the correct target from its first request.
+    await startServer(0);
   } else {
-    startServer(DEFAULT_PORT);
+    void startServer(DEFAULT_PORT);
   }
 
   createPillWindow();
@@ -3157,6 +3172,75 @@ let companionWindow: BrowserWindow | null = null;
 let companionHotRect: PillHotRect | null = null;
 let companionLastRect: PillHotRect | null = null;
 let companionHotPollTimer: NodeJS.Timeout | null = null;
+let companionPositionDragActive = false;
+let companionPositionSaveTimer: NodeJS.Timeout | null = null;
+
+function companionSavedPositions(): CompanionDisplayPositions {
+  const raw = readSettings().companionPositions;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const positions: CompanionDisplayPositions = {};
+  for (const [displayId, value] of Object.entries(raw)) {
+    if (
+      value &&
+      typeof value === "object" &&
+      Number.isFinite((value as { x?: unknown }).x) &&
+      Number.isFinite((value as { y?: unknown }).y)
+    ) {
+      positions[displayId] = {
+        x: (value as { x: number }).x,
+        y: (value as { y: number }).y,
+      };
+    }
+  }
+  return positions;
+}
+
+function saveCompanionPosition(bounds: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}): void {
+  const display = screen.getDisplayMatching(bounds);
+  const position = clampCompanionPosition(bounds, display, {
+    width: bounds.width,
+    height: bounds.height,
+  });
+  writeSettings({
+    companionPositions: {
+      ...companionSavedPositions(),
+      [String(display.id)]: position,
+    },
+  });
+}
+
+function armCompanionPositionSave(): void {
+  companionPositionDragActive = true;
+  if (companionPositionSaveTimer) clearTimeout(companionPositionSaveTimer);
+  // A click without a drag must not make a later programmatic wake look like
+  // a manual placement. Each real move refreshes this small debounce window.
+  companionPositionSaveTimer = setTimeout(() => {
+    companionPositionDragActive = false;
+    companionPositionSaveTimer = null;
+  }, 1_000);
+}
+
+function queueCompanionPositionSave(): void {
+  if (!companionPositionDragActive) return;
+  if (companionPositionSaveTimer) clearTimeout(companionPositionSaveTimer);
+  companionPositionSaveTimer = setTimeout(() => {
+    companionPositionSaveTimer = null;
+    companionPositionDragActive = false;
+    const win = companionWindow;
+    if (win && !win.isDestroyed()) saveCompanionPosition(win.getBounds());
+  }, 180);
+}
+
+function stopCompanionPositionSave(): void {
+  if (companionPositionSaveTimer) clearTimeout(companionPositionSaveTimer);
+  companionPositionSaveTimer = null;
+  companionPositionDragActive = false;
+}
 
 function companionPosition(display?: Display): { x: number; y: number } {
   const targetDisplay =
@@ -3165,21 +3249,26 @@ function companionPosition(display?: Display): { x: number; y: number } {
   const info = SPRITES_INFO[companionFormSetting()];
   // Sheet sprites have transparent margin around the drawn body; the anchor
   // hangs the window off the work area so the BODY touches the corner.
-  if (info.anchor) {
-    return {
-      x: waX + info.anchor.margin - info.anchor.bodyLeft,
-      y:
-        waY +
-        height -
-        info.windowSize +
-        info.anchor.bodyBottom -
-        info.anchor.margin,
-    };
-  }
-  return {
-    x: waX,
-    y: waY + height - info.windowSize,
-  };
+  const fallback = info.anchor
+    ? {
+        x: waX + info.anchor.margin - info.anchor.bodyLeft,
+        y:
+          waY +
+          height -
+          info.windowSize +
+          info.anchor.bodyBottom -
+          info.anchor.margin,
+      }
+    : {
+        x: waX,
+        y: waY + height - info.windowSize,
+      };
+  return positionForCompanionDisplay(
+    targetDisplay,
+    { width: info.windowSize, height: info.windowSize },
+    companionSavedPositions(),
+    fallback,
+  );
 }
 
 async function getNativeFocusedWindowBounds(
@@ -3325,6 +3414,20 @@ function rearmCompanionHotRect(): void {
   setCompanionHotRect(companionLastRect);
 }
 
+function rearmCompanionPointerEvents(): void {
+  rearmCompanionHotRect();
+  const win = companionWindow;
+  if (win && !win.isDestroyed()) {
+    win.setIgnoreMouseEvents(true, {
+      forward: process.platform !== "linux",
+    });
+  }
+}
+
+function companionPointerLeft(): void {
+  rearmCompanionPointerEvents();
+}
+
 function companionFormSetting(): CompanionForm {
   return parseCompanionForm(readSettings().companionForm as string | undefined);
 }
@@ -3378,14 +3481,52 @@ ipcMain.on("pet:set-enabled", (event, enabled: unknown) => {
   else destroyCompanionWindow();
 });
 
+ipcMain.on("companion:wake", (event) => {
+  if (
+    event.sender !== panelWindow?.webContents &&
+    event.sender !== settingsWindow?.webContents
+  )
+    return;
+  wakeCompanion();
+});
+
+ipcMain.on("companion:open-workspace", (event) => {
+  if (event.sender !== companionWindow?.webContents) return;
+  openRemixWorkspaceFromCompanion();
+});
+
+ipcMain.on("companion:position-drag-start", (event) => {
+  if (event.sender !== companionWindow?.webContents) return;
+  armCompanionPositionSave();
+});
+
+ipcMain.on("companion:pointer-left", (event) => {
+  if (event.sender !== companionWindow?.webContents) return;
+  companionPointerLeft();
+});
+
 ipcMain.on("pet:set-state", (event, state: PetState) => {
-  if (event.sender !== panelWindow?.webContents || !petEnabled()) return;
+  // The pill owns both dictation and the Remix hotkey lifecycle. Accept its
+  // observer update as well as dashboard-originated companion controls; the
+  // old dashboard-only check silently dropped every live Remix transition.
+  if (
+    (event.sender !== mainWindow?.webContents &&
+      event.sender !== panelWindow?.webContents) ||
+    !petEnabled()
+  )
+    return;
   setCompanionState(
     state === "working" ? "working" : state === "idle" ? "idle" : "suggestion",
   );
 });
 
-ipcMain.on("companion:set-form", (_event, form: string) => {
+ipcMain.on("companion:set-form", (event, form: unknown) => {
+  if (
+    event.sender !== panelWindow?.webContents &&
+    event.sender !== settingsWindow?.webContents
+  )
+    return;
+  if (typeof form !== "string") return;
   const next = parseCompanionForm(form);
   const previous = companionFormSetting();
   if (previous !== next) {
@@ -3402,6 +3543,21 @@ ipcMain.on("companion:set-form", (_event, form: string) => {
   }
   // The panel's head badge mirrors the active sprite too.
   panelWindow?.webContents.send("companion:form", next);
+});
+
+ipcMain.on("companion:context-menu", (event) => {
+  if (event.sender !== companionWindow?.webContents) return;
+  const win = companionWindow;
+  if (!win || win.isDestroyed()) return;
+  Menu.buildFromTemplate([
+    {
+      label: "Close companion",
+      click: () => {
+        hideNotifications();
+        destroyCompanionWindow();
+      },
+    },
+  ]).popup({ window: win });
 });
 
 ipcMain.on("sprite:event", (event, ev: unknown) => {
@@ -3449,6 +3605,12 @@ ipcMain.on("notifications:present", (event, payload: unknown) => {
     title: item.title,
     body: item.body,
   });
+  // The bubble renderer owns the content, but a brand-new notification must
+  // also wake its window immediately so it is visibly anchored above the
+  // companion before its asynchronous inbox refresh settles.
+  notificationsShowing = true;
+  showNotifications();
+  setCompanionState("suggestion");
   companionWindow?.webContents.send("companion:sprite-event", {
     kind: "emote",
     emotion: "proud",
@@ -3663,7 +3825,8 @@ const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   if (!win || win.isDestroyed()) return;
   if (
     message.channel === "panel:dictation" ||
-    message.channel === "panel:open-thread"
+    message.channel === "panel:open-thread" ||
+    message.channel === "dashboard:navigate"
   ) {
     win.webContents.send(message.channel, message.payload);
     return;
@@ -3842,6 +4005,24 @@ function openPanel(
   }
 }
 
+/**
+ * A companion click is an invitation back into the active workspace, not a
+ * detour into settings. Reuse the existing window and let the shell navigate
+ * in place, so no duplicate Remix surface is created.
+ */
+function openRemixWorkspaceFromCompanion(): void {
+  openPanel({ trigger: "other" });
+  const win = panelWindow;
+  if (!win || win.isDestroyed()) return;
+  win.show();
+  win.focus();
+  panelRendererMessages.send({
+    channel: "dashboard:navigate",
+    payload: "/remix",
+  });
+  rearmCompanionPointerEvents();
+}
+
 function closePanel(): void {
   if (panelWindow && !panelWindow.isDestroyed()) panelWindow.hide();
   rearmCompanionHotRect();
@@ -3955,8 +4136,15 @@ function createCompanionWindow(): void {
     forward: process.platform !== "linux",
   });
 
+  // Native dragging starts from the small dock below the sprite. Electron
+  // emits `will-move` for manual movement on macOS/Windows; the renderer's
+  // drag-start IPC supplies the same signal on Linux.
+  companionWindow.on("will-move", () => armCompanionPositionSave());
+  companionWindow.on("move", () => queueCompanionPositionSave());
+
   companionWindow.on("closed", () => {
     stopCompanionHotPoll();
+    stopCompanionPositionSave();
     companionWindow = null;
   });
 
@@ -3973,8 +4161,26 @@ function createCompanionWindow(): void {
   void companionWindow.loadURL(rendererUrl("companion.html"));
 }
 
+/** Bring an enabled companion back into view without stealing keyboard focus. */
+function wakeCompanion(): void {
+  if (!petEnabled()) return;
+  createCompanionWindow();
+  const win = companionWindow;
+  if (!win || win.isDestroyed()) return;
+  const size = SPRITES_INFO[companionFormSetting()].windowSize;
+  const { x, y } = companionPosition();
+  win.setBounds({ x, y, width: size, height: size });
+  win.setAlwaysOnTop(true, "screen-saver");
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  if (!win.isVisible()) win.showInactive();
+  win.moveTop();
+  rearmCompanionHotRect();
+  if (notificationsShowing) showNotifications();
+}
+
 function destroyCompanionWindow(): void {
   stopCompanionHotPoll();
+  stopCompanionPositionSave();
   if (companionWindow && !companionWindow.isDestroyed()) {
     companionWindow.destroy();
   }

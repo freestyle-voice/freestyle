@@ -6,16 +6,22 @@ import { describe, expect, it } from "vitest";
 const rendererRoot = dirname(fileURLToPath(import.meta.url));
 
 describe("dashboard startup rendering", () => {
-  it("renders the application shell while authentication verifies in the background", async () => {
-    const [dashboard, gate] = await Promise.all([
+  it("uses a full-window signed-out shell while authentication verifies", async () => {
+    const [dashboard, gate, shell] = await Promise.all([
       readFile(resolve(rendererRoot, "dashboard.tsx"), "utf8"),
       readFile(resolve(rendererRoot, "components/login-gate.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "shell.tsx"), "utf8"),
     ]);
 
     expect(dashboard).toContain("<Route element={<AppShell />}>");
     expect(dashboard).toContain("<ProtectedOutlet />");
     expect(gate).toContain("function StartupContentPlaceholder");
     expect(gate).not.toContain("function AuthLoadingFrame");
+    expect(shell).toContain("function SignedOutShell");
+    expect(shell).toContain("if (!user) return <SignedOutShell />;");
+    expect(shell).toContain(
+      'className="glass-content flex min-h-0 min-w-0 flex-1 flex-col"',
+    );
   });
 
   it("resolves the configured API target before auth and background queries", async () => {

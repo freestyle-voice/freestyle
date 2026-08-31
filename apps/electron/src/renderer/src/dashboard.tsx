@@ -92,7 +92,7 @@ function PagePad(): React.JSX.Element {
   );
 }
 
-/** Keep the shared shell visible while auth protects the route content. */
+/** Protect route content while AppShell selects the signed-in or signed-out frame. */
 function ProtectedOutlet(): React.JSX.Element {
   return (
     <LoginGate>

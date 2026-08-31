@@ -124,6 +124,7 @@
     },
     "sections": {
       "application": "Application",
+      "companion": "Compagnon",
       "recording": "Transcription",
       "display": "Affichage",
       "permissions": "Permissions",

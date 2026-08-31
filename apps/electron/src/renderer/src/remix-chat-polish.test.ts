@@ -90,4 +90,41 @@ describe("Remix chat polish", () => {
     expect(chat).toContain("onInstructionConsumed");
     expect(chat).toContain("voiceStatus");
   });
+
+  it("keeps the compact pill and companion informed while Remix works", async () => {
+    const [chat, pill] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),
+    ]);
+
+    expect(chat).toContain("onActivityChange");
+    expect(chat).toContain("agentProgressLabel(messages, busy)");
+    expect(chat).toContain("const miniProgress =");
+    expect(pill).toContain("petStateFor");
+    expect(pill).toContain("onActivityChange={setRemixAgentWorking}");
+  });
+
+  it("uses rotating, shimmering pre-response copy instead of a static thinking label", async () => {
+    const chat = await readFile(
+      resolve(rendererRoot, "components/remix-chat.tsx"),
+      "utf8",
+    );
+
+    expect(chat).toContain("REMIX_THINKING_MESSAGES");
+    expect(chat).toContain("Contemplating…");
+    expect(chat).toContain("One moment — bringing it together…");
+    expect(chat).toContain("setInterval");
+    expect(chat).toContain("2_600");
+    expect(chat).toContain("LoaderCircle");
+    expect(chat).toContain("<RemixThinkingState />");
+    expect(chat).not.toContain('<ThinkingShimmer className="remix-chat-busy">');
+  });
+
+  it("uses the complete recorded audio for a spoken Remix request", async () => {
+    const pill = await readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8");
+
+    expect(pill).toContain("remixStreamerRef.current?.cancel();");
+    expect(pill).toContain("if (!wav) {");
+    expect(pill).not.toContain("new Promise<string>((resolve) => setTimeout");
+  });
 });

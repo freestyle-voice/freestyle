@@ -50,6 +50,7 @@ import {
   Mic,
   Network,
   Paintbrush,
+  PawPrint,
   PlugZap,
   Plus,
   Puzzle,
@@ -146,6 +147,7 @@ const SETTINGS_NAV_GROUPS: {
       { to: "/settings/models", label: "Models", icon: Cpu },
       { to: "/settings/appearance", label: "Appearance", icon: Paintbrush },
       { to: "/settings/application", label: "Application", icon: Settings },
+      { to: "/settings/companion", label: "Companion", icon: PawPrint },
       { to: "/settings/network", label: "Network", icon: Network },
       { to: "/settings/permissions", label: "Permissions", icon: ShieldCheck },
       { to: "/settings/data", label: "Data", icon: Database },
@@ -705,6 +707,12 @@ export default function AppShell(): React.JSX.Element {
     return () => window.removeEventListener("keydown", handler);
   }, [isSettingsRoute, navigate, staticNav]);
 
+  // Authenticated pages use the application chrome. Until the auth check has
+  // established a user, the sign-in route owns the entire window; rendering
+  // the app sidebar beside it makes the login experience look like a broken
+  // half-loaded workspace and can briefly expose stale navigation state.
+  if (!user) return <SignedOutShell />;
+
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
       <aside
@@ -811,6 +819,26 @@ export default function AppShell(): React.JSX.Element {
       <div className="glass-content relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
         <UpdateBanner className="relative z-50 mt-4 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
+        <main
+          className="flex min-h-0 flex-1 flex-col overflow-hidden"
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        >
+          <Outlet />
+        </main>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The signed-out view deliberately has no app navigation or resize handle.
+ * LoginGate renders its own full-window sign-in experience through this
+ * outlet, and the normal AppShell mounts as soon as CloudAuth has a user.
+ */
+function SignedOutShell(): React.JSX.Element {
+  return (
+    <div className="glass-window-shell flex h-screen min-h-0">
+      <div className="glass-content flex min-h-0 min-w-0 flex-1 flex-col">
         <main
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
           style={{ scrollbarWidth: "none" } as React.CSSProperties}

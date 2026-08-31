@@ -62,11 +62,16 @@ declare global {
       companionForm: () => Promise<CompanionForm>;
       petEnabled: () => Promise<boolean>;
       setPetEnabled: (enabled: boolean) => void;
+      wakeCompanion: () => void;
+      openCompanionWorkspace: () => void;
+      beginCompanionPositionDrag: () => void;
+      companionPointerLeft: () => void;
       setPetState: (state: PetState) => void;
       companionSetHotRect: (
         rect: { x: number; y: number; width: number; height: number } | null,
       ) => void;
       setCompanionForm: (form: CompanionForm) => void;
+      companionContextMenu: () => void;
       panelOpenForDictation: () => void;
       panelDictationPartial: (text: string) => void;
       panelDictationFinal: (text: string) => void;

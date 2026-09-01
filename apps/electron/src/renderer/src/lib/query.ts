@@ -4,6 +4,7 @@ import {
   type QueryKey,
 } from "@tanstack/react-query";
 import { getClient, resolveApiBase } from "./api";
+import { getAttention } from "./attention";
 import { listNoteSummaries } from "./brain-views";
 import {
   type ConnectorCatalogPage,
@@ -129,6 +130,8 @@ export const queryKeys = {
 
   /** Remix practice runs. */
   remixRuns: ["remix", "runs"] as const,
+  /** A compact, display-only view of work that needs the user's attention. */
+  attention: ["attention"] as const,
 
   cloud: {
     usage: ["cloud-usage"] as const,
@@ -291,6 +294,16 @@ export function latestThreadQueryOptions() {
   return {
     queryKey: queryKeys.threads.latest,
     queryFn: getLatestThread,
+  };
+}
+
+export function attentionQueryOptions() {
+  return {
+    queryKey: queryKeys.attention,
+    queryFn: getAttention,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: 1,
   };
 }
 

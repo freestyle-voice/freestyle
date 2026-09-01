@@ -2,6 +2,7 @@ import "../overlay.css";
 import "../tavern.css";
 
 import { useChat } from "@ai-sdk/react";
+import { AttentionHome } from "@renderer/components/attention-home";
 import { Capabilities } from "@renderer/components/capabilities";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
 import { Markdown } from "@renderer/components/markdown";
@@ -1938,14 +1939,25 @@ function PanelInner({
                   ) : null}
                 </>
               ) : chatActive ? (
-                <OpenerCards
-                  busy={busy}
-                  onShowAll={() => setCapabilitiesOpen(true)}
-                  onPrompt={(text) => {
-                    setNotice(null);
-                    void sendMessage({ text });
-                  }}
-                />
+                <>
+                  <AttentionHome
+                    onOpenThread={(id, title, updatedAt) =>
+                      onSelectThread?.({
+                        id,
+                        title,
+                        updatedAt: Date.parse(updatedAt),
+                      })
+                    }
+                  />
+                  <OpenerCards
+                    busy={busy}
+                    onShowAll={() => setCapabilitiesOpen(true)}
+                    onPrompt={(text) => {
+                      setNotice(null);
+                      void sendMessage({ text });
+                    }}
+                  />
+                </>
               ) : null}
               {notice ? <p className="tavern-notice">{notice}</p> : null}
             </div>

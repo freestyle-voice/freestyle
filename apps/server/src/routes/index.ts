@@ -16,6 +16,7 @@ import agentRoute from "./agent.js";
 import agentOsRoute from "./agent-os.js";
 import agentThreadsRoute from "./agent-threads.js";
 import apiKeys from "./api-keys.js";
+import attentionRoute from "./attention.js";
 import auth from "./auth.js";
 import billing from "./billing.js";
 import brainRoute from "./brain.js";
@@ -112,6 +113,7 @@ const apiRouter = new Hono()
   // route which would otherwise treat the literal "list" and "latest" as ids.
   .route("/agent/thread", agentThreadsRoute)
   .route("/agent", agentRoute)
+  .route("/attention", attentionRoute)
   .route("/remix", remixRoute)
   .route("/agent-os", agentOsRoute)
   .route("/brain", brainRoute)

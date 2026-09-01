@@ -3724,6 +3724,133 @@
   text-align: left;
 }
 
+.tavern-attention-home {
+  width: min(100%, 760px);
+  margin: 0 auto 22px;
+}
+
+.tavern-attention-home-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 9px;
+}
+
+.tavern-attention-eyebrow {
+  display: block;
+  color: var(--tavern-muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.tavern-attention-home-head p {
+  margin: 4px 0 0;
+  color: var(--tavern-muted);
+  font-size: 12px;
+}
+
+.tavern-attention-count {
+  display: grid;
+  min-width: 23px;
+  height: 23px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--tavern-accent) 28%, transparent);
+  border-radius: 999px;
+  color: var(--tavern-accent);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.tavern-attention-list {
+  overflow: hidden;
+  border: 1px solid var(--tavern-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--tavern-surface) 74%, transparent);
+}
+
+.tavern-attention-item {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 28px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border: 0;
+  border-bottom: 1px solid var(--tavern-border);
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.tavern-attention-item:last-child {
+  border-bottom: 0;
+}
+
+button.tavern-attention-item {
+  cursor: pointer;
+}
+
+button.tavern-attention-item:hover {
+  background: color-mix(in srgb, var(--tavern-accent) 8%, transparent);
+}
+
+button.tavern-attention-item:focus-visible {
+  outline: 2px solid var(--tavern-accent);
+  outline-offset: -2px;
+}
+
+.tavern-attention-item.is-static {
+  grid-template-columns: 28px minmax(0, 1fr);
+}
+
+.tavern-attention-icon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--tavern-border);
+  border-radius: 8px;
+  color: var(--tavern-muted);
+}
+
+.tavern-attention-icon svg,
+.tavern-attention-item > svg {
+  width: 15px;
+  height: 15px;
+}
+
+.tavern-attention-icon.is-failed,
+.tavern-attention-icon.is-waiting {
+  color: var(--tavern-accent);
+}
+
+.tavern-attention-copy {
+  min-width: 0;
+}
+
+.tavern-attention-copy strong,
+.tavern-attention-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tavern-attention-copy strong {
+  color: var(--tavern-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tavern-attention-copy small {
+  margin-top: 2px;
+  color: var(--tavern-muted);
+  font-size: 11px;
+}
+
 .tavern-opener-row {
   display: grid;
   gap: 4px;

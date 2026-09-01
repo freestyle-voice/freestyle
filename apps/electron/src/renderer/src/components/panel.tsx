@@ -1143,6 +1143,7 @@ function PanelInner({
         messages: finished,
       });
       void invalidateThreads(queryClient);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
       if (finished.length === 0) return;
       const last = finished[finished.length - 1];
       if (last?.role !== "assistant") return;
@@ -1425,6 +1426,7 @@ function PanelInner({
           clientId: durableDesktopClientId(),
           result: output,
         });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
         await durableRuntime.refetch();
       } else {
         addToolOutput({
@@ -1444,7 +1446,10 @@ function PanelInner({
       type: allowed ? "approve" : "decline",
       actionId: action.id,
     })
-      .then(() => durableRuntime.refetch())
+      .then(() => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
+        return durableRuntime.refetch();
+      })
       .catch(() => setNotice("Couldn't resolve this connected-app action."));
   };
 
@@ -1486,6 +1491,7 @@ function PanelInner({
         clientId: durableDesktopClientId(),
         result: output,
       });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
       await durableRuntime.refetch();
     })().catch(() => setNotice("Couldn't run that desktop action."));
   };

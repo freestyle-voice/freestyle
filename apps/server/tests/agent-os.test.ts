@@ -80,7 +80,7 @@ describe("bash", () => {
     } as never);
 
     expect(powershell).toHaveBeenCalledWith(
-      "powershell.exe",
+      "pwsh.exe",
       [
         "-NoProfile",
         "-NonInteractive",
@@ -120,6 +120,50 @@ describe("bash", () => {
       category: "shell-unavailable",
       reason: "shell-unavailable",
       exitCode: 1,
+    });
+    expect(powershell).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to Windows PowerShell when pwsh is unavailable", async () => {
+    const unavailable = Object.assign(new Error("not found"), {
+      code: "ENOENT",
+    });
+    const powershell = vi
+      .fn()
+      .mockImplementationOnce(
+        (
+          _file: string,
+          _args: string[],
+          _options: unknown,
+          callback: (error: Error, stdout: string, stderr: string) => void,
+        ) => callback(unavailable, "", ""),
+      )
+      .mockImplementationOnce(
+        (
+          _file: string,
+          _args: string[],
+          _options: unknown,
+          callback: (
+            error: Error | null,
+            stdout: string,
+            stderr: string,
+          ) => void,
+        ) => callback(null, "fallback output", ""),
+      );
+
+    const res = await runAgentBash("Get-Location", {
+      platform: "win32",
+      execFile: powershell,
+    } as never);
+
+    expect(powershell.mock.calls.map(([file]) => file)).toEqual([
+      "pwsh.exe",
+      "powershell.exe",
+    ]);
+    expect(res).toMatchObject({
+      ok: true,
+      category: "success",
+      stdout: "fallback output",
     });
   });
 

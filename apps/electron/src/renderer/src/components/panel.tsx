@@ -1954,6 +1954,7 @@ function PanelInner({
                         updatedAt: Date.parse(updatedAt),
                       })
                     }
+                    onOpenSettings={() => window.api.openSettings()}
                   />
                   <OpenerCards
                     busy={busy}

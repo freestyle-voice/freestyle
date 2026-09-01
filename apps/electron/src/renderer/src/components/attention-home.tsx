@@ -36,8 +36,10 @@ function threadTarget(target: AttentionTarget): string | null {
  */
 export function AttentionHome({
   onOpenThread,
+  onOpenSettings,
 }: {
   onOpenThread?: (threadId: string, title: string, updatedAt: string) => void;
+  onOpenSettings?: () => void;
 }): React.JSX.Element | null {
   const auth = useCloudAuth();
   const query = useQuery({
@@ -56,8 +58,9 @@ export function AttentionHome({
     );
   }
 
-  const items = query.data?.items ?? [];
-  if (items.length === 0) return null;
+  const allItems = query.data?.items ?? [];
+  if (allItems.length === 0) return null;
+  const items = allItems.slice(0, 5);
 
   return (
     <section className="tavern-attention-home" aria-label="What needs me now">
@@ -66,12 +69,14 @@ export function AttentionHome({
           <span className="tavern-attention-eyebrow">What needs me now</span>
           <p>Work Remix is keeping an eye on.</p>
         </div>
-        <span className="tavern-attention-count">{items.length}</span>
+        <span className="tavern-attention-count">{allItems.length}</span>
       </div>
       <div className="tavern-attention-list">
         {items.map((item) => {
           const target = threadTarget(item.target);
-          const clickable = Boolean(target && onOpenThread);
+          const opensSettings =
+            item.target.type === "connection" && onOpenSettings;
+          const clickable = Boolean((target && onOpenThread) || opensSettings);
           const content = (
             <>
               <span className={`tavern-attention-icon is-${item.status}`}>
@@ -89,7 +94,13 @@ export function AttentionHome({
               key={item.id}
               type="button"
               className="tavern-attention-item"
-              onClick={() => onOpenThread!(target!, item.title, item.updatedAt)}
+              onClick={() => {
+                if (target && onOpenThread) {
+                  onOpenThread(target, item.title, item.updatedAt);
+                } else {
+                  onOpenSettings?.();
+                }
+              }}
             >
               {content}
             </button>

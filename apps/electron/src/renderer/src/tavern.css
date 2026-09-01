@@ -1851,6 +1851,74 @@
   margin-top: 0;
 }
 
+.tavern-session-skeleton {
+  --session-skeleton-base: color-mix(
+    in srgb,
+    var(--tavern-wash) 78%,
+    var(--tavern-card)
+  );
+  --session-skeleton-glint: color-mix(
+    in srgb,
+    var(--tavern-mute) 24%,
+    var(--tavern-wash)
+  );
+  display: grid;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.tavern-session-skeleton-group {
+  display: grid;
+  gap: 4px;
+}
+
+.tavern-session-skeleton-row {
+  position: relative;
+  display: flex;
+  height: 35px;
+  align-items: center;
+  overflow: hidden;
+  padding: 8px 9px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+}
+
+.tavern-session-skeleton-row.is-current {
+  border-color: color-mix(in srgb, var(--tavern-rule) 74%, transparent);
+  background: var(--tavern-wash);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--tavern-lantern) 68%, transparent);
+}
+
+.tavern-session-skeleton-row::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 34%,
+    color-mix(in srgb, var(--session-skeleton-glint) 58%, transparent) 50%,
+    transparent 66%
+  );
+  content: "";
+  transform: translateX(-100%);
+  animation: tavern-skeleton-sheen 1.8s ease-in-out infinite;
+}
+
+.tavern-session-skeleton-title {
+  display: block;
+  width: min(68%, 212px);
+  height: 10px;
+  border-radius: 999px;
+  background: var(--session-skeleton-base);
+}
+
+.tavern-session-skeleton-row.is-medium .tavern-session-skeleton-title {
+  width: min(49%, 154px);
+}
+
+.tavern-session-skeleton-row.is-short .tavern-session-skeleton-title {
+  width: min(35%, 110px);
+}
+
 .tavern-thread-row {
   font: inherit;
   text-align: left;
@@ -3097,6 +3165,8 @@
   .connector-load-more.is-loading,
   .connector-load-trail i,
   .tavern-data-skeleton-row::after { animation: none; }
+
+  .tavern-session-skeleton-row::after { animation: none; }
 }
 
 .tavern-set-saved {

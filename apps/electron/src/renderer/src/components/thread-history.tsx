@@ -1,4 +1,3 @@
-import { DataSkeleton } from "@renderer/components/data-skeleton";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -154,7 +153,7 @@ export function ThreadHistory({
         {rendersSearchField ? (
           <SessionSearch value={search} onChange={setInternalSearch} />
         ) : null}
-        <DataSkeleton label="Loading sessions" rows={5} />
+        <SessionHistorySkeleton />
       </>
     );
   if (filteredThreads.length === 0)
@@ -318,6 +317,44 @@ export function ThreadHistory({
         </button>
       ) : null}
     </>
+  );
+}
+
+/**
+ * Mirrors the eventual Remix history rather than using the card-style generic
+ * skeleton. Keeping the date dividers and single-line row rhythm in place
+ * prevents the sidebar from visually jumping when the first page arrives.
+ */
+function SessionHistorySkeleton(): React.JSX.Element {
+  const now = Date.now();
+  const groups = [
+    { label: dateGroup(now), rows: ["wide", "medium"] },
+    { label: dateGroup(now - 86_400_000), rows: ["long"] },
+    { label: dateGroup(now - 6 * 86_400_000), rows: ["short", "medium"] },
+  ] as const;
+
+  return (
+    <div
+      className="tavern-session-skeleton"
+      aria-busy="true"
+      aria-label="Loading sessions"
+      role="status"
+    >
+      {groups.map((group) => (
+        <div className="tavern-session-skeleton-group" key={group.label}>
+          <p className="tavern-thread-divider">{group.label}</p>
+          {group.rows.map((width, index) => (
+            <div
+              className={`tavern-session-skeleton-row is-${width}${index === 0 && group.label === groups[0].label ? " is-current" : ""}`}
+              key={`${group.label}-${width}`}
+              aria-hidden="true"
+            >
+              <span className="tavern-session-skeleton-title" />
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
   );
 }
 

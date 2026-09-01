@@ -89,7 +89,7 @@ describe("ThreadHistory", () => {
     expect(html).toContain('placeholder="Search sessions"');
   });
 
-  it("uses a session-list skeleton while both histories load", () => {
+  it("uses a grouped session-list skeleton while both histories load", () => {
     const query = {
       data: undefined,
       isLoading: true,
@@ -108,7 +108,10 @@ describe("ThreadHistory", () => {
     );
 
     expect(html).toContain('aria-label="Loading sessions"');
-    expect(html).toContain("tavern-data-skeleton");
+    expect(html).toContain("tavern-session-skeleton");
+    expect(html).toContain("tavern-session-skeleton-group");
+    expect(html).toContain("tavern-thread-divider");
+    expect(html).toContain("tavern-session-skeleton-row is-wide is-current");
     expect(html).not.toContain("Loading sessions…");
   });
 

@@ -31,7 +31,7 @@
         "src/renderer/src/components/companion.tsx",
         "src/renderer/src/components/notification.tsx",
         "src/renderer/src/components/pill.tsx",
-        "src/renderer/src/components/remix-bar.tsx",
+        "src/**/*.test.ts",
         "tests/**/*.ts",
         "scripts/**/*.{js,mjs}"
       ],

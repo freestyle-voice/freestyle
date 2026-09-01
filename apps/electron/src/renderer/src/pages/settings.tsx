@@ -17,6 +17,7 @@ import {
   useLanguageOptions,
 } from "@renderer/components/language-combobox";
 import { LanguageSelector } from "@renderer/components/language-selector";
+import { McpConnections } from "@renderer/components/mcp-connections";
 import { NotificationsHistory } from "@renderer/components/notifications-history";
 import { useRemixSession } from "@renderer/components/remix-session-context";
 import { Button } from "@renderer/components/ui/button";
@@ -145,6 +146,7 @@ const audioPlaybackOptions = [
 const settingsSectionIds = [
   "recording",
   "remix",
+  "mcp",
   "application",
   "companion",
   "display",
@@ -161,6 +163,7 @@ type SettingsSectionId = (typeof settingsSectionIds)[number];
 const settingsRouteSections = {
   transcription: "recording",
   remix: "remix",
+  mcp: "mcp",
   application: "application",
   companion: "companion",
   appearance: "display",
@@ -804,7 +807,10 @@ export default function SettingsPage(): React.JSX.Element {
       ? "Release to save · Esc to cancel"
       : "Press a modifier or side mouse button... · Esc to cancel";
 
-  const activeSectionLabel = t(`settings.sections.${activeSection}`);
+  const activeSectionLabel =
+    activeSection === "mcp"
+      ? "MCP connections"
+      : t(`settings.sections.${activeSection}`);
 
   const positionOptions = useMemo<SegmentOption[]>(() => {
     const opts: SegmentOption[] = [
@@ -1229,6 +1235,8 @@ export default function SettingsPage(): React.JSX.Element {
                 </Row>
               </SettingsPanel>
             )}
+
+            {activeSection === "mcp" && <McpConnections />}
 
             {activeSection === "display" && (
               <SettingsPanel>

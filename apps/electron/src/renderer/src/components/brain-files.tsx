@@ -17,6 +17,7 @@ import { Fragment, useState } from "react";
 
 type FileView =
   | { kind: "list" }
+  | { kind: "loading"; path: string }
   | { kind: "view"; path: string; text: string }
   | { kind: "edit"; path: string; draft: string }
   | { kind: "create"; name: string; draft: string };
@@ -192,28 +193,42 @@ export function BrainFiles({
   const scheduled = root === "";
 
   const openFile = (path: string): void => {
+    setError(null);
+    setView({ kind: "loading", path });
     void readBrainFile(path)
       .then((text) => {
-        if (text !== null) setView({ kind: "view", path, text });
+        if (text === null) {
+          setError("Couldn't open that file. Try again.");
+          setView({ kind: "list" });
+          return;
+        }
+        setView({ kind: "view", path, text });
       })
-      .catch(() => {});
+      .catch(() => {
+        setError("Couldn't open that file. Try again.");
+        setView({ kind: "list" });
+      });
   };
 
   const saveFile = (path: string, text: string): void => {
     setError(null);
-    void writeBrainFile(path, text).then((ok) => {
-      if (!ok) {
-        setError("Couldn't save that file. Try again.");
-        return;
-      }
-      void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
-      setView({ kind: "view", path, text });
-    });
+    void writeBrainFile(path, text)
+      .then((ok) => {
+        if (!ok) {
+          setError("Couldn't save that file. Try again.");
+          return;
+        }
+        void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
+        setView({ kind: "view", path, text });
+      })
+      .catch(() => setError("Couldn't save that file. Try again."));
   };
 
   const createFile = (name: string, text: string): void => {
     const wanted = `${root ? `${root}/` : ""}${slugify(name)}.md`;
-    void uniqueBrainPath(wanted).then((path) => saveFile(path, text));
+    void uniqueBrainPath(wanted)
+      .then((path) => saveFile(path, text))
+      .catch(() => setError("Couldn't create that file. Try again."));
   };
 
   const notice = error ? (
@@ -221,6 +236,21 @@ export function BrainFiles({
       {error}
     </p>
   ) : null;
+
+  if (view.kind === "loading") {
+    return (
+      <>
+        <button
+          type="button"
+          className="tavern-file-back"
+          onClick={() => setView({ kind: "list" })}
+        >
+          ← {view.path.replace(/\\/g, "/")}
+        </button>
+        <DataSkeleton label="Loading Brain file" rows={4} variant="files" />
+      </>
+    );
+  }
 
   if (view.kind === "view") {
     return (
@@ -248,16 +278,20 @@ export function BrainFiles({
             type="button"
             className="tavern-file-delete"
             onClick={() => {
-              void deleteBrainFile(view.path).then((ok) => {
-                if (!ok) {
+              void deleteBrainFile(view.path)
+                .then((ok) => {
+                  if (!ok) {
+                    setError("Couldn't delete that file. Try again.");
+                    return;
+                  }
+                  setView({ kind: "list" });
+                  void queryClient.invalidateQueries({
+                    queryKey: queryKeys.brain.all,
+                  });
+                })
+                .catch(() => {
                   setError("Couldn't delete that file. Try again.");
-                  return;
-                }
-                setView({ kind: "list" });
-                void queryClient.invalidateQueries({
-                  queryKey: queryKeys.brain.all,
                 });
-              });
             }}
           >
             Delete

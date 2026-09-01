@@ -23,6 +23,31 @@ It keeps notes and todos for you, remembers what you tell it, and can draft the 
 - **Approval before action** — sending an email, posting to Slack, booking time, buying something. Every one of these stops at an approval step showing exactly what would happen and where. You hit Allow, or you don't.
 - **Dictation and Remix** — the writing tools are still here. Hold the hotkey, speak, release to paste polished text at your cursor, or highlight a paragraph and describe the change you want. Works in Google Docs, Slack, VS Code, Gmail, and anywhere else you type.
 
+## Desktop experience
+
+Freestyle keeps the work in one place rather than opening a separate control
+window for every feature.
+
+- **Dictate** is the fast, floating voice surface. Hold its hotkey, speak, and
+  release to deliver polished text to the app you were using.
+- **Remix** is the conversation workspace. Your chat remains central while an
+  optional context rail slides in from the right with independent **Tasks**,
+  **Notes**, and **Brain** cards. Hide the rail whenever you want the widest
+  possible chat; each card can expand without navigating away from the session.
+- **Floating Remix surface** follows a voice request through listening,
+  transcribing, tool activity, and the latest streamed response line. Expand it
+  to continue in the same workspace session, or close it without losing the
+  saved chat.
+- **Settings** is a route inside that same workspace, with its own sidebar and
+  a back-to-app action. Models, connected apps, companion controls, and account
+  preferences live there instead of in separate desktop windows or Remix tabs.
+- **Companion** is optional. When enabled, it stays out of your way, can be
+  repositioned per display, and reflects activity without taking focus from the
+  window where you are working.
+
+For the detailed voice workflow, including the Remix hotkey, see the
+[documentation](https://docs.freestylevoice.com/user-guide).
+
 <p align="center">
   <img src="media/freestyle-screenshot.png" alt="Freestyle on the desktop: the companion panel setting up a scheduled task to check a GitHub repo every morning" width="800" />
 </p>

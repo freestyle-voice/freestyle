@@ -5,8 +5,18 @@ import type { AgentActivityItem } from "@renderer/components/agents/agent-activi
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
 import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
 import { MessageScroller } from "@renderer/components/agents/message-scroller";
+import {
+  type AgentToolCall,
+  agentToolTier,
+  DECLINED_OUTPUT,
+  describeAgentAction,
+  executeAgentTool,
+  reportAgentToolResult,
+  requestAgentFileSaveGrant,
+} from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
 import { apiFetch, initApiBase } from "@renderer/lib/api";
+import { executeMcpToolCall } from "@renderer/lib/mcp";
 import {
   DefaultChatTransport,
   type DynamicToolUIPart,
@@ -102,6 +112,7 @@ export interface RemixChatProps {
   onInstructionConsumed: (instructionId: number) => void;
   onVoiceNoticeDismiss: () => void;
   onActivityChange: (activity: RemixChatActivity) => void;
+  onExpand: () => void;
   onMinimize: () => void;
   onClose: () => void;
 }
@@ -142,6 +153,7 @@ export function RemixChat(props: RemixChatProps): React.JSX.Element {
       onInstructionConsumed={props.onInstructionConsumed}
       onVoiceNoticeDismiss={props.onVoiceNoticeDismiss}
       onActivityChange={props.onActivityChange}
+      onExpand={props.onExpand}
       onMinimize={props.onMinimize}
       onClose={props.onClose}
       onNewThread={startNewThread}
@@ -164,6 +176,7 @@ interface RemixThreadProps {
   onInstructionConsumed: (instructionId: number) => void;
   onVoiceNoticeDismiss: () => void;
   onActivityChange: (activity: RemixChatActivity) => void;
+  onExpand: () => void;
   onMinimize: () => void;
   onClose: () => void;
   onNewThread: () => void;
@@ -177,6 +190,10 @@ interface ActionRow {
   detail?: string;
 }
 
+interface PendingApproval {
+  call: AgentToolCall;
+}
+
 const MINIMIZE_GRACE_MS = 380;
 const MINI_STRIP_HEADER_HEIGHT = 44;
 const MINI_STRIP_MAX = 316; // main's 340 window cap minus the chrome
@@ -186,6 +203,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const [input, setInput] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [actions, setActions] = useState<ActionRow[]>([]);
+  const [approvals, setApprovals] = useState<PendingApproval[]>([]);
+  const [resolvingApprovalId, setResolvingApprovalId] = useState<string | null>(
+    null,
+  );
+  // State updates are asynchronous; this ref closes the small window where
+  // two rapid clicks could otherwise start two destructive local actions.
+  const resolvingApprovalRef = useRef<string | null>(null);
   // Electron can report a window-level mouseout while the transparent pill is
   // resizing beneath a stationary cursor. Keep this synchronously updated so
   // the dismissal guard never waits for React to commit hover state.
@@ -277,6 +301,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       return result;
 
       async function runTool(): Promise<Record<string, unknown>> {
+        if (name.startsWith("mcp_")) return executeMcpToolCall(name, input);
         switch (name) {
           case "get_context": {
             const res = await window.api.remixGetContext();
@@ -343,13 +368,27 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       transport,
       sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
       onToolCall: async ({ toolCall }) => {
-        const output = await executeTool(
-          toolCall as unknown as {
-            toolName: string;
-            toolCallId: string;
-            input: unknown;
-          },
-        );
+        const call: AgentToolCall = {
+          toolName: toolCall.toolName,
+          toolCallId: toolCall.toolCallId,
+          input: toolCall.input,
+        };
+        const startedAt = Date.now();
+        const tier = await agentToolTier(call);
+        if (tier === "confirmed") {
+          props.onExpand();
+          setApprovals((pending) =>
+            pending.some((item) => item.call.toolCallId === call.toolCallId)
+              ? pending
+              : [...pending, { call }],
+          );
+          return;
+        }
+        const output =
+          tier === "free"
+            ? await executeAgentTool(call)
+            : await executeTool(call);
+        if (tier !== null) reportAgentToolResult(call, output, startedAt);
         void addToolResult({
           tool: getToolOrDynamicToolName(toolCall as never) as never,
           toolCallId: (toolCall as { toolCallId: string }).toolCallId,
@@ -360,6 +399,54 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         setNotice(err.message || "Remix failed.");
       },
     });
+
+  const resolveApproval = useCallback(
+    (approval: PendingApproval, allowed: boolean) => {
+      const call = approval.call;
+      if (resolvingApprovalRef.current) return;
+      capture("approval_resolved", { tool: call.toolName, allowed });
+      resolvingApprovalRef.current = call.toolCallId;
+      setResolvingApprovalId(call.toolCallId);
+      void (async () => {
+        const startedAt = Date.now();
+        let output: Record<string, unknown>;
+        try {
+          const grant =
+            allowed && call.toolName === "save_file"
+              ? await requestAgentFileSaveGrant(call)
+              : null;
+          output = !allowed
+            ? DECLINED_OUTPUT
+            : grant && grant.ok !== true
+              ? grant
+              : await executeAgentTool(call, {
+                  saveFileGrant:
+                    grant && typeof grant.grant === "string"
+                      ? grant.grant
+                      : undefined,
+                });
+        } catch (error) {
+          output = {
+            ok: false,
+            reason: "tool-failed",
+            detail: error instanceof Error ? error.message : String(error),
+          };
+        }
+        reportAgentToolResult(call, output, startedAt);
+        setApprovals((pending) =>
+          pending.filter((item) => item.call.toolCallId !== call.toolCallId),
+        );
+        resolvingApprovalRef.current = null;
+        setResolvingApprovalId(null);
+        void addToolResult({
+          tool: call.toolName as never,
+          toolCallId: call.toolCallId,
+          output,
+        });
+      })();
+    },
+    [addToolResult],
+  );
 
   const busy = status === "submitted" || status === "streaming";
   const dispatchInFlightRef = useRef(false);
@@ -410,6 +497,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [messages],
   );
   const actionRunning = actions.some((action) => action.status === "running");
+  const waitingForApproval = approvals.length > 0;
   // A spoken follow-up begins while the cursor is still in the app the user
   // was working in. That must not be treated as intent to collapse the chat:
   // keep the full surface stable until voice capture and the agent turn end.
@@ -417,6 +505,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     props.voiceStatus !== null ||
     busy ||
     actionRunning ||
+    waitingForApproval ||
+    resolvingApprovalId !== null ||
     props.queuedInstructions.length > 0;
   const activeTurnRef = useRef(hasActiveTurn);
   activeTurnRef.current = hasActiveTurn;
@@ -424,13 +514,18 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   onActivityChangeRef.current = props.onActivityChange;
   const activity = useMemo<RemixChatActivity>(
     () => ({
-      working: busy || actionRunning,
-      label: busy
-        ? agentProgressLabel(messages, busy)
-        : (actions.find((action) => action.status === "running")?.label ??
-          null),
+      working: busy || actionRunning || waitingForApproval,
+      // `useChat` correctly remains streaming while a client tool waits for
+      // its result. The approval state is more actionable than that generic
+      // streaming label for the pill and companion, so it must win here.
+      label: waitingForApproval
+        ? "Waiting for your approval"
+        : busy
+          ? agentProgressLabel(messages, busy)
+          : (actions.find((action) => action.status === "running")?.label ??
+            null),
     }),
-    [actionRunning, actions, busy, messages],
+    [actionRunning, actions, busy, messages, waitingForApproval],
   );
   useEffect(() => {
     props.onActivityChange(activity);
@@ -594,6 +689,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const displayNotice = notice ?? props.voiceNotice;
   const miniProgress =
     voiceLabel ??
+    (waitingForApproval ? "Approval needed" : null) ??
     agentProgressLabel(messages, busy) ??
     actions.find((action) => action.status === "running")?.label ??
     null;
@@ -914,13 +1010,16 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             label="Remix conversation"
             contentClassName="remix-chat-thread"
           >
-            {messages.length === 0 && actions.length === 0 && !busy && (
-              <div className="remix-chat-empty">
-                {liveContext.text
-                  ? "Say or type what to do with your selection."
-                  : "Nothing selected — ask me to write, research, or answer."}
-              </div>
-            )}
+            {messages.length === 0 &&
+              actions.length === 0 &&
+              !busy &&
+              !waitingForApproval && (
+                <div className="remix-chat-empty">
+                  {liveContext.text
+                    ? "Say or type what to do with your selection."
+                    : "Nothing selected — ask me to write, research, or answer."}
+                </div>
+              )}
             {actions.map((action) => (
               <div
                 key={action.id}
@@ -936,6 +1035,14 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             ))}
             {messages.map((message) => (
               <MessageRow key={message.id} message={message} busy={busy} />
+            ))}
+            {approvals.map((approval) => (
+              <RemixApprovalCard
+                key={approval.call.toolCallId}
+                approval={approval}
+                resolving={resolvingApprovalId !== null}
+                onResolve={resolveApproval}
+              />
             ))}
             {busy && !hasAssistantResponse ? <RemixThinkingState /> : null}
           </MessageScroller>
@@ -968,7 +1075,14 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               rows={1}
               value={input}
               aria-label="Message Remix"
-              placeholder={busy ? "Working…" : "Message Remix…"}
+              placeholder={
+                waitingForApproval
+                  ? "Resolve the approval above…"
+                  : busy
+                    ? "Working…"
+                    : "Message Remix…"
+              }
+              disabled={waitingForApproval || resolvingApprovalId !== null}
               onChange={(e) => {
                 setInput(e.target.value);
                 const el = e.currentTarget;
@@ -1003,7 +1117,11 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               <button
                 type="button"
                 className="remix-chat-send"
-                disabled={!input.trim()}
+                disabled={
+                  !input.trim() ||
+                  waitingForApproval ||
+                  resolvingApprovalId !== null
+                }
                 onClick={submit}
                 aria-label="Send"
                 title="Send"
@@ -1029,6 +1147,46 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         </div>
       </LazyMotion>
     </div>
+  );
+}
+
+function RemixApprovalCard({
+  approval,
+  resolving,
+  onResolve,
+}: {
+  approval: PendingApproval;
+  resolving: boolean;
+  onResolve: (approval: PendingApproval, allowed: boolean) => void;
+}): React.JSX.Element {
+  const description = describeAgentAction(approval.call);
+
+  return (
+    <section className="remix-chat-approval" aria-live="polite">
+      <span className="remix-chat-approval-eyebrow">Approval needed</span>
+      <div className="remix-chat-approval-title">
+        Remix wants to act locally
+      </div>
+      <pre className="remix-chat-approval-detail">{description}</pre>
+      <div className="remix-chat-approval-actions">
+        <button
+          type="button"
+          className="remix-chat-approval-allow"
+          disabled={resolving}
+          onClick={() => onResolve(approval, true)}
+        >
+          {resolving ? "Working…" : "Allow"}
+        </button>
+        <button
+          type="button"
+          className="remix-chat-approval-deny"
+          disabled={resolving}
+          onClick={() => onResolve(approval, false)}
+        >
+          Don&apos;t allow
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -1676,6 +1834,82 @@ const REMIX_CHAT_CSS = `
     color: rgba(224, 128, 95, 0.95);
     padding: 6px 18px 0;
     line-height: 1.35;
+  }
+
+  .remix-chat-approval {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 12px;
+    border: 1px solid rgba(138, 182, 42, 0.46);
+    border-radius: 12px;
+    background:
+      linear-gradient(135deg, rgba(138, 182, 42, 0.14), rgba(245, 241, 228, 0.045)),
+      rgba(22, 21, 17, 0.82);
+    box-shadow: inset 0 1px 0 rgba(245, 241, 228, 0.07);
+  }
+  .remix-chat-approval-eyebrow {
+    color: ${OLIVE};
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+  }
+  .remix-chat-approval-title {
+    color: ${INK};
+    font-size: 12.5px;
+    font-weight: 650;
+  }
+  .remix-chat-approval-detail {
+    max-height: 98px;
+    overflow: auto;
+    margin: 0;
+    padding: 7px 8px;
+    border: 1px solid rgba(245, 241, 228, 0.09);
+    border-radius: 8px;
+    background: rgba(0, 0, 0, 0.26);
+    color: ${INK_DIM};
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 10px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .remix-chat-approval-actions {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .remix-chat-approval-actions button {
+    min-height: 28px;
+    border-radius: 8px;
+    padding: 0 10px;
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    cursor: pointer;
+    transition: transform 130ms ease, background 130ms ease, border-color 130ms ease;
+  }
+  .remix-chat-approval-actions button:disabled {
+    cursor: wait;
+    opacity: 0.58;
+  }
+  .remix-chat-approval-actions button:not(:disabled):active { transform: scale(0.96); }
+  .remix-chat-approval-allow {
+    border: 1px solid rgba(138, 182, 42, 0.95);
+    background: ${OLIVE};
+    color: rgba(18, 20, 12, 0.96);
+  }
+  .remix-chat-approval-allow:not(:disabled):hover { background: #A4D246; }
+  .remix-chat-approval-deny {
+    border: 1px solid rgba(245, 241, 228, 0.18);
+    background: rgba(245, 241, 228, 0.07);
+    color: ${INK_DIM};
+  }
+  .remix-chat-approval-deny:not(:disabled):hover {
+    border-color: rgba(245, 241, 228, 0.34);
+    background: rgba(245, 241, 228, 0.13);
+    color: ${INK};
   }
 
   .remix-chat-busy { font-size: 12px; }

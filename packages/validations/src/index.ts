@@ -7,6 +7,7 @@ export * from "./diagnostics.js";
 export * from "./dictionary.js";
 export * from "./export.js";
 export * from "./local-llm.js";
+export * from "./mcp.js";
 export * from "./member-preferences.js";
 export * from "./models.js";
 export * from "./notifications.js";

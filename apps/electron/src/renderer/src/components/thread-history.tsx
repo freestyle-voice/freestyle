@@ -1,3 +1,10 @@
+import { DataSkeleton } from "@renderer/components/data-skeleton";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@renderer/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -5,16 +12,9 @@ import {
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
 import { capture } from "@renderer/lib/analytics";
-import {
-  threadHistoryInfiniteQueryOptions,
-  threadQueryOptions,
-} from "@renderer/lib/query";
-import type {
-  ThreadOrigin,
-  ThreadState,
-  ThreadSummary,
-} from "@renderer/lib/threads";
-import { useInfiniteQuery, useQueryClient } from "@tanstack/react-query";
+import { threadHistoryInfiniteQueryOptions } from "@renderer/lib/query";
+import type { ThreadOrigin, ThreadSummary } from "@renderer/lib/threads";
+import { useInfiniteQuery } from "@tanstack/react-query";
 import { Check, Ellipsis, Pencil, Search, Trash2, X } from "lucide-react";
 import type React from "react";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
@@ -42,8 +42,10 @@ export function ThreadHistory({
   titleOverrides,
   onRename,
   onDelete,
+  sessionActions,
 }: {
-  onPick: (thread: ThreadState) => void;
+  /** Select immediately; the session owner loads the message detail. */
+  onPick: (thread: ThreadSummary) => void;
   currentId: string;
   /** The Remix sidebar owns session search; compact panels keep their density. */
   showSearch?: boolean;
@@ -54,8 +56,9 @@ export function ThreadHistory({
   /** Sidebar-only actions. Search results intentionally remain selection-only. */
   onRename?: (threadId: string, title: string) => Promise<void>;
   onDelete?: (threadId: string) => Promise<void>;
+  /** Keep desktop Remix rows clean while exposing their actions on right-click. */
+  sessionActions?: "dropdown" | "context";
 }): React.JSX.Element {
-  const queryClient = useQueryClient();
   const [internalSearch, setInternalSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -105,6 +108,7 @@ export function ThreadHistory({
   const isFetchingNextPage =
     conversationsQuery.isFetchingNextPage || briefsQuery.isFetchingNextPage;
   const canManage = Boolean(onRename && onDelete);
+  const actionPresentation = sessionActions ?? "dropdown";
 
   useEffect(() => {
     if (renamingId) renameInputRef.current?.focus();
@@ -112,9 +116,7 @@ export function ThreadHistory({
 
   const openThread = (thread: ThreadSummary): void => {
     capture("thread_opened", { origin: thread.origin });
-    void queryClient
-      .fetchQuery(threadQueryOptions(thread.id))
-      .then((picked) => picked && onPick(picked));
+    onPick(thread);
   };
 
   const commitRename = (thread: ThreadSummary): void => {
@@ -140,15 +142,19 @@ export function ThreadHistory({
     );
   };
 
+  const startRename = (thread: ThreadSummary): void => {
+    setRenameDraft(thread.title);
+    setRenamingId(thread.id);
+    setActionError(null);
+  };
+
   if (isLoading)
     return (
       <>
         {rendersSearchField ? (
           <SessionSearch value={search} onChange={setInternalSearch} />
         ) : null}
-        <div className="tavern-empty tavern-thread-empty">
-          Loading sessions…
-        </div>
+        <DataSkeleton label="Loading sessions" rows={5} />
       </>
     );
   if (filteredThreads.length === 0)
@@ -218,7 +224,7 @@ export function ThreadHistory({
                   <X aria-hidden="true" />
                 </button>
               </form>
-            ) : canManage ? (
+            ) : canManage && actionPresentation === "dropdown" ? (
               <div
                 className={`tavern-thread-row${t.id === currentId ? " is-current" : ""}`}
               >
@@ -240,13 +246,7 @@ export function ThreadHistory({
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="min-w-35">
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        setRenameDraft(t.title);
-                        setRenamingId(t.id);
-                        setActionError(null);
-                      }}
-                    >
+                    <DropdownMenuItem onSelect={() => startRename(t)}>
                       <Pencil aria-hidden="true" />
                       Rename
                     </DropdownMenuItem>
@@ -260,6 +260,31 @@ export function ThreadHistory({
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
+            ) : canManage && actionPresentation === "context" ? (
+              <ContextMenu>
+                <ContextMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className={`tavern-thread-row tavern-thread-row-direct${t.id === currentId ? " is-current" : ""}`}
+                    onClick={() => openThread(t)}
+                  >
+                    {t.title}
+                  </button>
+                </ContextMenuTrigger>
+                <ContextMenuContent className="min-w-35">
+                  <ContextMenuItem onSelect={() => startRename(t)}>
+                    <Pencil aria-hidden="true" />
+                    Rename
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    variant="destructive"
+                    onSelect={() => removeThread(t)}
+                  >
+                    <Trash2 aria-hidden="true" />
+                    Delete
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
             ) : (
               <button
                 type="button"

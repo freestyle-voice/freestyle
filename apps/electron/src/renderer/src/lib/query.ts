@@ -99,6 +99,11 @@ export const queryKeys = {
     details: (slug: string) => ["connectors", "details", slug] as const,
   },
 
+  mcp: {
+    all: ["mcp"] as const,
+    connections: ["mcp", "connections"] as const,
+  },
+
   threads: {
     all: ["threads"] as const,
     latest: ["threads", "latest"] as const,
@@ -119,6 +124,8 @@ export const queryKeys = {
 
   /** Empty-state opener cards (`GET /api/suggestions/home`). */
   openers: ["openers"] as const,
+  /** Capability gallery (`GET /api/suggestions/capabilities`). */
+  capabilities: ["capabilities"] as const,
 
   /** Remix practice runs. */
   remixRuns: ["remix", "runs"] as const,
@@ -362,16 +369,15 @@ export type ThreadDeletionSnapshot = {
 };
 
 /**
- * Apply the visible part of a session deletion synchronously. Cancelling
- * active thread reads starts immediately, but is deliberately not awaited:
- * the user should leave the deleted session before the Cloud proxy replies.
+ * Apply a session deletion after the caller has cancelled in-flight thread
+ * reads. Keeping cancellation outside this synchronous helper lets the React
+ * Query mutation await that boundary before changing the cache.
  */
 export function optimisticallyDeleteThread(
   queryClient: QueryClient,
   threadId: string,
   localTitles: Record<string, string>,
 ): ThreadDeletionSnapshot {
-  void queryClient.cancelQueries({ queryKey: queryKeys.threads.all });
   const history = queryClient.getQueriesData<
     InfiniteData<ThreadPage, number | null>
   >({ queryKey: queryKeys.threads.lists });

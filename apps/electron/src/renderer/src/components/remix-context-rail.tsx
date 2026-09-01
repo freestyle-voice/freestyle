@@ -126,13 +126,19 @@ function ContextTasks({
   const save = (next: string[]): void => {
     const text = next.join("\n");
     queryClient.setQueryData(queryKeys.brain.file(TODOS_PATH), text);
-    void writeBrainFile(TODOS_PATH, text).then((ok) => {
-      if (!ok) {
+    void writeBrainFile(TODOS_PATH, text)
+      .then((ok) => {
+        if (!ok) {
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.brain.file(TODOS_PATH),
+          });
+        }
+      })
+      .catch(() => {
         void queryClient.invalidateQueries({
           queryKey: queryKeys.brain.file(TODOS_PATH),
         });
-      }
-    });
+      });
   };
 
   return (
@@ -257,7 +263,7 @@ function ContextNotes({
         <div className="remix-context-preview">
           <span>{selected.title}</span>
           {selectedQuery.isLoading ? (
-            "Loading…"
+            <DataSkeleton label="Loading note preview" rows={2} />
           ) : (
             <Markdown text={selectedQuery.data ?? ""} />
           )}
@@ -347,7 +353,7 @@ function ContextBrain({
         <div className="remix-context-preview">
           <span>{selected.path.replace(/\\/g, "/")}</span>
           {selectedQuery.isLoading ? (
-            "Loading…"
+            <DataSkeleton label="Loading Brain preview" rows={2} />
           ) : (
             <Markdown text={selectedQuery.data ?? ""} />
           )}

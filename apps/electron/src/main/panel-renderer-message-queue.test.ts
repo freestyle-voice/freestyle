@@ -68,6 +68,23 @@ describe("PanelRendererMessageQueue", () => {
     ]);
   });
 
+  it("delivers a queued Settings navigation once the workspace is ready", () => {
+    const delivered: PanelRendererMessage[] = [];
+    const queue = new PanelRendererMessageQueue((message) => {
+      delivered.push(message);
+    });
+
+    queue.send({ channel: "dashboard:navigate", payload: "/settings" });
+
+    expect(delivered).toEqual([]);
+
+    queue.markReady();
+
+    expect(delivered).toEqual([
+      { channel: "dashboard:navigate", payload: "/settings" },
+    ]);
+  });
+
   it("keeps only the latest dictation state while the renderer is unready", () => {
     const delivered: PanelRendererMessage[] = [];
     const queue = new PanelRendererMessageQueue((message) => {

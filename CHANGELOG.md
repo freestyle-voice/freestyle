@@ -1,4 +1,22 @@
 # Changelog
+## Unreleased
+
+### New Features ✨
+
+- (desktop) Restore the single-window Remix workspace: chat stays central,
+  while Tasks, Notes, and Brain are available from an optional context rail.
+- (settings) Move desktop preferences into workspace routes, including Models,
+  Connected apps, and Companion controls.
+- (companion) Add a recoverable, repositionable desktop companion with
+  lightweight activity feedback.
+- (remix) Add desktop-owned MCP connections for local stdio and remote HTTP
+  tools, including bearer, custom-header, and OAuth authentication.
+
+### Bug Fixes 🐛
+
+- (remix) Keep follow-up voice requests, session state, and the floating Remix
+  surface in sync across an existing workspace.
+
 ## 0.8.9
 
 ### New Features ✨
@@ -907,4 +925,3 @@
 - README P2 by @matteo8p in [#29](https://github.com/freestyle-voice/freestyle/pull/29)
 - Update README.md and CONTRIBUTING.md by @matteo8p in [#28](https://github.com/freestyle-voice/freestyle/pull/28)
 - New home page design by @matteo8p in [#23](https://github.com/freestyle-voice/freestyle/pull/23)
-

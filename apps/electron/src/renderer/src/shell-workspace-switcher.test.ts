@@ -86,7 +86,7 @@ describe("workspace switcher", () => {
     expect(shell).toContain("searchQuery={query}");
   });
 
-  it("keeps session-row management in the active chat header", async () => {
+  it("keeps the session rows visually clean while exposing matching actions on right-click", async () => {
     const shell = await readFile(shellPath, "utf8");
     const remixSidebar = shell.slice(
       shell.indexOf("function RemixSidebarSessions"),
@@ -94,7 +94,9 @@ describe("workspace switcher", () => {
     );
 
     expect(remixSidebar).toContain("titleOverrides={localTitles}");
-    expect(remixSidebar).not.toContain("onRename={renameThread}");
-    expect(remixSidebar).not.toContain("onDelete={deleteThread}");
+    expect(remixSidebar).toContain("onRename={renameThread}");
+    expect(remixSidebar).toContain("onDelete={deleteThread}");
+    expect(remixSidebar).toContain('sessionActions="context"');
+    expect(remixSidebar).not.toContain("tavern-thread-more");
   });
 });

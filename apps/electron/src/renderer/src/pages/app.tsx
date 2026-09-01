@@ -39,6 +39,7 @@ import {
   normalizePillCancelMode,
   type PillCancelMode,
 } from "../../../shared/pill-cancel";
+import { resolvePillPresentation } from "../../../shared/pill-presentation";
 import {
   REMIX_HOLD_THRESHOLD_MS,
   type RemixSelectionPayload,
@@ -2098,6 +2099,11 @@ export default function AppPage(): React.JSX.Element {
       patchRemix({ minimized: true });
     }
   }, [patchRemix]);
+  const expandRemixChat = useCallback(() => {
+    if (remixRef.current?.minimized === true) {
+      patchRemix({ minimized: false });
+    }
+  }, [patchRemix]);
   const consumeRemixChatInstruction = useCallback(
     (instructionId: number) => {
       const session = remixRef.current;
@@ -2553,6 +2559,15 @@ export default function AppPage(): React.JSX.Element {
       // opening the full workspace is always an explicit click.
       remixStreamerRef.current?.cancel();
       if (isRemixChatPhase(session.phase)) {
+        // A chat follow-up starts the microphone before we know whether this
+        // press is a hold. A tap must hand that generation back immediately:
+        // otherwise its live stream survives behind the restored chat and can
+        // poison the next spoken follow-up with a stale capture.
+        if (remixMicGenRef.current !== null) {
+          recorderRef.current.cancel(remixMicGenRef.current);
+          recorderRef.current.releaseStream(remixMicGenRef.current);
+          remixMicGenRef.current = null;
+        }
         patchRemix({ phase: "chat", transcript: undefined });
         return;
       }
@@ -2891,10 +2906,14 @@ export default function AppPage(): React.JSX.Element {
   // sits over whatever the user is actually doing, so it only ever earns a
   // glyph, and the words behind it are in the tooltip and to screen readers.
   const isFreestyleCloud = providerCategoryRef.current === "freestyle_cloud";
-  const showErrorCard = state === "error";
+  const pillPresentation = resolvePillPresentation({
+    dictationError: state === "error",
+    remixActive: remix !== null,
+  });
+  const showErrorCard = pillPresentation.kind === "card";
   // A remix replaces the capsule outright: its own card carries the waveform,
   // so there is nothing left for the capsule to say while one is up.
-  const showRemixCard = remix !== null;
+  const showRemixCard = pillPresentation.kind === "remix-chat";
   const showRemixChat = isRemixChatPhase(remix?.phase);
   const showCard = showErrorCard || showRemixCard;
   const active = state !== "idle" || showRemixCard;
@@ -3045,7 +3064,7 @@ export default function AppPage(): React.JSX.Element {
   const chatSurfaceRef = useRef<HTMLDivElement | null>(null);
   const cardSurfaceRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
-    if (!showCard) {
+    if (pillPresentation.expansion === null) {
       setRoomReady(false);
       const timer = setTimeout(() => window.api?.setPillExpanded?.(false), 300);
       return () => clearTimeout(timer);
@@ -3057,7 +3076,7 @@ export default function AppPage(): React.JSX.Element {
     // in-session size change is DOM animation inside room that already
     // exists, and the two resizes that remain happen while the surfaces are
     // invisible.
-    window.api?.setPillExpanded?.(true, showRemixCard ? "remix-chat" : "card");
+    window.api?.setPillExpanded?.(true, pillPresentation.expansion);
     // Two frames: one for the resize to land, one for the browser to lay the
     // card out at its start values so the transition has something to run
     // from. Setting both in the same frame would jump straight to the end.
@@ -3076,7 +3095,7 @@ export default function AppPage(): React.JSX.Element {
       cancelAnimationFrame(inner);
       clearTimeout(fallback);
     };
-  }, [showCard, showRemixCard]);
+  }, [pillPresentation.expansion]);
 
   const cardOpen = showCard && roomReady;
   const errorCardOpen = showErrorCard && roomReady;
@@ -4144,6 +4163,7 @@ export default function AppPage(): React.JSX.Element {
                     onInstructionConsumed={consumeRemixChatInstruction}
                     onVoiceNoticeDismiss={clearRemixChatNotice}
                     onActivityChange={handleRemixActivity}
+                    onExpand={expandRemixChat}
                     onMinimize={minimizeRemixChat}
                     onClose={closeRemix}
                     onMiniHeightChange={setRemixMiniHeight}

@@ -95,7 +95,7 @@ test("companion dock has a generous native drag target beyond its slim visual", 
   expect(source).toContain("const COMPANION_DOCK_HIT_TARGET");
   expect(source).toContain("data-companion-dock-hit");
   expect(source).toContain('WebkitAppRegion: "drag"');
-  expect(source).toContain('cursor: "grab"');
+  expect(source).toContain('cursor: dragging ? "grabbing" : "grab"');
   expect(source).toContain('pointerEvents: "none"');
 });
 
@@ -107,6 +107,9 @@ test("companion receives a compact Remix activity label separate from dictation 
   ]);
 
   expect(source).toContain("CompanionStatusPill");
+  expect(source).toContain("Math.min(164, windowSize - 16)");
+  expect(source).not.toContain(">\n        REMIX\n      </span>");
+  expect(source).toContain('textOverflow: "ellipsis"');
   expect(source).toContain("companionStatus()");
   expect(source).toContain("window.api.onCompanionStatus");
   expect(preload).toContain('ipcRenderer.invoke("companion:status")');

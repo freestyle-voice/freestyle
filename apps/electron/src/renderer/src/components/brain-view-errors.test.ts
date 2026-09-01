@@ -21,7 +21,30 @@ vi.mock("@renderer/lib/brain-fs", () => ({
 import { NotesTab } from "./notes-tab";
 import { ScheduledTasks } from "./scheduled-tasks";
 
+const componentDir = new URL(".", import.meta.url);
+
 describe("Brain view errors", () => {
+  it("moves a selected note into a shaped loading state while its contents load", async () => {
+    const source = await import("node:fs/promises").then(({ readFile }) =>
+      readFile(new URL("notes-tab.tsx", componentDir), "utf8"),
+    );
+
+    expect(source).toContain('{ kind: "loading"; path: string }');
+    expect(source).toContain('DataSkeleton label="Loading note"');
+    expect(source).not.toContain(".catch(() => {});");
+    expect(source).toContain("try {\n      const current");
+  });
+
+  it("moves a selected Brain file into a shaped loading state while it opens", async () => {
+    const source = await import("node:fs/promises").then(({ readFile }) =>
+      readFile(new URL("brain-files.tsx", componentDir), "utf8"),
+    );
+
+    expect(source).toContain('{ kind: "loading"; path: string }');
+    expect(source).toContain('DataSkeleton label="Loading Brain file"');
+    expect(source).not.toContain(".catch(() => {});");
+  });
+
   it("lets the user retry a failed note load", () => {
     useQuery.mockReturnValue({
       data: undefined,

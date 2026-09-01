@@ -81,6 +81,7 @@ function CompanionDock({
   const visualTop = companionDockTop(body, windowSize);
   const hitRect = companionDockHitRect(body, windowSize);
   const left = body.x + body.width / 2;
+  const [dragging, setDragging] = useState(false);
 
   return (
     <div
@@ -88,8 +89,10 @@ function CompanionDock({
       data-companion-dock
       data-companion-dock-hit
       onMouseDown={() => {
+        setDragging(true);
         window.api.beginCompanionPositionDrag();
       }}
+      onMouseUp={() => setDragging(false)}
       role="img"
       style={
         {
@@ -100,7 +103,7 @@ function CompanionDock({
           width: hitRect.width,
           height: hitRect.height,
           boxSizing: "border-box",
-          cursor: "grab",
+          cursor: dragging ? "grabbing" : "grab",
           WebkitAppRegion: "drag",
         } as React.CSSProperties
       }
@@ -137,12 +140,12 @@ function CompanionStatusPill({
   status: CompanionStatus;
   windowSize: number;
 }): React.JSX.Element {
-  const statusWidth = 164;
+  // The companion has its own transparent, fixed-size window. Keep the
+  // activity indicator inside that window rather than letting a fixed pill
+  // width be clipped by its edge on smaller displays.
+  const statusWidth = Math.min(164, windowSize - 16);
   const top = Math.max(8, body.y - 30);
-  const towardDisplay =
-    facing === "right"
-      ? { left: Math.max(8, body.x) }
-      : { right: Math.max(8, windowSize - body.x - body.width) };
+  const towardDisplay = facing === "right" ? { left: 8 } : { right: 8 };
 
   return (
     <div
@@ -183,9 +186,6 @@ function CompanionStatusPill({
           boxShadow: "0 0 0 3px rgba(138, 182, 42, 0.12)",
         }}
       />
-      <span style={{ color: "rgba(138, 182, 42, 0.96)", flex: "0 0 auto" }}>
-        REMIX
-      </span>
       <span
         title={status.label}
         style={{

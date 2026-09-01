@@ -1,0 +1,49 @@
+---
+title: MCP connections
+description: Give Remix access to local and remote MCP tools while keeping credentials on your device.
+---
+
+## Give Remix more tools
+
+MCP connections let Remix use tools from a server you choose. Add and manage
+them from **Settings → Remix → MCP connections**. A connection is disabled
+until you test it and explicitly enable the discovered tools.
+
+Freestyle supports:
+
+- **Local stdio servers** — a command, its arguments, optional working
+  directory, and environment values that run only on your computer.
+- **Remote Streamable HTTP servers** — HTTPS endpoints, or a loopback HTTP
+  endpoint for local development.
+- **Authentication** — no auth, bearer token, custom headers, or the MCP
+  OAuth authorization-code flow.
+
+## Connect a server
+
+1. Add a connection and choose **Remote HTTP** or **Local stdio**.
+2. Enter the endpoint or local command. Add each local command argument on
+   its own line so paths and values with spaces stay intact. For a remote
+   server, choose its authentication method.
+3. For OAuth, choose **Connect account** and finish in your browser. Return to
+   Freestyle when the confirmation page says the server is connected.
+4. Choose **Test connection** to discover the server's tools, then choose
+   **Enable** when you want Remix to use them.
+
+## Privacy and safety
+
+Commands, environment values, API keys, custom headers, OAuth tokens, and the
+live MCP connection remain in Freestyle's local desktop server. Remix Cloud is
+given only each enabled tool's name, description, and input shape so it can ask
+the desktop to run that tool. To finish that one request, the desktop returns a
+bounded, sanitized tool result to Remix Cloud. Cloud never receives your
+endpoint, credentials, or a remote MCP session.
+
+Tool output is bounded before it returns to Remix. Binary content is omitted
+and long text is truncated, which keeps a tool response from overwhelming the
+chat context.
+
+Remix can use up to 40 enabled MCP tools in one conversation. If your servers
+expose more, keep only the connections you need for the task enabled.
+
+Only connect local commands and remote MCP endpoints you trust. A connected
+server can receive the arguments Remix sends to one of its tools.

@@ -25,6 +25,7 @@ import dictionary from "./dictionary.js";
 import dismissedNotifications from "./dismissed-notifications.js";
 import eventsRoute from "./events.js";
 import history from "./history.js";
+import mcpRoute from "./mcp.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
 import notificationsRoute from "./notifications.js";
@@ -97,6 +98,7 @@ const apiRouter = new Hono()
   .route("/suggestions", suggestionsRoute)
   .route("/auth", auth)
   .route("/models", models)
+  .route("/mcp", mcpRoute)
   .route("/transcribe", transcribe)
   .route("/transcribe", transcribePreWarmRoute)
   .route("/history", history)

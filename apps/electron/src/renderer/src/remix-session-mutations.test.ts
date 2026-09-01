@@ -14,8 +14,15 @@ describe("Remix session deletion", () => {
 
     expect(source).toContain("useMutation");
     expect(source).toContain("onMutate");
+    expect(source).toContain(
+      "await queryClient.cancelQueries({ queryKey: queryKeys.threads.all })",
+    );
     expect(source).toContain("optimisticallyDeleteThread");
     expect(source).toContain("restoreOptimisticallyDeletedThread");
+    expect(source).toContain("const deletionVersionRef = useRef(0)");
+    expect(source).toContain(
+      "context.mutationVersion === deletionVersionRef.current",
+    );
     expect(source).toContain("switchThread(newThread())");
     expect(source).toContain("onError");
     expect(source).toContain("Couldn’t delete this session.");

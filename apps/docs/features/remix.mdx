@@ -1,0 +1,86 @@
+---
+title: "Remix"
+description: "Use Freestyle's agent workspace without leaving the conversation."
+---
+
+Remix is the part of Freestyle for questions, research, drafting, and work that
+takes more than a single dictated sentence. It keeps the chat at the center of
+the desktop window and brings the relevant context alongside it.
+
+## Start a request
+
+The default Remix hotkey is **Fn + Control** on macOS and **Ctrl + Alt + E** on
+Windows and Linux. Press it briefly to open the Remix surface, or hold it while
+you speak to send a request. Change the shortcut in **Settings → Remix**.
+
+When a response needs more room, use the expand control to continue in the
+Remix workspace. If it is already open, Freestyle focuses that existing window
+instead of creating another one.
+
+## Follow a request from the floating surface
+
+The built-in Remix surface changes shape as a request moves from listening and
+transcribing to searching, thinking, and responding. While Remix is working,
+it keeps the current activity and the latest response line visible; use its
+expand control to open the same session in the workspace, or close it without
+ending the saved chat.
+
+If a request needs to read or change a local file, run a shell command, or save
+a download, Remix pauses in the expanded surface and shows exactly what it
+wants to do. Nothing runs until you choose **Allow**; declining is respected as
+the final answer for that action.
+
+This presentation is part of Freestyle itself. It is not an extension API: MCP
+servers can add tools to Remix, but they cannot replace or render their own
+floating pill.
+
+## Keep the conversation in view
+
+The workspace has one primary job: keep your session readable. The chat stays
+in the center. A Context control at the top right reveals an optional rail that
+slides in from the right.
+
+<CardGroup cols={3}>
+  <Card title="Tasks" icon="list-todo">
+    See incomplete work, complete an item, or add a quick task.
+  </Card>
+  <Card title="Notes" icon="file-text">
+    Scan recent notes and open a preview in the same card.
+  </Card>
+  <Card title="Brain" icon="brain">
+    Browse relevant files and read a preview without leaving the chat.
+  </Card>
+</CardGroup>
+
+Each card expands independently with **View all**. It does not navigate you to
+another tab or replace the conversation. Hide the rail whenever you want a
+wider chat, and Freestyle remembers that preference on the device.
+
+## Settings and connected apps
+
+Use the Settings action to enter a settings-specific sidebar within the same
+workspace. This keeps navigation simple: use **Back to app** to return to the
+conversation.
+
+- **Settings → Remix** configures the Remix hotkey and related behavior.
+- **Settings → Remix → Connected apps** is where you connect services for
+  Remix to use.
+- **Settings → Remix → MCP connections** is where you add trusted local MCP
+  servers or remote HTTP MCP endpoints. See [MCP connections](/features/mcp)
+  for authentication and privacy details.
+- **Settings → General → Models** is where you configure transcription and
+  cleanup models and any required API keys.
+- **Settings → General → Companion** controls the optional desktop companion.
+
+<Note>
+  Configuring a local cleanup model changes dictation cleanup. Remix continues
+  to use its managed agent service; it does not silently switch to your cleanup
+  model.
+</Note>
+
+## The companion
+
+The companion is optional. When enabled, it can be repositioned for each
+display and shows lightweight activity without stealing focus from the app you
+are working in. Use **Settings → General → Companion** to show, wake, hide, or
+adjust its appearance.

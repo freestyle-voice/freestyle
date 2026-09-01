@@ -130,6 +130,30 @@ describe("preload contract", () => {
     expect(showPill).toContain("setPillExpanded(false)");
   });
 
+  it("restores active Remix route keys after rebuilding global shortcuts", async () => {
+    const main = await readFile(mainPath, "utf8");
+    const register = main.slice(
+      main.indexOf("async function registerHotkey("),
+      main.indexOf("// Clean up key listener"),
+    );
+
+    expect(register).toContain("globalShortcut.unregisterAll()");
+    expect(register).toContain("if (remixRouteKeysHeld)");
+    expect(register).toContain("remixRouteKeysHeld = false");
+    expect(register).toContain("setRemixRouteKeys(true)");
+  });
+
+  it("accepts Remix route-key state only from the pill renderer", async () => {
+    const main = await readFile(mainPath, "utf8");
+    const routeKeys = main.slice(
+      main.indexOf('ipcMain.on("remix:set-route-keys"'),
+      main.indexOf("});", main.indexOf('ipcMain.on("remix:set-route-keys"')),
+    );
+
+    expect(routeKeys).toContain("event.sender !== mainWindow?.webContents");
+    expect(routeKeys).toContain("setRemixRouteKeys(open === true)");
+  });
+
   it("resets stale expanded bounds before placing either hotkey pill", async () => {
     const main = await readFile(mainPath, "utf8");
     const showPill = main.slice(
@@ -256,7 +280,7 @@ describe("preload contract", () => {
     );
 
     expect(formHandler).toContain("panelWindow?.webContents");
-    expect(formHandler).toContain("settingsWindow?.webContents");
+    expect(formHandler).not.toContain("settingsWindow?.webContents");
     expect(menuHandler.indexOf("hideNotifications()")).toBeLessThan(
       menuHandler.indexOf("destroyCompanionWindow()"),
     );

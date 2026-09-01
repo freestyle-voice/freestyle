@@ -28,11 +28,11 @@ import {
 import { readAgentBrief } from "@renderer/lib/agent-brief";
 import {
   type AgentToolCall,
-  agentToolResultTelemetry,
   agentToolTier,
   DECLINED_OUTPUT,
   describeAgentAction,
   executeAgentTool,
+  reportAgentToolResult,
   requestAgentFileSaveGrant,
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
@@ -55,6 +55,7 @@ import {
   getThreadRuntime,
   sendDurableTurnCommand,
   type ThreadState,
+  type ThreadSummary,
 } from "@renderer/lib/threads";
 import { highlightToolJson, toolJson } from "@renderer/lib/tool-json";
 import {
@@ -141,29 +142,6 @@ function WorkspaceIcon({
       {paths[name]}
     </svg>
   );
-}
-
-function reportAgentToolResult(
-  call: AgentToolCall,
-  output: Record<string, unknown>,
-  startedAt: number,
-): void {
-  const send = (appVersion: string): void => {
-    capture(
-      "agent_tool_result",
-      agentToolResultTelemetry({
-        tool: call.toolName,
-        platform: window.api.platform,
-        appVersion,
-        durationMs: Date.now() - startedAt,
-        output,
-      }),
-    );
-  };
-  void window.api
-    .getAppVersion()
-    .then(send)
-    .catch(() => send("unknown"));
 }
 
 function ShikiJson({ value }: { value: unknown }): React.JSX.Element {
@@ -828,8 +806,17 @@ function SignInGate(): React.JSX.Element {
  * implementation.
  */
 export function RemixWorkspace(): React.JSX.Element {
-  const { thread, switchThread, localTitles, renameThread, deleteThread } =
-    useRemixSession();
+  const {
+    thread,
+    switchThread,
+    selectThread,
+    isThreadLoading,
+    threadLoadError,
+    retryThreadLoad,
+    localTitles,
+    renameThread,
+    deleteThread,
+  } = useRemixSession();
 
   if (!thread) return <div className="remix-workspace" />;
 
@@ -838,6 +825,10 @@ export function RemixWorkspace(): React.JSX.Element {
       <PanelInner
         thread={thread}
         onSwitchThread={switchThread}
+        onSelectThread={selectThread}
+        isSessionLoading={isThreadLoading}
+        sessionLoadError={threadLoadError}
+        onRetrySessionLoad={retryThreadLoad}
         onRenameSession={renameThread}
         onDeleteSession={deleteThread}
         sessionTitle={localTitles[thread.id] ?? displayThreadTitle(thread)}
@@ -951,7 +942,7 @@ function RemixChatHeader({
         ) : (
           <>
             <h1 title={title}>{title}</h1>
-            {onRename && onDelete ? (
+            {thread.messages.length > 0 && onRename && onDelete ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
@@ -999,9 +990,29 @@ function RemixChatHeader({
   );
 }
 
+function ConversationSkeleton(): React.JSX.Element {
+  return (
+    <div
+      className="remix-conversation-skeleton"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading conversation"
+    >
+      <span className="remix-conversation-skeleton-line is-user" />
+      <span className="remix-conversation-skeleton-line is-assistant" />
+      <span className="remix-conversation-skeleton-line is-assistant-short" />
+      <span className="sr-only">Loading conversation</span>
+    </div>
+  );
+}
+
 function PanelInner({
   thread,
   onSwitchThread,
+  onSelectThread,
+  isSessionLoading = false,
+  sessionLoadError = null,
+  onRetrySessionLoad,
   onRenameSession,
   onDeleteSession,
   sessionTitle: currentSessionTitle,
@@ -1009,6 +1020,10 @@ function PanelInner({
 }: {
   thread: ThreadState;
   onSwitchThread: (thread: ThreadState) => void;
+  onSelectThread?: (thread: ThreadSummary) => void;
+  isSessionLoading?: boolean;
+  sessionLoadError?: string | null;
+  onRetrySessionLoad?: () => void;
   onRenameSession?: (threadId: string, title: string) => Promise<void>;
   onDeleteSession?: (threadId: string) => Promise<void>;
   sessionTitle?: string;
@@ -1086,6 +1101,7 @@ function PanelInner({
   const durableRuntime = useQuery({
     queryKey: ["durable-thread-runtime", thread.id],
     queryFn: () => getThreadRuntime(thread.id),
+    enabled: !isSessionLoading,
     retry: false,
     refetchInterval: (query) =>
       query.state.data?.activeTurn || query.state.data?.pendingAction
@@ -1199,6 +1215,16 @@ function PanelInner({
     dictatedRef.current = false;
   }, [thread.id]);
 
+  // `useChat` retains message state across prop changes. Clear the previous
+  // conversation as soon as a different session is selected so stale content
+  // can never flash underneath this session's loading skeleton.
+  const chatThreadRef = useRef(thread.id);
+  useEffect(() => {
+    if (chatThreadRef.current === thread.id) return;
+    chatThreadRef.current = thread.id;
+    setMessages(thread.messages);
+  }, [setMessages, thread.id, thread.messages]);
+
   useEffect(() => {
     if (!contextAttention) return;
     const timeout = window.setTimeout(() => setContextAttention(null), 3_000);
@@ -1264,7 +1290,15 @@ function PanelInner({
 
   const send = (): void => {
     const text = draft.trim();
-    if (!text || tab !== "chat" || busy || approvals.length > 0) return;
+    if (
+      !text ||
+      tab !== "chat" ||
+      busy ||
+      approvals.length > 0 ||
+      isSessionLoading ||
+      sessionLoadError
+    )
+      return;
     capture("message_sent", {
       source: dictatedRef.current ? "dictated" : "typed",
       chars: text.length,
@@ -1766,9 +1800,24 @@ function PanelInner({
                   currentId={thread.id}
                   onPick={(picked) => {
                     setTab("chat");
-                    if (picked.id !== thread.id) onSwitchThread(picked);
+                    if (picked.id !== thread.id) {
+                      onSelectThread?.(picked);
+                    }
                   }}
                 />
+              ) : isSessionLoading && chatActive ? (
+                <ConversationSkeleton />
+              ) : sessionLoadError && chatActive ? (
+                <div className="tavern-empty" role="status">
+                  <p>{sessionLoadError}</p>
+                  <button
+                    type="button"
+                    className="tavern-retry"
+                    onClick={onRetrySessionLoad}
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : showChat ? (
                 <>
                   {messages.map((m) => (
@@ -1908,7 +1957,12 @@ function PanelInner({
                   className="tavern-input"
                   value={draft}
                   rows={1}
-                  placeholder="Message Freestyle"
+                  placeholder={
+                    isSessionLoading
+                      ? "Loading conversation…"
+                      : "Message Freestyle"
+                  }
+                  disabled={isSessionLoading || Boolean(sessionLoadError)}
                   onMouseDown={() => window.api.panelRequestFocus()}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={(e) => {
@@ -1927,6 +1981,7 @@ function PanelInner({
                   className={`tavern-btn tavern-btn-send${action === "stop" ? " is-stop" : ""}`}
                   aria-label={action === "stop" ? "Stop generating" : "Send"}
                   title={action === "stop" ? "Stop generating" : "Send"}
+                  disabled={isSessionLoading || Boolean(sessionLoadError)}
                   onClick={action === "stop" ? stopGeneration : send}
                 >
                   <WorkspaceIcon name={action === "stop" ? "stop" : "send"} />

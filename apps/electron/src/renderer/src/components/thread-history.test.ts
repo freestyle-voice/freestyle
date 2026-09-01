@@ -89,6 +89,29 @@ describe("ThreadHistory", () => {
     expect(html).toContain('placeholder="Search sessions"');
   });
 
+  it("uses a session-list skeleton while both histories load", () => {
+    const query = {
+      data: undefined,
+      isLoading: true,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    };
+    useInfiniteQuery.mockReturnValueOnce(query).mockReturnValueOnce(query);
+
+    const html = renderToStaticMarkup(
+      createElement(ThreadHistory, {
+        currentId: "active-thread",
+        onPick: vi.fn(),
+        showSearch: true,
+      }),
+    );
+
+    expect(html).toContain('aria-label="Loading sessions"');
+    expect(html).toContain("tavern-data-skeleton");
+    expect(html).not.toContain("Loading sessions…");
+  });
+
   it("shows local display names and compact session actions only when requested", () => {
     const query = {
       data: {
@@ -122,5 +145,39 @@ describe("ThreadHistory", () => {
     expect(html).toContain("Launch plan");
     expect(html).not.toContain("Original name");
     expect(html).toContain("Session actions for Launch plan");
+  });
+
+  it("offers the same rename and delete actions from a clean right-click row", () => {
+    const query = {
+      data: {
+        pages: [
+          {
+            threads: [{ id: "session", title: "Launch plan", updatedAt: 30 }],
+            nextCursor: null,
+          },
+        ],
+      },
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    };
+    useInfiniteQuery.mockReturnValueOnce(query).mockReturnValueOnce({
+      ...query,
+      data: { pages: [{ threads: [], nextCursor: null }] },
+    });
+
+    const html = renderToStaticMarkup(
+      createElement(ThreadHistory, {
+        currentId: "active-thread",
+        onPick: vi.fn(),
+        onRename: vi.fn().mockResolvedValue(undefined),
+        onDelete: vi.fn().mockResolvedValue(undefined),
+        sessionActions: "context",
+      }),
+    );
+
+    expect(html).toContain('data-slot="context-menu-trigger"');
+    expect(html).not.toContain('data-slot="dropdown-menu-trigger"');
   });
 });

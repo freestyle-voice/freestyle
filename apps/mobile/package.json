@@ -52,6 +52,7 @@
   },
   "scripts": {
     "start": "expo start",
+    "postinstall": "cd ../.. && pnpm turbo build --filter=@freestyle-voice/validations --filter=@freestyle-voice/utils",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo run:android",
     "ios": "node ./scripts/sync-keyboard-extension.js && expo run:ios",

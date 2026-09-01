@@ -20,8 +20,8 @@ const agentRequestSchema = z.object({
 });
 
 /**
- * One companion agent turn. The loop runs on the Worker (`/v2/agent`) and
- * this route is a streaming proxy — the renderer never holds the cloud
+ * One Remix workspace agent turn. The loop runs on the Worker (`/v2/agent`)
+ * and this route is a streaming proxy — the renderer never holds the cloud
  * token, so the Bearer header is injected here from the server-side session.
  */
 const agentRoute = new Hono()

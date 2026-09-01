@@ -104,6 +104,51 @@ describe("Remix chat polish", () => {
     expect(chat).toContain("voiceStatus");
   });
 
+  it("pauses sensitive desktop actions for an explicit in-pill approval", async () => {
+    const [chat, pill] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),
+    ]);
+
+    expect(chat).toContain('if (tier === "confirmed")');
+    expect(chat).toContain('className="remix-chat-approval"');
+    expect(chat).toContain("Remix wants to act locally");
+    expect(chat).toContain("requestAgentFileSaveGrant(call)");
+    expect(chat).toContain("DECLINED_OUTPUT");
+    expect(chat).toContain('"Waiting for your approval"');
+    expect(chat).toContain(
+      "const resolvingApprovalRef = useRef<string | null>(null)",
+    );
+    expect(chat).toContain("if (resolvingApprovalRef.current) return;");
+    expect(chat).toContain("resolvingApprovalRef.current = call.toolCallId;");
+    expect(chat).toContain("resolving={resolvingApprovalId !== null}");
+    expect(pill).toContain("const expandRemixChat = useCallback");
+    expect(pill).toContain("onExpand={expandRemixChat}");
+  });
+
+  it("releases a follow-up microphone capture when that hotkey is only tapped", async () => {
+    const pill = await readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8");
+    const tapBranchStart = pill.indexOf(
+      "if (heldMs < REMIX_HOLD_THRESHOLD_MS) {",
+    );
+    const existingChatStart = pill.indexOf(
+      "if (isRemixChatPhase(session.phase)) {",
+      tapBranchStart,
+    );
+    const existingChatBranch = pill.slice(
+      existingChatStart,
+      pill.indexOf("return;", existingChatStart),
+    );
+
+    expect(existingChatBranch).toContain(
+      "recorderRef.current.cancel(remixMicGenRef.current)",
+    );
+    expect(existingChatBranch).toContain(
+      "recorderRef.current.releaseStream(remixMicGenRef.current)",
+    );
+    expect(existingChatBranch).toContain("remixMicGenRef.current = null");
+  });
+
   it("promotes a compact conversation before recording a spoken follow-up", async () => {
     const [pill, chat] = await Promise.all([
       readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),

@@ -137,6 +137,7 @@ const SETTINGS_NAV_GROUPS: {
     label: "Remix",
     items: [
       { to: "/settings/remix", label: "Remix", icon: Wand2 },
+      { to: "/settings/mcp", label: "MCP connections", icon: PlugZap },
       { to: "/settings/apps", label: "Connected apps", icon: PlugZap },
       { to: "/settings/notifications", label: "Notifications", icon: Bell },
     ],
@@ -314,8 +315,14 @@ function RemixSidebarSessions({
 }: {
   searchQuery: string;
 }): React.JSX.Element | null {
-  const { thread, switchThread, startNewThread, localTitles } =
-    useRemixSession();
+  const {
+    thread,
+    selectThread,
+    startNewThread,
+    localTitles,
+    renameThread,
+    deleteThread,
+  } = useRemixSession();
   const listRef = useRef<HTMLDivElement>(null);
   const [hasMoreSessions, setHasMoreSessions] = useState(false);
 
@@ -376,8 +383,11 @@ function RemixSidebarSessions({
           currentId={thread.id}
           searchQuery={searchQuery}
           titleOverrides={localTitles}
+          onRename={renameThread}
+          onDelete={deleteThread}
+          sessionActions="context"
           onPick={(picked) => {
-            if (picked.id !== thread.id) switchThread(picked);
+            if (picked.id !== thread.id) selectThread(picked);
           }}
         />
       </div>
@@ -454,7 +464,7 @@ function SessionSearchDialog({
   onQueryChange: (query: string) => void;
   inputRef: React.RefObject<HTMLInputElement | null>;
 }): React.JSX.Element | null {
-  const { thread, switchThread } = useRemixSession();
+  const { thread, selectThread } = useRemixSession();
   if (!thread) return null;
 
   return (
@@ -485,7 +495,7 @@ function SessionSearchDialog({
               currentId={thread.id}
               searchQuery={query}
               onPick={(picked) => {
-                if (picked.id !== thread.id) switchThread(picked);
+                if (picked.id !== thread.id) selectThread(picked);
                 onOpenChange(false);
               }}
             />

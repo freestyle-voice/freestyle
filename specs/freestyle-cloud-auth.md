@@ -22,7 +22,11 @@ The service is **free**; sign-in is for identity/abuse-gating only.
 
 ## 2. Background — current state
 
-- **Main** (`apps/electron/src/main/index.ts`): creates the pill + settings windows, uses `shell.openExternal`, registers a privileged `app://` scheme for the renderer. Starts the embedded server via `startFreestyleServer({ port, host })`, setting `process.env.*` first.
+- **Main** (`apps/electron/src/main/index.ts`): creates the floating pill and a
+  reusable workspace window, uses `shell.openExternal`, and registers a
+  privileged `app://` scheme for the renderer. Settings is a route within that
+  workspace, not a separate Electron window. Main starts the embedded server
+  via `startFreestyleServer({ port, host })`, setting `process.env.*` first.
 - **Embedded server** (`apps/server`, Node/Hono): runs transcription; the `freestyle-cloud` provider calls the cloud.
 - **Renderer**: talks to the embedded server via `getClient()` (`apps/electron/src/renderer/src/lib/api.ts`). **No** existing login/account UI or Better Auth client.
 - **Provider today** (`apps/server/src/lib/streaming/providers/freestyle-cloud.ts`): POSTs WAV with **no auth header**; marked keyless in `streaming-stt.ts` (`getApiKeyForProvider` returns `"local"`). The transcribe route passes `getApiKeyForProvider(provider)` as `opts.apiKey`.

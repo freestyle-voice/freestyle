@@ -9,6 +9,31 @@ import { getSession, invalidateSession } from "../lib/sessions.js";
 const log = createAppLogger("notifications");
 
 /**
+ * The hidden notification renderer and the Settings inbox can mount together.
+ * They need the same short-lived Courier credential, but there is no reason
+ * to make the Cloud issue it twice. Keep only an in-flight promise: each
+ * later refresh still receives a newly fetched token.
+ */
+const inFlightCourierTokenRequests = new Map<string, Promise<string>>();
+
+function fetchSharedCourierInboxToken(sessionToken: string): Promise<string> {
+  const existing = inFlightCourierTokenRequests.get(sessionToken);
+  if (existing) return existing;
+
+  const request = fetchCourierInboxToken(sessionToken);
+  inFlightCourierTokenRequests.set(sessionToken, request);
+  const clear = (): void => {
+    if (inFlightCourierTokenRequests.get(sessionToken) === request) {
+      inFlightCourierTokenRequests.delete(sessionToken);
+    }
+  };
+  // Do not leave the promise returned from `finally` rejected and unobserved
+  // when Cloud is unavailable.
+  void request.then(clear, clear);
+  return request;
+}
+
+/**
  * Renderer-safe Courier authentication proxy. The renderer receives only a
  * one-hour, self-scoped Courier JWT and the stable user id it belongs to; the
  * Freestyle Cloud bearer token remains in the embedded server's SQLite session.
@@ -19,7 +44,7 @@ const notificationsRoute = new Hono().post("/token", async (c) => {
     return c.json({ ok: false, reason: "cloud_auth_required" as const }, 401);
   }
   try {
-    const token = await fetchCourierInboxToken(session.token);
+    const token = await fetchSharedCourierInboxToken(session.token);
     return c.json({ token, userId: session.user.id });
   } catch (error) {
     if (error instanceof FreestyleCloudAuthError) {

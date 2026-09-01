@@ -16,18 +16,26 @@ function sourceForFunction(source: string, name: string): string {
 }
 
 describe("native desktop window controls", () => {
-  it("uses Electron's native chrome for the workspace and settings windows", async () => {
+  it("uses Electron's native chrome for the workspace window", async () => {
     const source = await readFile(mainPath, "utf8");
     const panel = sourceForFunction(source, "createPanelWindow");
-    const settings = sourceForFunction(source, "openSettingsWindow");
 
-    for (const windowSource of [panel, settings]) {
-      expect(windowSource).toContain(
-        'titleBarStyle: process.platform === "darwin" ? "hidden" : "default"',
-      );
-      expect(windowSource).toContain("trafficLightPosition:");
-      expect(windowSource).not.toContain("frame: false");
-    }
+    expect(panel).toContain(
+      'titleBarStyle: process.platform === "darwin" ? "hidden" : "default"',
+    );
+    expect(panel).toContain("trafficLightPosition:");
+    expect(panel).not.toContain("frame: false");
+  });
+
+  it("opens Settings inside the existing workspace instead of creating a second window", async () => {
+    const source = await readFile(mainPath, "utf8");
+    const settings = sourceForFunction(source, "openPanelSettings");
+
+    expect(settings).toContain('openPanel({ trigger: "other" })');
+    expect(settings).toContain("win.focus()");
+    expect(settings).toContain('channel: "dashboard:navigate"');
+    expect(settings).toContain('payload: "/settings"');
+    expect(settings).not.toContain("new BrowserWindow");
   });
 
   it("does not render imitation traffic-light buttons", async () => {

@@ -25,7 +25,7 @@ describe("Courier Inbox authority migration", () => {
     expect(tables).toEqual([]);
     expect(
       db.prepare("SELECT version FROM schema_version WHERE id = 1").get(),
-    ).toEqual({ version: 28 });
+    ).toEqual({ version: 29 });
     db.close();
   });
 });

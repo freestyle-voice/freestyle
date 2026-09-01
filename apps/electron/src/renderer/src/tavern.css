@@ -1336,6 +1336,63 @@
   transform: translateY(-1px);
 }
 
+.tavern-cap-skeleton {
+  pointer-events: none;
+  cursor: default;
+}
+
+.tavern-cap-skeleton .tavern-cap-glyph,
+.tavern-cap-skeleton-line,
+.tavern-cap-skeleton .tavern-cap-action {
+  position: relative;
+  overflow: hidden;
+  border-color: transparent;
+  background: linear-gradient(
+    105deg,
+    color-mix(in srgb, var(--tavern-wash) 84%, var(--tavern-card)) 30%,
+    color-mix(in srgb, var(--tavern-mute) 16%, var(--tavern-wash)) 50%,
+    color-mix(in srgb, var(--tavern-wash) 84%, var(--tavern-card)) 70%
+  );
+  background-size: 220% 100%;
+  animation: tavern-cap-skeleton-sheen 1.7s ease-in-out infinite;
+}
+
+.tavern-cap-skeleton-line {
+  display: block;
+  border-radius: 999px;
+}
+
+.tavern-cap-skeleton-line.is-title {
+  width: 84px;
+  height: 10px;
+}
+
+.tavern-cap-skeleton-line.is-blurb {
+  width: 196px;
+  height: 8px;
+}
+
+.tavern-cap-skeleton-line.is-item-title {
+  width: min(156px, 100%);
+  height: 12px;
+}
+
+.tavern-cap-skeleton-line.is-item-subtitle {
+  width: min(208px, 100%);
+  height: 8px;
+}
+
+.tavern-cap-skeleton .tavern-cap-action {
+  width: 31px;
+  height: 8px;
+  margin-bottom: 2px;
+  border-radius: 999px;
+}
+
+@keyframes tavern-cap-skeleton-sheen {
+  to { background-position: -120% 0; }
+}
+
 .tavern-cap:focus-visible {
   outline: 2px solid var(--tavern-lantern);
   outline-offset: 2px;

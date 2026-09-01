@@ -1,6 +1,8 @@
 import { capture, captureSuggestion } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import { applyOpenerTemplate } from "@renderer/lib/openers";
+import { ONE_HOUR, queryKeys } from "@renderer/lib/query";
+import { useQuery } from "@tanstack/react-query";
 import {
   ArrowUpRight,
   Brain,
@@ -33,6 +35,16 @@ interface CapabilityGroup {
   items: CapabilityItem[];
 }
 
+async function fetchCapabilityGroups(): Promise<CapabilityGroup[]> {
+  const res = await apiFetch("/api/suggestions/capabilities");
+  if (!res.ok) throw new Error(`capabilities fetch failed: ${res.status}`);
+  const payload = (await res.json()) as { groups?: unknown };
+  if (!Array.isArray(payload.groups)) {
+    throw new Error("capabilities response did not include groups");
+  }
+  return payload.groups as CapabilityGroup[];
+}
+
 function capabilityIcon(item: CapabilityItem, groupId: string): LucideIcon {
   const terms = `${groupId} ${item.id} ${item.title}`.toLowerCase();
   if (item.locked) return Lock;
@@ -59,6 +71,40 @@ function CapabilityGlyph({
   );
 }
 
+function CapabilitiesLoadingSkeleton(): React.JSX.Element {
+  return (
+    <div
+      className="tavern-cap-loading"
+      role="status"
+      aria-label="Loading shortcuts"
+    >
+      {[
+        ["first", "second", "third"],
+        ["fourth", "fifth"],
+      ].map((items, groupIndex) => (
+        <div key={groupIndex} className="tavern-cap-group">
+          <div className="tavern-cap-head" aria-hidden="true">
+            <span className="tavern-cap-skeleton-line is-title" />
+            <span className="tavern-cap-skeleton-line is-blurb" />
+          </div>
+          <div className="tavern-cap-grid" aria-hidden="true">
+            {items.map((item) => (
+              <div key={item} className="tavern-cap tavern-cap-skeleton">
+                <span className="tavern-cap-glyph" />
+                <span className="tavern-cap-copy">
+                  <i className="tavern-cap-skeleton-line is-item-title" />
+                  <i className="tavern-cap-skeleton-line is-item-subtitle" />
+                </span>
+                <span className="tavern-cap-action" />
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function Capabilities({
   onPrompt,
   onOpenApps,
@@ -66,61 +112,48 @@ export function Capabilities({
   onPrompt: (text: string) => void;
   onOpenApps: () => void;
 }): React.JSX.Element {
-  const [groups, setGroups] = useState<CapabilityGroup[] | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
-  const [loadAttempt, setLoadAttempt] = useState(0);
+  const capabilitiesQuery = useQuery({
+    queryKey: queryKeys.capabilities,
+    queryFn: fetchCapabilityGroups,
+    staleTime: ONE_HOUR,
+  });
   const [applied, setApplied] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
+  const groups = capabilitiesQuery.data ?? [];
 
   useEffect(() => {
-    let cancelled = false;
-    if (loadAttempt > 0) setLoadFailed(false);
-    void (async () => {
-      try {
-        const res = await apiFetch("/api/suggestions/capabilities");
-        if (!res.ok)
-          throw new Error(`capabilities fetch failed: ${res.status}`);
-        const payload = (await res.json()) as { groups?: unknown };
-        if (!Array.isArray(payload.groups)) {
-          throw new Error("capabilities response did not include groups");
-        }
-        if (cancelled) return;
-        const next = payload.groups as CapabilityGroup[];
-        if (cancelled) return;
-        setGroups(next);
-        setLoadFailed(false);
-        capture("capabilities_opened", {
-          groups: next.map((group) => group.id),
-          items: next.reduce((total, group) => total + group.items.length, 0),
-        });
-      } catch {
-        if (cancelled) return;
-        setLoadFailed(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadAttempt]);
+    if (!capabilitiesQuery.data) return;
+    capture("capabilities_opened", {
+      groups: capabilitiesQuery.data.map((group) => group.id),
+      items: capabilitiesQuery.data.reduce(
+        (total, group) => total + group.items.length,
+        0,
+      ),
+    });
+  }, [capabilitiesQuery.data]);
 
-  if (loadFailed)
+  if (capabilitiesQuery.isError)
     return (
       <div className="tavern-empty" role="alert">
         <p>Couldn&apos;t load the available shortcuts.</p>
         <button
           type="button"
           className="tavern-retry"
-          onClick={() => {
-            setGroups(null);
-            setLoadFailed(false);
-            setLoadAttempt((attempt) => attempt + 1);
-          }}
+          onClick={() => void capabilitiesQuery.refetch()}
         >
           Try again
         </button>
       </div>
     );
-  if (groups === null) return <div className="tavern-empty">Loading…</div>;
+  if (capabilitiesQuery.isLoading)
+    return (
+      <>
+        <p className="tavern-set-hint is-lead">
+          Everything Freestyle can do for you. Tap one to run it.
+        </p>
+        <CapabilitiesLoadingSkeleton />
+      </>
+    );
   if (groups.length === 0)
     return <div className="tavern-empty">No shortcuts are available yet.</div>;
 

@@ -28,6 +28,9 @@ describe("Remix context rail", () => {
       '<ContextBrain attention={attention === "brain"} />',
     );
     expect(rail).toContain("View all");
+    expect(rail).toContain('DataSkeleton label="Loading note preview"');
+    expect(rail).toContain('DataSkeleton label="Loading Brain preview"');
+    expect(rail).not.toContain('            "Loading…"');
     expect(rail).toContain("data-context-kind={kind}");
     expect(rail).toContain("aria-hidden={!open}");
     expect(rail).toContain("inert={!open}");
@@ -49,6 +52,9 @@ describe("Remix context rail", () => {
     expect(panel).toContain('className="remix-chat-header"');
     expect(panel).toContain("Session actions for $" + "{title}");
     expect(panel).toContain('<Trash2 aria-hidden="true" />');
+    expect(panel).toContain(
+      "thread.messages.length > 0 && onRename && onDelete",
+    );
     expect(panel.indexOf("<RemixChatHeader")).toBeLessThan(
       panel.indexOf("className={`tavern-workspace${"),
     );

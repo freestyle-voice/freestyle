@@ -112,6 +112,10 @@ import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
 import { type PetState, parsePetEnabled } from "../shared/pet";
 import {
+  normalizePillExpansion,
+  type PillExpansion,
+} from "../shared/pill-presentation";
+import {
   getDefaultRemixHotkey,
   REMIX_CLIPBOARD_PREVIEW_LIMIT,
 } from "../shared/remix";
@@ -261,8 +265,6 @@ const PILL_CARD_HEIGHT = 144;
 /** Held for the whole remix session so mid-morph setBounds doesn't blink. */
 const PILL_CHAT_WIDTH = 440;
 const PILL_CHAT_HEIGHT = 600;
-
-type PillExpansion = "card" | "remix-chat";
 
 function pillExpansionSize(expansion: PillExpansion): {
   width: number;
@@ -465,7 +467,6 @@ function broadcastUpdateStatus(): void {
 let httpServer: any = null;
 let serverPort = DEFAULT_PORT;
 let mainWindow: BrowserWindow | null = null;
-let settingsWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let keyListener: NativeKeyListener | null = null;
 // Latching flag: records that the native key listener started successfully.
@@ -744,10 +745,6 @@ function registerPillPositionIpc(): void {
       position === "custom" ? getPillAlignmentForCustom() : position;
     mainWindow?.webContents.send("settings:pill-position-changed", broadcast);
     panelWindow?.webContents.send("settings:pill-position-changed", broadcast);
-    settingsWindow?.webContents.send(
-      "settings:pill-position-changed",
-      broadcast,
-    );
   });
 }
 
@@ -783,7 +780,19 @@ function showPill(options: { preserveRemixRoom?: boolean } = {}): void {
 /** Open the panel with the Settings view showing — the successor to every
  *  "open the dashboard at /settings" entry point. */
 function openPanelSettings(): void {
-  openSettingsWindow();
+  openPanel({ trigger: "other" });
+  // `openPanel()` intentionally uses showInactive for ordinary background
+  // summons. Settings is an explicit navigation request (including from the
+  // companion), so bring the existing workspace forward before routing it.
+  const win = panelWindow;
+  if (win && !win.isDestroyed()) {
+    win.show();
+    win.focus();
+  }
+  panelRendererMessages.send({
+    channel: "dashboard:navigate",
+    payload: "/settings",
+  });
 }
 
 /**
@@ -1882,10 +1891,7 @@ app.whenReady().then(async () => {
     "pill:set-expanded",
     (event, expanded: unknown, expansion: unknown) => {
       if (event.sender !== mainWindow?.webContents) return;
-      setPillExpanded(
-        expanded === true,
-        expansion === "remix-chat" ? "remix-chat" : "card",
-      );
+      setPillExpanded(expanded === true, normalizePillExpansion(expansion));
     },
   );
   ipcMain.on("pill:set-hot-rect", (event, rect: unknown) => {
@@ -2882,7 +2888,8 @@ app.whenReady().then(async () => {
   }
 
   // Chat card releases digit routes while open.
-  ipcMain.on("remix:set-route-keys", (_event, open: unknown) => {
+  ipcMain.on("remix:set-route-keys", (event, open: unknown) => {
+    if (event.sender !== mainWindow?.webContents) return;
     setRemixRouteKeys(open === true);
   });
 });
@@ -3522,11 +3529,7 @@ ipcMain.handle("companion:status", () => companionStatus);
 ipcMain.handle("pet:enabled", () => petEnabled());
 
 ipcMain.on("pet:set-enabled", (event, enabled: unknown) => {
-  if (
-    event.sender !== panelWindow?.webContents &&
-    event.sender !== settingsWindow?.webContents
-  )
-    return;
+  if (event.sender !== panelWindow?.webContents) return;
   const next = enabled === true;
   writeSettings({ petEnabled: next });
   if (next) createCompanionWindow();
@@ -3534,11 +3537,7 @@ ipcMain.on("pet:set-enabled", (event, enabled: unknown) => {
 });
 
 ipcMain.on("companion:wake", (event) => {
-  if (
-    event.sender !== panelWindow?.webContents &&
-    event.sender !== settingsWindow?.webContents
-  )
-    return;
+  if (event.sender !== panelWindow?.webContents) return;
   wakeCompanion();
 });
 
@@ -3578,11 +3577,7 @@ ipcMain.on("companion:set-status", (event, status: unknown) => {
 });
 
 ipcMain.on("companion:set-form", (event, form: unknown) => {
-  if (
-    event.sender !== panelWindow?.webContents &&
-    event.sender !== settingsWindow?.webContents
-  )
-    return;
+  if (event.sender !== panelWindow?.webContents) return;
   if (typeof form !== "string") return;
   const next = parseCompanionForm(form);
   const previous = companionFormSetting();
@@ -3822,7 +3817,7 @@ ipcMain.on("settings:open", (event) => {
     event.sender !== companionWindow?.webContents
   )
     return;
-  openSettingsWindow();
+  openPanelSettings();
   rearmCompanionHotRect();
 });
 
@@ -3845,8 +3840,10 @@ ipcMain.on("remix:open-workspace", (event, threadId: unknown) => {
 });
 
 ipcMain.on("settings:close", (event) => {
-  if (event.sender !== settingsWindow?.webContents) return;
-  settingsWindow?.hide();
+  // Retain this legacy channel while older preloads are still in circulation.
+  // Settings is a route in the panel now, so there is no separate window to
+  // hide and the current shell owns its own back-navigation.
+  if (event.sender !== panelWindow?.webContents) return;
 });
 
 // The workspace publishes activity so the optional, local-only pet can mirror
@@ -4114,47 +4111,6 @@ function registerSummonShortcut(): void {
 function destroyPanelWindow(): void {
   if (panelWindow && !panelWindow.isDestroyed()) panelWindow.destroy();
   panelWindow = null;
-}
-
-/**
- * The legacy app treated Settings as a focused, persistent desktop dialogue.
- * Its renderer reuses the current settings feature module and server contract;
- * only its window ownership and presentation are different.
- */
-function openSettingsWindow(route: "/settings" | "/remix" = "/settings"): void {
-  if (!settingsWindow || settingsWindow.isDestroyed()) {
-    settingsWindow = new BrowserWindow({
-      width: 760,
-      height: 720,
-      minWidth: 640,
-      minHeight: 520,
-      show: false,
-      title: "Freestyle Settings",
-      titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
-      trafficLightPosition:
-        process.platform === "darwin" ? { x: 20, y: 16 } : undefined,
-      backgroundColor: "#16140f",
-      ...(process.platform === "linux" ? { icon } : {}),
-      webPreferences: {
-        preload: join(__dirname, "../preload/index.js"),
-        sandbox: false,
-      },
-    });
-    publishFullscreenState(settingsWindow);
-    settingsWindow.on("closed", () => {
-      settingsWindow = null;
-    });
-    settingsWindow.once("ready-to-show", () => {
-      settingsWindow?.show();
-    });
-    // The restored legacy renderer owns Settings as a route in the same dark
-    // desktop shell. Hash routing keeps packaged app:// URLs intact.
-    void settingsWindow.loadURL(`${rendererUrl("panel.html")}#${route}`);
-    return;
-  }
-  settingsWindow.webContents.send("dashboard:navigate", route);
-  settingsWindow.show();
-  settingsWindow.focus();
 }
 
 function createCompanionWindow(): void {
@@ -4777,6 +4733,14 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     // panel summon claimed at boot — re-claim it or it dies on the first
     // hotkey registration and never comes back within the session.
     registerSummonShortcut();
+    // Route keys belong to a currently open Remix card. unregisterAll() has
+    // just released them, but their state flag intentionally remains true so
+    // the card can close them later. Reset that flag before restoring them or
+    // setRemixRouteKeys() would (correctly) conclude there is nothing to do.
+    if (remixRouteKeysHeld) {
+      remixRouteKeysHeld = false;
+      setRemixRouteKeys(true);
+    }
 
     if (!hotkey) {
       // Unreachable server yields no map; registration falls back to the

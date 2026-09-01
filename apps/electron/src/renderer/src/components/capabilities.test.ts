@@ -17,6 +17,9 @@ describe("Capabilities", () => {
     expect(source).toContain('className="tavern-cap-grid"');
     expect(source).toContain("CapabilityGlyph");
     expect(source).toContain('className="tavern-cap-action"');
+    expect(source).toContain("CapabilitiesLoadingSkeleton");
+    expect(source).not.toContain('className="tavern-empty">Loading…');
+    expect(styles).toContain(".tavern-cap-skeleton");
     expect(styles).toContain(".tavern-cap-grid");
     expect(styles).toContain("grid-template-columns: repeat(auto-fit");
   });

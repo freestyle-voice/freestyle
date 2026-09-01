@@ -7,7 +7,7 @@ export type PanelRendererMessage =
   | { channel: "panel:focus-composer" }
   | { channel: "panel:dictation"; payload: PanelDictationEvent }
   | { channel: "panel:open-thread"; payload: string }
-  | { channel: "dashboard:navigate"; payload: "/remix" };
+  | { channel: "dashboard:navigate"; payload: "/settings" | "/remix" };
 
 /**
  * Holds panel messages until React has registered its IPC listeners. Electron's

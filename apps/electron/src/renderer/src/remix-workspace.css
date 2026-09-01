@@ -928,6 +928,10 @@
   .remix-agent .remix-context-toggle {
     transition: none;
   }
+
+  .remix-agent .remix-conversation-skeleton-line::after {
+    animation: none;
+  }
 }
 
 .remix-agent .tavern-body {
@@ -936,6 +940,62 @@
 
 .remix-agent .tavern-conversation {
   padding: 24px var(--remix-content-gutter);
+}
+
+/* Preserve the page's reading rhythm while a newly selected conversation is
+   fetched. These deliberately resemble message columns rather than a generic
+   page loader, so the titlebar and sidebar feel immediately connected. */
+.remix-agent .remix-conversation-skeleton {
+  display: flex;
+  width: min(680px, 100%);
+  flex: 1;
+  flex-direction: column;
+  align-self: center;
+  gap: 12px;
+  padding-top: 10px;
+}
+
+.remix-agent .remix-conversation-skeleton-line {
+  position: relative;
+  display: block;
+  width: min(74%, 520px);
+  height: 54px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 74%, var(--background));
+}
+
+.remix-agent .remix-conversation-skeleton-line::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--foreground) 7%, transparent),
+    transparent
+  );
+  animation: remix-conversation-sheen 1.65s ease-in-out infinite;
+}
+
+.remix-agent .remix-conversation-skeleton-line.is-user {
+  width: min(57%, 390px);
+  height: 48px;
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+}
+
+.remix-agent .remix-conversation-skeleton-line.is-assistant-short {
+  width: min(46%, 310px);
+  height: 18px;
+}
+
+@keyframes remix-conversation-sheen {
+  to {
+    transform: translateX(100%);
+  }
 }
 
 .remix-agent .tavern-openers {

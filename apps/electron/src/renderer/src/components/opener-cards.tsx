@@ -41,18 +41,17 @@ function FallbackStarters({
   return (
     <div className="tavern-openers">
       <OpenerWelcome />
-      <div className="tavern-starters">
-        {starterPrompts().map((prompt) => (
-          <button
-            key={prompt}
-            type="button"
-            className="tavern-starter"
-            disabled={busy}
-            onClick={() => onPrompt(prompt)}
-          >
-            {prompt}
-          </button>
-        ))}
+      <div className="tavern-opener-suggestions">
+        {starterPrompts()
+          .slice(0, VISIBLE_CARDS)
+          .map((prompt) => (
+            <OpenerRow
+              key={prompt}
+              label={prompt}
+              busy={busy}
+              onRun={() => onPrompt(prompt)}
+            />
+          ))}
       </div>
     </div>
   );
@@ -213,7 +212,7 @@ export function OpenerCards({
     return <FallbackStarters busy={busy} onPrompt={onPrompt} />;
   }
   if (!query.data || (cards.length === 0 && todos.length === 0)) {
-    return <div className="tavern-openers" aria-busy="true" />;
+    return <FallbackStarters busy={busy} onPrompt={onPrompt} />;
   }
 
   const dismiss = (card: OpenerCard): void => {

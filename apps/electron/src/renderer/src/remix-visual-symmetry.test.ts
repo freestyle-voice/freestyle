@@ -47,15 +47,18 @@ describe("Remix visual symmetry", () => {
   });
 
   it("does not reintroduce the light connector shimmer in dark Remix", async () => {
-    const styles = await readFile(
-      resolve(rendererRoot, "remix-workspace.css"),
-      "utf8",
-    );
+    const [styles, tavernStyles] = await Promise.all([
+      readFile(resolve(rendererRoot, "remix-workspace.css"), "utf8"),
+      readFile(resolve(rendererRoot, "tavern.css"), "utf8"),
+    ]);
 
     expect(styles).toContain(".remix-agent .connector-skeleton-mark,");
     expect(styles).toContain(
       "color-mix(in srgb, var(--muted-foreground) 20%, var(--secondary))",
     );
     expect(styles).not.toContain("#f8efd9");
+    expect(tavernStyles).toContain(".tavern-session-skeleton");
+    expect(tavernStyles).toContain("var(--secondary) 78%,\n    var(--card)");
+    expect(tavernStyles).not.toContain("#f8efd9");
   });
 });

@@ -21,13 +21,13 @@ describe("DataSkeleton", () => {
     expect(html.match(/tavern-data-skeleton-row/g)).toHaveLength(3);
   });
 
-  it("uses the active app theme rather than Tavern's fixed palette", async () => {
+  it("uses the active app theme rather than Tavern's retired palette", async () => {
     const styles = await readFile(stylesPath, "utf8");
 
-    expect(styles).toContain("var(--card, var(--tavern-card))");
-    expect(styles).toContain("var(--secondary, var(--tavern-wash))");
-    expect(styles).toContain("var(--muted-foreground, var(--tavern-wash))");
-    expect(styles).not.toContain("#f8efd9");
+    expect(styles).toContain("--data-skeleton-card: var(--card)");
+    expect(styles).toContain("--data-skeleton-surface: var(--secondary)");
+    expect(styles).toContain("--data-skeleton-muted: var(--muted-foreground)");
+    expect(styles).not.toContain("var(--tavern-");
   });
 
   it("uses the matching visual structure for workspace content", () => {

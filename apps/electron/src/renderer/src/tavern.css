@@ -1594,9 +1594,9 @@
   border-color: transparent;
   background: linear-gradient(
     105deg,
-    color-mix(in srgb, var(--tavern-wash) 84%, var(--tavern-card)) 30%,
-    color-mix(in srgb, var(--tavern-mute) 16%, var(--tavern-wash)) 50%,
-    color-mix(in srgb, var(--tavern-wash) 84%, var(--tavern-card)) 70%
+    color-mix(in srgb, var(--secondary) 84%, var(--card)) 30%,
+    color-mix(in srgb, var(--muted-foreground) 16%, var(--secondary)) 50%,
+    color-mix(in srgb, var(--secondary) 84%, var(--card)) 70%
   );
   background-size: 220% 100%;
   animation: tavern-cap-skeleton-sheen 1.7s ease-in-out infinite;
@@ -1854,13 +1854,13 @@
 .tavern-session-skeleton {
   --session-skeleton-base: color-mix(
     in srgb,
-    var(--tavern-wash) 78%,
-    var(--tavern-card)
+    var(--secondary) 78%,
+    var(--card)
   );
   --session-skeleton-glint: color-mix(
     in srgb,
-    var(--tavern-mute) 24%,
-    var(--tavern-wash)
+    var(--muted-foreground) 24%,
+    var(--secondary)
   );
   display: grid;
   gap: 8px;
@@ -1884,9 +1884,9 @@
 }
 
 .tavern-session-skeleton-row.is-current {
-  border-color: color-mix(in srgb, var(--tavern-rule) 74%, transparent);
-  background: var(--tavern-wash);
-  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--tavern-lantern) 68%, transparent);
+  border-color: color-mix(in srgb, var(--border) 74%, transparent);
+  background: var(--secondary);
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--primary) 68%, transparent);
 }
 
 .tavern-session-skeleton-row::after {
@@ -3027,10 +3027,14 @@
   min-height: 52px;
   justify-content: flex-start;
   padding: 8px 12px;
-  border: 1px dashed #d8ba88;
+  border: 1px dashed color-mix(in srgb, var(--border) 84%, transparent);
   border-radius: 10px;
-  background:
-    linear-gradient(90deg, #fff8e9 0%, #f9edd8 48%, #fff8e9 100%);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--secondary) 78%, var(--card)) 0%,
+    color-mix(in srgb, var(--muted-foreground) 16%, var(--secondary)) 48%,
+    color-mix(in srgb, var(--secondary) 78%, var(--card)) 100%
+  );
   background-size: 180% 100%;
   animation: connector-load-wash 2.5s ease-in-out infinite;
 }
@@ -3049,7 +3053,7 @@
   height: 7px;
   border-radius: 50%;
   background: var(--tavern-lantern);
-  box-shadow: 0 1px 0 #fff6e4 inset;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--foreground) 12%, transparent) inset;
   animation: connector-load-step 1.15s ease-in-out infinite;
 }
 
@@ -3082,10 +3086,10 @@
   grid-template-columns: 32px minmax(0, 1fr) 56px;
   align-items: center;
   gap: 9px;
-  border: 1px solid var(--tavern-rule);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 9px;
-  background: var(--tavern-parchment);
+  background: var(--card);
 }
 
 .connector-skeleton-mark,
@@ -3093,7 +3097,12 @@
 .connector-skeleton-action {
   display: block;
   border-radius: 6px;
-  background: linear-gradient(90deg, var(--tavern-wash) 25%, #f8efd9 50%, var(--tavern-wash) 75%);
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--secondary) 76%, var(--card)) 25%,
+    color-mix(in srgb, var(--muted-foreground) 20%, var(--secondary)) 50%,
+    color-mix(in srgb, var(--secondary) 76%, var(--card)) 75%
+  );
   background-size: 200% 100%;
   animation: connector-shimmer 1.35s ease-in-out infinite;
 }

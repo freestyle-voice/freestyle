@@ -22,5 +22,7 @@ describe("Capabilities", () => {
     expect(styles).toContain(".tavern-cap-skeleton");
     expect(styles).toContain(".tavern-cap-grid");
     expect(styles).toContain("grid-template-columns: repeat(auto-fit");
+    expect(styles).toContain("var(--secondary) 84%, var(--card)");
+    expect(styles).not.toContain("var(--tavern-wash) 84%, var(--tavern-card)");
   });
 });

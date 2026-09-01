@@ -1,14 +1,17 @@
 .tavern-data-skeleton {
-  --data-skeleton-card: var(--card, var(--tavern-card));
-  --data-skeleton-surface: var(--secondary, var(--tavern-wash));
-  --data-skeleton-muted: var(--muted-foreground, var(--tavern-wash));
-  --data-skeleton-rule: var(--border, var(--tavern-rule));
-  --tavern-skeleton-base: color-mix(
+  /* Skeletons are part of the application surface, not the retired Tavern
+     palette. Keeping these on the live theme tokens makes them dark in dark
+     mode and prevents a light flash while a view hydrates. */
+  --data-skeleton-card: var(--card);
+  --data-skeleton-surface: var(--secondary);
+  --data-skeleton-muted: var(--muted-foreground);
+  --data-skeleton-rule: var(--border);
+  --data-skeleton-base: color-mix(
     in srgb,
     var(--data-skeleton-surface) 82%,
     var(--data-skeleton-card)
   );
-  --tavern-skeleton-glint: color-mix(
+  --data-skeleton-glint: color-mix(
     in srgb,
     var(--data-skeleton-muted) 18%,
     var(--data-skeleton-surface)
@@ -24,7 +27,7 @@
   min-width: 0;
   align-items: center;
   overflow: hidden;
-  background: var(--tavern-skeleton-base);
+  background: var(--data-skeleton-base);
 }
 
 .tavern-data-skeleton-row::after {
@@ -33,7 +36,7 @@
   background: linear-gradient(
     105deg,
     transparent 34%,
-    color-mix(in srgb, var(--tavern-skeleton-glint) 62%, transparent) 50%,
+    color-mix(in srgb, var(--data-skeleton-glint) 62%, transparent) 50%,
     transparent 66%
   );
   content: "";
@@ -51,7 +54,7 @@
 .tavern-data-skeleton-check,
 .tavern-data-skeleton-file-mark {
   display: block;
-  background: var(--tavern-skeleton-glint);
+  background: var(--data-skeleton-glint);
 }
 
 .tavern-data-skeleton-copy i {
@@ -89,7 +92,7 @@
   width: 14px;
   height: 14px;
   flex: 0 0 14px;
-  border: 2px solid var(--tavern-skeleton-glint);
+  border: 2px solid var(--data-skeleton-glint);
   background: transparent;
 }
 

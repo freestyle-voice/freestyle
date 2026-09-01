@@ -1,4 +1,4 @@
-import { cn } from "@renderer/lib/utils";
+import { Skeleton } from "@renderer/components/ui/skeleton";
 
 // ---------------------------------------------------------------------------
 // Skeleton loading — mirrors PluginCard / CatalogCard / Detail shape
@@ -9,22 +9,8 @@ function SkeletonLine({
 }: {
   className?: string;
 }): React.JSX.Element {
-  return (
-    <div
-      className={cn(
-        "bg-muted/60 relative overflow-hidden rounded-full",
-        "before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.4s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent",
-        className,
-      )}
-    />
-  );
+  return <Skeleton className={`rounded-full ${className ?? ""}`} />;
 }
-
-const SHIMMER_STYLE = `
-  @keyframes shimmer {
-    100% { transform: translateX(100%); }
-  }
-`;
 
 function PluginCardSkeleton(): React.JSX.Element {
   return (
@@ -54,7 +40,6 @@ export function PluginsLoadingSkeleton(): React.JSX.Element {
       role="status"
       aria-label="Loading plugins"
     >
-      <style>{SHIMMER_STYLE}</style>
       {[0, 1, 2].map((i) => (
         <PluginCardSkeleton key={i} />
       ))}
@@ -65,7 +50,6 @@ export function PluginsLoadingSkeleton(): React.JSX.Element {
 export function PluginDetailSkeleton(): React.JSX.Element {
   return (
     <div role="status" aria-label="Loading plugin details">
-      <style>{SHIMMER_STYLE}</style>
       {/* Header area */}
       <div className="mb-7 flex items-end justify-between gap-4">
         <div className="space-y-3">

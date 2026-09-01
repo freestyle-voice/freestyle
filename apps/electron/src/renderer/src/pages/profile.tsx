@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@renderer/components/ui/select";
+import { Skeleton } from "@renderer/components/ui/skeleton";
 import { Switch } from "@renderer/components/ui/switch";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
@@ -33,7 +34,6 @@ import {
   useUpdateName,
   useUpdateProfileFields,
 } from "@renderer/lib/use-profile";
-import { cn } from "@renderer/lib/utils";
 import { PageHeader, PageShell } from "@renderer/pages/models/page-chrome";
 import { Check, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -355,15 +355,7 @@ function SkeletonBlock({
 }: {
   className?: string;
 }): React.JSX.Element {
-  return (
-    <div
-      className={cn(
-        "bg-muted/60 relative overflow-hidden rounded-md",
-        "before:absolute before:inset-0 before:-translate-x-full before:animate-[shimmer_1.4s_infinite] before:bg-gradient-to-r before:from-transparent before:via-white/10 before:to-transparent",
-        className,
-      )}
-    />
-  );
+  return <Skeleton className={className} />;
 }
 
 /**

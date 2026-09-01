@@ -16,6 +16,7 @@ import {
   cancelDurableTurn,
   deleteThread,
   displayThreadTitle,
+  getDurableTurnEvents,
   listThreads,
 } from "./threads";
 
@@ -65,6 +66,35 @@ describe("thread client", () => {
     expect(apiFetch).toHaveBeenCalledWith("/api/agent/thread/thread%2Fone", {
       method: "DELETE",
     });
+  });
+
+  it("loads a redacted durable-run timeline through the local proxy", async () => {
+    apiFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          events: [
+            {
+              id: "event-1",
+              turnId: "turn-1",
+              threadId: "thread-1",
+              eventType: "turn",
+              status: "running",
+              summary: "Remix started working",
+              createdAt: "2026-09-01T12:00:00.000Z",
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(getDurableTurnEvents("turn/one")).resolves.toHaveLength(1);
+    expect(apiFetch).toHaveBeenCalledWith("/api/agent/turn/turn%2Fone/events");
+  });
+
+  it("keeps an older Cloud deployment non-blocking until its timeline endpoint arrives", async () => {
+    apiFetch.mockResolvedValue(new Response(null, { status: 404 }));
+
+    await expect(getDurableTurnEvents("turn-1")).resolves.toEqual([]);
   });
 });
 

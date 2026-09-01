@@ -5,6 +5,7 @@ import { useChat } from "@ai-sdk/react";
 import { AttentionHome } from "@renderer/components/attention-home";
 import { Capabilities } from "@renderer/components/capabilities";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
+import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
 import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
 import { OpenerCards } from "@renderer/components/opener-cards";
@@ -44,6 +45,7 @@ import { composerAction } from "@renderer/lib/composer-action";
 import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
+  durableTurnTimelineQueryOptions,
   invalidateThreads,
   prependThreadToHistory,
   queryKeys,
@@ -1007,6 +1009,71 @@ function ConversationSkeleton(): React.JSX.Element {
   );
 }
 
+function timelineLabel(event: {
+  eventType: "turn" | "action";
+  status: string;
+}): string {
+  if (event.eventType === "action") {
+    const actionLabels: Record<string, string> = {
+      pending: "Waiting for your approval",
+      claimed: "Action approved and started",
+      completed: "Action completed",
+      declined: "Action declined",
+      expired: "Action expired",
+      failed: "Action failed",
+    };
+    return actionLabels[event.status] ?? "Action updated";
+  }
+  const runLabels: Record<string, string> = {
+    queued: "Queued",
+    running: "Remix is working",
+    waiting_approval: "Waiting for approval",
+    waiting_desktop: "Waiting for this desktop",
+    needs_desktop: "A desktop is needed",
+    completed: "Completed",
+    canceled: "Canceled",
+    failed: "Needs attention",
+  };
+  return runLabels[event.status] ?? "Run updated";
+}
+
+function DurableRunTimeline({
+  turnId,
+}: {
+  turnId: string;
+}): React.JSX.Element | null {
+  const timeline = useQuery(durableTurnTimelineQueryOptions(turnId));
+  if (timeline.isPending) {
+    return (
+      <section className="tavern-run-timeline" aria-label="Run activity">
+        <span className="tavern-run-timeline-label">Run activity</span>
+        <DataSkeleton label="Loading run activity" rows={2} />
+      </section>
+    );
+  }
+  if (!timeline.data || timeline.data.length === 0) return null;
+
+  return (
+    <details className="tavern-run-timeline" open>
+      <summary>
+        <span className="tavern-run-timeline-label">Run activity</span>
+        <span>{timeline.data.length} events</span>
+      </summary>
+      <ol>
+        {timeline.data.map((event) => (
+          <li key={event.id} className={`is-${event.status}`}>
+            <span className="tavern-run-timeline-dot" aria-hidden="true" />
+            <span>
+              <strong>{timelineLabel(event)}</strong>
+              {event.summary ? <small>{event.summary}</small> : null}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
 function PanelInner({
   thread,
   onSwitchThread,
@@ -1843,6 +1910,11 @@ function PanelInner({
                       onRegenerate={() => regenerateMessage(m)}
                     />
                   ))}
+                  {durableRuntime.data?.activeTurn ? (
+                    <DurableRunTimeline
+                      turnId={durableRuntime.data.activeTurn.id}
+                    />
+                  ) : null}
                   {approvals.map((approval) => (
                     <div
                       key={approval.call.toolCallId}

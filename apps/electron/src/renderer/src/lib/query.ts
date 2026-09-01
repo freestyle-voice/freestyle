@@ -16,6 +16,7 @@ import {
 import type { AvailableModel } from "./models";
 import { listScheduledTasks } from "./scheduled-tasks";
 import {
+  getDurableTurnEvents,
   getLatestThread,
   getThread,
   listThreads,
@@ -130,6 +131,8 @@ export const queryKeys = {
 
   /** Remix practice runs. */
   remixRuns: ["remix", "runs"] as const,
+  durableTurnTimeline: (turnId: string) =>
+    ["remix", "runs", "timeline", turnId] as const,
   /** A compact, display-only view of work that needs the user's attention. */
   attention: ["attention"] as const,
 
@@ -304,6 +307,16 @@ export function attentionQueryOptions() {
     staleTime: 15_000,
     refetchInterval: 30_000,
     retry: 1,
+  };
+}
+
+export function durableTurnTimelineQueryOptions(turnId: string) {
+  return {
+    queryKey: queryKeys.durableTurnTimeline(turnId),
+    queryFn: () => getDurableTurnEvents(turnId),
+    enabled: turnId.length > 0,
+    staleTime: 5_000,
+    refetchInterval: 2_000,
   };
 }
 

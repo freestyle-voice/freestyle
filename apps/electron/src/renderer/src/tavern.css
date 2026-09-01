@@ -1197,6 +1197,89 @@
   box-shadow: 3px 3px 0 var(--tavern-lantern);
 }
 
+.tavern-run-timeline {
+  width: min(100%, 680px);
+  margin: 10px 0 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--tavern-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tavern-surface) 62%, transparent);
+}
+
+.tavern-run-timeline summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--tavern-muted);
+  font-size: 11px;
+  list-style: none;
+}
+
+.tavern-run-timeline summary::-webkit-details-marker {
+  display: none;
+}
+
+.tavern-run-timeline-label {
+  color: var(--tavern-text);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.tavern-run-timeline ol {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tavern-run-timeline li {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+}
+
+.tavern-run-timeline-dot {
+  width: 7px;
+  height: 7px;
+  margin-top: 4px;
+  border-radius: 999px;
+  background: var(--tavern-muted);
+}
+
+.tavern-run-timeline li.is-running .tavern-run-timeline-dot,
+.tavern-run-timeline li.is-pending .tavern-run-timeline-dot,
+.tavern-run-timeline li.is-claimed .tavern-run-timeline-dot {
+  background: var(--tavern-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tavern-accent) 12%, transparent);
+}
+
+.tavern-run-timeline li.is-failed .tavern-run-timeline-dot,
+.tavern-run-timeline li.is-expired .tavern-run-timeline-dot {
+  background: #d28f57;
+}
+
+.tavern-run-timeline strong,
+.tavern-run-timeline small {
+  display: block;
+}
+
+.tavern-run-timeline strong {
+  color: var(--tavern-text);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.tavern-run-timeline small {
+  margin-top: 2px;
+  color: var(--tavern-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .tavern-approve-title {
   font-family: var(--tavern-px);
   font-size: 15px;

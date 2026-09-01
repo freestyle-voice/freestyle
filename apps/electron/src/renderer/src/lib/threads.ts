@@ -40,6 +40,17 @@ export type DurableThreadRuntime = {
   pendingAction: DurableThreadAction | null;
 };
 
+/** Redacted lifecycle events are independent of transient streamed messages. */
+export type DurableTurnEvent = {
+  id: string;
+  turnId: string;
+  threadId: string;
+  eventType: "turn" | "action";
+  status: string;
+  summary: string | null;
+  createdAt: string;
+};
+
 export type ThreadOrigin = "user" | "scheduled";
 
 export const THREAD_ORIGINS: ThreadOrigin[] = ["user", "scheduled"];
@@ -116,6 +127,20 @@ export async function getThreadRuntime(
     await apiFetch(`/api/agent/thread/${encodeURIComponent(id)}`),
   );
   return data.thread ? data : null;
+}
+
+export async function getDurableTurnEvents(
+  turnId: string,
+): Promise<DurableTurnEvent[]> {
+  const response = await apiFetch(
+    `/api/agent/turn/${encodeURIComponent(turnId)}/events`,
+  );
+  // The timeline endpoint is additive. During a rolling Cloud deploy, the
+  // existing thread/approval experience remains usable instead of surfacing a
+  // noisy error for an older Worker isolate.
+  if (response.status === 404) return [];
+  const data = await responseJson<{ events: DurableTurnEvent[] }>(response);
+  return data.events;
 }
 
 export async function sendDurableTurnCommand(

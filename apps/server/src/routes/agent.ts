@@ -129,6 +129,34 @@ const agentRoute = new Hono()
       },
     });
   })
+  .get("/turn/:turnId/events", async (c) => {
+    const turnId = c.req.param("turnId");
+    if (!z.string().uuid().safeParse(turnId).success)
+      return c.json({ error: "invalid_turn" }, 400);
+    const token = getSessionToken();
+    if (!token) return c.json({ error: "cloud_auth_required" }, 401);
+    let upstream: Response;
+    try {
+      upstream = await fetch(
+        `${freestyleCloudUrl()}/v2/turns/${encodeURIComponent(turnId)}/events`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          signal: AbortSignal.timeout(15_000),
+        },
+      );
+    } catch (err) {
+      log.error(`Durable turn timeline failed: ${err}`);
+      return c.json({ error: "cloud_unreachable" }, 502);
+    }
+    if (upstream.status === 401) invalidateSession();
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers: {
+        "Content-Type":
+          upstream.headers.get("Content-Type") ?? "application/json",
+      },
+    });
+  })
   .post("/turn/:turnId/commands", async (c) => {
     const turnId = c.req.param("turnId");
     if (!z.string().uuid().safeParse(turnId).success)

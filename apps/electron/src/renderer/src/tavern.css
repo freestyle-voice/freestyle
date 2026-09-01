@@ -857,10 +857,96 @@
   border-color: var(--tavern-rust);
 }
 
+.tavern-brain-document {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tavern-brain-document-head,
+.tavern-brain-document-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.tavern-brain-document-head {
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--tavern-rule);
+}
+
+.tavern-brain-document-title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  color: var(--tavern-ink);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.tavern-brain-document-title svg,
+.tavern-brain-document-actions svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+}
+
+.tavern-brain-document-title > span[role="status"] {
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--tavern-lantern);
+}
+
+.tavern-brain-document-mode {
+  color: var(--tavern-mute);
+  font-family: var(--tavern-mono);
+  font-size: 9px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.tavern-brain-document-preview {
+  min-height: 0;
+  overflow: auto;
+  padding: 2px 1px;
+}
+
+.tavern-icon-button {
+  display: inline-grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--tavern-mute);
+  cursor: pointer;
+}
+
+.tavern-icon-button:hover,
+.tavern-icon-button:focus-visible {
+  border-color: var(--tavern-rule);
+  background: var(--tavern-wash);
+  color: var(--tavern-ink);
+}
+
+.tavern-icon-button.tavern-file-delete {
+  align-self: auto;
+  padding: 0;
+}
+
 .tavern-editor {
   font: inherit;
   flex: 1;
   min-height: 220px;
+  font-family: var(--tavern-mono);
+  font-size: 12px;
   resize: none;
   padding: 10px 12px;
   border: 1px solid var(--tavern-rule);

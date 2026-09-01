@@ -51,6 +51,19 @@ export type DurableTurnEvent = {
   createdAt: string;
 };
 
+/** A recoverable, redacted record of a completed or active Remix turn. */
+export type DurableThreadRun = {
+  id: string;
+  threadId: string;
+  clientRequestId: string;
+  firstTurn: boolean;
+  status: string;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
+
 export type ThreadOrigin = "user" | "scheduled";
 
 export const THREAD_ORIGINS: ThreadOrigin[] = ["user", "scheduled"];
@@ -141,6 +154,19 @@ export async function getDurableTurnEvents(
   if (response.status === 404) return [];
   const data = await responseJson<{ events: DurableTurnEvent[] }>(response);
   return data.events;
+}
+
+export async function getDurableThreadRuns(
+  threadId: string,
+): Promise<DurableThreadRun[]> {
+  const response = await apiFetch(
+    `/api/agent/thread/${encodeURIComponent(threadId)}/runs`,
+  );
+  // This is an additive Cloud endpoint. A Desktop release can still show its
+  // ordinary chat while a rolling deployment has not exposed run history yet.
+  if (response.status === 404) return [];
+  const data = await responseJson<{ runs: DurableThreadRun[] }>(response);
+  return data.runs;
 }
 
 export async function sendDurableTurnCommand(

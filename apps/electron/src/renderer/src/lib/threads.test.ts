@@ -16,6 +16,7 @@ import {
   cancelDurableTurn,
   deleteThread,
   displayThreadTitle,
+  getDurableThreadRuns,
   getDurableTurnEvents,
   listThreads,
 } from "./threads";
@@ -95,6 +96,39 @@ describe("thread client", () => {
     apiFetch.mockResolvedValue(new Response(null, { status: 404 }));
 
     await expect(getDurableTurnEvents("turn-1")).resolves.toEqual([]);
+  });
+
+  it("loads recoverable run history through the local proxy", async () => {
+    apiFetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          runs: [
+            {
+              id: "turn-1",
+              threadId: "thread-1",
+              clientRequestId: "request-1",
+              firstTurn: true,
+              status: "completed",
+              error: null,
+              createdAt: "2026-09-01T12:00:00.000Z",
+              updatedAt: "2026-09-01T12:00:01.000Z",
+              completedAt: "2026-09-01T12:00:01.000Z",
+            },
+          ],
+        }),
+      ),
+    );
+
+    await expect(getDurableThreadRuns("thread/one")).resolves.toHaveLength(1);
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/agent/thread/thread%2Fone/runs",
+    );
+  });
+
+  it("keeps a rolling Cloud deployment non-blocking until run history arrives", async () => {
+    apiFetch.mockResolvedValue(new Response(null, { status: 404 }));
+
+    await expect(getDurableThreadRuns("thread-1")).resolves.toEqual([]);
   });
 });
 

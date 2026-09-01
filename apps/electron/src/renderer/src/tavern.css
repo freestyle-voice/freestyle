@@ -1206,6 +1206,82 @@
   background: color-mix(in srgb, var(--tavern-surface) 62%, transparent);
 }
 
+.tavern-run-history {
+  width: min(100%, 680px);
+  margin: 10px 0 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--tavern-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--tavern-surface) 48%, transparent);
+}
+
+.tavern-run-history summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  color: var(--tavern-muted);
+  font-size: 11px;
+  list-style: none;
+}
+
+.tavern-run-history summary::-webkit-details-marker {
+  display: none;
+}
+
+.tavern-run-history-list {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+}
+
+.tavern-run-history-item {
+  display: grid;
+  grid-template-columns: 8px minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.tavern-run-history-item:hover,
+.tavern-run-history-item.is-selected {
+  background: color-mix(in srgb, var(--tavern-border) 36%, transparent);
+}
+
+.tavern-run-history-item .tavern-run-timeline-dot {
+  margin-top: 5px;
+}
+
+.tavern-run-history-item .tavern-run-timeline-dot.is-completed {
+  background: var(--tavern-accent);
+}
+
+.tavern-run-history-item strong,
+.tavern-run-history-item small {
+  display: block;
+}
+
+.tavern-run-history-item strong {
+  color: var(--tavern-text);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.tavern-run-history-item small {
+  margin-top: 2px;
+  color: var(--tavern-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
 .tavern-run-timeline summary {
   display: flex;
   align-items: center;

@@ -45,6 +45,7 @@ import { composerAction } from "@renderer/lib/composer-action";
 import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
+  durableThreadRunsQueryOptions,
   durableTurnTimelineQueryOptions,
   invalidateThreads,
   prependThreadToHistory,
@@ -54,6 +55,7 @@ import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
   cancelDurableTurn,
   type DurableThreadAction,
+  type DurableThreadRun,
   displayThreadTitle,
   getThreadRuntime,
   sendDurableTurnCommand,
@@ -1074,6 +1076,67 @@ function DurableRunTimeline({
   );
 }
 
+function runStatusLabel(run: DurableThreadRun): string {
+  if (run.status === "completed") return "Completed";
+  if (run.status === "failed") return "Needs attention";
+  if (run.status === "canceled") return "Canceled";
+  if (run.status === "waiting_approval") return "Waiting for approval";
+  if (run.status === "waiting_desktop" || run.status === "needs_desktop") {
+    return "Waiting for a desktop";
+  }
+  return run.status === "running" ? "Remix is working" : "Queued";
+}
+
+/** Finished turns remain recoverable after the floating pill has gone away. */
+function DurableRunHistory({
+  threadId,
+  activeTurnId,
+}: {
+  threadId: string;
+  activeTurnId?: string;
+}): React.JSX.Element | null {
+  const history = useQuery(durableThreadRunsQueryOptions(threadId));
+  const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
+  const runs = (history.data ?? []).filter((run) => run.id !== activeTurnId);
+  const selected = runs.find((run) => run.id === selectedTurnId) ?? null;
+
+  if (runs.length === 0) return null;
+
+  return (
+    <details className="tavern-run-history">
+      <summary>
+        <span className="tavern-run-timeline-label">Recent run activity</span>
+        <span>{runs.length} runs</span>
+      </summary>
+      <div className="tavern-run-history-list">
+        {runs.map((run) => (
+          <button
+            key={run.id}
+            type="button"
+            className={
+              selectedTurnId === run.id
+                ? "tavern-run-history-item is-selected"
+                : "tavern-run-history-item"
+            }
+            onClick={() =>
+              setSelectedTurnId((current) =>
+                current === run.id ? null : run.id,
+              )
+            }
+          >
+            <span className={`tavern-run-timeline-dot is-${run.status}`} />
+            <span>
+              <strong>{runStatusLabel(run)}</strong>
+              {run.error ? <small>{run.error}</small> : null}
+            </span>
+          </button>
+        ))}
+      </div>
+      {selected ? <DurableRunTimeline turnId={selected.id} /> : null}
+    </details>
+  );
+}
+
 function PanelInner({
   thread,
   onSwitchThread,
@@ -1211,6 +1274,9 @@ function PanelInner({
       });
       void invalidateThreads(queryClient);
       void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.durableThreadRuns(thread.id),
+      });
       if (finished.length === 0) return;
       const last = finished[finished.length - 1];
       if (last?.role !== "assistant") return;
@@ -1384,7 +1450,12 @@ function PanelInner({
     stop();
     const cancel = (turnId: string) =>
       void cancelDurableTurn(turnId)
-        .then(() => durableRuntime.refetch())
+        .then(async () => {
+          await durableRuntime.refetch();
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.durableThreadRuns(thread.id),
+          });
+        })
         .catch(() =>
           setNotice(
             "Stopped locally, but couldn't cancel the server turn. Check this conversation when you're back online.",
@@ -1495,6 +1566,9 @@ function PanelInner({
         });
         void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
         await durableRuntime.refetch();
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.durableThreadRuns(thread.id),
+        });
       } else {
         addToolOutput({
           tool: call.toolName,
@@ -1513,9 +1587,12 @@ function PanelInner({
       type: allowed ? "approve" : "decline",
       actionId: action.id,
     })
-      .then(() => {
+      .then(async () => {
         void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
-        return durableRuntime.refetch();
+        await durableRuntime.refetch();
+        return queryClient.invalidateQueries({
+          queryKey: queryKeys.durableThreadRuns(thread.id),
+        });
       })
       .catch(() => setNotice("Couldn't resolve this connected-app action."));
   };
@@ -1560,6 +1637,9 @@ function PanelInner({
       });
       void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
       await durableRuntime.refetch();
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.durableThreadRuns(thread.id),
+      });
     })().catch(() => setNotice("Couldn't run that desktop action."));
   };
 
@@ -1915,6 +1995,10 @@ function PanelInner({
                       turnId={durableRuntime.data.activeTurn.id}
                     />
                   ) : null}
+                  <DurableRunHistory
+                    threadId={thread.id}
+                    activeTurnId={durableRuntime.data?.activeTurn?.id}
+                  />
                   {approvals.map((approval) => (
                     <div
                       key={approval.call.toolCallId}

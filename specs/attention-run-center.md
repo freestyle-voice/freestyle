@@ -97,11 +97,33 @@ contract. They must not keep their own copy of turn state.
 - Desktop supplies the session token; renderer code never sees it.
 - Clients that do not call attention retain unchanged behavior.
 
-## Follow-on phases
+## Phase 2: durable, redacted run activity
 
-1. Add append-only, redacted `thread_turn_events` and a Run Center timeline
-   with retry, cancel, approval history, and source links. Do not infer a
-   timeline retrospectively from UI message parts.
+Cloud records an append-only `thread_turn_events` trail as durable work moves
+through queued, running, approval/action, completion, cancellation, failure,
+or expiration states. It does not reconstruct an activity feed from streamed
+chat parts.
+
+- `GET /v2/threads/:threadId/runs` returns the owner's most recent durable run
+  records for that conversation, newest first (at most 25). These are lifecycle
+  metadata only.
+- `GET /v2/turns/:turnId/events` returns at most 100 oldest-first redacted
+  events for an owner-visible run. Each event has its turn/thread id, kind,
+  status, optional short public summary, and timestamp.
+- The Desktop proxy preserves the Cloud session boundary. Its renderer can
+  render a live active timeline and expand a previous run from the compact
+  conversation-level **Recent run activity** section.
+- During a rolling Cloud deployment, missing additive history endpoints resolve
+  to an empty local section instead of interrupting the conversation.
+
+The event table deliberately has no prompt, streamed output, tool input,
+connector payload, approval token, or credential column. The only action
+summary is the existing public display text, clipped before storage.
+
+## Remaining phases
+
+1. Add retry, cancel, approval history, and source links to the dedicated Run
+   Center. Do not infer a timeline retrospectively from UI message parts.
 2. Add schedule preview and delivery outcome, then connection-health details
    and reconnect actions.
 3. Add Memory Review provenance and approval controls plus shared

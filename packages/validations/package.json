@@ -10,7 +10,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "pkgroll --minify"
+    "build": "pkgroll --clean-dist --minify"
   },
   "exports": {
     "import": {

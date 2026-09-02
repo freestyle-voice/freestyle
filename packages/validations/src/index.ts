@@ -1,6 +1,10 @@
 export * from "./api-keys.js";
 export * from "./auth.js";
 export * from "./cleanup-presets.js";
+// Keep the server's offline cleanup fallback as an explicit barrel export.
+// `pkgroll` otherwise has to infer it from the star export while bundling
+// declarations for downstream workspace packages.
+export { CLEANUP_PRESET_PROMPTS } from "./cleanup-presets.js";
 export * from "./cleanup-tones.js";
 export * from "./cloud-config.js";
 export * from "./diagnostics.js";

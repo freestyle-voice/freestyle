@@ -351,6 +351,9 @@ importers:
       '@freestyle-voice/stt':
         specifier: workspace:*
         version: link:../../packages/stt
+      '@freestyle-voice/validations':
+        specifier: workspace:*
+        version: link:../../packages/validations
       '@hono/node-server':
         specifier: ^2.0.4
         version: 2.0.4(hono@4.12.22)
@@ -400,9 +403,6 @@ importers:
       '@freestyle-voice/utils':
         specifier: workspace:*
         version: link:../../packages/utils
-      '@freestyle-voice/validations':
-        specifier: workspace:*
-        version: link:../../packages/validations
       '@types/json-schema':
         specifier: ^7.0.15
         version: 7.0.15

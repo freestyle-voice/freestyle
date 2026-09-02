@@ -28,6 +28,7 @@
     "@ai-sdk/groq": "^3.0.39",
     "@ai-sdk/mistral": "^3.0.37",
     "@ai-sdk/openai": "^3.0.65",
+    "@freestyle-voice/validations": "workspace:*",
     "@freestyle-voice/stt": "workspace:*",
     "@hono/node-server": "^2.0.4",
     "@hono/zod-validator": "^0.8.0",
@@ -47,7 +48,6 @@
   },
   "devDependencies": {
     "@freestyle-voice/utils": "workspace:*",
-    "@freestyle-voice/validations": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^22.19.1",
     "@types/semver": "^7.7.1",

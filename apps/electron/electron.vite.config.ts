@@ -8,6 +8,9 @@ const workspaceAliases = {
   "freestyle-voice": resolve("../../packages/sdk/src/index.ts"),
   "@freestyle-voice/server": resolve("../server/src/index.ts"),
   "@freestyle-voice/utils": resolve("../../packages/utils/src/index.ts"),
+  "@freestyle-voice/validations/cleanup-presets": resolve(
+    "../../packages/validations/src/cleanup-presets.ts",
+  ),
   "@freestyle-voice/validations": resolve(
     "../../packages/validations/src/index.ts",
   ),

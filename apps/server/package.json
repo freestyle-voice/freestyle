@@ -43,7 +43,7 @@
     "undici": "^7.16.0",
     "winston": "^3.17.0",
     "ws": "^8.18.3",
-    "zod": "^4.4.3"
+    "zod": "^4.5.4"
   },
   "devDependencies": {
     "@freestyle-voice/utils": "workspace:*",

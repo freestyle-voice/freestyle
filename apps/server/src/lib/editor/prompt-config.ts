@@ -30,8 +30,10 @@ import type {
   CleanupToneDestination,
   CleanupWorkTone,
 } from "@freestyle-voice/validations";
-import { CLEANUP_PRESET_PROMPTS } from "@freestyle-voice/validations/cleanup-presets";
+import * as cleanupPresetPrompts from "@freestyle-voice/validations/cleanup-presets";
 import { freestyleCloudUrl } from "../freestyle-cloud.js";
+
+const { CLEANUP_PRESET_PROMPTS } = cleanupPresetPrompts;
 
 const log = createAppLogger("prompt-config");
 

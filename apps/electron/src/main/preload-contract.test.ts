@@ -154,6 +154,28 @@ describe("preload contract", () => {
     expect(routeKeys).toContain("setRemixRouteKeys(open === true)");
   });
 
+  it("claims Escape for active Remix work and routes it through the pill", async () => {
+    const [main, preload, pill] = await Promise.all([
+      readFile(mainPath, "utf8"),
+      readFile(preloadPath, "utf8"),
+      readFile(join(rendererRoot, "pages/app.tsx"), "utf8"),
+    ]);
+    const escapeState = main.slice(
+      main.indexOf('ipcMain.on("remix:set-escape-active"'),
+      main.indexOf("});", main.indexOf('ipcMain.on("remix:set-escape-active"')),
+    );
+
+    expect(preload).toContain(
+      'ipcRenderer.send("remix:set-escape-active", active)',
+    );
+    expect(escapeState).toContain("event.sender !== mainWindow?.webContents");
+    expect(escapeState).toContain("setRemixEscapeActive(active === true)");
+    expect(main).toContain("function updatePillEscape(): void {");
+    expect(main).toContain("remixEscapeActive");
+    expect(main).toContain('webContents.send("pill:cancel")');
+    expect(pill).toContain("setRemixEscapeActive");
+  });
+
   it("resets stale expanded bounds before placing either hotkey pill", async () => {
     const main = await readFile(mainPath, "utf8");
     const showPill = main.slice(
@@ -186,6 +208,36 @@ describe("preload contract", () => {
     expect(workspace).toContain('channel: "panel:open-thread"');
     expect(workspace).not.toContain("openRemixWorkspaceWindow()");
     expect(main).not.toContain("function openRemixWorkspaceWindow(): void {");
+  });
+
+  it("refreshes the selected workspace thread when a pill turn persists", async () => {
+    const [main, preload] = await Promise.all([
+      readFile(mainPath, "utf8"),
+      readFile(preloadPath, "utf8"),
+    ]);
+
+    expect(preload).toContain(
+      "remixThreadUpdated: (threadId: string): void =>",
+    );
+    expect(preload).toContain(
+      'ipcRenderer.send("remix:thread-updated", threadId)',
+    );
+    expect(main).toContain('ipcMain.on("remix:thread-updated"');
+    expect(main).toContain('channel: "panel:thread-updated"');
+  });
+
+  it("detaches the hidden pill observer before the workspace resumes its stream", async () => {
+    const [main, preload] = await Promise.all([
+      readFile(mainPath, "utf8"),
+      readFile(preloadPath, "utf8"),
+    ]);
+    const workspace = main.slice(
+      main.indexOf('ipcMain.on("remix:open-workspace"'),
+      main.indexOf('ipcMain.on("remix:thread-updated"'),
+    );
+
+    expect(preload).toContain("onRemixObserverHandoff");
+    expect(workspace).toContain('send("remix:observer-handoff", threadId)');
   });
 
   it("registers every preload invoke channel in the main process", async () => {

@@ -33,4 +33,15 @@ describe("Remix session switching", () => {
     expect(panel).toContain("Loading conversation");
     expect(styles).toContain(".remix-agent .remix-conversation-skeleton");
   });
+
+  it("refreshes an open pill session without navigating away from a newer selection", async () => {
+    const sessions = await readFile(
+      resolve(rendererRoot, "components/remix-session-context.tsx"),
+      "utf8",
+    );
+
+    expect(sessions).toContain("onPanelThreadUpdated");
+    expect(sessions).toContain("fetchQuery(threadQueryOptions(threadId))");
+    expect(sessions).toContain("current?.id === threadId ? loaded : current");
+  });
 });

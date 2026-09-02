@@ -1,15 +1,11 @@
 import { createAppLogger } from "@freestyle-voice/utils";
-import {
-  MCP_TOOLS_MAX,
-  REMIX_LOCAL_TOOL_NAMES,
-  remixContextSchema,
-  remixMcpToolsSchema,
-} from "@freestyle-voice/validations";
+import { remixContextSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod/v3";
+import { trustedDesktopAgentFields } from "../lib/agent-request.js";
+import { agentStreamStore } from "../lib/agent-stream-store.js";
 import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
-import { createMcpStore } from "../lib/mcp/store.js";
 import { getSessionToken, invalidateSession } from "../lib/sessions.js";
 
 const log = createAppLogger("agent");
@@ -52,27 +48,11 @@ const agentRoute = new Hono()
           ...(threadId || id ? { threadId: threadId ?? id } : {}),
           ...(firstTurn ? { firstTurn: true } : {}),
           ...(context ? { context } : {}),
-          client: {
-            platform: process.platform,
-            localTools: REMIX_LOCAL_TOOL_NAMES,
-            supportsDownloadsSave: true,
-            supportsCursorActions: true,
-          },
-          // Resolve the enabled, desktop-owned registry at the local server.
-          // The renderer cannot send an endpoint, secret, or stale tool list
-          // across this boundary.
-          mcpTools: remixMcpToolsSchema.parse(
-            createMcpStore()
-              .listEnabledTools()
-              .slice(0, MCP_TOOLS_MAX)
-              .map(({ tool }) => ({
-                name: tool.wireName,
-                description: tool.description,
-                inputSchema: tool.inputSchema,
-              })),
-          ),
+          ...trustedDesktopAgentFields(),
         }),
-        signal: c.req.raw.signal,
+        // This local server owns the upstream reader. A pill/window renderer
+        // may close its HTTP observer during a handoff, but it must not abort
+        // the Cloud turn before the local server has drained and persisted it.
       });
     } catch (err) {
       log.error(`Agent cloud request failed: ${err}`);
@@ -113,11 +93,32 @@ const agentRoute = new Hono()
       return c.json({ error: "failed", detail: "Agent failed upstream." }, 502);
     }
 
-    return new Response(upstream.body, {
+    const streamId = threadId ?? id;
+    const body = streamId
+      ? agentStreamStore.start(streamId, messages, upstream.body)
+      : upstream.body;
+
+    return new Response(body, {
       headers: {
         "Content-Type":
           upstream.headers.get("Content-Type") ?? "text/event-stream",
         "Cache-Control": "no-cache",
+        "x-vercel-ai-ui-message-stream": "v1",
+      },
+    });
+  })
+  // AI SDK's `resume: true` transport reconnects here. This is a local
+  // observer of the server-owned upstream stream, not a second Cloud turn.
+  .get("/:threadId/stream", (c) => {
+    const threadId = c.req.param("threadId");
+    if (!z.string().min(1).max(100).safeParse(threadId).success)
+      return c.json({ error: "invalid_thread" }, 400);
+    const stream = agentStreamStore.connect(threadId);
+    if (!stream) return c.body(null, 204);
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
         "x-vercel-ai-ui-message-stream": "v1",
       },
     });

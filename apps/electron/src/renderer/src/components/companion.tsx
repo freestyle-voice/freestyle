@@ -131,12 +131,10 @@ function CompanionDock({
 
 function CompanionStatusPill({
   body,
-  facing,
   status,
   windowSize,
 }: {
   body: Rect;
-  facing: CompanionFacing;
   status: CompanionStatus;
   windowSize: number;
 }): React.JSX.Element {
@@ -145,7 +143,14 @@ function CompanionStatusPill({
   // width be clipped by its edge on smaller displays.
   const statusWidth = Math.min(164, windowSize - 16);
   const top = Math.max(8, body.y - 30);
-  const towardDisplay = facing === "right" ? { left: 8 } : { right: 8 };
+  const center = body.x + body.width / 2;
+  // Sprite sheets include transparent margins, so the visual body need not
+  // be centered in its window. Centre the status on the body, then clamp only
+  // at the window edge to keep it entirely visible.
+  const left = Math.min(
+    Math.max(8, center - statusWidth / 2),
+    windowSize - statusWidth - 8,
+  );
 
   return (
     <div
@@ -172,7 +177,7 @@ function CompanionStatusPill({
         lineHeight: 1,
         letterSpacing: "0.03em",
         pointerEvents: "none",
-        ...towardDisplay,
+        left,
       }}
     >
       <span
@@ -349,7 +354,6 @@ function CompanionRoot(): React.JSX.Element | null {
       {status ? (
         <CompanionStatusPill
           body={visualBody}
-          facing={def.kind === "sheet" ? facing : "right"}
           status={status}
           windowSize={def.windowSize}
         />

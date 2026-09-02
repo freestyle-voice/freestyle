@@ -63,7 +63,12 @@ declare global {
       remixSetClipboard: (text: string) => Promise<RemixPrimitiveResult>;
       remixPasteClipboard: () => Promise<RemixPrimitiveResult>;
       remixGetClipboard: () => Promise<RemixCopyResult>;
+      setRemixEscapeActive: (active: boolean) => void;
       openRemixWorkspace: (threadId: string) => void;
+      remixThreadUpdated: (threadId: string) => void;
+      onRemixObserverHandoff: (
+        callback: (threadId: string) => void,
+      ) => () => void;
       companionForm: () => Promise<CompanionForm>;
       companionOrientation: () => Promise<CompanionFacing>;
       companionStatus: () => Promise<CompanionStatus | null>;
@@ -123,6 +128,9 @@ declare global {
         callback: (messageId: string) => void,
       ) => () => void;
       onPanelOpenThread: (callback: (threadId: string) => void) => () => void;
+      onPanelThreadUpdated: (
+        callback: (threadId: string) => void,
+      ) => () => void;
       onCompanionForm: (callback: (form: CompanionForm) => void) => () => void;
       onCompanionState: (
         callback: (state: CompanionState) => void,

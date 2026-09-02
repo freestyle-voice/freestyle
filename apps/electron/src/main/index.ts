@@ -475,6 +475,9 @@ let keyListener: NativeKeyListener | null = null;
 let accessibilityConfirmed = false;
 let hotkeyPressed = false;
 let dictationInProgress = false;
+// The renderer owns Remix's actual capture/run state. Main only mirrors this
+// narrow boolean to claim Escape while there is live work to cancel.
+let remixEscapeActive = false;
 let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let hotkeyRecorder: HotkeyRecorder | null = null;
@@ -1171,7 +1174,7 @@ function hidePill(): void {
   try {
     mainWindow?.setFocusable(false);
   } catch {}
-  updateDictationEscape();
+  updatePillEscape();
 }
 
 function wait(ms: number): Promise<void> {
@@ -2064,7 +2067,7 @@ app.whenReady().then(async () => {
   if (process.env.FREESTYLE_E2E === "1") {
     ipcMain.on("e2e:trigger-hotkey-down", handleNativeHotkeyDown);
     ipcMain.on("e2e:trigger-hotkey-up", handleNativeHotkeyUp);
-    ipcMain.on("e2e:trigger-escape", cancelActiveDictation);
+    ipcMain.on("e2e:trigger-escape", cancelActivePill);
     ipcMain.on("e2e:open-panel", () =>
       openPanel({ focusComposer: true, trigger: "other" }),
     );
@@ -2891,6 +2894,11 @@ app.whenReady().then(async () => {
   ipcMain.on("remix:set-route-keys", (event, open: unknown) => {
     if (event.sender !== mainWindow?.webContents) return;
     setRemixRouteKeys(open === true);
+  });
+
+  ipcMain.on("remix:set-escape-active", (event, active: unknown) => {
+    if (event.sender !== mainWindow?.webContents) return;
+    setRemixEscapeActive(active === true);
   });
 });
 
@@ -3831,10 +3839,31 @@ ipcMain.on("remix:open-workspace", (event, threadId: unknown) => {
     return;
   // The pill is only a compact control surface. Opening a conversation returns
   // to the existing workspace window and selects that exact durable thread.
+  // Detach the hidden renderer from the local agent stream first. Hono keeps
+  // the Cloud reader alive; the workspace becomes the single tool observer.
+  mainWindow.webContents.send("remix:observer-handoff", threadId);
   hidePill();
   openPanel({ focusComposer: true, trigger: "other" });
   panelRendererMessages.send({
     channel: "panel:open-thread",
+    payload: threadId,
+  });
+});
+
+// A pill turn persists through the local server, while this renderer is only
+// one live view of it. Wake an already-open workspace after the Cloud snapshot
+// is written so it reads the same thread instead of retaining the empty
+// snapshot captured at handoff time.
+ipcMain.on("remix:thread-updated", (event, threadId: unknown) => {
+  if (
+    event.sender !== mainWindow?.webContents ||
+    typeof threadId !== "string" ||
+    threadId.length === 0 ||
+    threadId.length > 100
+  )
+    return;
+  panelRendererMessages.send({
+    channel: "panel:thread-updated",
     payload: threadId,
   });
 });
@@ -3881,6 +3910,7 @@ const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   if (
     message.channel === "panel:dictation" ||
     message.channel === "panel:open-thread" ||
+    message.channel === "panel:thread-updated" ||
     message.channel === "dashboard:navigate"
   ) {
     win.webContents.send(message.channel, message.payload);
@@ -4291,8 +4321,8 @@ function dictationTargets(): BrowserWindow[] {
   return targets;
 }
 
-function updateDictationEscape(): void {
-  if (!dictationInProgress) {
+function updatePillEscape(): void {
+  if (!dictationInProgress && !remixEscapeActive) {
     try {
       globalShortcut.unregister("Escape");
     } catch {}
@@ -4301,31 +4331,38 @@ function updateDictationEscape(): void {
 
   if (globalShortcut.isRegistered("Escape")) return;
   try {
-    if (!globalShortcut.register("Escape", cancelActiveDictation)) {
-      hotkeyLog.warn("Could not register Escape to cancel dictation.");
+    if (!globalShortcut.register("Escape", cancelActivePill)) {
+      hotkeyLog.warn("Could not register Escape to cancel active pill work.");
     }
   } catch (err) {
     hotkeyLog.warn(
-      `Could not register Escape to cancel dictation: ${err instanceof Error ? err.message : String(err)}`,
+      `Could not register Escape to cancel active pill work: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 }
 
+function setRemixEscapeActive(active: boolean): void {
+  if (remixEscapeActive === active) return;
+  remixEscapeActive = active;
+  updatePillEscape();
+}
+
 function setDictationPhase(phase: "idle" | "recording" | "transcribing"): void {
   dictationInProgress = phase !== "idle";
-  updateDictationEscape();
+  updatePillEscape();
   if (phase === "idle") hidePill();
 }
 
-function cancelActiveDictation(): void {
-  if (!dictationInProgress) return;
-  hotkeyPressed = false;
-  clearHotkeyStuckWatchdog();
+function cancelActivePill(): void {
+  if (!dictationInProgress && !remixEscapeActive) return;
+  if (dictationInProgress) {
+    hotkeyPressed = false;
+    clearHotkeyStuckWatchdog();
+  }
   // The legacy pill listens on `pill:cancel`; the newer surfaces retain the
-  // generic dictation event. Both signal one renderer-owned cancellation, not
-  // two recordings or two deliveries.
+  // generic dictation event. Remix consumes only the shared pill event.
   mainWindow?.webContents.send("pill:cancel");
-  mainWindow?.webContents.send("dictation:cancel");
+  if (dictationInProgress) mainWindow?.webContents.send("dictation:cancel");
 }
 
 function sendHotkeyDown(): void {
@@ -4728,7 +4765,7 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
     globalShortcut.unregisterAll();
-    updateDictationEscape();
+    updatePillEscape();
     // unregisterAll() drops every accelerator this app holds, including the
     // panel summon claimed at boot — re-claim it or it dies on the first
     // hotkey registration and never comes back within the session.

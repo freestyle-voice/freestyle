@@ -103,6 +103,13 @@ const api = {
     ipcRenderer.on("remix:open-chat", handler);
     return () => ipcRenderer.removeListener("remix:open-chat", handler);
   },
+  onRemixObserverHandoff: (
+    callback: (threadId: string) => void,
+  ): (() => void) => {
+    const handler = (_e: unknown, threadId: string): void => callback(threadId);
+    ipcRenderer.on("remix:observer-handoff", handler);
+    return () => ipcRenderer.removeListener("remix:observer-handoff", handler);
+  },
   remixRecapture: (): Promise<unknown> => ipcRenderer.invoke("remix:recapture"),
   remixSelectAll: (): Promise<RemixPrimitiveResult> =>
     ipcRenderer.invoke("remix:select-all"),
@@ -123,8 +130,12 @@ const api = {
     ipcRenderer.invoke("remix:paste-text", text),
   setRemixRouteKeys: (open: boolean): void =>
     ipcRenderer.send("remix:set-route-keys", open),
+  setRemixEscapeActive: (active: boolean): void =>
+    ipcRenderer.send("remix:set-escape-active", active),
   openRemixWorkspace: (threadId: string): void =>
     ipcRenderer.send("remix:open-workspace", threadId),
+  remixThreadUpdated: (threadId: string): void =>
+    ipcRenderer.send("remix:thread-updated", threadId),
   pasteText: (text: string, appContext?: string | null): Promise<void> =>
     ipcRenderer.invoke("paste:text", text, appContext ?? null),
   copyText: (text: string, appContext?: string | null): Promise<void> =>
@@ -311,6 +322,13 @@ const api = {
     const handler = (_e: unknown, threadId: string): void => callback(threadId);
     ipcRenderer.on("panel:open-thread", handler);
     return () => ipcRenderer.removeListener("panel:open-thread", handler);
+  },
+  onPanelThreadUpdated: (
+    callback: (threadId: string) => void,
+  ): (() => void) => {
+    const handler = (_e: unknown, threadId: string): void => callback(threadId);
+    ipcRenderer.on("panel:thread-updated", handler);
+    return () => ipcRenderer.removeListener("panel:thread-updated", handler);
   },
   onCompanionForm: (callback: (form: CompanionForm) => void): (() => void) => {
     const handler = (_e: unknown, form: CompanionForm): void => callback(form);

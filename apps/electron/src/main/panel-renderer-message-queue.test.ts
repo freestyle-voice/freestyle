@@ -68,6 +68,23 @@ describe("PanelRendererMessageQueue", () => {
     ]);
   });
 
+  it("delivers a queued thread refresh after the selected thread", () => {
+    const delivered: PanelRendererMessage[] = [];
+    const queue = new PanelRendererMessageQueue((message) => {
+      delivered.push(message);
+    });
+
+    queue.send({ channel: "panel:open-thread", payload: "thread-1" });
+    queue.send({ channel: "panel:thread-updated", payload: "thread-1" });
+
+    queue.markReady();
+
+    expect(delivered).toEqual([
+      { channel: "panel:open-thread", payload: "thread-1" },
+      { channel: "panel:thread-updated", payload: "thread-1" },
+    ]);
+  });
+
   it("delivers a queued Settings navigation once the workspace is ready", () => {
     const delivered: PanelRendererMessage[] = [];
     const queue = new PanelRendererMessageQueue((message) => {

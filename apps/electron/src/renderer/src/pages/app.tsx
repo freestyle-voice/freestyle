@@ -622,6 +622,7 @@ export default function AppPage(): React.JSX.Element {
   const remixContextRef = useRef<RemixSelectionPayload | null>(null);
   /** Guards against a second run being kicked off from the same session. */
   const remixRunningRef = useRef(false);
+  const remixChatCancelRef = useRef<(() => void) | null>(null);
   /** Flips the card from "capturing" to "listening" once a press is a hold. */
   const remixHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remixStreamerRef = useRef<Streamer | null>(null);
@@ -654,6 +655,17 @@ export default function AppPage(): React.JSX.Element {
   useEffect(() => {
     window.api.setCompanionStatus(companionStatus);
   }, [companionStatus]);
+  const remixEscapeActive = Boolean(
+    remix &&
+      (isRemixCapturePhase(remix.phase) ||
+        remix.phase === "running" ||
+        remix.phase === "chat-transcribing" ||
+        remixAgentActivity.working),
+  );
+  useEffect(() => {
+    window.api.setRemixEscapeActive(remixEscapeActive);
+  }, [remixEscapeActive]);
+  useEffect(() => () => window.api.setRemixEscapeActive(false), []);
 
   const recorderRef = useRef(new Recorder());
   const streamerRef = useRef<Streamer | null>(null);
@@ -2071,6 +2083,7 @@ export default function AppPage(): React.JSX.Element {
       if (!remixRef.current) return;
       clearRemixHoldTimer();
       remixRunningRef.current = false;
+      remixChatCancelRef.current?.();
       // Resolve any pending await so a run blocked on the selection unwinds
       // instead of hanging on a session that no longer exists.
       remixSelectionRef.current?.resolve(null);
@@ -2090,6 +2103,9 @@ export default function AppPage(): React.JSX.Element {
     [clearRemixHoldTimer, setRemix, stopVisualization],
   );
 
+  const registerRemixChatCancel = useCallback((cancel: (() => void) | null) => {
+    remixChatCancelRef.current = cancel;
+  }, []);
   const closeRemix = useCallback(() => endRemix(), [endRemix]);
   const openRemixWorkspace = useCallback((threadId: string) => {
     window.api.openRemixWorkspace(threadId);
@@ -2755,7 +2771,7 @@ export default function AppPage(): React.JSX.Element {
       // Escape reaches whichever surface is up. A remix owns the pill only
       // when there is no dictation, so there is never a question of which.
       if (remixRef.current) {
-        endRemix();
+        closeRemix();
         return;
       }
       if (stateRef.current !== "idle") cancelRecording();
@@ -2769,6 +2785,7 @@ export default function AppPage(): React.JSX.Element {
     startRecording,
     commitRecording,
     cancelRecording,
+    closeRemix,
     endRemix,
     dismissPill,
     isTranscriptionIdle,
@@ -4163,6 +4180,7 @@ export default function AppPage(): React.JSX.Element {
                     onInstructionConsumed={consumeRemixChatInstruction}
                     onVoiceNoticeDismiss={clearRemixChatNotice}
                     onActivityChange={handleRemixActivity}
+                    onCancelActive={registerRemixChatCancel}
                     onExpand={expandRemixChat}
                     onMinimize={minimizeRemixChat}
                     onClose={closeRemix}

@@ -117,3 +117,14 @@ test("companion receives a compact Remix activity label separate from dictation 
   expect(main).toContain('ipcMain.handle("companion:status"');
   expect(main).toContain('ipcMain.on("companion:set-status"');
 });
+
+test("companion activity is centered on the visible companion body", async () => {
+  const source = await readFile(companionPath, "utf8");
+
+  // The body can sit off-center inside the transparent sprite window. The
+  // status needs to follow its actual geometry, while still staying visible.
+  expect(source).toContain("const center = body.x + body.width / 2");
+  expect(source).toContain("const left = Math.min(");
+  expect(source).toContain("center - statusWidth / 2");
+  expect(source).not.toContain("const towardDisplay");
+});

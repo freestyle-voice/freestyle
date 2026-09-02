@@ -90,7 +90,7 @@ import {
   X,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 type WorkspaceView = "chat" | "history";
 
@@ -1267,6 +1267,7 @@ function PanelInner({
     id: thread.id,
     messages: thread.messages,
     transport,
+    resume: true,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     onFinish: ({ messages: finished }) => {
       queryClient.setQueryData(queryKeys.threads.detail(thread.id), {
@@ -1355,7 +1356,7 @@ function PanelInner({
   // conversation as soon as a different session is selected so stale content
   // can never flash underneath this session's loading skeleton.
   const chatThreadRef = useRef(thread.id);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (chatThreadRef.current === thread.id) return;
     chatThreadRef.current = thread.id;
     setMessages(thread.messages);
@@ -1397,8 +1398,12 @@ function PanelInner({
   useEffect(() => {
     if (startedThreadRef.current === thread.id) return;
     startedThreadRef.current = thread.id;
-    startedRef.current = thread.messages.length > 0;
-  }, [thread.id, thread.messages.length]);
+    // A selected persisted session is briefly represented by an empty summary
+    // while its messages load. It is not a new draft: the previous chat's
+    // retained AI SDK messages must never turn that placeholder into a second
+    // "New conversation" entry.
+    startedRef.current = isSessionLoading || thread.messages.length > 0;
+  }, [isSessionLoading, thread.id, thread.messages.length]);
   useEffect(() => {
     if (startedRef.current || messages.length === 0) return;
     startedRef.current = true;

@@ -282,6 +282,25 @@ export function RemixSessionProvider({
   }, [loading, queryClient, user]);
 
   useEffect(() => {
+    if (loading || !user) return;
+    const off = window.api?.onPanelThreadUpdated?.((threadId) => {
+      // This is an observation update, not a navigation command. If someone
+      // opened the pill in the workspace and then selected another session,
+      // refresh the cache without pulling them back to the old thread.
+      void queryClient
+        .fetchQuery(threadQueryOptions(threadId))
+        .then((loaded) => {
+          if (!loaded) return;
+          queryClient.setQueryData(queryKeys.threads.detail(threadId), loaded);
+          setThread((current) => (current?.id === threadId ? loaded : current));
+          return invalidateThreads(queryClient);
+        })
+        .catch(() => {});
+    });
+    return () => off?.();
+  }, [loading, queryClient, user]);
+
+  useEffect(() => {
     if (latestQuery.isPending) return;
     setThread((current) => current ?? latestQuery.data ?? newThread());
   }, [latestQuery.data, latestQuery.isPending]);

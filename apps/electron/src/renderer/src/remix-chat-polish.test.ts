@@ -51,6 +51,64 @@ describe("Remix chat polish", () => {
     expect(pill).not.toContain("onPillHotEnter");
   });
 
+  it("uses activity copy instead of a Remix label while the compact pill is working", async () => {
+    const chat = await readFile(
+      resolve(rendererRoot, "components/remix-chat.tsx"),
+      "utf8",
+    );
+    const miniHeader = chat.slice(
+      chat.indexOf('className="remix-mini-head"'),
+      chat.indexOf('className="remix-mini-actions"'),
+    );
+
+    expect(miniHeader).toContain("miniIdentityLabel");
+    expect(miniHeader).not.toContain("<span>Remix</span>");
+  });
+
+  it("notifies the workspace after each persisted pill response", async () => {
+    const chat = await readFile(
+      resolve(rendererRoot, "components/remix-chat.tsx"),
+      "utf8",
+    );
+
+    expect(chat).toContain("onFinish: () => {");
+    expect(chat).toContain("window.api?.remixThreadUpdated?.(thread.id)");
+  });
+
+  it("reconnects either Remix surface to the local server-owned stream", async () => {
+    const [chat, panel] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "components/panel.tsx"), "utf8"),
+    ]);
+
+    expect(chat).toContain("resume: true");
+    expect(panel).toContain("resume: true");
+  });
+
+  it("releases the pill observer when its session is handed to the workspace", async () => {
+    const chat = await readFile(
+      resolve(rendererRoot, "components/remix-chat.tsx"),
+      "utf8",
+    );
+
+    expect(chat).toContain("onRemixObserverHandoff");
+    expect(chat).toContain("stopRef.current()");
+  });
+
+  it("gives the expanded pill the same workspace handoff and a dedicated voice capture surface", async () => {
+    const chat = await readFile(
+      resolve(rendererRoot, "components/remix-chat.tsx"),
+      "utf8",
+    );
+
+    expect(chat).toContain('aria-label="Open Remix workspace"');
+    expect(chat).toContain("<RemixVoiceCaptureSurface");
+    expect(chat).toContain('className="remix-chat-voice-capture"');
+    expect(chat).not.toContain('className="remix-chat-voice-status"');
+    expect(chat).toContain("Keep holding the hotkey and speak naturally.");
+    expect(chat).toContain("Release to send");
+  });
+
   it("keeps the compact response scroller below a dedicated Remix top bar", async () => {
     const chat = await readFile(
       resolve(rendererRoot, "components/remix-chat.tsx"),
@@ -210,6 +268,21 @@ describe("Remix chat polish", () => {
     expect(chatHandoff).toContain("chatInstructions:");
   });
 
+  it("never turns a loading persisted session into a new conversation", async () => {
+    const panel = await readFile(
+      resolve(rendererRoot, "components/panel.tsx"),
+      "utf8",
+    );
+
+    // useChat retains messages across an id change. The reset must happen in a
+    // layout effect, before the first-message history effect can observe stale
+    // messages from the previously selected conversation.
+    expect(panel).toContain("useLayoutEffect");
+    expect(panel).toContain(
+      "startedRef.current = isSessionLoading || thread.messages.length > 0",
+    );
+  });
+
   it("uses rotating, shimmering pre-response copy instead of a static thinking label", async () => {
     const chat = await readFile(
       resolve(rendererRoot, "components/remix-chat.tsx"),
@@ -232,5 +305,17 @@ describe("Remix chat polish", () => {
     expect(pill).toContain("remixStreamerRef.current?.cancel();");
     expect(pill).toContain("if (!wav) {");
     expect(pill).not.toContain("new Promise<string>((resolve) => setTimeout");
+  });
+
+  it("cancels a server-owned Remix turn when the pill is closed", async () => {
+    const chat = await readFile(
+      resolve(rendererRoot, "components/remix-chat.tsx"),
+      "utf8",
+    );
+
+    expect(chat).toContain("onCancelActive");
+    expect(chat).toContain("getThreadRuntime(thread.id)");
+    expect(chat).toContain("cancelDurableTurn(runtime.activeTurn.id)");
+    expect(chat).toContain("cancellationRequestedRef.current = false");
   });
 });

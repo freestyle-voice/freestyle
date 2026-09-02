@@ -2,7 +2,7 @@
   "name": "@freestyle-voice/server",
   "type": "module",
   "scripts": {
-    "build": "tsc --emitDeclarationOnly && pkgroll --minify",
+    "build": "tsc --emitDeclarationOnly && pkgroll --tsconfig tsconfig.build.json --minify",
     "start": "node dist/startup.js",
     "test": "vitest run",
     "test:watch": "vitest"

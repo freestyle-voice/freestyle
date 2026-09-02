@@ -30,8 +30,9 @@ RUN pnpm install --frozen-lockfile --filter @freestyle-voice/server... --ignore-
 # Build the server bundle. Build workspace deps first (they emit to dist/),
 # then the server, which pkgroll inlines them into. The scoped install above
 # omits the root `turbo`, so order the build with pnpm's `...` filter here
-# rather than `turbo build` (which CI uses).
-RUN pnpm --filter "@freestyle-voice/server..." build
+# rather than `turbo build` (which CI uses). Serialize this small dependency
+# graph: pkgroll emits declaration bundles into shared workspace directories.
+RUN pnpm --workspace-concurrency=1 --filter "@freestyle-voice/server..." build
 
 # Produce a self-contained deployment with production deps only.
 RUN pnpm --filter @freestyle-voice/server deploy --prod --legacy /app

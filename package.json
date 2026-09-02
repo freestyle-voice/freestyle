@@ -1,6 +1,9 @@
 {
   "name": "@freestyle-voice/workspace",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "turbo build --filter=!docs",
     "dev": "turbo dev --filter=!docs",

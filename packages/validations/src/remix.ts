@@ -131,6 +131,8 @@ export const remixClientCapabilitiesSchema = z.object({
   supportsDownloadsSave: z.boolean().optional(),
   supportsKeyboardInsertion: z.boolean().optional(),
   supportsConnectorApprovals: z.boolean().optional(),
+  /** Desktop cursor/document handlers for canonical Remix sessions. */
+  supportsCursorActions: z.boolean().optional(),
 });
 
 export type RemixClientCapabilities = z.infer<

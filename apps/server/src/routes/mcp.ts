@@ -13,7 +13,10 @@ import {
   discoverMcpTools,
   McpConnectionError,
 } from "../lib/mcp/client.js";
-import { validateMcpOAuthCallback } from "../lib/mcp/oauth.js";
+import {
+  getMcpOAuthCallbackUrl,
+  validateMcpOAuthCallback,
+} from "../lib/mcp/oauth.js";
 import {
   createMcpStore,
   type StoredMcpConnection,
@@ -123,8 +126,18 @@ const mcpRoute = new Hono()
     if (oauthStatus(connection.id, connection.authType) === "not_connected") {
       return c.json({ error: "mcp_oauth_required" }, 409);
     }
+    const callbackUrl =
+      connection.authType === "oauth"
+        ? getMcpOAuthCallbackUrl(c.req.url)
+        : undefined;
+    if (connection.authType === "oauth" && !callbackUrl)
+      return c.json({ error: "mcp_oauth_invalid_callback" }, 400);
     try {
-      const tools = await discoverMcpTools(connection, store);
+      const tools = await discoverMcpTools(
+        connection,
+        store,
+        callbackUrl ?? undefined,
+      );
       const { disabledForLimit } = saveDiscoveredTools(
         store,
         connection,
@@ -147,8 +160,11 @@ const mcpRoute = new Hono()
     const store = createMcpStore();
     const connection = store.getPrivate(c.req.param("id"));
     if (!connection) return c.json({ error: "mcp_connection_not_found" }, 404);
+    const callbackUrl = getMcpOAuthCallbackUrl(c.req.url);
+    if (!callbackUrl)
+      return c.json({ error: "mcp_oauth_invalid_callback" }, 400);
     try {
-      const url = await beginMcpOAuth(connection, store);
+      const url = await beginMcpOAuth(connection, store, callbackUrl);
       return c.json({ url: url.toString() });
     } catch (error) {
       store.setLastError(connection.id, errorMessage(error));
@@ -162,6 +178,9 @@ const mcpRoute = new Hono()
     const state = c.req.query("state");
     const code = c.req.query("code");
     if (!state) return c.json({ error: "mcp_oauth_invalid_state" }, 400);
+    const callbackUrl = getMcpOAuthCallbackUrl(c.req.url);
+    if (!callbackUrl)
+      return c.json({ error: "mcp_oauth_invalid_callback" }, 400);
     const store = createMcpStore();
     const pending = store.consumeOAuthState(state);
     const validated = validateMcpOAuthCallback(pending?.oauth, { state, code });
@@ -173,6 +192,7 @@ const mcpRoute = new Hono()
         pending.connection,
         validated.code,
         store,
+        callbackUrl,
       );
       const { disabledForLimit } = saveDiscoveredTools(
         store,
@@ -206,9 +226,21 @@ const mcpRoute = new Hono()
     ) {
       return c.json({ error: "mcp_oauth_required" }, 409);
     }
+    const callbackUrl =
+      found.connection.authType === "oauth"
+        ? getMcpOAuthCallbackUrl(c.req.url)
+        : undefined;
+    if (found.connection.authType === "oauth" && !callbackUrl)
+      return c.json({ error: "mcp_oauth_invalid_callback" }, 400);
     try {
       return c.json(
-        await callMcpTool(found.connection, found.tool, input, store),
+        await callMcpTool(
+          found.connection,
+          found.tool,
+          input,
+          store,
+          callbackUrl ?? undefined,
+        ),
       );
     } catch (error) {
       store.setLastError(found.connection.id, errorMessage(error));

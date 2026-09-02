@@ -205,6 +205,7 @@ function normalizeDiscoveredMcpTools(
 function createTransport(
   connection: StoredMcpConnection,
   store: McpClientStore,
+  callbackUrl?: string,
   onAuthorizationUrl?: (url: URL) => void,
 ) {
   if (connection.transport === "stdio") {
@@ -228,12 +229,19 @@ function createTransport(
       headers.set(key, value);
   }
   const hasStaticHeaders = [...headers.keys()].length > 0;
+  if (connection.authType === "oauth" && !callbackUrl) {
+    throw new McpConnectionError(
+      "auth-required",
+      "MCP OAuth requires the active local callback URL",
+    );
+  }
   return new StreamableHTTPClientTransport(new URL(connection.url!), {
     ...(connection.authType === "oauth"
       ? {
           authProvider: createMcpOAuthProvider(
             connection.id,
             store,
+            callbackUrl!,
             onAuthorizationUrl,
           ),
         }
@@ -245,10 +253,16 @@ export async function withMcpClient<T>(
   connection: StoredMcpConnection,
   store: McpClientStore,
   run: (client: Client) => Promise<T>,
+  callbackUrl?: string,
   onAuthorizationUrl?: (url: URL) => void,
 ): Promise<T> {
   const client = new Client({ name: "Freestyle", version: "0.7.1" });
-  const transport = createTransport(connection, store, onAuthorizationUrl);
+  const transport = createTransport(
+    connection,
+    store,
+    callbackUrl,
+    onAuthorizationUrl,
+  );
   try {
     await withTimeout(
       client.connect(transport),
@@ -264,21 +278,28 @@ export async function withMcpClient<T>(
 export async function discoverMcpTools(
   connection: StoredMcpConnection,
   store: McpClientStore,
+  callbackUrl?: string,
 ): Promise<StoredMcpTool[]> {
-  return withMcpClient(connection, store, async (client) => {
-    const response = await withTimeout(
-      client.listTools(),
-      MCP_CONNECT_TIMEOUT_MS,
-      "MCP tool discovery timed out",
-    );
-    return normalizeDiscoveredMcpTools(connection, response.tools);
-  });
+  return withMcpClient(
+    connection,
+    store,
+    async (client) => {
+      const response = await withTimeout(
+        client.listTools(),
+        MCP_CONNECT_TIMEOUT_MS,
+        "MCP tool discovery timed out",
+      );
+      return normalizeDiscoveredMcpTools(connection, response.tools);
+    },
+    callbackUrl,
+  );
 }
 
 /** Start MCP's OAuth authorization-code flow without invoking a tool. */
 export async function beginMcpOAuth(
   connection: StoredMcpConnection,
   store: McpClientStore,
+  callbackUrl: string,
 ): Promise<URL> {
   if (connection.transport !== "http" || connection.authType !== "oauth") {
     throw new McpConnectionError(
@@ -292,6 +313,7 @@ export async function beginMcpOAuth(
       connection,
       store,
       async () => undefined,
+      callbackUrl,
       (url) => {
         authorizationUrl = url;
       },
@@ -329,6 +351,7 @@ export async function completeMcpOAuth(
   connection: StoredMcpConnection,
   code: string,
   store: McpClientStore,
+  callbackUrl: string,
 ): Promise<StoredMcpTool[]> {
   if (connection.transport !== "http" || connection.authType !== "oauth") {
     throw new McpConnectionError(
@@ -337,7 +360,7 @@ export async function completeMcpOAuth(
     );
   }
   const client = new Client({ name: "Freestyle", version: "0.7.1" });
-  const transport = createTransport(connection, store);
+  const transport = createTransport(connection, store, callbackUrl);
   if (!(transport instanceof StreamableHTTPClientTransport)) {
     throw new McpConnectionError(
       "auth-required",
@@ -371,26 +394,32 @@ export async function callMcpTool(
   tool: StoredMcpTool,
   input: Record<string, unknown>,
   store: McpClientStore,
+  callbackUrl?: string,
 ) {
   if (!connection.enabled)
     throw new McpConnectionError(
       "tool-unavailable",
       "This MCP connection is disabled",
     );
-  return withMcpClient(connection, store, async (client) => {
-    try {
-      const response = await withTimeout(
-        client.callTool({ name: tool.originalName, arguments: input }),
-        MCP_TOOL_TIMEOUT_MS,
-        "MCP tool call timed out",
-      );
-      return sanitizeMcpToolOutput(response);
-    } catch (error) {
-      if (error instanceof McpConnectionError) throw error;
-      throw new McpConnectionError(
-        "tool-failed",
-        "The MCP tool could not complete",
-      );
-    }
-  });
+  return withMcpClient(
+    connection,
+    store,
+    async (client) => {
+      try {
+        const response = await withTimeout(
+          client.callTool({ name: tool.originalName, arguments: input }),
+          MCP_TOOL_TIMEOUT_MS,
+          "MCP tool call timed out",
+        );
+        return sanitizeMcpToolOutput(response);
+      } catch (error) {
+        if (error instanceof McpConnectionError) throw error;
+        throw new McpConnectionError(
+          "tool-failed",
+          "The MCP tool could not complete",
+        );
+      }
+    },
+    callbackUrl,
+  );
 }

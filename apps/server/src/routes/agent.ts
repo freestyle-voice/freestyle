@@ -1,8 +1,15 @@
 import { createAppLogger } from "@freestyle-voice/utils";
+import {
+  MCP_TOOLS_MAX,
+  REMIX_LOCAL_TOOL_NAMES,
+  remixContextSchema,
+  remixMcpToolsSchema,
+} from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
+import { createMcpStore } from "../lib/mcp/store.js";
 import { getSessionToken, invalidateSession } from "../lib/sessions.js";
 
 const log = createAppLogger("agent");
@@ -17,6 +24,7 @@ const agentRequestSchema = z.object({
   // The seeded turn right after onboarding — forwarded so the cloud can
   // append its one-turn system-prompt addendum.
   firstTurn: z.boolean().optional(),
+  context: remixContextSchema.optional(),
 });
 
 /**
@@ -26,7 +34,7 @@ const agentRequestSchema = z.object({
  */
 const agentRoute = new Hono()
   .post("/", zValidator("json", agentRequestSchema), async (c) => {
-    const { messages, firstTurn, id, threadId } = c.req.valid("json");
+    const { messages, firstTurn, id, threadId, context } = c.req.valid("json");
 
     const token = getSessionToken();
     if (!token) return c.json({ error: "cloud_auth_required" }, 401);
@@ -43,10 +51,26 @@ const agentRoute = new Hono()
           messages,
           ...(threadId || id ? { threadId: threadId ?? id } : {}),
           ...(firstTurn ? { firstTurn: true } : {}),
+          ...(context ? { context } : {}),
           client: {
             platform: process.platform,
+            localTools: REMIX_LOCAL_TOOL_NAMES,
             supportsDownloadsSave: true,
+            supportsCursorActions: true,
           },
+          // Resolve the enabled, desktop-owned registry at the local server.
+          // The renderer cannot send an endpoint, secret, or stale tool list
+          // across this boundary.
+          mcpTools: remixMcpToolsSchema.parse(
+            createMcpStore()
+              .listEnabledTools()
+              .slice(0, MCP_TOOLS_MAX)
+              .map(({ tool }) => ({
+                name: tool.wireName,
+                description: tool.description,
+                inputSchema: tool.inputSchema,
+              })),
+          ),
         }),
         signal: c.req.raw.signal,
       });

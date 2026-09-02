@@ -2,8 +2,8 @@ import { randomBytes } from "node:crypto";
 import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { StoredMcpOAuth } from "./store.js";
 
-const CALLBACK_URL = "http://127.0.0.1:4649/api/mcp/oauth/callback";
 const OAUTH_STATE_TTL_MS = 10 * 60_000;
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
 type OAuthStore = {
   getOAuth(connectionId: string): StoredMcpOAuth | undefined;
@@ -13,6 +13,24 @@ type OAuthStore = {
 export type OAuthCallbackResult =
   | { ok: true; code: string }
   | { ok: false; reason: "invalid-state" | "expired-state" };
+
+/**
+ * OAuth must return to the same local server that began the flow. Electron
+ * intentionally falls back to a random loopback port when 4649 is occupied,
+ * so a fixed callback port strands authorization in another process.
+ */
+export function getMcpOAuthCallbackUrl(requestUrl: string): string | null {
+  let request: URL;
+  try {
+    request = new URL(requestUrl);
+  } catch {
+    return null;
+  }
+  if (request.protocol !== "http:" || !LOOPBACK_HOSTS.has(request.hostname)) {
+    return null;
+  }
+  return new URL("/api/mcp/oauth/callback", request.origin).toString();
+}
 
 export function validateMcpOAuthCallback(
   pending: Pick<StoredMcpOAuth, "state" | "stateExpiresAt"> | undefined,
@@ -41,6 +59,7 @@ export function validateMcpOAuthCallback(
 export function createMcpOAuthProvider(
   connectionId: string,
   store: OAuthStore,
+  callbackUrl: string,
   onAuthorizationUrl?: (url: URL) => void,
 ): OAuthClientProvider {
   const current = (): StoredMcpOAuth => store.getOAuth(connectionId) ?? {};
@@ -49,12 +68,12 @@ export function createMcpOAuthProvider(
 
   return {
     get redirectUrl() {
-      return CALLBACK_URL;
+      return callbackUrl;
     },
     get clientMetadata() {
       return {
         client_name: "Freestyle",
-        redirect_uris: [CALLBACK_URL],
+        redirect_uris: [callbackUrl],
         grant_types: ["authorization_code", "refresh_token"],
         response_types: ["code"],
         token_endpoint_auth_method: "none",

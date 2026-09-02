@@ -51,6 +51,7 @@ import {
   prependThreadToHistory,
   queryKeys,
 } from "@renderer/lib/query";
+import { executeRemixTool } from "@renderer/lib/remix-tool-executor";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
   cancelDurableTurn,
@@ -1310,8 +1311,8 @@ function PanelInner({
       const output =
         tier === "free"
           ? await executeAgentTool(call)
-          : { ok: false, reason: `unknown tool: ${call.toolName}` };
-      reportAgentToolResult(call, output, startedAt);
+          : await executeRemixTool(call);
+      if (tier !== null) reportAgentToolResult(call, output, startedAt);
       addToolOutput({
         tool: toolCall.toolName,
         toolCallId: toolCall.toolCallId,
@@ -1627,8 +1628,8 @@ function PanelInner({
       const output =
         tier === "free"
           ? await executeAgentTool(call)
-          : { ok: false, reason: `unknown tool: ${call.toolName}` };
-      reportAgentToolResult(call, output, Date.now());
+          : await executeRemixTool(call);
+      if (tier !== null) reportAgentToolResult(call, output, Date.now());
       await sendDurableTurnCommand(action.turnId, {
         type: "desktop_complete",
         actionId: action.id,

@@ -16,7 +16,7 @@ import {
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
 import { apiFetch, initApiBase } from "@renderer/lib/api";
-import { executeMcpToolCall } from "@renderer/lib/mcp";
+import { executeRemixTool } from "@renderer/lib/remix-tool-executor";
 import {
   DefaultChatTransport,
   type DynamicToolUIPart,
@@ -231,13 +231,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const transport = useMemo(
     () =>
       new DefaultChatTransport<UIMessage>({
-        api: "/api/remix",
+        api: "/api/agent",
 
         fetch: (async (_input: unknown, init?: RequestInit) => {
           // The pill is often the first renderer to contact the server after
           // launch. Resolve the configured target before its first agent turn.
           await initApiBase();
-          const res = await apiFetch("/api/remix", init ?? {});
+          const res = await apiFetch("/api/agent", init ?? {});
           if (res.status === 401) {
             void window.api?.cloudPromptSignIn?.();
             throw new Error("Sign in to Freestyle Cloud to use Remix.");
@@ -258,6 +258,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           body: {
             messages,
             threadId: thread.id,
+            ...(messages.length <= 1 ? { firstTurn: true } : {}),
             context: {
               selection: contextRef.current.text,
               appName: contextRef.current.appName,
@@ -272,95 +273,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     [thread.id],
   );
 
-  const executeTool = useCallback(
-    async (toolCall: {
-      toolName: string;
-      toolCallId: string;
-      input: unknown;
-    }): Promise<Record<string, unknown>> => {
-      const name = toolCall.toolName;
-      const input = (toolCall.input ?? {}) as Record<string, unknown>;
-      const str = (key: string): string =>
-        typeof input[key] === "string" ? (input[key] as string) : "";
-      const num = (key: string): number | undefined =>
-        typeof input[key] === "number" ? (input[key] as number) : undefined;
-      const badArgs = (expected: string): Record<string, unknown> => ({
-        ok: false,
-        reason: "bad-args",
-        expected,
-        received: JSON.stringify(toolCall.input)?.slice(0, 300) ?? "undefined",
-      });
-
-      const result = await runTool();
-      if (import.meta.env.DEV) {
-        console.log(
-          `[remix] ${name}(${JSON.stringify(toolCall.input)?.slice(0, 400) ?? ""}) →`,
-          JSON.stringify(result).slice(0, 400),
-        );
-      }
-      return result;
-
-      async function runTool(): Promise<Record<string, unknown>> {
-        if (name.startsWith("mcp_")) return executeMcpToolCall(name, input);
-        switch (name) {
-          case "get_context": {
-            const res = await window.api.remixGetContext();
-            if (res.ok) {
-              contextRef.current = {
-                text: res.selection,
-                appName: res.appName,
-                windowTitle: res.windowTitle,
-                url: res.url,
-                clipboard: res.clipboardPreview ?? null,
-                clipboardLength: res.clipboardLength ?? 0,
-                capturedAt: Date.now(),
-              };
-              setLiveContext(contextRef.current);
-            }
-            return { ...res };
-          }
-          case "read_document":
-            return { ...(await window.api.remixReadDocument()) };
-          case "select_all":
-            return { ...(await window.api.remixSelectAll()) };
-          case "select_text":
-            if (!str("text")) return badArgs("{ text: string }");
-            return {
-              ...(await window.api.remixSelectText(
-                str("text"),
-                num("occurrence"),
-              )),
-            };
-          case "collapse_selection":
-            return { ...(await window.api.remixCollapseSelection()) };
-          case "copy":
-            return { ...(await window.api.remixCopy()) };
-          case "set_clipboard":
-            if (!str("text")) return badArgs("{ text: string }");
-            return { ...(await window.api.remixSetClipboard(str("text"))) };
-          case "set_clipboard_image":
-            if (!str("url")) return badArgs("{ url: string }");
-            return { ...(await window.api.remixSetClipboardImage(str("url"))) };
-          case "paste":
-            return { ...(await window.api.remixPasteClipboard()) };
-          case "undo":
-            return { ...(await window.api.remixUndo()) };
-          case "redo":
-            return { ...(await window.api.remixRedo()) };
-          case "press_key":
-            if (!str("key")) return badArgs("{ key: string }");
-            return {
-              ...(await window.api.remixPressKey(str("key"), num("times"))),
-            };
-          case "get_clipboard":
-            return { ...(await window.api.remixGetClipboard()) };
-          default:
-            return { ok: false, reason: `unknown tool: ${name}` };
-        }
-      }
-    },
-    [],
-  );
   const { messages, sendMessage, addToolResult, status, stop, clearError } =
     useChat<UIMessage>({
       id: thread.id,
@@ -387,7 +299,12 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         const output =
           tier === "free"
             ? await executeAgentTool(call)
-            : await executeTool(call);
+            : await executeRemixTool(call, {
+                onContext: (context) => {
+                  contextRef.current = context;
+                  setLiveContext(context);
+                },
+              });
         if (tier !== null) reportAgentToolResult(call, output, startedAt);
         void addToolResult({
           tool: getToolOrDynamicToolName(toolCall as never) as never,

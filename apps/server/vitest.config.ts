@@ -4,6 +4,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "@freestyle-voice/validations/cleanup-presets": resolve(
+        __dirname,
+        "../../packages/validations/src/cleanup-presets.ts",
+      ),
       "@freestyle-voice/validations": resolve(
         __dirname,
         "../../packages/validations/src/index.ts",

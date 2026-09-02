@@ -17,6 +17,9 @@
       "@freestyle-voice/validations": [
         "../../packages/validations/dist/index.d.ts"
       ],
+      "@freestyle-voice/validations/cleanup-presets": [
+        "../../packages/validations/dist/cleanup-presets.d.ts"
+      ],
       "@freestyle-voice/stt": ["../../packages/stt/dist/index.d.ts"]
     }
   },

@@ -23,14 +23,14 @@
  */
 
 import { createAppLogger } from "@freestyle-voice/utils";
-import {
-  CLEANUP_PRESET_PROMPTS,
-  type CleanupEmailTone,
-  type CleanupOverallTone,
-  type CleanupPersonalTone,
-  type CleanupToneDestination,
-  type CleanupWorkTone,
+import type {
+  CleanupEmailTone,
+  CleanupOverallTone,
+  CleanupPersonalTone,
+  CleanupToneDestination,
+  CleanupWorkTone,
 } from "@freestyle-voice/validations";
+import { CLEANUP_PRESET_PROMPTS } from "@freestyle-voice/validations/cleanup-presets";
 import { freestyleCloudUrl } from "../freestyle-cloud.js";
 
 const log = createAppLogger("prompt-config");

@@ -20,6 +20,16 @@
     "require": {
       "types": "./dist/index.d.cts",
       "default": "./dist/index.cjs"
+    },
+    "./cleanup-presets": {
+      "import": {
+        "types": "./dist/cleanup-presets.d.ts",
+        "default": "./dist/cleanup-presets.js"
+      },
+      "require": {
+        "types": "./dist/cleanup-presets.d.cts",
+        "default": "./dist/cleanup-presets.cjs"
+      }
     }
   },
   "peerDependencies": {

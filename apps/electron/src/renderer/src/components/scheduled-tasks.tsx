@@ -237,9 +237,6 @@ export function ScheduledTasks({
   const [busy, setBusy] = useState<string | null>(null);
   const [pendingDeletion, setPendingDeletion] =
     useState<ScheduledTaskView | null>(null);
-  const [skipDeleteConfirmation, setSkipDeleteConfirmation] = useState(() =>
-    shouldSkipDeletionConfirmation("schedule"),
-  );
   const lastCreateRequestRef = useRef(createRequest);
   const [error, setError] = useState<string | null>(null);
 
@@ -366,16 +363,11 @@ export function ScheduledTasks({
 
   const requestRemove = (task: ScheduledTaskView): void => {
     setError(null);
-    if (skipDeleteConfirmation) {
+    if (shouldSkipDeletionConfirmation("schedule")) {
       remove(task);
       return;
     }
     setPendingDeletion(task);
-  };
-
-  const restoreDeleteConfirmation = (): void => {
-    setDeletionConfirmationSkipped("schedule", false);
-    setSkipDeleteConfirmation(false);
   };
 
   const save = (id: string | null, draft: ScheduledTaskInput): void => {
@@ -553,15 +545,6 @@ export function ScheduledTasks({
                 <p>Work Remix keeps moving in the background.</p>
               </div>
               <div className="tavern-schedule-page-actions">
-                {skipDeleteConfirmation ? (
-                  <button
-                    type="button"
-                    className="tavern-schedule-confirmation-reset"
-                    onClick={restoreDeleteConfirmation}
-                  >
-                    Confirm deletions
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   className="tavern-schedule-create"
@@ -572,16 +555,6 @@ export function ScheduledTasks({
                 </button>
               </div>
             </header>
-          ) : skipDeleteConfirmation ? (
-            <div className="tavern-schedule-inline-preference">
-              <button
-                type="button"
-                className="tavern-schedule-confirmation-reset"
-                onClick={restoreDeleteConfirmation}
-              >
-                Confirm schedule deletions
-              </button>
-            </div>
           ) : null}
           {notice}
           {refreshFailed}
@@ -635,7 +608,8 @@ export function ScheduledTasks({
           const task = pendingDeletion;
           setPendingDeletion(null);
           if (!task) return;
-          if (skipConfirmation) setSkipDeleteConfirmation(true);
+          if (skipConfirmation)
+            setDeletionConfirmationSkipped("schedule", true);
           remove(task);
         }}
       />

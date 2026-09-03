@@ -328,8 +328,6 @@ function RemixSidebarSessions({
     localTitles,
     renameThread,
     requestDeleteThread,
-    sessionDeletionConfirmationSkipped,
-    restoreSessionDeletionConfirmation,
     sessionActivity,
     completedSessionIds,
     markSessionSeen,
@@ -395,15 +393,6 @@ function RemixSidebarSessions({
           <CalendarClock aria-hidden="true" />
           Schedules
         </button>
-        {sessionDeletionConfirmationSkipped ? (
-          <button
-            type="button"
-            className="remix-sidebar-delete-confirmation"
-            onClick={restoreSessionDeletionConfirmation}
-          >
-            Confirm session deletions
-          </button>
-        ) : null}
       </div>
       <div
         ref={listRef}

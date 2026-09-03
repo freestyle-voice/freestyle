@@ -67,8 +67,6 @@ type RemixSessionContextValue = {
   requestThreadTitleRefresh: (threadId: string) => void;
   renameThread: (threadId: string, title: string) => Promise<void>;
   requestDeleteThread: (threadId: string, title: string) => void;
-  sessionDeletionConfirmationSkipped: boolean;
-  restoreSessionDeletionConfirmation: () => void;
 };
 
 type ThreadDeletionVariables = {
@@ -118,10 +116,6 @@ export function RemixSessionProvider({
     threadId: string;
     title: string;
   } | null>(null);
-  const [
-    sessionDeletionConfirmationSkipped,
-    setSessionDeletionConfirmationSkipped,
-  ] = useState(() => shouldSkipDeletionConfirmation("session"));
   const queryClient = useQueryClient();
   const { user, loading } = useCloudAuth();
   const latestQuery = useQuery({
@@ -418,19 +412,14 @@ export function RemixSessionProvider({
 
   const requestDeleteThread = useCallback(
     (threadId: string, title: string) => {
-      if (sessionDeletionConfirmationSkipped) {
+      if (shouldSkipDeletionConfirmation("session")) {
         void deleteThreadNow(threadId).catch(() => {});
         return;
       }
       setPendingThreadDeletion({ threadId, title });
     },
-    [deleteThreadNow, sessionDeletionConfirmationSkipped],
+    [deleteThreadNow],
   );
-
-  const restoreSessionDeletionConfirmation = useCallback(() => {
-    setDeletionConfirmationSkipped("session", false);
-    setSessionDeletionConfirmationSkipped(false);
-  }, []);
 
   useEffect(() => {
     if (!deleteNotice) return;
@@ -493,8 +482,6 @@ export function RemixSessionProvider({
       requestThreadTitleRefresh,
       renameThread,
       requestDeleteThread,
-      sessionDeletionConfirmationSkipped,
-      restoreSessionDeletionConfirmation,
     }),
     [
       localTitles,
@@ -513,8 +500,6 @@ export function RemixSessionProvider({
       completedSessionIds,
       sessionActivity,
       requestDeleteThread,
-      restoreSessionDeletionConfirmation,
-      sessionDeletionConfirmationSkipped,
     ],
   );
 
@@ -547,7 +532,7 @@ export function RemixSessionProvider({
           const pending = pendingThreadDeletion;
           setPendingThreadDeletion(null);
           if (!pending) return;
-          if (skipConfirmation) setSessionDeletionConfirmationSkipped(true);
+          if (skipConfirmation) setDeletionConfirmationSkipped("session", true);
           void deleteThreadNow(pending.threadId).catch(() => {});
         }}
       />

@@ -182,23 +182,6 @@
   color: var(--primary);
 }
 
-.remix-sidebar-delete-confirmation {
-  align-self: flex-start;
-  border: 0;
-  padding: 3px 10px 1px;
-  background: transparent;
-  color: var(--muted-foreground);
-  font: inherit;
-  font-size: 10.5px;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, currentColor 52%, transparent);
-  text-underline-offset: 3px;
-}
-
-.remix-sidebar-delete-confirmation:hover {
-  color: var(--foreground);
-}
-
 .remix-sidebar-sessions-list {
   min-height: 0;
   flex: 1;
@@ -1532,28 +1515,6 @@
 .remix-agent .tavern-schedule-create:hover {
   filter: brightness(1.08);
   transform: translateY(-1px);
-}
-
-.remix-agent .tavern-schedule-confirmation-reset {
-  border: 0;
-  padding: 0 3px;
-  background: transparent;
-  color: var(--muted-foreground);
-  font: inherit;
-  font-size: 10.5px;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
-  text-underline-offset: 3px;
-}
-
-.remix-agent .tavern-schedule-confirmation-reset:hover {
-  color: var(--foreground);
-}
-
-.remix-agent .tavern-schedule-inline-preference {
-  display: flex;
-  justify-content: flex-end;
-  margin: -5px 0 9px;
 }
 
 .remix-agent .tavern-schedule-create:focus-visible,

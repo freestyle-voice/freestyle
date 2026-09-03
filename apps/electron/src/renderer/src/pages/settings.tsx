@@ -58,6 +58,10 @@ import {
 } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { resetBrainCache } from "@renderer/lib/brain-fs";
+import {
+  setDeletionConfirmationSkipped,
+  shouldSkipDeletionConfirmation,
+} from "@renderer/lib/deletion-confirmation";
 import { formatNumber } from "@renderer/lib/format";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
@@ -231,6 +235,12 @@ export default function SettingsPage(): React.JSX.Element {
   const [pillCancel, setPillCancel] = useState<PillCancelMode>("hover");
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [historyPaused, setHistoryPaused] = useState(false);
+  const [skipSessionDeletionConfirmation, setSkipSessionDeletionConfirmation] =
+    useState(() => shouldSkipDeletionConfirmation("session"));
+  const [
+    skipScheduleDeletionConfirmation,
+    setSkipScheduleDeletionConfirmation,
+  ] = useState(() => shouldSkipDeletionConfirmation("schedule"));
   const [historyRetention, setHistoryRetention] = useState<
     "never" | "7" | "30" | "custom"
   >("never");
@@ -1412,6 +1422,30 @@ export default function SettingsPage(): React.JSX.Element {
                     variant="destructive"
                     label="Clear conversations"
                     action={clearConversations}
+                  />
+                </Row>
+                <Row
+                  label="Confirm before deleting sessions"
+                  desc="Ask before permanently deleting a Remix conversation. This preference stays on this device."
+                >
+                  <Switch
+                    checked={!skipSessionDeletionConfirmation}
+                    onCheckedChange={(confirm) => {
+                      setDeletionConfirmationSkipped("session", !confirm);
+                      setSkipSessionDeletionConfirmation(!confirm);
+                    }}
+                  />
+                </Row>
+                <Row
+                  label="Confirm before deleting schedules"
+                  desc="Ask before permanently deleting a scheduled task. This preference stays on this device."
+                >
+                  <Switch
+                    checked={!skipScheduleDeletionConfirmation}
+                    onCheckedChange={(confirm) => {
+                      setDeletionConfirmationSkipped("schedule", !confirm);
+                      setSkipScheduleDeletionConfirmation(!confirm);
+                    }}
                   />
                 </Row>
                 <Row

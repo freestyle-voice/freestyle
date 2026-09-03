@@ -6,6 +6,12 @@ import { setAuthToken } from "../src/lib/auth.js";
 const app = createApp();
 
 const TOKEN = "test-secret";
+const telemetryRequest = (headers?: Record<string, string>) =>
+  app.request("/api/telemetry", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify({ event: "test_event" }),
+  });
 
 afterEach(() => {
   // Reset so other suites (and cases) run unauthenticated.
@@ -14,7 +20,7 @@ afterEach(() => {
 
 describe("Bearer auth", () => {
   it("is disabled by default (no token configured)", async () => {
-    const res = await app.request("/api/device-id");
+    const res = await telemetryRequest();
     expect(res.status).toBe(200);
   });
 
@@ -26,23 +32,19 @@ describe("Bearer auth", () => {
 
   it("rejects requests without a token", async () => {
     setAuthToken(TOKEN);
-    const res = await app.request("/api/device-id");
+    const res = await telemetryRequest();
     expect(res.status).toBe(401);
   });
 
   it("rejects requests with the wrong token", async () => {
     setAuthToken(TOKEN);
-    const res = await app.request("/api/device-id", {
-      headers: { Authorization: "Bearer wrong" },
-    });
+    const res = await telemetryRequest({ Authorization: "Bearer wrong" });
     expect(res.status).toBe(401);
   });
 
   it("accepts requests with the correct token", async () => {
     setAuthToken(TOKEN);
-    const res = await app.request("/api/device-id", {
-      headers: { Authorization: `Bearer ${TOKEN}` },
-    });
+    const res = await telemetryRequest({ Authorization: `Bearer ${TOKEN}` });
     expect(res.status).toBe(200);
   });
 

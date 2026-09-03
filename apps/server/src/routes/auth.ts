@@ -24,13 +24,13 @@ import {
   updateCloudUserName,
 } from "../lib/freestyle-cloud.js";
 import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
-import { capture, identifyCloudUser } from "../lib/posthog.js";
 import {
   pullCloudPreferences,
   pullCloudPreferencesWithRetry,
   resetPreferencesBackfill,
   resetSyncedPreferencesForAccount,
 } from "../lib/preferences-sync.js";
+import { capture, identifyCloudUser } from "../lib/sentry.js";
 import { validateSession } from "../lib/session-validate.js";
 import {
   getSession,

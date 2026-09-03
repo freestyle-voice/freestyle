@@ -31,8 +31,8 @@ import {
   postProcess,
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
-import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
+import { capture, captureException } from "../lib/sentry.js";
 import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
 import { getProvider } from "../lib/streaming/registry.js";

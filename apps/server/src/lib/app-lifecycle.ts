@@ -1,5 +1,5 @@
 import { getDb } from "./db.js";
-import { capture, registerSuperProperties } from "./posthog.js";
+import { capture, registerSuperProperties } from "./sentry.js";
 import { getSession } from "./sessions.js";
 
 const VERSION_KEY = "analytics_last_version";

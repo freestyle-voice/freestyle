@@ -16,7 +16,7 @@ import {
 import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
 import { canRunMlxAsr } from "../lib/mlx-asr/server.js";
-import { capture } from "../lib/posthog.js";
+import { capture } from "../lib/sentry.js";
 import {
   LEGACY_WHISPER_MODELS,
   WHISPER_MODELS,

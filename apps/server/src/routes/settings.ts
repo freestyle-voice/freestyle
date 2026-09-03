@@ -27,11 +27,11 @@ import {
   configureNetwork,
   PROXY_URL_SETTING,
 } from "../lib/network.js";
-import { capture, invalidateTelemetrySetting } from "../lib/posthog.js";
 import {
   pushSettingToCloud,
   SYNCED_SETTING_KEYS,
 } from "../lib/preferences-sync.js";
+import { capture, invalidateTelemetrySetting } from "../lib/sentry.js";
 
 function normalizeOpenaiBaseUrl(input: string): string {
   return input.replace(/\/+$/, "").replace(/\/v1(?:\/[^?#]*)?$/, "");
@@ -223,7 +223,7 @@ const settings = new Hono()
     }
 
     // Don't capture internal/system keys
-    const skipKeys = new Set(["posthog_device_id", "telemetry_enabled"]);
+    const skipKeys = new Set(["telemetry_enabled"]);
     if (key === "telemetry_enabled") {
       invalidateTelemetrySetting();
     }

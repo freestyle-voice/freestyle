@@ -44,8 +44,8 @@ import {
   plugins,
 } from "./plugins/index.js";
 import { createHookApi } from "./plugins/pipeline.js";
-import { capture, captureException } from "./posthog.js";
 import { createCleanupModel, getDefaultModels } from "./providers.js";
+import { capture, captureException } from "./sentry.js";
 import { getSessionToken } from "./sessions.js";
 
 const log = createAppLogger("post-process");

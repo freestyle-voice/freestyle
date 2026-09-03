@@ -10,8 +10,8 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { likePattern } from "../lib/like-pattern.js";
-import { capture } from "../lib/posthog.js";
 import { pushVocabularyToCloud } from "../lib/preferences-sync.js";
+import { capture } from "../lib/sentry.js";
 import {
   deleteVocabularyByIds,
   exportVocabularyEntries,

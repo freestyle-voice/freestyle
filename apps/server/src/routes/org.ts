@@ -2,6 +2,7 @@ import { createAppLogger } from "@freestyle-voice/utils";
 import { setActiveOrgSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { getDb } from "../lib/db.js";
 import { formatError } from "../lib/format-error.js";
 import {
   clearCachedOrgSlug,
@@ -12,6 +13,8 @@ import {
 import { pullCloudPreferences } from "../lib/preferences-sync.js";
 import { getSessionToken } from "../lib/sessions.js";
 import { clearOutbox } from "../lib/sync-outbox.js";
+import { cachedSyncScope, resolveSyncScope } from "../lib/sync-scope.js";
+import { LocalSyncStore } from "../lib/sync-store.js";
 
 const log = createAppLogger("org");
 
@@ -55,6 +58,7 @@ const org = new Hono()
       return c.json({ error: "Not signed in to Freestyle Cloud" }, 401);
     }
     const { organizationId } = c.req.valid("json");
+    const previousScope = cachedSyncScope();
     try {
       await setCloudActiveOrganization(token, organizationId);
       // Member preferences (cleanup tones, languages, vocabulary) are per-org,
@@ -67,6 +71,10 @@ const org = new Hono()
       //   - reload the new org's snapshot into the local settings/vocabulary
       //     tables so the app reflects the switch immediately (like sign-in).
       await pullCloudPreferences();
+      const nextScope = await resolveSyncScope();
+      if (previousScope && previousScope !== nextScope) {
+        new LocalSyncStore(getDb()).clearScope(previousScope);
+      }
       return c.json({ ok: true });
     } catch (err) {
       log.warn(`failed to set active organization: ${formatError(err)}`);

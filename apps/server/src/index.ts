@@ -40,12 +40,14 @@ import {
   startOutboxDrain,
   stopOutboxDrain,
 } from "./lib/sync-outbox.js";
+import { resolveSyncScope } from "./lib/sync-scope.js";
 import { syncTimezoneToCloud } from "./lib/timezone-sync.js";
 import {
   isTrustedRendererOrigin,
   trustedOriginMiddleware,
 } from "./lib/trusted-origin.js";
 import routes from "./routes";
+import { drainBrainOperations } from "./routes/brain.js";
 
 const httpLog = createAppLogger("http");
 
@@ -244,6 +246,9 @@ export async function startServer(
   // pending local change is never overwritten by the copy it was meant to
   // update. Both are no-ops when signed out and never throw.
   void drainOutbox().then(() => pullCloudPreferences());
+  void resolveSyncScope().then((scope) => {
+    if (scope) void drainBrainOperations(scope);
+  });
 
   // Keep the cloud profile's timezone current so scheduled tasks fire on this
   // machine's clock. No-op when signed out or unchanged; never throws.

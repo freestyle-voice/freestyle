@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 29;
+const SCHEMA_VERSION = 30;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -769,6 +769,48 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         updated_at INTEGER NOT NULL,
         PRIMARY KEY(connection_id, original_name)
       );
+    `);
+  }
+
+  if (currentVersion < 30) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS sync_entities (
+        scope TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        revision INTEGER,
+        fetched_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        deleted_at TEXT,
+        PRIMARY KEY (scope, resource, entity_id)
+      );
+      CREATE TABLE IF NOT EXISTS sync_resource_state (
+        scope TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        cursor TEXT,
+        last_refresh_at TEXT,
+        last_error TEXT,
+        PRIMARY KEY (scope, resource)
+      );
+      CREATE TABLE IF NOT EXISTS sync_operations (
+        operation_id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL,
+        resource TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        expected_revision INTEGER,
+        state TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        next_attempt_at TEXT NOT NULL,
+        last_error TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_sync_operations_due ON sync_operations (scope, state, next_attempt_at);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_operations_entity
+        ON sync_operations (scope, resource, entity_id);
     `);
   }
 

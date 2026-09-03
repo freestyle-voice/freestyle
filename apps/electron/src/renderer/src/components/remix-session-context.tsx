@@ -43,6 +43,11 @@ export function sidebarCurrentThreadId(
   return surface === "chat" ? threadId : "";
 }
 
+// Cloud first persists a deterministic title, then replaces it with a short
+// generated one. These are bounded observations of that background write, not
+// polling: they run only for an unnamed conversation after its first turn.
+const THREAD_TITLE_REFRESH_DELAYS = [1_200, 4_000] as const;
+
 type RemixSessionContextValue = {
   thread: ThreadState | null;
   workspaceSurface: RemixWorkspaceSurface;
@@ -59,6 +64,7 @@ type RemixSessionContextValue = {
   /** A completed response from a session the user has not re-opened yet. */
   completedSessionIds: ReadonlySet<string>;
   markSessionSeen: (threadId: string) => void;
+  requestThreadTitleRefresh: (threadId: string) => void;
   renameThread: (threadId: string, title: string) => Promise<void>;
   requestDeleteThread: (threadId: string, title: string) => void;
   sessionDeletionConfirmationSkipped: boolean;
@@ -127,6 +133,7 @@ export function RemixSessionProvider({
   const selectedSummaryRef = useRef<ThreadSummary | null>(null);
   const activeSessionIdsRef = useRef<Set<string>>(new Set());
   const selectedThreadIdRef = useRef<string | null>(null);
+  const titleRefreshTimersRef = useRef<Map<string, number[]>>(new Map());
   selectedThreadIdRef.current = thread?.id ?? null;
 
   const markSessionSeen = useCallback((threadId: string) => {
@@ -274,6 +281,43 @@ export function RemixSessionProvider({
     if (!saved) throw new Error("Could not save the session name.");
   }, []);
 
+  const refreshThread = useCallback(
+    async (threadId: string) => {
+      const loaded = await queryClient.fetchQuery(threadQueryOptions(threadId));
+      if (!loaded) return;
+      queryClient.setQueryData(queryKeys.threads.detail(threadId), loaded);
+      setThread((current) => (current?.id === threadId ? loaded : current));
+      await invalidateThreads(queryClient);
+    },
+    [queryClient],
+  );
+
+  const requestThreadTitleRefresh = useCallback(
+    (threadId: string) => {
+      if (titleRefreshTimersRef.current.has(threadId)) return;
+      const timers = THREAD_TITLE_REFRESH_DELAYS.map((delay, index) =>
+        window.setTimeout(() => {
+          void refreshThread(threadId).catch(() => {});
+          if (index === THREAD_TITLE_REFRESH_DELAYS.length - 1) {
+            titleRefreshTimersRef.current.delete(threadId);
+          }
+        }, delay),
+      );
+      titleRefreshTimersRef.current.set(threadId, timers);
+    },
+    [refreshThread],
+  );
+
+  useEffect(
+    () => () => {
+      for (const timers of titleRefreshTimersRef.current.values()) {
+        for (const timer of timers) window.clearTimeout(timer);
+      }
+      titleRefreshTimersRef.current.clear();
+    },
+    [],
+  );
+
   const deleteThreadMutation = useMutation<
     void,
     Error,
@@ -420,18 +464,11 @@ export function RemixSessionProvider({
       // This is an observation update, not a navigation command. If someone
       // opened the pill in the workspace and then selected another session,
       // refresh the cache without pulling them back to the old thread.
-      void queryClient
-        .fetchQuery(threadQueryOptions(threadId))
-        .then((loaded) => {
-          if (!loaded) return;
-          queryClient.setQueryData(queryKeys.threads.detail(threadId), loaded);
-          setThread((current) => (current?.id === threadId ? loaded : current));
-          return invalidateThreads(queryClient);
-        })
-        .catch(() => {});
+      void refreshThread(threadId).catch(() => {});
+      requestThreadTitleRefresh(threadId);
     });
     return () => off?.();
-  }, [loading, queryClient, user]);
+  }, [loading, refreshThread, requestThreadTitleRefresh, user]);
 
   useEffect(() => {
     if (latestQuery.isPending) return;
@@ -453,6 +490,7 @@ export function RemixSessionProvider({
       sessionActivity,
       completedSessionIds,
       markSessionSeen,
+      requestThreadTitleRefresh,
       renameThread,
       requestDeleteThread,
       sessionDeletionConfirmationSkipped,
@@ -471,6 +509,7 @@ export function RemixSessionProvider({
       threadLoadError,
       loadingThreadId,
       markSessionSeen,
+      requestThreadTitleRefresh,
       completedSessionIds,
       sessionActivity,
       requestDeleteThread,

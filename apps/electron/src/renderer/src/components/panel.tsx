@@ -834,6 +834,7 @@ export function RemixWorkspace(): React.JSX.Element {
     localTitles,
     renameThread,
     requestDeleteThread,
+    requestThreadTitleRefresh,
     workspaceSurface,
   } = useRemixSession();
 
@@ -850,6 +851,7 @@ export function RemixWorkspace(): React.JSX.Element {
         onRetrySessionLoad={retryThreadLoad}
         onRenameSession={renameThread}
         onDeleteSession={requestDeleteThread}
+        onThreadSettled={requestThreadTitleRefresh}
         sessionTitle={localTitles[thread.id] ?? displayThreadTitle(thread)}
         desktopSurface={workspaceSurface}
         desktop
@@ -1184,6 +1186,7 @@ function PanelInner({
   onRetrySessionLoad,
   onRenameSession,
   onDeleteSession,
+  onThreadSettled,
   sessionTitle: currentSessionTitle,
   desktopSurface = "chat",
   desktop = false,
@@ -1196,6 +1199,7 @@ function PanelInner({
   onRetrySessionLoad?: () => void;
   onRenameSession?: (threadId: string, title: string) => Promise<void>;
   onDeleteSession?: (threadId: string, title: string) => void;
+  onThreadSettled?: (threadId: string) => void;
   sessionTitle?: string;
   desktopSurface?: RemixWorkspaceSurface;
   /** Render inside the restored full-window Remix workspace rather than a popover. */
@@ -1323,6 +1327,7 @@ function PanelInner({
       void queryClient.invalidateQueries({
         queryKey: queryKeys.durableThreadRuns(thread.id),
       });
+      if (!thread.title?.trim()) onThreadSettled?.(thread.id);
       if (finished.length === 0) return;
       const last = finished[finished.length - 1];
       if (last?.role !== "assistant") return;

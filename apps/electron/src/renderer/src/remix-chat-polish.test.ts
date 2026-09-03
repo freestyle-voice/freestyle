@@ -75,6 +75,25 @@ describe("Remix chat polish", () => {
     expect(chat).toContain("window.api?.remixThreadUpdated?.(thread.id)");
   });
 
+  it("refreshes a new conversation title after Cloud has persisted it", async () => {
+    const [panel, sessions] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/panel.tsx"), "utf8"),
+      readFile(
+        resolve(rendererRoot, "components/remix-session-context.tsx"),
+        "utf8",
+      ),
+    ]);
+
+    expect(panel).toContain("onThreadSettled?.(thread.id)");
+    expect(sessions).toContain("THREAD_TITLE_REFRESH_DELAYS");
+    expect(sessions).toContain("requestThreadTitleRefresh");
+    expect(sessions).toContain("refreshThread(threadId)");
+    expect(sessions).toContain(
+      "titleRefreshTimersRef.current.delete(threadId)",
+    );
+    expect(sessions).toContain("current?.id === threadId ? loaded : current");
+  });
+
   it("reconnects either Remix surface to the local server-owned stream", async () => {
     const [chat, panel] = await Promise.all([
       readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),

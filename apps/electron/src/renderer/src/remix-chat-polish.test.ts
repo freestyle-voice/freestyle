@@ -322,19 +322,39 @@ describe("Remix chat polish", () => {
   });
 
   it("uses rotating, shimmering pre-response copy instead of a static thinking label", async () => {
-    const chat = await readFile(
-      resolve(rendererRoot, "components/remix-chat.tsx"),
-      "utf8",
-    );
+    const [chat, thinkingLabel] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+      readFile(
+        resolve(
+          rendererRoot,
+          "components/agents/loading-states/rotating-thinking-label.tsx",
+        ),
+        "utf8",
+      ),
+    ]);
 
-    expect(chat).toContain("REMIX_THINKING_MESSAGES");
-    expect(chat).toContain("Contemplating…");
-    expect(chat).toContain("One moment — bringing it together…");
-    expect(chat).toContain("setInterval");
-    expect(chat).toContain("2_600");
+    expect(chat).toContain("<RotatingThinkingLabel");
+    expect(thinkingLabel).toContain("REMIX_THINKING_MESSAGES");
+    expect(thinkingLabel).toContain("Contemplating…");
+    expect(thinkingLabel).toContain("One moment — bringing it together…");
+    expect(thinkingLabel).toContain("setInterval");
+    expect(thinkingLabel).toContain("2_600");
+    expect(thinkingLabel).toContain("ThinkingShimmer");
     expect(chat).toContain("LoaderCircle");
     expect(chat).toContain("<RemixThinkingState />");
     expect(chat).not.toContain('<ThinkingShimmer className="remix-chat-busy">');
+  });
+
+  it("uses the same live shimmer in the workspace before the first response arrives", async () => {
+    const panel = await readFile(
+      resolve(rendererRoot, "components/panel.tsx"),
+      "utf8",
+    );
+
+    expect(panel).toContain("RotatingThinkingLabel");
+    expect(panel).toContain('aria-label="Remix is working"');
+    expect(panel).toContain("tavern-stream-wait-signal");
+    expect(panel).not.toContain('<Spark state="idle" size={11} />');
   });
 
   it("uses the complete recorded audio for a spoken Remix request", async () => {

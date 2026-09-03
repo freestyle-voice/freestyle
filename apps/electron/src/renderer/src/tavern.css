@@ -793,26 +793,43 @@
 
 .tavern-stream-wait {
   display: flex;
-  padding: 2px 0;
+  width: fit-content;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--card) 48%, transparent);
+  color: var(--tavern-mute);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
-/* Spin the whole spark: the diamond core turns in place while the two
-   satellite sparks orbit it. */
-.tavern-stream-wait > div {
-  animation: tavern-spark-orbit 1.5s linear infinite;
+.tavern-stream-wait-signal {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--tavern-lantern);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--tavern-lantern) 10%, transparent);
+  animation: tavern-thinking-pulse 1.5s ease-in-out infinite;
 }
 
-@keyframes tavern-spark-orbit {
-  from {
-    transform: rotate(0deg);
+@keyframes tavern-thinking-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(0.82);
   }
-  to {
-    transform: rotate(360deg);
+
+  50% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tavern-stream-wait > div {
+  .tavern-stream-wait-signal {
     animation: none;
   }
 }

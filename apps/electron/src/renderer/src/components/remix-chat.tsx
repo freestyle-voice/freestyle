@@ -4,7 +4,7 @@ import { AgentMessageQueueControls } from "@renderer/components/agent-message-qu
 import { AgentActivity } from "@renderer/components/agents/agent-activity";
 import type { AgentActivityItem } from "@renderer/components/agents/agent-activity/types";
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
-import { ThinkingShimmer } from "@renderer/components/agents/loading-states/thinking-shimmer";
+import { RotatingThinkingLabel } from "@renderer/components/agents/loading-states/rotating-thinking-label";
 import { MessageScroller } from "@renderer/components/agents/message-scroller";
 import { useAgentMessageQueue } from "@renderer/lib/agent-message-queue";
 import {
@@ -60,12 +60,6 @@ const INK = "rgba(245, 241, 228, 0.92)";
 const INK_DIM = "rgba(245, 241, 228, 0.70)";
 const INK_FAINT = "rgba(245, 241, 228, 0.52)";
 const OLIVE = "#8AB62A";
-const REMIX_THINKING_MESSAGES = [
-  "Thinking…",
-  "Contemplating…",
-  "Finding the right thread…",
-  "One moment — bringing it together…",
-] as const;
 
 export {
   REMIX_CHAT_STRIP,
@@ -1340,16 +1334,6 @@ const TOOL_LABELS: Record<string, { doing: string; done: string }> = {
  * loading copy.
  */
 function RemixThinkingState(): React.JSX.Element {
-  const [messageIndex, setMessageIndex] = useState(0);
-  const message = REMIX_THINKING_MESSAGES[messageIndex];
-
-  useEffect(() => {
-    const interval = window.setInterval(() => {
-      setMessageIndex((index) => (index + 1) % REMIX_THINKING_MESSAGES.length);
-    }, 2_600);
-    return () => window.clearInterval(interval);
-  }, []);
-
   return (
     <div
       role="status"
@@ -1363,13 +1347,7 @@ function RemixThinkingState(): React.JSX.Element {
       >
         <LoaderCircle className="size-3.5 animate-spin" strokeWidth={1.8} />
       </span>
-      <ThinkingShimmer
-        key={message}
-        duration={2.6}
-        className="animate-in fade-in-0 slide-in-from-bottom-0.5 font-medium duration-300"
-      >
-        {message}
-      </ThinkingShimmer>
+      <RotatingThinkingLabel className="animate-in fade-in-0 slide-in-from-bottom-0.5 font-medium duration-300" />
     </div>
   );
 }

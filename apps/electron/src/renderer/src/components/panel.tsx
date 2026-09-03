@@ -3,6 +3,7 @@ import "../tavern.css";
 
 import { useChat } from "@ai-sdk/react";
 import { AgentMessageQueueControls } from "@renderer/components/agent-message-queue";
+import { RotatingThinkingLabel } from "@renderer/components/agents/loading-states/rotating-thinking-label";
 import { AttentionHome } from "@renderer/components/attention-home";
 import { Capabilities } from "@renderer/components/capabilities";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
@@ -24,7 +25,6 @@ import {
   useRemixSession,
 } from "@renderer/components/remix-session-context";
 import { ScheduledTasks } from "@renderer/components/scheduled-tasks";
-import { Spark } from "@renderer/components/spark";
 import { ThreadHistory } from "@renderer/components/thread-history";
 import {
   DropdownMenu,
@@ -2249,9 +2249,15 @@ function PanelInner({
                     <div
                       className="tavern-stream-wait"
                       role="status"
-                      aria-label="Thinking"
+                      aria-label="Remix is working"
+                      aria-live="polite"
+                      aria-atomic="true"
                     >
-                      <Spark state="idle" size={11} />
+                      <span
+                        className="tavern-stream-wait-signal"
+                        aria-hidden="true"
+                      />
+                      <RotatingThinkingLabel className="tavern-stream-wait-copy" />
                     </div>
                   ) : null}
                 </>

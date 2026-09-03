@@ -18,7 +18,11 @@ const sync = new Hono()
   .get("/events", (c) =>
     streamSSE(c, async (stream) => {
       const unsubscribe = subscribeSyncEvents((event) => {
-        void stream.writeSSE({ event: "sync", data: JSON.stringify(event) });
+        // Clients can close between the Set iteration and the write. That is
+        // normal for SSE and must not surface as an unhandled rejection.
+        void stream
+          .writeSSE({ event: "sync", data: JSON.stringify(event) })
+          .catch(() => {});
       });
       try {
         await new Promise<void>((resolve) => {

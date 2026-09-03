@@ -836,6 +836,8 @@ export function RemixWorkspace(): React.JSX.Element {
     requestDeleteThread,
     requestThreadTitleRefresh,
     workspaceSurface,
+    openCapabilities,
+    openChat,
   } = useRemixSession();
 
   if (!thread) return <div className="remix-workspace" />;
@@ -854,6 +856,8 @@ export function RemixWorkspace(): React.JSX.Element {
         onThreadSettled={requestThreadTitleRefresh}
         sessionTitle={localTitles[thread.id] ?? displayThreadTitle(thread)}
         desktopSurface={workspaceSurface}
+        onOpenCapabilities={openCapabilities}
+        onOpenChat={openChat}
         desktop
       />
     </div>
@@ -1035,6 +1039,16 @@ function RemixSchedulesHeader({
   );
 }
 
+function RemixCapabilitiesHeader(): React.JSX.Element {
+  return (
+    <header className="remix-chat-header remix-capabilities-header">
+      <div className="remix-chat-session">
+        <h1>What Freestyle can do</h1>
+      </div>
+    </header>
+  );
+}
+
 function ConversationSkeleton(): React.JSX.Element {
   return (
     <div
@@ -1189,6 +1203,8 @@ function PanelInner({
   onThreadSettled,
   sessionTitle: currentSessionTitle,
   desktopSurface = "chat",
+  onOpenCapabilities,
+  onOpenChat,
   desktop = false,
 }: {
   thread: ThreadState;
@@ -1202,6 +1218,8 @@ function PanelInner({
   onThreadSettled?: (threadId: string) => void;
   sessionTitle?: string;
   desktopSurface?: RemixWorkspaceSurface;
+  onOpenCapabilities?: () => void;
+  onOpenChat?: () => void;
   /** Render inside the restored full-window Remix workspace rather than a popover. */
   desktop?: boolean;
 }): React.JSX.Element {
@@ -1270,7 +1288,6 @@ function PanelInner({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
-  const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dictationBaseRef = useRef<string | null>(null);
   const contextAttentionMessageRef = useRef<string | null>(null);
@@ -1396,7 +1413,6 @@ function PanelInner({
     setEditDraft("");
     setContextAttention(null);
     contextAttentionMessageRef.current = null;
-    setCapabilitiesOpen(false);
     dictationBaseRef.current = null;
     dictatedRef.current = false;
   }, [thread.id]);
@@ -1865,7 +1881,6 @@ function PanelInner({
   const showChat = chatActive && messages.length > 0;
   const startNewChat = (): void => {
     setTab("chat");
-    setCapabilitiesOpen(false);
     setDraft("");
     setNotice(null);
     dictationBaseRef.current = null;
@@ -2039,6 +2054,8 @@ function PanelInner({
                 </button>
               )}
             </RemixChatHeader>
+          ) : desktopSurface === "capabilities" ? (
+            <RemixCapabilitiesHeader />
           ) : (
             <RemixSchedulesHeader
               onCreate={() =>
@@ -2088,27 +2105,22 @@ function PanelInner({
                     onSelectThread?.({ id, title, updatedAt: Date.now() })
                   }
                 />
-              ) : capabilitiesOpen ? (
-                <>
-                  <button
-                    type="button"
-                    className="tavern-file-back"
-                    onClick={() => setCapabilitiesOpen(false)}
-                  >
-                    ← What Freestyle can do
-                  </button>
+              ) : desktop && desktopSurface === "capabilities" ? (
+                <section
+                  className="tavern-capabilities-page"
+                  aria-label="What Freestyle can do"
+                >
                   <Capabilities
                     onPrompt={(text) => {
-                      setCapabilitiesOpen(false);
+                      onOpenChat?.();
                       setNotice(null);
                       void sendMessage({ text });
                     }}
                     onOpenApps={() => {
-                      setCapabilitiesOpen(false);
-                      setNotice("Manage connected apps from Settings.");
+                      window.api.openSettings();
                     }}
                   />
-                </>
+                </section>
               ) : tab === "history" ? (
                 <ThreadHistory
                   currentId={thread.id}
@@ -2280,7 +2292,7 @@ function PanelInner({
                   />
                   <OpenerCards
                     busy={busy}
-                    onShowAll={() => setCapabilitiesOpen(true)}
+                    onShowAll={onOpenCapabilities}
                     onPrompt={(text) => {
                       setNotice(null);
                       void sendMessage({ text });
@@ -2291,7 +2303,7 @@ function PanelInner({
               {notice ? <p className="tavern-notice">{notice}</p> : null}
             </div>
 
-            {chatActive && !capabilitiesOpen ? (
+            {chatActive ? (
               <>
                 <AgentMessageQueueControls
                   items={queue.items}

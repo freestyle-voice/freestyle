@@ -33,7 +33,7 @@ import {
 } from "react";
 import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
 
-export type RemixWorkspaceSurface = "chat" | "scheduled";
+export type RemixWorkspaceSurface = "chat" | "scheduled" | "capabilities";
 
 /** A schedule has its own navigation surface, so no chat row is current. */
 export function sidebarCurrentThreadId(
@@ -51,7 +51,9 @@ const THREAD_TITLE_REFRESH_DELAYS = [1_200, 4_000] as const;
 type RemixSessionContextValue = {
   thread: ThreadState | null;
   workspaceSurface: RemixWorkspaceSurface;
+  openChat: () => void;
   openScheduledTasks: () => void;
+  openCapabilities: () => void;
   switchThread: (thread: ThreadState) => void;
   selectThread: (thread: ThreadSummary) => void;
   startNewThread: () => void;
@@ -141,6 +143,10 @@ export function RemixSessionProvider({
 
   const openScheduledTasks = useCallback(() => {
     setWorkspaceSurface("scheduled");
+  }, []);
+
+  const openCapabilities = useCallback(() => {
+    setWorkspaceSurface("capabilities");
   }, []);
 
   const openChat = useCallback(() => {
@@ -468,7 +474,9 @@ export function RemixSessionProvider({
     () => ({
       thread,
       workspaceSurface,
+      openChat,
       openScheduledTasks,
+      openCapabilities,
       switchThread,
       selectThread,
       startNewThread,
@@ -485,6 +493,8 @@ export function RemixSessionProvider({
     }),
     [
       localTitles,
+      openChat,
+      openCapabilities,
       openScheduledTasks,
       renameThread,
       retryThreadLoad,

@@ -1461,6 +1461,25 @@
   margin: 0 auto 36px;
 }
 
+/* Capabilities are a destination in their own right. Keep their wider card
+   gallery, but give it the same deliberate workspace column as schedules. */
+.remix-agent .tavern-capabilities-page {
+  width: min(1040px, 100%);
+  margin: 0 auto 36px;
+}
+
+.remix-agent .tavern-capabilities-page > .tavern-set-hint.is-lead {
+  margin: 0;
+  padding: 0 0 15px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.remix-agent .tavern-capabilities-page .tavern-cap-group:first-of-type {
+  margin-top: 18px;
+}
+
 .remix-agent .tavern-schedule-page-head {
   display: flex;
   min-height: 56px;

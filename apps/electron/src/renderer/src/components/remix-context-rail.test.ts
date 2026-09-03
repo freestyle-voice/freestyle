@@ -86,6 +86,6 @@ describe("Remix context rail", () => {
 
     expect(settings).toContain('"connectedApps"');
     expect(settings).toContain("<ConnectedApps />");
-    expect(panel).toContain("Manage connected apps from Settings.");
+    expect(panel).toContain("window.api.openSettings();");
   });
 });

@@ -187,7 +187,7 @@ function initElectronSentry(): void {
   Sentry.init({
     dsn:
       process.env.SENTRY_ELECTRON_DSN ??
-      "https://b7ed8a9e5051cfe650f0f26ca2482b4b@o4509750817325057.ingest.us.sentry.io/4511454571528192",
+      "https://0c24cb10d17fe12504a6d1ade2c4314d@o4509750817325057.ingest.us.sentry.io/4512022418096128",
     environment: process.env.FREESTYLE_ENV,
     release: `freestyle@${process.env.FREESTYLE_APP_VERSION}`,
     enabled: isTelemetryEnabled(),

@@ -95,8 +95,45 @@ describe("workspace switcher", () => {
 
     expect(remixSidebar).toContain("titleOverrides={localTitles}");
     expect(remixSidebar).toContain("onRename={renameThread}");
-    expect(remixSidebar).toContain("onDelete={deleteThread}");
+    expect(remixSidebar).toContain(
+      "onDelete={(picked) => requestDeleteThread(picked.id, picked.title)}",
+    );
     expect(remixSidebar).toContain('sessionActions="context"');
+    expect(remixSidebar).toContain("sessionActivity={sessionActivity}");
+    expect(remixSidebar).toContain("completedSessionIds={completedSessionIds}");
+    expect(remixSidebar).toContain("onSessionSeen={markSessionSeen}");
     expect(remixSidebar).not.toContain("tavern-thread-more");
+  });
+
+  it("promotes schedules into Remix navigation instead of hiding them in new-chat suggestions", async () => {
+    const [shell, sessions, panel] = await Promise.all([
+      readFile(shellPath, "utf8"),
+      readFile(
+        resolve(
+          dirname(fileURLToPath(import.meta.url)),
+          "components/remix-session-context.tsx",
+        ),
+        "utf8",
+      ),
+      readFile(
+        resolve(
+          dirname(fileURLToPath(import.meta.url)),
+          "components/panel.tsx",
+        ),
+        "utf8",
+      ),
+    ]);
+
+    expect(shell).toContain("openScheduledTasks");
+    expect(shell).toContain("Scheduled");
+    expect(sessions).toContain(
+      'export type RemixWorkspaceSurface = "chat" | "scheduled"',
+    );
+    expect(sessions).toContain("openScheduledTasks");
+    expect(panel).toContain("desktopSurface");
+    expect(panel).toContain("<ScheduledTasks");
+    expect(panel).toContain('variant="workspace"');
+    expect(panel).toContain("<RemixSchedulesHeader");
+    expect(panel).toContain("workspaceHeader={false}");
   });
 });

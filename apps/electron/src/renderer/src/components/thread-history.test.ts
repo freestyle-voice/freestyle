@@ -183,4 +183,44 @@ describe("ThreadHistory", () => {
     expect(html).toContain('data-slot="context-menu-trigger"');
     expect(html).not.toContain('data-slot="dropdown-menu-trigger"');
   });
+
+  it("shows live work and a completed-response marker inside session rows", () => {
+    const query = {
+      data: {
+        pages: [
+          {
+            threads: [
+              { id: "working", title: "Research notes", updatedAt: 30 },
+              { id: "done", title: "Morning brief", updatedAt: 20 },
+            ],
+            nextCursor: null,
+          },
+        ],
+      },
+      isLoading: false,
+      hasNextPage: false,
+      isFetchingNextPage: false,
+      fetchNextPage: vi.fn(),
+    };
+    useInfiniteQuery.mockReturnValueOnce(query).mockReturnValueOnce({
+      ...query,
+      data: { pages: [{ threads: [], nextCursor: null }] },
+    });
+
+    const html = renderToStaticMarkup(
+      createElement(ThreadHistory, {
+        currentId: "other",
+        onPick: vi.fn(),
+        sessionActivity: {
+          working: { threadId: "working", active: true, queuedCount: 2 },
+        },
+        completedSessionIds: new Set(["done"]),
+      }),
+    );
+
+    expect(html).toContain("tavern-thread-activity is-working");
+    expect(html).toContain("Remix is working; 2 follow-ups queued");
+    expect(html).toContain("tavern-thread-activity is-complete");
+    expect(html).toContain("New Remix response available");
+  });
 });

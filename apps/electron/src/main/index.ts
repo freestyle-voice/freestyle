@@ -1,8 +1,11 @@
-// Prevent EPIPE crashes when stdout/stderr is a closed pipe (e.g. Linux
-// AppImage launched detached from a terminal).
+// A GUI process can outlive its development runner (or a detached terminal).
+// In that case Node emits an error on stdout/stderr rather than making a
+// normal log call fail.  These streams are only diagnostic output — file
+// logging remains available — so a closed/unavailable output pipe must not
+// turn an otherwise clean app shutdown into a fatal Electron error dialog.
 for (const stream of [process.stdout, process.stderr]) {
   stream?.on?.("error", (err: NodeJS.ErrnoException) => {
-    if (err.code === "EPIPE") return;
+    if (err.code === "EPIPE" || err.code === "EIO") return;
     throw err;
   });
 }
@@ -475,6 +478,11 @@ let keyListener: NativeKeyListener | null = null;
 let accessibilityConfirmed = false;
 let hotkeyPressed = false;
 let dictationInProgress = false;
+// A normal dictation begun in the focused Remix composer must return there.
+// Native paste deliberately blurs Freestyle first, which is correct for every
+// external app but cannot work for this in-app target.
+let panelComposerFocused = false;
+let dictationDeliveryTarget: "panel-composer" | null = null;
 // The renderer owns Remix's actual capture/run state. Main only mirrors this
 // narrow boolean to claim Escape while there is live work to cancel.
 let remixEscapeActive = false;
@@ -1203,7 +1211,16 @@ async function deliverOutput(
   }
 
   try {
-    if (mode === OutputMode.Paste) {
+    const panel = panelWindow;
+    if (
+      mode === OutputMode.Paste &&
+      dictationDeliveryTarget === "panel-composer" &&
+      panel &&
+      !panel.isDestroyed() &&
+      panel.isVisible()
+    ) {
+      forwardDictation("final", text);
+    } else if (mode === OutputMode.Paste) {
       await yieldFocusToUserApp();
       await pasteIntoFocusedApp(text);
     } else {
@@ -1226,6 +1243,7 @@ async function deliverOutput(
     text,
     mode,
   });
+  dictationDeliveryTarget = null;
 }
 
 // Per-request timeout for main-process API calls to the server.
@@ -2071,6 +2089,17 @@ app.whenReady().then(async () => {
     ipcMain.on("e2e:open-panel", () =>
       openPanel({ focusComposer: true, trigger: "other" }),
     );
+    // The production desktop opens panel.html. Visual review needs to exercise
+    // the route-based dashboard too, but only in an isolated E2E process with
+    // a disposable user-data directory and synthetic network responses.
+    ipcMain.on("e2e:open-dashboard", () => {
+      if (panelWindow && !panelWindow.isDestroyed()) {
+        void panelWindow.loadURL(rendererUrl("index.html"));
+        return;
+      }
+      nextPanelWindowEntry = "index.html";
+      createPanelWindow();
+    });
   }
 
   // IPC: Linux system setup (input-group access for the hotkey listener and
@@ -3780,6 +3809,11 @@ ipcMain.on("panel:renderer-ready", (event) => {
   panelRendererMessages.markReady();
 });
 
+ipcMain.on("panel:composer-focused", (event, focused: unknown) => {
+  if (event.sender !== panelWindow?.webContents) return;
+  panelComposerFocused = focused === true;
+});
+
 ipcMain.on("panel:close", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
   closePanel();
@@ -3903,6 +3937,10 @@ ipcMain.on("panel:request-focus", (event) => {
 });
 
 let panelWindow: BrowserWindow | null = null;
+// Production always opens panel.html. The isolated visual test can select the
+// dashboard entry for its disposable window without widening this IPC beyond
+// E2E mode.
+let nextPanelWindowEntry = "panel.html";
 let panelBusy = false;
 const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   const win = panelWindow;
@@ -4044,7 +4082,9 @@ function createPanelWindow(): void {
     getServerToken,
     onAction: handlePluginAction,
   });
-  void panelWindow.loadURL(rendererUrl("panel.html"));
+  const entry = nextPanelWindowEntry;
+  nextPanelWindowEntry = "panel.html";
+  void panelWindow.loadURL(rendererUrl(entry));
 }
 
 type PanelTrigger =
@@ -4196,6 +4236,10 @@ function createCompanionWindow(): void {
   });
 
   companionWindow.webContents.on("render-process-gone", (_event, details) => {
+    // Destroying a BrowserWindow during quit produces the expected
+    // `clean-exit` renderer event. Do not race shutdown by creating a fresh
+    // companion window just as the process is leaving.
+    if (isQuitting) return;
     log.error(`Companion renderer gone (${details.reason}); recreating.`);
     destroyCompanionWindow();
     createCompanionWindow();
@@ -4358,6 +4402,7 @@ function cancelActivePill(): void {
   if (dictationInProgress) {
     hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
+    dictationDeliveryTarget = null;
   }
   // The legacy pill listens on `pill:cancel`; the newer surfaces retain the
   // generic dictation event. Remix consumes only the shared pill event.
@@ -4373,6 +4418,8 @@ function sendHotkeyDown(): void {
     void showRequiredPermissionDialog(missingPermission);
     return;
   }
+  dictationDeliveryTarget =
+    panelComposerFocused && panelWindow?.isFocused() ? "panel-composer" : null;
   showPill();
   anchorPillForHotkey();
   relayServerEvent({ type: FreestyleEventType.RecordingStarted });

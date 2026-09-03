@@ -276,6 +276,8 @@ const api = {
   settingsClose: (): void => ipcRenderer.send("settings:close"),
   panelSetBusy: (busy: boolean): void =>
     ipcRenderer.send("panel:set-busy", busy),
+  panelSetComposerFocused: (focused: boolean): void =>
+    ipcRenderer.send("panel:composer-focused", focused),
   panelRequestFocus: (): void => ipcRenderer.send("panel:request-focus"),
   panelPointerLeft: (): void => ipcRenderer.send("panel:pointer-left"),
   panelPointerEntered: (): void => ipcRenderer.send("panel:pointer-entered"),

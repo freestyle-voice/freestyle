@@ -28,7 +28,7 @@ describe("dashboard routes", () => {
     for (const [path, page] of routes) {
       expect(dashboard).toMatch(
         new RegExp(
-          `<Route\\s+path="${path}"\\s+element=\\{<${page}\\s*\\/>\\}\\s*\\/>`,
+          `<Route\\s+path="${path}"\\s+element=\\{\\s*<LazyRoute>\\s*<${page}\\s*\\/>\\s*</LazyRoute>\\s*\\}\\s*\\/>`,
           "s",
         ),
       );
@@ -52,7 +52,7 @@ describe("dashboard routes", () => {
     }
 
     expect(dashboard).toMatch(
-      /<Route\s+path="\/settings\/models"\s+element=\{<ModelsPage\s*\/>\}\s*\/>/s,
+      /<Route\s+path="\/settings\/models"\s+element=\{\s*<LazyRoute>\s*<ModelsPage\s*\/>\s*<\/LazyRoute>\s*\}\s*\/>/s,
     );
     expect(dashboard).toMatch(
       /<Route\s+path="\/models"\s+element=\{\s*<Navigate\s+to="\/settings\/models"\s+replace\s*\/>\s*\}\s*\/>/s,
@@ -79,7 +79,7 @@ describe("dashboard routes", () => {
 
     expect(dashboard).toContain('import HelpPage from "@renderer/pages/help"');
     expect(dashboard).toMatch(
-      /<Route\s+path="\/help"\s+element=\{<HelpPage\s*\/>\}\s*\/>/s,
+      /<Route\s+path="\/help"\s+element=\{\s*<LazyRoute>\s*<HelpPage\s*\/>\s*<\/LazyRoute>\s*\}\s*\/>/s,
     );
   });
 
@@ -90,7 +90,7 @@ describe("dashboard routes", () => {
       'const ProfilePage = lazy(() => import("@renderer/pages/profile"))',
     );
     expect(dashboard).toMatch(
-      /<Route\s+path="\/profile"\s+element=\{<ProfilePage\s*\/>\}\s*\/>/s,
+      /<Route\s+path="\/profile"\s+element=\{\s*<LazyRoute>\s*<ProfilePage\s*\/>\s*<\/LazyRoute>\s*\}\s*\/>/s,
     );
   });
 

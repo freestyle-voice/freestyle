@@ -4,6 +4,7 @@ import {
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { DictionaryLikePageSkeleton } from "@renderer/components/page-loading-skeleton";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
@@ -291,13 +292,7 @@ export default function VocabularyPage(): React.JSX.Element {
   );
 
   if (loading) {
-    return (
-      <div className="flex h-full items-center justify-center">
-        <p className="text-muted-foreground text-sm">
-          {t("vocabulary.loading")}
-        </p>
-      </div>
-    );
+    return <DictionaryLikePageSkeleton />;
   }
 
   const isEmpty = total === 0 && !search;

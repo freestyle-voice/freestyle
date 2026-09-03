@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
+import type { AgentThreadActivity } from "@renderer/lib/agent-message-queue";
 import { capture } from "@renderer/lib/analytics";
 import { threadHistoryInfiniteQueryOptions } from "@renderer/lib/query";
 import type { ThreadOrigin, ThreadSummary } from "@renderer/lib/threads";
@@ -42,6 +43,9 @@ export function ThreadHistory({
   onRename,
   onDelete,
   sessionActions,
+  sessionActivity,
+  completedSessionIds,
+  onSessionSeen,
 }: {
   /** Select immediately; the session owner loads the message detail. */
   onPick: (thread: ThreadSummary) => void;
@@ -54,9 +58,14 @@ export function ThreadHistory({
   titleOverrides?: Record<string, string>;
   /** Sidebar-only actions. Search results intentionally remain selection-only. */
   onRename?: (threadId: string, title: string) => Promise<void>;
-  onDelete?: (threadId: string) => Promise<void>;
+  onDelete?: (thread: ThreadSummary) => void;
   /** Keep desktop Remix rows clean while exposing their actions on right-click. */
   sessionActions?: "dropdown" | "context";
+  /** Local Hono stream/queue metadata for the sidebar's live state. */
+  sessionActivity?: Readonly<Record<string, AgentThreadActivity>>;
+  /** Locally acknowledged only after the user re-opens that finished session. */
+  completedSessionIds?: ReadonlySet<string>;
+  onSessionSeen?: (threadId: string) => void;
 }): React.JSX.Element {
   const [internalSearch, setInternalSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -115,6 +124,7 @@ export function ThreadHistory({
 
   const openThread = (thread: ThreadSummary): void => {
     capture("thread_opened", { origin: thread.origin });
+    onSessionSeen?.(thread.id);
     onPick(thread);
   };
 
@@ -133,12 +143,8 @@ export function ThreadHistory({
 
   const removeThread = (thread: ThreadSummary): void => {
     if (!onDelete) return;
-    if (!window.confirm(`Delete “${thread.title}”? This can’t be undone.`))
-      return;
     setActionError(null);
-    void onDelete(thread.id).catch(() =>
-      setActionError("Couldn’t delete that session."),
-    );
+    onDelete(thread);
   };
 
   const startRename = (thread: ThreadSummary): void => {
@@ -185,6 +191,19 @@ export function ThreadHistory({
         const group = dateGroup(t.updatedAt);
         const divider = group !== lastGroup;
         lastGroup = group;
+        const activity = sessionActivity?.[t.id];
+        const working = Boolean(activity?.active || activity?.queuedCount);
+        const completed = !working && completedSessionIds?.has(t.id) === true;
+        const rowContent = (
+          <>
+            <span className="tavern-thread-title">{t.title}</span>
+            <ThreadActivityIndicator
+              working={working}
+              queuedCount={activity?.queuedCount ?? 0}
+              completed={completed}
+            />
+          </>
+        );
         return (
           <Fragment key={t.id}>
             {divider ? <p className="tavern-thread-divider">{group}</p> : null}
@@ -232,7 +251,7 @@ export function ThreadHistory({
                   className="tavern-thread-pick"
                   onClick={() => openThread(t)}
                 >
-                  {t.title}
+                  {rowContent}
                 </button>
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -267,7 +286,7 @@ export function ThreadHistory({
                     className={`tavern-thread-row tavern-thread-row-direct${t.id === currentId ? " is-current" : ""}`}
                     onClick={() => openThread(t)}
                   >
-                    {t.title}
+                    {rowContent}
                   </button>
                 </ContextMenuTrigger>
                 <ContextMenuContent className="min-w-35">
@@ -290,7 +309,7 @@ export function ThreadHistory({
                 className={`tavern-thread-row tavern-thread-row-direct${t.id === currentId ? " is-current" : ""}`}
                 onClick={() => openThread(t)}
               >
-                {t.title}
+                {rowContent}
               </button>
             )}
           </Fragment>
@@ -317,6 +336,43 @@ export function ThreadHistory({
         </button>
       ) : null}
     </>
+  );
+}
+
+function ThreadActivityIndicator({
+  working,
+  queuedCount,
+  completed,
+}: {
+  working: boolean;
+  queuedCount: number;
+  completed: boolean;
+}): React.JSX.Element | null {
+  if (working) {
+    const label = queuedCount
+      ? `Remix is working; ${queuedCount} follow-up${queuedCount === 1 ? "" : "s"} queued`
+      : "Remix is working";
+    return (
+      <span
+        className="tavern-thread-activity is-working"
+        role="status"
+        aria-label={label}
+        title={label}
+      >
+        <span aria-hidden="true" />
+      </span>
+    );
+  }
+  if (!completed) return null;
+  return (
+    <span
+      className="tavern-thread-activity is-complete"
+      role="status"
+      aria-label="New Remix response available"
+      title="New Remix response available"
+    >
+      <span aria-hidden="true" />
+    </span>
   );
 }
 

@@ -94,7 +94,7 @@ describe("settings consolidation", () => {
     );
     expect(settings).toContain('network: "network"');
     expect(dashboard).toMatch(
-      /<Route\s+path="\/settings\/:section"\s+element=\{<SettingsPage\s*\/>\}\s*\/>/s,
+      /<Route\s+path="\/settings\/:section"\s+element=\{\s*<LazyRoute>\s*<SettingsPage\s*\/>\s*<\/LazyRoute>\s*\}\s*\/>/s,
     );
   });
 

@@ -85,6 +85,38 @@ describe("Remix chat polish", () => {
     expect(panel).toContain("resume: true");
   });
 
+  it("keeps queued follow-ups in the shared local queue across both Remix surfaces", async () => {
+    const [chat, panel, queue] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "components/panel.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "lib/agent-message-queue.ts"), "utf8"),
+    ]);
+
+    expect(chat).toContain("AgentMessageQueueControls");
+    expect(panel).toContain("AgentMessageQueueControls");
+    expect(chat).toContain('capture("remix_message_queued"');
+    expect(panel).toContain('capture("remix_message_queued"');
+    expect(chat).toContain("return resumeStream()");
+    expect(panel).toContain("return resumeStream()");
+    expect(queue).toContain('method: "POST"');
+    expect(queue).toContain("/steer");
+  });
+
+  it("uses the shared activity stream instead of periodic Remix polling", async () => {
+    const [sessions, queue] = await Promise.all([
+      readFile(
+        resolve(rendererRoot, "components/remix-session-context.tsx"),
+        "utf8",
+      ),
+      readFile(resolve(rendererRoot, "lib/agent-message-queue.ts"), "utf8"),
+    ]);
+
+    expect(sessions).toContain("subscribeToAgentThreadActivity");
+    expect(sessions).not.toContain("setInterval");
+    expect(queue).toContain('"/api/agent/activity/stream"');
+    expect(queue).not.toContain("window.setInterval");
+  });
+
   it("releases the pill observer when its session is handed to the workspace", async () => {
     const chat = await readFile(
       resolve(rendererRoot, "components/remix-chat.tsx"),
@@ -105,8 +137,14 @@ describe("Remix chat polish", () => {
     expect(chat).toContain("<RemixVoiceCaptureSurface");
     expect(chat).toContain('className="remix-chat-voice-capture"');
     expect(chat).not.toContain('className="remix-chat-voice-status"');
-    expect(chat).toContain("Keep holding the hotkey and speak naturally.");
-    expect(chat).toContain("Release to send");
+    expect(chat).toContain(
+      'const placeholder = isListening ? "Listening…" : "Transcribing…"',
+    );
+    expect(chat).not.toContain("Keep holding the hotkey and speak naturally.");
+    expect(chat).not.toContain("Release to send");
+    expect(chat).not.toContain("remix-chat-voice-label");
+    expect(chat).toContain("min-height: 44px;");
+    expect(chat).toContain("props.voiceStatus === null ? (");
   });
 
   it("keeps the compact response scroller below a dedicated Remix top bar", async () => {

@@ -23,7 +23,8 @@
     "generate:linux-icons": "python3 scripts/generate-linux-icons.py",
     "build:linux": "npm run compile:native && electron-vite build && electron-builder --linux --publish never",
     "test": "vitest run",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "test:visual": "npm run build && playwright test tests/dashboard-visual.test.ts"
   },
   "dependencies": {
     "@ai-sdk/react": "^3.0.44",

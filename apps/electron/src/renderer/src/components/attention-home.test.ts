@@ -23,13 +23,12 @@ const item = (index: number) => ({
 });
 
 describe("AttentionHome", () => {
-  it("uses a shape-matched skeleton only for the first empty cache", () => {
+  it("does not interrupt the new-chat welcome while attention loads", () => {
     useQuery.mockReturnValue({ isPending: true });
 
     const html = renderToStaticMarkup(createElement(AttentionHome));
 
-    expect(html).toContain('aria-label="Loading work that needs attention"');
-    expect(html).not.toContain("Loading…");
+    expect(html).toBe("");
   });
 
   it("keeps the surface compact while preserving the total count", () => {

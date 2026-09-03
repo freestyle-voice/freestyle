@@ -44,4 +44,17 @@ describe("Remix session switching", () => {
     expect(sessions).toContain("fetchQuery(threadQueryOptions(threadId))");
     expect(sessions).toContain("current?.id === threadId ? loaded : current");
   });
+
+  it("returns from schedules to chat when the pill opens a session", async () => {
+    const sessions = await readFile(
+      resolve(rendererRoot, "components/remix-session-context.tsx"),
+      "utf8",
+    );
+    const panelOpen = sessions.slice(
+      sessions.indexOf("onPanelOpenThread"),
+      sessions.indexOf("onPanelThreadUpdated"),
+    );
+
+    expect(panelOpen).toContain("openChat();");
+  });
 });

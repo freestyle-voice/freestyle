@@ -231,6 +231,7 @@ export function ModelList({
   llmView,
   m,
   cloudBusy,
+  catalogLoading,
   onClose,
   onPickCloud,
   onPickLocalVoice,
@@ -241,6 +242,7 @@ export function ModelList({
   llmView?: "tiers" | "all" | "local" | "cloud";
   m: UseModels;
   cloudBusy?: boolean;
+  catalogLoading: boolean;
   onClose: () => void;
   onPickCloud: (model: AvailableModel) => void;
   onPickLocalVoice: (
@@ -281,6 +283,7 @@ export function ModelList({
       <TranscriptionPicker
         m={m}
         busy={cloudBusy}
+        catalogLoading={catalogLoading}
         onClose={onClose}
         onPickCloud={onPickCloud}
         onBrowseLocal={() => setView("local")}
@@ -293,6 +296,7 @@ export function ModelList({
     return (
       <CleanupTierPicker
         m={m}
+        catalogLoading={catalogLoading}
         onClose={onClose}
         onBrowseLocal={() => setView("local")}
         onBrowseCloud={() => setView("cloud")}
@@ -897,11 +901,13 @@ function isByokLlm(llm: ConfiguredModel | undefined): boolean {
 /** On-device and BYOK only — Freestyle cleanup ships with Freestyle Transcribe. */
 function CleanupTierPicker({
   m,
+  catalogLoading,
   onClose,
   onBrowseLocal,
   onBrowseCloud,
 }: {
   m: UseModels;
+  catalogLoading: boolean;
   onClose: () => void;
   onBrowseLocal: () => void;
   onBrowseCloud: () => void;
@@ -921,15 +927,19 @@ function CleanupTierPicker({
 
   const localHint = localActive
     ? (m.defaultLlm?.model_name ?? t("models.onDevice"))
-    : m.localLlm.connected === true
-      ? t("models.picker.modelCount", { count: m.localLlm.models.length })
-      : t("models.picker.ollamaHint");
+    : catalogLoading
+      ? t("models.picker.checkingAvailability")
+      : m.localLlm.connected === true
+        ? t("models.picker.modelCount", { count: m.localLlm.models.length })
+        : t("models.picker.ollamaHint");
 
   const byokLabel = byokActive
     ? (m.defaultLlm?.model_name ?? displayName(m.defaultLlm!.provider))
-    : byokCount > 0
-      ? t("models.picker.cloudModelCount", { count: byokCount })
-      : t("models.picker.byokProviders");
+    : catalogLoading
+      ? t("models.picker.checkingAvailability")
+      : byokCount > 0
+        ? t("models.picker.cloudModelCount", { count: byokCount })
+        : t("models.picker.byokProviders");
 
   return (
     <>

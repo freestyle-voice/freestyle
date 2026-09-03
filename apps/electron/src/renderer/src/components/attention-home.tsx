@@ -1,4 +1,3 @@
-import { DataSkeleton } from "@renderer/components/data-skeleton";
 import type { AttentionItem, AttentionTarget } from "@renderer/lib/attention";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { attentionQueryOptions } from "@renderer/lib/query";
@@ -49,14 +48,10 @@ export function AttentionHome({
 
   if (auth.loading || !auth.user) return null;
 
-  if (query.isPending) {
-    return (
-      <section className="tavern-attention-home" aria-label="What needs me now">
-        <span className="tavern-attention-eyebrow">What needs me now</span>
-        <DataSkeleton label="Loading work that needs attention" rows={2} />
-      </section>
-    );
-  }
+  // This is an optional summary above the new-chat welcome. Let it load in
+  // the background instead of inserting unrelated rows into an otherwise
+  // ready composer; render it only once there is work to surface.
+  if (query.isPending) return null;
 
   const allItems = query.data?.items ?? [];
   if (allItems.length === 0) return null;

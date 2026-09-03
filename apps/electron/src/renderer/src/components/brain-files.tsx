@@ -202,7 +202,6 @@ export function BrainFiles({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [view, setView] = useState<FileView>({ kind: "list" });
   const [error, setError] = useState<string | null>(null);
-  const [scheduledOpen, setScheduledOpen] = useState(false);
   const scheduled = root === "";
 
   const openFile = (path: string): void => {
@@ -374,21 +373,10 @@ export function BrainFiles({
     );
   }
 
-  if (scheduled && scheduledOpen)
-    return (
-      <ScheduledTasks
-        onOpenChange={setScheduledOpen}
-        {...(onOpenThread ? { onOpenThread } : {})}
-      />
-    );
-
   return (
     <>
       {scheduled ? (
-        <ScheduledTasks
-          onOpenChange={setScheduledOpen}
-          {...(onOpenThread ? { onOpenThread } : {})}
-        />
+        <ScheduledTasks {...(onOpenThread ? { onOpenThread } : {})} />
       ) : null}
       <section
         className={`tavern-brain-files${scheduled ? " has-scheduled" : ""}`}

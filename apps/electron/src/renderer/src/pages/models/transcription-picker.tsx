@@ -68,6 +68,7 @@ export function TranscriptionPicker({
   onBrowseLocal,
   onBrowseCloud,
   busy,
+  catalogLoading,
 }: {
   m: UseModels;
   onClose: () => void;
@@ -75,6 +76,7 @@ export function TranscriptionPicker({
   onBrowseLocal: () => void;
   onBrowseCloud: () => void;
   busy?: boolean;
+  catalogLoading: boolean;
 }): React.JSX.Element {
   const { t } = useTranslation();
   const cloud = useCloudAuth();
@@ -95,17 +97,25 @@ export function TranscriptionPicker({
   );
 
   const selectedLocal = localItems.find((it) => it.selected);
-  const localHint = selectedLocal
-    ? selectedLocal.name
-    : localItems.length > 0
-      ? t("models.picker.modelCount", { count: localItems.length })
-      : t("models.picker.unavailableOnDevice");
+  const localHint = localActive
+    ? (m.defaultVoice?.model_name ??
+      selectedLocal?.name ??
+      t("models.picker.checkingAvailability"))
+    : catalogLoading
+      ? t("models.picker.checkingAvailability")
+      : selectedLocal
+        ? selectedLocal.name
+        : localItems.length > 0
+          ? t("models.picker.modelCount", { count: localItems.length })
+          : t("models.picker.unavailableOnDevice");
 
   const byokLabel = byokActive
     ? (m.defaultVoice?.model_name ?? displayName(m.defaultVoice!.provider))
-    : byokCount > 0
-      ? t("models.picker.cloudModelCount", { count: byokCount })
-      : t("models.picker.byokProviders");
+    : catalogLoading
+      ? t("models.picker.checkingAvailability")
+      : byokCount > 0
+        ? t("models.picker.cloudModelCount", { count: byokCount })
+        : t("models.picker.byokProviders");
 
   return (
     <>

@@ -72,7 +72,12 @@ function hasActiveDownload(
 }
 
 export interface UseModels {
+  /** True while the selected configuration required to render the page loads. */
   loading: boolean;
+  /** True while optional picker catalog and local engine discovery loads. */
+  catalogLoading: boolean;
+  /** True while the API-key inventory for the lower card loads. */
+  keysLoading: boolean;
   available: AvailableModel[];
   configured: ConfiguredModel[];
   apiKeys: ApiKeyEntry[];
@@ -215,11 +220,16 @@ export function useModels(): UseModels {
   const apiKeys = keysQuery.data ?? EMPTY_KEYS;
   const whisperStatus = whisperQuery.data ?? null;
   const mlxStatus = mlxQuery.data ?? null;
-  const loading =
+  // The selected configuration is critical: without it we cannot accurately
+  // render either model card. The catalog, key inventory, and local runtime
+  // status are only needed for the lower card or after the picker opens, so
+  // keep fetching those without holding the page—and its Change button—hostage.
+  const loading = configuredQuery.isLoading || settingsQuery.isLoading;
+  const catalogLoading =
     availableQuery.isLoading ||
-    configuredQuery.isLoading ||
-    keysQuery.isLoading ||
-    settingsQuery.isLoading;
+    whisperQuery.isLoading ||
+    (IS_MAC && mlxQuery.isLoading);
+  const keysLoading = keysQuery.isLoading;
 
   // -------------------------------------------------------------------------
   // Editable form state (seeded from persisted settings)
@@ -711,6 +721,8 @@ export function useModels(): UseModels {
 
   return {
     loading,
+    catalogLoading,
+    keysLoading,
     available,
     configured,
     apiKeys,

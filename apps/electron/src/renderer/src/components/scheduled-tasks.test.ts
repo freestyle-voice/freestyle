@@ -73,7 +73,7 @@ describe("ScheduledTasks", () => {
     expect(html).toContain("New scheduled task");
     expect(html).toContain('aria-label="Run Morning brief now"');
     expect(html).toContain('role="switch"');
-    expect(html).not.toContain("Check the");
+    expect(html).toContain("Check the **markets**.");
   });
 
   it("explains how to get a task when there are none", () => {
@@ -82,6 +82,35 @@ describe("ScheduledTasks", () => {
       createElement(ScheduledTasks, { mascot: "Bramble" }),
     );
     expect(html).toContain("Ask Bramble to do something regularly");
+  });
+
+  it("uses the compact Remix workspace frame with an icon-only delete action", () => {
+    mockQueries({ tasks: [task], files: [] });
+
+    const html = renderToStaticMarkup(
+      createElement(ScheduledTasks, { variant: "workspace" }),
+    );
+
+    expect(html).toContain("Schedules");
+    expect(html).toContain("New schedule");
+    expect(html).toContain("Edit schedule");
+    expect(html).toContain('aria-label="Delete Morning brief"');
+    expect(html).not.toContain("REMIX ROUTINES");
+    expect(html).toContain('class="tavern-schedule-page"');
+  });
+
+  it("lets the outer Remix workspace own the schedule header", () => {
+    mockQueries({ tasks: [task], files: [] });
+
+    const html = renderToStaticMarkup(
+      createElement(ScheduledTasks, {
+        variant: "workspace",
+        workspaceHeader: false,
+      }),
+    );
+
+    expect(html).not.toContain("New schedule");
+    expect(html).not.toContain("Schedules");
   });
 });
 

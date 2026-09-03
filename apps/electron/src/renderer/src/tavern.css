@@ -31,15 +31,18 @@
 :root {
   --tavern-px: "Pixelify Sans", monospace;
   --tavern-mono: "IBM Plex Mono", monospace;
-  --tavern-parchment: #f3ead3;
-  --tavern-card: #fbf5e4;
-  --tavern-ink: #2a2114;
-  --tavern-lantern: #d98e2b;
-  --tavern-robe: #3c4664;
-  --tavern-rust: #9c3b24;
-  --tavern-rule: #dbcca6;
-  --tavern-mute: #8e7f5f;
-  --tavern-wash: #ebdfc0;
+  /* Keep the legacy Tavern component names, but source them from the current
+     application palette. Dialogs are portaled outside Remix, so literal legacy
+     tokens here leak through as unreadable dark text and orange actions. */
+  --tavern-parchment: var(--card);
+  --tavern-card: var(--background);
+  --tavern-ink: var(--foreground);
+  --tavern-lantern: var(--primary);
+  --tavern-robe: var(--primary);
+  --tavern-rust: var(--destructive);
+  --tavern-rule: var(--border);
+  --tavern-mute: var(--muted-foreground);
+  --tavern-wash: var(--secondary);
 }
 
 .tavern {
@@ -74,8 +77,11 @@
   border: 3px solid var(--tavern-ink);
   border-radius: 18px;
   overflow: hidden;
-  box-shadow: 7px 7px 0 rgba(42, 33, 20, 0.8);
-  background-image: radial-gradient(#d98e2b12 1.2px, transparent 1.2px);
+  box-shadow: 7px 7px 0 color-mix(in srgb, #000 58%, transparent);
+  background-image: radial-gradient(
+    color-mix(in srgb, var(--tavern-lantern) 7%, transparent) 1.2px,
+    transparent 1.2px
+  );
   background-size: 7px 7px;
 }
 
@@ -571,7 +577,7 @@
   border-radius: 10px;
   padding: 7px;
   background: var(--tavern-card);
-  box-shadow: 2px 2px 0 #d98e2b33;
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--tavern-lantern) 20%, transparent);
 }
 
 .tavern-msg-edit-input {
@@ -1395,7 +1401,7 @@
 }
 
 .tavern-approve-allow:hover {
-  background: #c47f24;
+  background: color-mix(in srgb, var(--tavern-lantern) 84%, var(--background));
 }
 
 .tavern-approve-btn:focus-visible {
@@ -1409,6 +1415,98 @@
   gap: 8px;
   padding: 12px 14px;
   border-top: 1px solid var(--tavern-rule);
+}
+
+.tavern .agent-message-queue {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  margin: 8px 14px -4px;
+  padding: 7px 8px 7px 10px;
+  border: 1px solid var(--tavern-rule);
+  border-radius: 9px;
+  background: var(--tavern-parchment);
+  color: var(--tavern-mute);
+}
+
+.tavern .agent-message-queue-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+
+.tavern .agent-message-queue-label {
+  flex: none;
+  color: var(--tavern-lantern);
+  font-family: var(--tavern-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.tavern .agent-message-queue-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+}
+
+.tavern .agent-message-queue-input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--tavern-ink);
+  font: inherit;
+  font-size: 11px;
+}
+
+.tavern .agent-message-queue-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.tavern .agent-message-queue-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tavern-mute);
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.tavern .agent-message-queue-actions button:hover:not(:disabled) {
+  background: var(--tavern-wash);
+  color: var(--tavern-ink);
+}
+
+.tavern .agent-message-queue-actions button:disabled {
+  cursor: wait;
+  opacity: .5;
+}
+
+.tavern .agent-message-queue-steer {
+  gap: 4px;
+  color: var(--tavern-lantern) !important;
+}
+
+.tavern .agent-message-queue-icon {
+  width: 22px;
+  padding: 0 !important;
 }
 
 .tavern-input {
@@ -1748,12 +1846,6 @@
   align-self: flex-start;
 }
 
-.tavern-sched-actions {
-  display: flex;
-  gap: 6px;
-  margin-top: 8px;
-}
-
 .tavern-sched-action {
   font: inherit;
   font-size: 11px;
@@ -1773,11 +1865,6 @@
 .tavern-sched-action:disabled {
   opacity: 0.5;
   cursor: default;
-}
-
-.tavern-sched-action.is-danger {
-  color: var(--tavern-rust);
-  border-color: var(--tavern-rust);
 }
 
 .tavern-sched-action:focus-visible,
@@ -2785,7 +2872,7 @@
 
 .connector-search:focus-within {
   border-color: var(--tavern-lantern);
-  box-shadow: 0 0 0 2px #d98e2b24;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--tavern-lantern) 14%, transparent);
 }
 
 .connector-search-icon {
@@ -3913,8 +4000,8 @@
   bottom: 26px;
   font-family: var(--tavern-px);
   font-size: 11px;
-  color: #f3ead3;
-  text-shadow: 1px 1px 0 #2a211466;
+  color: var(--foreground);
+  text-shadow: 1px 1px 0 color-mix(in srgb, #000 40%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4376,12 +4463,6 @@ button.tavern-attention-item:focus-visible {
   opacity: 0.55;
 }
 
-.tavern-sched-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 .tavern-sched-name {
   font-size: 12.5px;
   font-weight: 700;
@@ -4418,6 +4499,17 @@ button.tavern-attention-item:focus-visible {
   font-size: 12px;
   color: var(--tavern-ink);
   margin: 5px 0 0;
+}
+
+.tavern-sched-instruction {
+  display: -webkit-box;
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--tavern-mute);
+  font-size: 11.5px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .tavern-sched-meta {
@@ -4496,23 +4588,6 @@ button.tavern-attention-item:focus-visible {
   flex: 1;
   min-width: 0;
   display: block;
-  font: inherit;
-  text-align: left;
-  color: inherit;
-  padding: 0;
-  border: 0;
-  background: none;
-  cursor: pointer;
-}
-
-.tavern-sched-open:hover .tavern-sched-name {
-  text-decoration: underline;
-}
-
-.tavern-sched-open:focus-visible {
-  outline: 2px solid var(--tavern-lantern);
-  outline-offset: 2px;
-  border-radius: 6px;
 }
 
 .tavern-sched-side {
@@ -4521,10 +4596,6 @@ button.tavern-attention-item:focus-visible {
   align-items: flex-end;
   gap: 6px;
   flex-shrink: 0;
-}
-
-.tavern-sched.is-detail {
-  margin-bottom: 12px;
 }
 
 .tavern-sched-form {
@@ -4545,6 +4616,56 @@ button.tavern-attention-item:focus-visible {
 
 .tavern-sched-field .tavern-editor {
   min-height: 140px;
+}
+
+.tavern-schedule-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-height: min(760px, calc(100dvh - 32px));
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.tavern-schedule-dialog [data-slot="dialog-header"] {
+  gap: 6px;
+  padding-right: 34px;
+}
+
+.tavern-schedule-dialog [data-slot="dialog-title"] {
+  color: var(--foreground);
+  font-family: "Instrument Serif", "Times New Roman", serif;
+  font-size: 28px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+
+.tavern-schedule-dialog .tavern-sched-form {
+  margin-top: 16px;
+  gap: 13px;
+}
+
+.tavern-schedule-dialog .tavern-sched-field {
+  gap: 6px;
+}
+
+.tavern-schedule-dialog .tavern-sched-label {
+  color: var(--muted-foreground);
+  font-family: var(--tavern-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.tavern-schedule-dialog .tavern-editor-name,
+.tavern-schedule-dialog .tavern-editor {
+  border-color: var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--background) 72%, var(--card));
+}
+
+.tavern-schedule-dialog .tavern-approve-actions {
+  margin-top: 5px;
+  justify-content: flex-end;
 }
 
 /* ── Apps page v2: logos, detail pane, in-chat connect cards ─────────── */

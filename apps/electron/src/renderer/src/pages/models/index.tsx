@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { FreestyleCloudBundleCard } from "./freestyle-cloud-bundle-card";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageShell } from "./page-chrome";
@@ -324,6 +325,18 @@ export default function ModelsPage(): React.JSX.Element {
           subtitle={t("models.subtitle")}
         />
         <div className="space-y-5">
+          <FreestyleCloudBundleCard
+            active={
+              freestyleVoiceActive &&
+              m.llmCleanup &&
+              m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER &&
+              m.defaultLlm?.model_id === FREESTYLE_CLOUD_CLEANUP.model_id
+            }
+            signedIn={!!cloudAuth.user}
+            busy={cloudBusy}
+            onUse={() => void configureFreestylePair()}
+          />
+
           <PairCard
             voice={m.defaultVoice}
             llm={m.defaultLlm}
@@ -341,6 +354,7 @@ export default function ModelsPage(): React.JSX.Element {
             apiKeys={m.apiKeys}
             configured={m.configured}
             deletingProviders={m.deletingProviders}
+            loading={m.keysLoading}
             onEdit={(provider) =>
               setModal({
                 kind: "key",
@@ -369,6 +383,7 @@ export default function ModelsPage(): React.JSX.Element {
             saving={saving}
             keyError={keyError}
             cloudBusy={cloudBusy}
+            catalogLoading={m.catalogLoading}
             onClose={closeModal}
             onPickCloud={onPickCloud}
             onPickLocalVoice={onPickLocalVoice}
@@ -528,12 +543,14 @@ function KeysSection({
   apiKeys,
   configured,
   deletingProviders,
+  loading,
   onEdit,
   onDelete,
 }: {
   apiKeys: ApiKeyEntry[];
   configured: ConfiguredModel[];
   deletingProviders: Set<string>;
+  loading: boolean;
   onEdit: (provider: string) => void;
   onDelete: (provider: string) => void;
 }): React.JSX.Element {
@@ -549,7 +566,16 @@ function KeysSection({
           {t("models.apiKeysHint")}
         </p>
       </div>
-      {apiKeys.length === 0 ? (
+      {loading ? (
+        <div
+          className="space-y-3 px-4 py-4 sm:px-5"
+          role="status"
+          aria-label="Loading API keys"
+        >
+          <SkeletonLine className="h-4 w-40" />
+          <SkeletonLine className="h-3 w-28" />
+        </div>
+      ) : apiKeys.length === 0 ? (
         <p className="text-muted-foreground px-4 py-4 text-[13px] sm:px-5">
           {t("models.noApiKeys")}
         </p>

@@ -30,6 +30,7 @@ import {
 import { TextMessagePreview } from "@renderer/components/tone-previews/text-message-preview";
 import { WorkChatPreview } from "@renderer/components/tone-previews/work-chat-preview";
 import { Button } from "@renderer/components/ui/button";
+import { Skeleton } from "@renderer/components/ui/skeleton";
 import {
   Tabs,
   TabsContent,
@@ -515,15 +516,7 @@ export default function TonePage(): React.JSX.Element {
   const cleanupMode: CleanupCardValue = cleanupIntensity;
 
   if (loading) {
-    return (
-      <PageShell>
-        <div className="mx-auto w-full max-w-[1060px]">
-          <div className="flex items-center justify-center py-24">
-            <p className="text-muted-foreground text-sm">{t("tone.loading")}</p>
-          </div>
-        </div>
-      </PageShell>
-    );
+    return <TonePageLoadingSkeleton />;
   }
 
   return (
@@ -648,6 +641,38 @@ export default function TonePage(): React.JSX.Element {
             />
           </TabsContent>
         </Tabs>
+      </div>
+    </PageShell>
+  );
+}
+
+function TonePageLoadingSkeleton(): React.JSX.Element {
+  return (
+    <PageShell>
+      <div
+        aria-busy="true"
+        aria-label="Loading tone settings"
+        className="mx-auto w-full max-w-[1060px]"
+        role="status"
+      >
+        <div className="mb-7 space-y-3">
+          <Skeleton className="h-11 w-48 max-w-full" />
+          <Skeleton className="h-4 w-[min(34rem,80%)] max-w-full" />
+        </div>
+        <Skeleton className="h-11 w-96 max-w-full rounded-full" />
+        <div className="mt-7 grid gap-4 md:grid-cols-3">
+          {["first", "second", "third"].map((card) => (
+            <div
+              key={card}
+              className="border-border bg-card rounded-[14px] border p-5"
+            >
+              <Skeleton className="h-4 w-28" />
+              <Skeleton className="mt-4 h-3 w-full" />
+              <Skeleton className="mt-2 h-3 w-4/5" />
+              <Skeleton className="mt-7 h-9 w-24" />
+            </div>
+          ))}
+        </div>
       </div>
     </PageShell>
   );

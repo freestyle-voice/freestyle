@@ -142,7 +142,9 @@
 
 .remix-sidebar-sessions-head {
   display: flex;
+  flex-direction: column;
   align-items: center;
+  gap: 2px;
 }
 
 .remix-sidebar-new {
@@ -168,10 +170,33 @@
   background: color-mix(in srgb, var(--secondary) 82%, transparent);
 }
 
+.remix-sidebar-new.is-current {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--secondary));
+  color: var(--foreground);
+}
+
 .remix-sidebar-new svg {
   width: 14px;
   height: 14px;
   color: var(--primary);
+}
+
+.remix-sidebar-delete-confirmation {
+  align-self: flex-start;
+  border: 0;
+  padding: 3px 10px 1px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 10.5px;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 52%, transparent);
+  text-underline-offset: 3px;
+}
+
+.remix-sidebar-delete-confirmation:hover {
+  color: var(--foreground);
 }
 
 .remix-sidebar-sessions-list {
@@ -279,9 +304,20 @@
   padding: 7px 12px;
 }
 
-.remix-sidebar-sessions .tavern-thread-pick {
+.remix-sidebar-sessions .tavern-thread-title {
   min-width: 0;
   flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-sidebar-sessions .tavern-thread-pick {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
   overflow: hidden;
   border: 0;
   padding: 6px 8px;
@@ -291,6 +327,49 @@
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* A session's current run belongs in the navigation, but it must remain
+ * quiet: an 11px spinner while the local Hono owner is active, followed by a
+ * small blue return marker once a background response becomes available. */
+.remix-sidebar-sessions .tavern-thread-activity {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  place-items: center;
+  margin-left: 7px;
+}
+
+.remix-sidebar-sessions .tavern-thread-activity > span {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.remix-sidebar-sessions .tavern-thread-activity.is-working > span {
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, var(--primary) 26%, transparent);
+  border-top-color: var(--primary);
+  animation: remix-session-spin 780ms linear infinite;
+}
+
+.remix-sidebar-sessions .tavern-thread-activity.is-complete > span {
+  background: hsl(208 90% 62%);
+  box-shadow: 0 0 0 3px hsl(208 90% 62% / 14%), 0 0 10px hsl(208 90% 62% / 24%);
+}
+
+@keyframes remix-session-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remix-sidebar-sessions .tavern-thread-activity.is-working > span {
+    animation: none;
+    border-color: var(--primary);
+    opacity: 0.72;
+  }
 }
 
 .remix-sidebar-sessions .tavern-empty {
@@ -421,6 +500,30 @@
   white-space: nowrap;
 }
 
+.remix-agent .remix-schedule-create {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.remix-agent .remix-schedule-create:hover {
+  filter: brightness(1.08);
+}
+
+.remix-agent .remix-schedule-create .tavern-workspace-icon {
+  width: 14px;
+  height: 14px;
+}
+
 .remix-agent .remix-chat-session-actions,
 .remix-agent .remix-context-toggle,
 .remix-agent .remix-chat-title-edit button {
@@ -454,7 +557,7 @@
 }
 
 .remix-agent .remix-chat-session-actions svg,
-.remix-agent .remix-context-toggle .tavern-workspace-icon,
+.remix-agent .remix-context-toggle > svg,
 .remix-agent .remix-chat-title-edit button svg {
   width: 15px;
   height: 15px;
@@ -635,9 +738,30 @@
 
 .remix-context-card-title {
   display: inline-flex;
+  min-width: 0;
   align-items: center;
   gap: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--foreground);
+  font: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.remix-context-card-title:not(:disabled) {
+  cursor: pointer;
+}
+
+.remix-context-card-title:not(:disabled):hover {
+  color: var(--foreground);
+}
+
+.remix-context-card-title:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
 }
 
 .remix-context-card-icon {
@@ -874,39 +998,431 @@
   color: var(--muted-foreground);
 }
 
-.remix-context-preview {
-  position: relative;
-  z-index: 1;
-  max-height: 180px;
-  overflow: auto;
-  border-top: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
-  padding: 11px 12px;
-  color: var(--muted-foreground);
-  font-size: 11px;
-  line-height: 1.45;
+.remix-context-view-all {
+  margin: 0 10px 8px;
 }
 
-.remix-context-preview > span {
-  display: block;
+/* The overview remains scannable. Detailed work lives beside the conversation,
+   so it reads as a real workspace instead of a temporary overlay. */
+.remix-inspector {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  width: min(var(--remix-inspector-width), 50%);
+  max-width: 50%;
+  min-width: min(360px, 46vw);
+  flex: 0 1 min(var(--remix-inspector-width), 50%);
+  flex-direction: column;
   overflow: hidden;
-  margin-bottom: 5px;
-  color: var(--foreground);
+  border-left: 1px solid var(--border);
+  background: var(--background);
+  animation: remix-inspector-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes remix-inspector-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.remix-inspector-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+  cursor: col-resize;
+}
+
+.remix-inspector-resize-handle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.remix-inspector-head {
+  display: flex;
+  min-height: 42px;
+  flex: 0 0 42px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+
+.remix-inspector-tabs {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 0 6px;
+}
+
+.remix-inspector-tab-wrap {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.remix-inspector-tab-wrap button {
+  display: inline-flex;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
   font-size: 11px;
   font-weight: 600;
+  white-space: nowrap;
+}
+
+.remix-inspector-tab-wrap button[role="tab"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remix-inspector-tab-wrap button[aria-selected="true"] {
+  color: var(--foreground);
+  border-bottom-color: var(--foreground);
+}
+
+.remix-inspector-tab-wrap button svg,
+.remix-inspector-document-head button svg,
+.remix-inspector-file-list button > svg {
+  width: 13px;
+  height: 13px;
+}
+
+.remix-inspector-tab-wrap button:hover,
+.remix-inspector-document-head button:hover {
+  color: var(--foreground);
+}
+
+.remix-inspector-body {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 18px;
+}
+
+.remix-inspector-document-head {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  color: var(--muted-foreground);
+}
+
+.remix-inspector-document-location {
+  overflow: hidden;
+  min-width: 0;
+}
+
+.remix-inspector-document-location [data-slot="breadcrumb-list"] {
+  flex-wrap: nowrap;
+  gap: 5px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-family: var(--tavern-mono);
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.remix-inspector-document-location [data-slot="breadcrumb-item"] {
+  min-width: 0;
+}
+
+.remix-inspector-document-location [data-slot="breadcrumb-item"] > span,
+.remix-inspector-document-location [data-slot="breadcrumb-page"] {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.remix-context-preview .tavern-md > :first-child {
-  margin-top: 0;
+.remix-inspector-document-location [data-slot="breadcrumb-item"] > span {
+  color: var(--muted-foreground);
 }
 
-.remix-context-preview .tavern-md > :last-child {
-  margin-bottom: 0;
+.remix-inspector-document-location [data-slot="breadcrumb-page"] {
+  color: var(--foreground);
+  font-weight: 600;
 }
 
-.remix-context-view-all {
-  margin: 0 10px 8px;
+.remix-inspector-document-location [data-slot="breadcrumb-separator"] {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.remix-inspector-document-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.remix-inspector-document-action-group {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  background: var(--card);
+}
+
+.remix-inspector-document-head button {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 0 9px;
+  background: transparent;
+  color: var(--secondary-foreground);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.remix-inspector-document-head button svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+.remix-inspector-revert {
+  width: 27px;
+  padding: 0 !important;
+}
+
+.remix-inspector-document-head button:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--secondary);
+}
+
+.remix-inspector-document-head button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.remix-inspector-save {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  min-width: 62px;
+  box-shadow: 0 5px 12px -8px color-mix(in srgb, var(--primary) 90%, transparent);
+}
+
+.remix-inspector-save:hover:not(:disabled) {
+  border-color: var(--primary) !important;
+  background: color-mix(in srgb, var(--primary) 92%, #fff) !important;
+  color: var(--primary-foreground) !important;
+}
+
+.remix-inspector-save:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.remix-inspector-document-state,
+.remix-inspector-document-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  font-weight: 560;
+}
+
+.remix-inspector-document-state svg {
+  width: 13px;
+  height: 13px;
+  color: var(--primary);
+}
+
+.remix-inspector-document-state.is-dirty {
+  color: color-mix(in srgb, var(--primary) 82%, var(--foreground));
+}
+
+.remix-inspector-document-state.is-dirty::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--primary);
+  content: "";
+}
+
+.remix-inspector-document-error {
+  color: var(--destructive);
+}
+
+.remix-inspector-editor {
+  width: 100%;
+  min-height: min(510px, calc(100dvh - 165px));
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  outline: 0;
+  padding: 14px;
+  background: var(--card);
+  color: var(--foreground);
+  font-family: var(--tavern-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.remix-inspector-editor:focus {
+  border-color: color-mix(in srgb, var(--primary) 64%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.remix-inspector-file-list {
+  display: grid;
+  gap: 6px;
+}
+
+.remix-inspector-task-list {
+  display: grid;
+  gap: 3px;
+}
+
+.remix-inspector-task-list label {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  color: var(--secondary-foreground);
+  font-size: 12px;
+}
+
+.remix-inspector-task-list input {
+  accent-color: var(--primary);
+}
+
+.remix-inspector-task-list input:checked + span {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+.remix-inspector-task-add {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0 10px;
+  color: var(--primary);
+}
+
+.remix-inspector-task-add input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+}
+
+.remix-inspector-empty-copy {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.remix-inspector-file-list button {
+  display: flex;
+  width: 100%;
+  min-height: 54px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: transparent;
+  color: var(--secondary-foreground);
+  text-align: left;
+}
+
+.remix-inspector-file-list button:hover {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.remix-inspector-file-list button > svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.remix-inspector-file-list button > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.remix-inspector-file-list strong,
+.remix-inspector-file-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-inspector-file-list strong {
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.remix-inspector-file-list small,
+.remix-inspector-empty {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.remix-inspector-empty {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.remix-inspector-empty p {
+  margin: 0;
+}
+
+.remix-inspector-empty button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
 }
 
 @media (max-width: 1080px) {
@@ -914,6 +1430,23 @@
     --remix-context-width: min(304px, calc(100vw - 82px));
   }
 
+}
+
+@media (max-width: 760px) {
+  .remix-inspector {
+    position: absolute;
+    z-index: 8;
+    inset: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+    border-left: 0;
+  }
+
+  .remix-inspector-resize-handle {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -936,6 +1469,345 @@
 
 .remix-agent .tavern-conversation {
   padding: 24px var(--remix-content-gutter);
+}
+
+/* Scheduled work uses the same restrained content column as a Remix chat; it
+   is a workspace view, not a separate landing page. */
+.remix-agent .tavern-schedule-page {
+  width: min(760px, 100%);
+  margin: 0 auto 36px;
+}
+
+.remix-agent .tavern-schedule-page-head {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  padding: 0 0 15px;
+}
+
+.remix-agent .tavern-schedule-page-head h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.remix-agent .tavern-schedule-page-head p {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+}
+
+.remix-agent .tavern-schedule-page-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.remix-agent .tavern-schedule-create {
+  display: inline-flex;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 0 13px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  transition: transform 140ms ease, filter 140ms ease;
+}
+
+.remix-agent .tavern-schedule-create:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.remix-agent .tavern-schedule-confirmation-reset {
+  border: 0;
+  padding: 0 3px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 10.5px;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  text-underline-offset: 3px;
+}
+
+.remix-agent .tavern-schedule-confirmation-reset:hover {
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-schedule-inline-preference {
+  display: flex;
+  justify-content: flex-end;
+  margin: -5px 0 9px;
+}
+
+.remix-agent .tavern-schedule-create:focus-visible,
+.remix-agent .tavern-schedule-edit:focus-visible,
+.remix-agent .tavern-schedule-run:focus-visible,
+.remix-agent .tavern-schedule-state:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.remix-agent .tavern-schedule-create svg,
+.remix-agent .tavern-schedule-edit svg,
+.remix-agent .tavern-schedule-run svg {
+  width: 14px;
+  height: 14px;
+}
+
+.remix-agent .tavern-schedule-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.remix-agent .tavern-schedule-card {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  border-radius: 14px;
+  padding: 17px;
+  background: var(--card);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.remix-agent .tavern-schedule-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
+  transform: translateY(-1px);
+}
+
+.remix-agent .tavern-schedule-card.is-paused {
+  opacity: 0.7;
+}
+
+.remix-agent .tavern-schedule-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.remix-agent .tavern-schedule-card-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.remix-agent .tavern-schedule-card-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--primary) 43%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: var(--primary);
+}
+
+.remix-agent .tavern-schedule-card-icon svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.7;
+}
+
+.remix-agent .tavern-schedule-card h3,
+.remix-agent .tavern-schedule-card-title p {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-agent .tavern-schedule-card h3 {
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.remix-agent .tavern-schedule-card-title p {
+  margin-top: 3px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.remix-agent .tavern-schedule-state {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.remix-agent .tavern-schedule-state.is-on {
+  border-color: color-mix(in srgb, var(--primary) 65%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.remix-agent .tavern-schedule-state:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.remix-agent .tavern-schedule-prompt {
+  display: -webkit-box;
+  min-height: 42px;
+  margin: 17px 0 0;
+  overflow: hidden;
+  color: var(--secondary-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.remix-agent .tavern-schedule-timing {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  padding-top: 11px;
+}
+
+.remix-agent .tavern-schedule-timing dt {
+  color: var(--muted-foreground);
+  font-family: var(--tavern-mono);
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.remix-agent .tavern-schedule-timing dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--foreground);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-agent .tavern-schedule-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: auto;
+  padding-top: 17px;
+}
+
+.remix-agent .tavern-schedule-edit,
+.remix-agent .tavern-schedule-run,
+.remix-agent .tavern-schedule-view-brief {
+  display: inline-flex;
+  min-height: 31px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 7px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.remix-agent .tavern-schedule-edit,
+.remix-agent .tavern-schedule-view-brief {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--secondary-foreground);
+}
+
+.remix-agent .tavern-schedule-edit:hover,
+.remix-agent .tavern-schedule-view-brief:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-schedule-run {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.remix-agent .tavern-schedule-run:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.remix-agent .tavern-schedule-run:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.remix-agent .tavern-schedule-delete {
+  display: inline-grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  margin-left: auto;
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, var(--border));
+  border-radius: 7px;
+  padding: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--destructive) 82%, var(--muted-foreground));
+}
+
+.remix-agent .tavern-schedule-delete:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--destructive) 55%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+
+.remix-agent .tavern-schedule-delete:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.remix-agent .tavern-schedule-delete svg {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 760px) {
+  .remix-agent .tavern-schedule-page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .remix-agent .tavern-schedule-page-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .remix-agent .tavern-schedule-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* Preserve the page's reading rhythm while a newly selected conversation is

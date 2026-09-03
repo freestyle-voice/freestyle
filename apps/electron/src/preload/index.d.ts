@@ -107,6 +107,7 @@ declare global {
       openSettings: () => void;
       settingsClose: () => void;
       panelSetBusy: (busy: boolean) => void;
+      panelSetComposerFocused: (focused: boolean) => void;
       panelRequestFocus: () => void;
       panelPointerLeft: () => void;
       panelPointerEntered: () => void;

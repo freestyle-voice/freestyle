@@ -4,7 +4,10 @@ import {
   CloudProfileButton,
   UpgradeCtaCard,
 } from "@renderer/components/cloud-profile";
-import { useRemixSession } from "@renderer/components/remix-session-context";
+import {
+  sidebarCurrentThreadId,
+  useRemixSession,
+} from "@renderer/components/remix-session-context";
 import { ThreadHistory } from "@renderer/components/thread-history";
 import { Badge } from "@renderer/components/ui/badge";
 import {
@@ -41,6 +44,7 @@ import {
   Bell,
   Book,
   BookOpen,
+  CalendarClock,
   ChevronDown,
   CircleHelp,
   Cpu,
@@ -319,9 +323,16 @@ function RemixSidebarSessions({
     thread,
     selectThread,
     startNewThread,
+    openScheduledTasks,
+    workspaceSurface,
     localTitles,
     renameThread,
-    deleteThread,
+    requestDeleteThread,
+    sessionDeletionConfirmationSkipped,
+    restoreSessionDeletionConfirmation,
+    sessionActivity,
+    completedSessionIds,
+    markSessionSeen,
   } = useRemixSession();
   const listRef = useRef<HTMLDivElement>(null);
   const [hasMoreSessions, setHasMoreSessions] = useState(false);
@@ -373,6 +384,26 @@ function RemixSidebarSessions({
           <Plus aria-hidden="true" />
           New chat
         </button>
+        <button
+          type="button"
+          className={`remix-sidebar-new remix-sidebar-scheduled${
+            workspaceSurface === "scheduled" ? " is-current" : ""
+          }`}
+          aria-current={workspaceSurface === "scheduled" ? "page" : undefined}
+          onClick={openScheduledTasks}
+        >
+          <CalendarClock aria-hidden="true" />
+          Schedules
+        </button>
+        {sessionDeletionConfirmationSkipped ? (
+          <button
+            type="button"
+            className="remix-sidebar-delete-confirmation"
+            onClick={restoreSessionDeletionConfirmation}
+          >
+            Confirm session deletions
+          </button>
+        ) : null}
       </div>
       <div
         ref={listRef}
@@ -380,12 +411,15 @@ function RemixSidebarSessions({
         data-has-more={hasMoreSessions || undefined}
       >
         <ThreadHistory
-          currentId={thread.id}
+          currentId={sidebarCurrentThreadId(workspaceSurface, thread.id)}
           searchQuery={searchQuery}
           titleOverrides={localTitles}
           onRename={renameThread}
-          onDelete={deleteThread}
+          onDelete={(picked) => requestDeleteThread(picked.id, picked.title)}
           sessionActions="context"
+          sessionActivity={sessionActivity}
+          completedSessionIds={completedSessionIds}
+          onSessionSeen={markSessionSeen}
           onPick={(picked) => {
             if (picked.id !== thread.id) selectThread(picked);
           }}
@@ -827,6 +861,7 @@ export default function AppShell(): React.JSX.Element {
       ) : null}
 
       <div className="glass-content relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
+        <ContentTitlebar />
         <UpdateBanner className="relative z-50 mt-4 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
         <main
@@ -848,7 +883,8 @@ export default function AppShell(): React.JSX.Element {
 function SignedOutShell(): React.JSX.Element {
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
-      <div className="glass-content flex min-h-0 min-w-0 flex-1 flex-col">
+      <div className="glass-content relative flex min-h-0 min-w-0 flex-1 flex-col">
+        <ContentTitlebar />
         <main
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
           style={{ scrollbarWidth: "none" } as React.CSSProperties}
@@ -857,5 +893,20 @@ function SignedOutShell(): React.JSX.Element {
         </main>
       </div>
     </div>
+  );
+}
+
+/**
+ * A dedicated, transparent titlebar for the content pane. Keeping it as a
+ * sibling of every route gives Remix and ordinary pages one reliable place to
+ * drag the window, without putting a drag region over buttons inside a page.
+ */
+function ContentTitlebar(): React.JSX.Element {
+  return (
+    <div
+      className="glass-content-titlebar"
+      aria-hidden="true"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    />
   );
 }

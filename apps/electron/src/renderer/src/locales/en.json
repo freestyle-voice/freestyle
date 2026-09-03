@@ -655,6 +655,17 @@
       "includedWithFreestyle": "Included with Freestyle Transcribe",
       "configureWarming": "Configure model warming"
     },
+    "freestyleCloud": {
+      "eyebrow": "Freestyle Cloud · managed",
+      "title": "One service for transcription and cleanup",
+      "description": "Sign in once to use Freestyle Transcribe and Cleanup together. No API key or separate model setup needed.",
+      "signedInDescription": "Your Freestyle Cloud account is ready. Turn on Transcribe and Cleanup together with no API key or separate model setup.",
+      "activeTitle": "Freestyle Cloud is handling both steps",
+      "activeDescription": "Transcription and cleanup are configured together. You can still change either model below.",
+      "use": "Use Freestyle Cloud",
+      "signInAndUse": "Sign in and use Freestyle Cloud",
+      "applying": "Setting up…"
+    },
     "picker": {
       "transcription": "Transcription",
       "cleanup": "AI cleanup",
@@ -667,6 +678,7 @@
       "onDevice": "On {{phrase}}",
       "yourApiKey": "Your API key",
       "unavailableOnDevice": "Unavailable on this device",
+      "checkingAvailability": "Checking availability…",
       "modelCount": "{{count}} models",
       "cloudModelCount": "{{count}} cloud models",
       "byokProviders": "Groq, OpenAI, and more",

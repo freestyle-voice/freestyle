@@ -3,6 +3,14 @@
  * titlebar rules here rather than in the lazy Remix chunk so the selector
  * cannot briefly fall back to unstyled inline content at startup.
  */
+.glass-content-titlebar {
+  position: absolute;
+  z-index: 10;
+  inset: 0 0 auto;
+  height: 8px;
+  background: transparent;
+}
+
 .remix-sidebar-titlebar {
   display: flex;
   align-items: center;

@@ -20,7 +20,7 @@ describe("dashboard startup rendering", () => {
     expect(shell).toContain("function SignedOutShell");
     expect(shell).toContain("if (!user) return <SignedOutShell />;");
     expect(shell).toContain(
-      'className="glass-content flex min-h-0 min-w-0 flex-1 flex-col"',
+      'className="glass-content relative flex min-h-0 min-w-0 flex-1 flex-col"',
     );
   });
 
@@ -35,6 +35,37 @@ describe("dashboard startup rendering", () => {
     expect(auth).toContain("await resolveApiBase();");
     expect(dashboard).toContain("void resolveApiBase().then(() =>");
     expect(dashboard).not.toContain("void initApiBase().then(() =>");
+  });
+
+  it("keeps a shaped page frame visible while a lazy route chunk loads", async () => {
+    const dashboard = await readFile(
+      resolve(rendererRoot, "dashboard.tsx"),
+      "utf8",
+    );
+
+    expect(dashboard).toContain("function RouteFallback");
+    expect(dashboard).toContain('aria-label="Loading page"');
+    expect(dashboard).toContain("dashboard-route-skeleton");
+    expect(dashboard).toContain("dashboard-route-skeleton-line");
+    expect(dashboard).not.toContain(
+      'return <div className="min-h-0 flex-1" />;',
+    );
+  });
+
+  it("uses shaped loading states instead of centered loading copy for content pages", async () => {
+    const [dictionary, vocabulary, tone] = await Promise.all(
+      ["dictionary.tsx", "vocabulary.tsx", "tone.tsx"].map((file) =>
+        readFile(resolve(rendererRoot, "pages", file), "utf8"),
+      ),
+    );
+
+    for (const page of [dictionary, vocabulary]) {
+      expect(page).toContain("DictionaryLikePageSkeleton");
+      expect(page).not.toMatch(/t\("(?:dictionary|vocabulary)\.loading"\)/);
+    }
+
+    expect(tone).toContain("TonePageLoadingSkeleton");
+    expect(tone).not.toContain('t("tone.loading")');
   });
 
   it("does not start account-only data queries until authentication resolves", async () => {

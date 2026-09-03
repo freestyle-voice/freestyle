@@ -226,6 +226,20 @@ describe("preload contract", () => {
     expect(main).toContain('channel: "panel:thread-updated"');
   });
 
+  it("delivers normal dictation to the focused Remix composer without native paste", async () => {
+    const [main, preload, panel] = await Promise.all([
+      readFile(mainPath, "utf8"),
+      readFile(preloadPath, "utf8"),
+      readFile(join(rendererRoot, "components/panel.tsx"), "utf8"),
+    ]);
+
+    expect(preload).toContain("panelSetComposerFocused: (focused: boolean)");
+    expect(panel).toContain("window.api.panelSetComposerFocused(true)");
+    expect(panel).toContain("window.api.panelSetComposerFocused(false)");
+    expect(main).toContain('dictationDeliveryTarget === "panel-composer"');
+    expect(main).toContain('forwardDictation("final", text)');
+  });
+
   it("detaches the hidden pill observer before the workspace resumes its stream", async () => {
     const [main, preload] = await Promise.all([
       readFile(mainPath, "utf8"),

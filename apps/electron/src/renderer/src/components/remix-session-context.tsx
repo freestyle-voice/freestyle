@@ -1,4 +1,12 @@
+import {
+  type AgentThreadActivity,
+  subscribeToAgentThreadActivity,
+} from "@renderer/lib/agent-message-queue";
 import { useCloudAuth } from "@renderer/lib/auth-context";
+import {
+  setDeletionConfirmationSkipped,
+  shouldSkipDeletionConfirmation,
+} from "@renderer/lib/deletion-confirmation";
 import {
   invalidateThreads,
   latestThreadQueryOptions,
@@ -23,9 +31,22 @@ import {
   useRef,
   useState,
 } from "react";
+import { DeleteConfirmationDialog } from "./delete-confirmation-dialog";
+
+export type RemixWorkspaceSurface = "chat" | "scheduled";
+
+/** A schedule has its own navigation surface, so no chat row is current. */
+export function sidebarCurrentThreadId(
+  surface: RemixWorkspaceSurface,
+  threadId: string,
+): string {
+  return surface === "chat" ? threadId : "";
+}
 
 type RemixSessionContextValue = {
   thread: ThreadState | null;
+  workspaceSurface: RemixWorkspaceSurface;
+  openScheduledTasks: () => void;
   switchThread: (thread: ThreadState) => void;
   selectThread: (thread: ThreadSummary) => void;
   startNewThread: () => void;
@@ -33,8 +54,15 @@ type RemixSessionContextValue = {
   threadLoadError: string | null;
   retryThreadLoad: () => void;
   localTitles: Record<string, string>;
+  /** Local Hono owns live turn state; Cloud remains the durable session list. */
+  sessionActivity: Record<string, AgentThreadActivity>;
+  /** A completed response from a session the user has not re-opened yet. */
+  completedSessionIds: ReadonlySet<string>;
+  markSessionSeen: (threadId: string) => void;
   renameThread: (threadId: string, title: string) => Promise<void>;
-  deleteThread: (threadId: string) => Promise<void>;
+  requestDeleteThread: (threadId: string, title: string) => void;
+  sessionDeletionConfirmationSkipped: boolean;
+  restoreSessionDeletionConfirmation: () => void;
 };
 
 type ThreadDeletionVariables = {
@@ -68,10 +96,26 @@ export function RemixSessionProvider({
   children: React.ReactNode;
 }): React.JSX.Element {
   const [thread, setThread] = useState<ThreadState | null>(null);
+  const [workspaceSurface, setWorkspaceSurface] =
+    useState<RemixWorkspaceSurface>("chat");
   const [loadingThreadId, setLoadingThreadId] = useState<string | null>(null);
   const [threadLoadError, setThreadLoadError] = useState<string | null>(null);
   const [localTitles, setLocalTitles] = useState<Record<string, string>>({});
+  const [sessionActivity, setSessionActivity] = useState<
+    Record<string, AgentThreadActivity>
+  >({});
+  const [completedSessionIds, setCompletedSessionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+  const [pendingThreadDeletion, setPendingThreadDeletion] = useState<{
+    threadId: string;
+    title: string;
+  } | null>(null);
+  const [
+    sessionDeletionConfirmationSkipped,
+    setSessionDeletionConfirmationSkipped,
+  ] = useState(() => shouldSkipDeletionConfirmation("session"));
   const queryClient = useQueryClient();
   const { user, loading } = useCloudAuth();
   const latestQuery = useQuery({
@@ -81,14 +125,39 @@ export function RemixSessionProvider({
   const selectionRef = useRef(0);
   const deletionVersionRef = useRef(0);
   const selectedSummaryRef = useRef<ThreadSummary | null>(null);
+  const activeSessionIdsRef = useRef<Set<string>>(new Set());
+  const selectedThreadIdRef = useRef<string | null>(null);
+  selectedThreadIdRef.current = thread?.id ?? null;
 
-  const switchThread = useCallback((next: ThreadState) => {
-    selectionRef.current += 1;
-    selectedSummaryRef.current = null;
-    setLoadingThreadId(null);
-    setThreadLoadError(null);
-    setThread(next);
+  const markSessionSeen = useCallback((threadId: string) => {
+    setCompletedSessionIds((current) => {
+      if (!current.has(threadId)) return current;
+      const next = new Set(current);
+      next.delete(threadId);
+      return next;
+    });
   }, []);
+
+  const openScheduledTasks = useCallback(() => {
+    setWorkspaceSurface("scheduled");
+  }, []);
+
+  const openChat = useCallback(() => {
+    setWorkspaceSurface("chat");
+  }, []);
+
+  const switchThread = useCallback(
+    (next: ThreadState) => {
+      openChat();
+      selectionRef.current += 1;
+      selectedSummaryRef.current = null;
+      setLoadingThreadId(null);
+      setThreadLoadError(null);
+      markSessionSeen(next.id);
+      setThread(next);
+    },
+    [markSessionSeen, openChat],
+  );
 
   /**
    * Switching conversations should feel like navigation, not a network wait.
@@ -98,9 +167,11 @@ export function RemixSessionProvider({
    */
   const selectThread = useCallback(
     (summary: ThreadSummary) => {
+      openChat();
       const selection = ++selectionRef.current;
       selectedSummaryRef.current = summary;
       setThreadLoadError(null);
+      markSessionSeen(summary.id);
 
       const cached = queryClient.getQueryData<ThreadState>(
         queryKeys.threads.detail(summary.id),
@@ -135,7 +206,7 @@ export function RemixSessionProvider({
           setThreadLoadError("Couldn’t load this conversation. Try again.");
         });
     },
-    [queryClient],
+    [markSessionSeen, openChat, queryClient],
   );
 
   const retryThreadLoad = useCallback(() => {
@@ -151,9 +222,13 @@ export function RemixSessionProvider({
   useEffect(() => {
     if (loading || !user) {
       setThread(null);
+      setWorkspaceSurface("chat");
       setLoadingThreadId(null);
       setThreadLoadError(null);
       setLocalTitles({});
+      setSessionActivity({});
+      setCompletedSessionIds(new Set());
+      activeSessionIdsRef.current = new Set();
       return;
     }
     // Development can briefly run a renderer compiled against a newer preload.
@@ -162,6 +237,33 @@ export function RemixSessionProvider({
       ?.getRemixSessionTitles?.()
       .then((titles) => setLocalTitles(titles))
       .catch(() => {});
+  }, [loading, user]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    return subscribeToAgentThreadActivity(({ threads: entries }) => {
+      const next = Object.fromEntries(
+        entries.map((entry) => [entry.threadId, entry]),
+      );
+      const activeIds = new Set(
+        entries
+          .filter((entry) => entry.active || entry.queuedCount > 0)
+          .map((entry) => entry.threadId),
+      );
+      const completed = [...activeSessionIdsRef.current].filter(
+        (threadId) =>
+          !activeIds.has(threadId) && selectedThreadIdRef.current !== threadId,
+      );
+      activeSessionIdsRef.current = activeIds;
+      setSessionActivity(next);
+      if (completed.length) {
+        setCompletedSessionIds((current) => {
+          const nextCompleted = new Set(current);
+          for (const threadId of completed) nextCompleted.add(threadId);
+          return nextCompleted;
+        });
+      }
+    });
   }, [loading, user]);
 
   const renameThread = useCallback(async (threadId: string, title: string) => {
@@ -196,6 +298,19 @@ export function RemixSessionProvider({
         delete next[threadId];
         return next;
       });
+      setSessionActivity((current) => {
+        if (!current[threadId]) return current;
+        const next = { ...current };
+        delete next[threadId];
+        return next;
+      });
+      setCompletedSessionIds((current) => {
+        if (!current.has(threadId)) return current;
+        const next = new Set(current);
+        next.delete(threadId);
+        return next;
+      });
+      activeSessionIdsRef.current.delete(threadId);
 
       let replacementSelection: number | null = null;
       if (selected) {
@@ -245,7 +360,7 @@ export function RemixSessionProvider({
     },
   });
 
-  const deleteThread = useCallback(
+  const deleteThreadNow = useCallback(
     (threadId: string) => {
       const selected = thread?.id === threadId ? thread : null;
       return deleteThreadMutation.mutateAsync({
@@ -257,6 +372,22 @@ export function RemixSessionProvider({
     [deleteThreadMutation, localTitles, thread],
   );
 
+  const requestDeleteThread = useCallback(
+    (threadId: string, title: string) => {
+      if (sessionDeletionConfirmationSkipped) {
+        void deleteThreadNow(threadId).catch(() => {});
+        return;
+      }
+      setPendingThreadDeletion({ threadId, title });
+    },
+    [deleteThreadNow, sessionDeletionConfirmationSkipped],
+  );
+
+  const restoreSessionDeletionConfirmation = useCallback(() => {
+    setDeletionConfirmationSkipped("session", false);
+    setSessionDeletionConfirmationSkipped(false);
+  }, []);
+
   useEffect(() => {
     if (!deleteNotice) return;
     const timeout = window.setTimeout(() => setDeleteNotice(null), 5_000);
@@ -266,8 +397,10 @@ export function RemixSessionProvider({
   useEffect(() => {
     if (loading || !user) return;
     const off = window.api.onPanelOpenThread((threadId) => {
+      openChat();
       const selection = ++selectionRef.current;
       void invalidateThreads(queryClient);
+      markSessionSeen(threadId);
       void getThread(threadId)
         .catch(() => null)
         .then((picked) => {
@@ -279,7 +412,7 @@ export function RemixSessionProvider({
         });
     });
     return () => off?.();
-  }, [loading, queryClient, user]);
+  }, [loading, markSessionSeen, openChat, queryClient, user]);
 
   useEffect(() => {
     if (loading || !user) return;
@@ -308,6 +441,8 @@ export function RemixSessionProvider({
   const value = useMemo(
     () => ({
       thread,
+      workspaceSurface,
+      openScheduledTasks,
       switchThread,
       selectThread,
       startNewThread,
@@ -315,20 +450,32 @@ export function RemixSessionProvider({
       threadLoadError,
       retryThreadLoad,
       localTitles,
+      sessionActivity,
+      completedSessionIds,
+      markSessionSeen,
       renameThread,
-      deleteThread,
+      requestDeleteThread,
+      sessionDeletionConfirmationSkipped,
+      restoreSessionDeletionConfirmation,
     }),
     [
-      deleteThread,
       localTitles,
+      openScheduledTasks,
       renameThread,
       retryThreadLoad,
       selectThread,
       startNewThread,
       switchThread,
       thread,
+      workspaceSurface,
       threadLoadError,
       loadingThreadId,
+      markSessionSeen,
+      completedSessionIds,
+      sessionActivity,
+      requestDeleteThread,
+      restoreSessionDeletionConfirmation,
+      sessionDeletionConfirmationSkipped,
     ],
   );
 
@@ -344,6 +491,27 @@ export function RemixSessionProvider({
           {deleteNotice}
         </div>
       ) : null}
+      <DeleteConfirmationDialog
+        open={pendingThreadDeletion !== null}
+        scope="session"
+        title={
+          pendingThreadDeletion
+            ? `Delete ${pendingThreadDeletion.title}?`
+            : "Delete session?"
+        }
+        description="This permanently removes the conversation."
+        confirmLabel="Delete session"
+        onOpenChange={(open) => {
+          if (!open) setPendingThreadDeletion(null);
+        }}
+        onConfirm={(skipConfirmation) => {
+          const pending = pendingThreadDeletion;
+          setPendingThreadDeletion(null);
+          if (!pending) return;
+          if (skipConfirmation) setSessionDeletionConfirmationSkipped(true);
+          void deleteThreadNow(pending.threadId).catch(() => {});
+        }}
+      />
     </RemixSessionContext.Provider>
   );
 }

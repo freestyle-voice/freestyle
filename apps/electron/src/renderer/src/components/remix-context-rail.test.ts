@@ -10,7 +10,7 @@ const settingsPath = resolve(componentDir, "../pages/settings.tsx");
 const stylesPath = resolve(componentDir, "../remix-workspace.css");
 
 describe("Remix context rail", () => {
-  it("keeps the three context previews local to the chat workspace", async () => {
+  it("keeps the three context launchers compact beside the chat workspace", async () => {
     const [rail, panel, styles] = await Promise.all([
       readFile(railPath, "utf8"),
       readFile(panelPath, "utf8"),
@@ -18,18 +18,15 @@ describe("Remix context rail", () => {
     ]);
 
     expect(rail).toContain('"remix.contextRail"');
-    expect(rail).toContain(
-      '<ContextTasks attention={attention === "tasks"} />',
-    );
-    expect(rail).toContain(
-      '<ContextNotes attention={attention === "notes"} />',
-    );
-    expect(rail).toContain(
-      '<ContextBrain attention={attention === "brain"} />',
-    );
+    expect(rail).toContain("onOpenInspector?: (target: RemixInspectorTarget)");
+    expect(rail).toContain("onOpenInspector={onOpenInspector}");
+    expect(rail).toContain('onOpenInspector({ kind: "tasks" })');
+    expect(rail).toContain('onOpenInspector({ kind: "notes" })');
+    expect(rail).toContain('kind: "file"');
     expect(rail).toContain("View all");
-    expect(rail).toContain('DataSkeleton label="Loading note preview"');
-    expect(rail).toContain('DataSkeleton label="Loading Brain preview"');
+    expect(rail).not.toContain("remix-context-preview");
+    expect(rail).not.toContain("Loading note preview");
+    expect(rail).not.toContain("Loading Brain preview");
     expect(rail).not.toContain('            "Loading…"');
     expect(rail).toContain("data-context-kind={kind}");
     expect(rail).toContain("aria-hidden={!open}");
@@ -40,7 +37,15 @@ describe("Remix context rail", () => {
     );
     expect(panel).toContain('contextRailVisible ? " is-context-open" : ""');
     expect(panel).toContain("open={contextRailVisible}");
-    expect(panel).toContain('const chatActive = desktop || tab === "chat"');
+    expect(panel).toContain("const openInspector =");
+    expect(panel).toContain("const closeInspector =");
+    expect(panel).toContain("onOpenInspector={openInspector}");
+    expect(panel).toContain("onClick={closeInspector}");
+    expect(panel).toContain("<RemixInspector");
+    expect(panel).toContain(
+      'const chatActive = desktop ? desktopSurface === "chat" : tab === "chat"',
+    );
+    expect(panel).toContain('desktopSurface === "chat"');
     expect(panel).not.toContain('tab === "todos"');
     expect(panel).not.toContain('tab === "notes"');
     expect(panel).not.toContain('tab === "brain"');

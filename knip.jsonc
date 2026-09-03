@@ -51,7 +51,8 @@
           "../../packages/validations/src/index.ts"
         ]
       },
-      "ignoreDependencies": ["playwright"]
+      // Sentry's Electron SDK loads this declared runtime peer internally.
+      "ignoreDependencies": ["playwright", "@opentelemetry/core"]
     },
     "apps/server": {
       "entry": ["src/startup.ts", "tests/**/*.test.ts"],
@@ -67,7 +68,8 @@
       "vitest": {
         "entry": ["tests/**/*.test.ts", "tests/setup.ts"]
       },
-      "ignoreDependencies": ["@types/json-schema"]
+      // Sentry's Node SDK loads this declared runtime peer internally.
+      "ignoreDependencies": ["@types/json-schema", "@opentelemetry/core"]
     },
     "apps/mobile": {
       // expo-router uses file-based routing under src/app plus the config

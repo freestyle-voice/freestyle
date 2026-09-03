@@ -1,4 +1,10 @@
+import { createRequire } from "node:module";
 import { afterEach, describe, expect, it, vi } from "vitest";
+
+const require = createRequire(import.meta.url);
+const { version: electronVersion } = require("../../package.json") as {
+  version: string;
+};
 
 const sentryVitePlugin = vi.hoisted(() =>
   vi.fn((_options: unknown) => ({ name: "sentry-test" })),
@@ -32,7 +38,7 @@ describe("Electron production build configuration", () => {
     for (const [options] of sentryVitePlugin.mock.calls) {
       expect(
         (options as { release?: { name?: string } }).release,
-      ).toMatchObject({ name: "freestyle@0.8.9" });
+      ).toMatchObject({ name: `freestyle@${electronVersion}` });
     }
   });
 });

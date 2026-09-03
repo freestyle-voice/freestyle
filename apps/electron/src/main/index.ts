@@ -198,6 +198,7 @@ function initElectronSentry(): void {
     skipOpenTelemetrySetup: true,
     tracesSampleRate: 0,
     enableLogs: true,
+    enableMetrics: true,
     sendDefaultPii: false,
     attachScreenshot: false,
     // Renderer errors use the existing local server endpoint. Avoid the custom

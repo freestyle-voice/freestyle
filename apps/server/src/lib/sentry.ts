@@ -68,13 +68,15 @@ export function initSentry(): void {
     dsn: process.env.SENTRY_DSN ?? SERVER_DSN,
     environment: getEnvironment(),
     release: process.env.FREESTYLE_APP_VERSION,
-    // This adapter deliberately sends only our explicit errors and product
-    // logs. Disabling automatic instrumentation keeps opt-out comprehensive
-    // and avoids collecting latency-sensitive server activity by default.
+    // This adapter deliberately sends only our explicit errors, product logs,
+    // and custom product metrics. Disabling automatic instrumentation keeps
+    // opt-out comprehensive and avoids collecting latency-sensitive server
+    // activity by default.
     defaultIntegrations: false,
     skipOpenTelemetrySetup: true,
     tracesSampleRate: 0,
     enableLogs: true,
+    enableMetrics: true,
     sendDefaultPii: false,
     enabled: isTelemetryEnabled(),
     beforeSend: dropWhenDisabled,
@@ -159,9 +161,9 @@ export function removeLegacyTelemetryIdentity(): void {
 }
 
 /**
- * Product events are structured Sentry logs rather than issue-generating
- * messages. Keep payloads metadata-only: never pass transcript or clipboard
- * content to this function.
+ * Product events are structured Sentry logs plus bounded custom metrics rather
+ * than issue-generating messages. Keep payloads metadata-only: never pass
+ * transcript or clipboard content to this function.
  */
 export function capture(
   event: string,
@@ -170,6 +172,20 @@ export function capture(
   if (!isTelemetryEnabled()) return;
   try {
     Sentry.logger.info(event, properties);
+    Sentry.metrics.count("freestyle.product_event", 1, {
+      attributes: { "event.name": event },
+    });
+    const durationMs = properties?.duration_ms;
+    if (typeof durationMs === "number" && Number.isFinite(durationMs)) {
+      Sentry.metrics.distribution(
+        "freestyle.product_event.duration",
+        durationMs,
+        {
+          unit: "millisecond",
+          attributes: { "event.name": event },
+        },
+      );
+    }
   } catch {
     // Logging must never alter product behavior.
   }

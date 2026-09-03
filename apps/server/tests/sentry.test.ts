@@ -5,6 +5,7 @@ const sentry = vi.hoisted(() => ({
   close: vi.fn().mockResolvedValue(true),
   init: vi.fn(),
   logger: { info: vi.fn() },
+  metrics: { count: vi.fn(), distribution: vi.fn() },
   setTags: vi.fn(),
   setUser: vi.fn(),
 }));
@@ -57,12 +58,25 @@ describe("Sentry telemetry adapter", () => {
     process.env = { ...originalEnv };
   });
 
-  it("sends product events as structured Sentry logs", () => {
+  it("sends product events as Sentry logs and analytics metrics", () => {
     capture("transcription completed", { provider: "openai", duration_ms: 42 });
 
     expect(sentry.logger.info).toHaveBeenCalledWith(
       "transcription completed",
       expect.objectContaining({ provider: "openai", duration_ms: 42 }),
+    );
+    expect(sentry.metrics.count).toHaveBeenCalledWith(
+      "freestyle.product_event",
+      1,
+      { attributes: { "event.name": "transcription completed" } },
+    );
+    expect(sentry.metrics.distribution).toHaveBeenCalledWith(
+      "freestyle.product_event.duration",
+      42,
+      {
+        unit: "millisecond",
+        attributes: { "event.name": "transcription completed" },
+      },
     );
   });
 

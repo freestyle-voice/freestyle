@@ -340,7 +340,6 @@ jobs:
           SENTRY_UPLOAD_SOURCEMAPS: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/') && '1' || '0' }}
           SENTRY_AUTH_TOKEN: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/') && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: test101-n4
-          SENTRY_PROJECT: ${{ vars.SENTRY_ELECTRON_PROJECT }}
 
       - name: Verify native binaries in package
         working-directory: apps/electron
@@ -388,7 +387,6 @@ jobs:
           SENTRY_UPLOAD_SOURCEMAPS: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/') && '1' || '0' }}
           SENTRY_AUTH_TOKEN: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/') && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: test101-n4
-          SENTRY_PROJECT: ${{ vars.SENTRY_ELECTRON_PROJECT }}
 
       - name: Run macOS permission flow E2E tests
         working-directory: apps/electron
@@ -443,7 +441,6 @@ jobs:
           SENTRY_UPLOAD_SOURCEMAPS: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/') && '1' || '0' }}
           SENTRY_AUTH_TOKEN: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/') && secrets.SENTRY_AUTH_TOKEN || '' }}
           SENTRY_ORG: test101-n4
-          SENTRY_PROJECT: ${{ vars.SENTRY_ELECTRON_PROJECT }}
 
       - name: Verify native binaries in package
         working-directory: apps/electron

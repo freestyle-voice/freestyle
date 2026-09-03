@@ -28,16 +28,17 @@ const workspaceAliases = {
 const analyze = process.env.ANALYZE === "1";
 const uploadSentrySourceMaps = process.env.SENTRY_UPLOAD_SOURCEMAPS === "1";
 const emitSourceMaps = analyze || uploadSentrySourceMaps;
+const sentryElectronProject = "freestyle-electron";
 
 type ElectronBuildTarget = "main" | "preload" | "renderer";
 
 function sentrySourceMapPlugins(target: ElectronBuildTarget) {
   if (!uploadSentrySourceMaps) return [];
 
-  const { SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT } = process.env;
-  if (!SENTRY_AUTH_TOKEN || !SENTRY_ORG || !SENTRY_PROJECT) {
+  const { SENTRY_AUTH_TOKEN, SENTRY_ORG } = process.env;
+  if (!SENTRY_AUTH_TOKEN || !SENTRY_ORG) {
     throw new Error(
-      "SENTRY_AUTH_TOKEN, SENTRY_ORG, and SENTRY_PROJECT are required when uploading source maps.",
+      "SENTRY_AUTH_TOKEN and SENTRY_ORG are required when uploading source maps.",
     );
   }
 
@@ -46,7 +47,7 @@ function sentrySourceMapPlugins(target: ElectronBuildTarget) {
     return [
       sentryVitePlugin({
         org: SENTRY_ORG,
-        project: SENTRY_PROJECT,
+        project: sentryElectronProject,
         authToken: SENTRY_AUTH_TOKEN,
         telemetry: false,
         sourcemaps: { disable: true },
@@ -69,7 +70,7 @@ function sentrySourceMapPlugins(target: ElectronBuildTarget) {
   return [
     sentryVitePlugin({
       org: SENTRY_ORG,
-      project: SENTRY_PROJECT,
+      project: sentryElectronProject,
       authToken: SENTRY_AUTH_TOKEN,
       telemetry: false,
       release,

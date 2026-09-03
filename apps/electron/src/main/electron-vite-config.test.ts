@@ -12,7 +12,7 @@ describe("Electron production build configuration", () => {
     process.env.SENTRY_UPLOAD_SOURCEMAPS = "1";
     process.env.SENTRY_AUTH_TOKEN = "test-token";
     process.env.SENTRY_ORG = "test-org";
-    process.env.SENTRY_PROJECT = "test-project";
+    delete process.env.SENTRY_PROJECT;
     delete process.env.ANALYZE;
     vi.resetModules();
 

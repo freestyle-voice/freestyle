@@ -13,6 +13,7 @@ const log = createAppLogger("brain-proxy");
 const BRAIN_REQUEST_TIMEOUT_MS = 15_000;
 const BRAIN_LIST_TTL_MS = 5 * 60_000;
 const BRAIN_BODY_TTL_MS = 24 * 60 * 60_000;
+const BRAIN_DRAIN_INTERVAL_MS = 60_000;
 
 type BrainWrite = { path: string; text: string; ifMatch?: number };
 type BrainDelete = { path: string };
@@ -151,6 +152,26 @@ async function drainBrainOperations(scope: string): Promise<void> {
   );
 }
 
+let drainTimer: NodeJS.Timeout | null = null;
+
+/** Retries due Brain operations after their backoff expires, even while idle. */
+function startBrainSyncDrain(): void {
+  if (drainTimer) return;
+  const drain = async () => {
+    const scope = await scopeForCache();
+    if (scope) await drainBrainOperations(scope);
+  };
+  void drain();
+  drainTimer = setInterval(() => void drain(), BRAIN_DRAIN_INTERVAL_MS);
+  drainTimer.unref();
+}
+
+function stopBrainSyncDrain(): void {
+  if (!drainTimer) return;
+  clearInterval(drainTimer);
+  drainTimer = null;
+}
+
 async function cachedRead(
   scope: string | null,
   resource: string,
@@ -233,13 +254,15 @@ const brainRoute = new Hono()
       return c.json(payload, status as 200);
     }
     const store = new LocalSyncStore(getDb());
+    const previous = store.readCached(scope, "brain-file", body.path);
+    const expectedRevision = body.ifMatch ?? previous?.revision ?? undefined;
     store.writeAndEnqueue({
       scope,
       resource: "brain-file",
       entityId: body.path,
       kind: "write",
       value: { ok: true, text: body.text, version: body.ifMatch ?? null },
-      expectedRevision: body.ifMatch,
+      expectedRevision,
     });
     emitSyncEvent({ resource: "brain-file", entityId: body.path });
     emitSyncEvent({ resource: "brain-list" });
@@ -274,5 +297,5 @@ const brainRoute = new Hono()
     return c.json(payload, status as 200);
   });
 
-export { drainBrainOperations };
+export { drainBrainOperations, startBrainSyncDrain, stopBrainSyncDrain };
 export default brainRoute;

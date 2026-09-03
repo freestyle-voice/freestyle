@@ -47,7 +47,11 @@ import {
   trustedOriginMiddleware,
 } from "./lib/trusted-origin.js";
 import routes from "./routes";
-import { drainBrainOperations } from "./routes/brain.js";
+import {
+  drainBrainOperations,
+  startBrainSyncDrain,
+  stopBrainSyncDrain,
+} from "./routes/brain.js";
 
 const httpLog = createAppLogger("http");
 
@@ -75,6 +79,7 @@ async function shutdownServer(): Promise<void> {
   stopSessionKeepAlive();
   stopHistoryRetentionSweep();
   stopOutboxDrain();
+  stopBrainSyncDrain();
   await disposeServerPlugins().catch(() => {});
   await shutdownSentry();
 }
@@ -249,6 +254,7 @@ export async function startServer(
   void resolveSyncScope().then((scope) => {
     if (scope) void drainBrainOperations(scope);
   });
+  startBrainSyncDrain();
 
   // Keep the cloud profile's timezone current so scheduled tasks fire on this
   // machine's clock. No-op when signed out or unchanged; never throws.

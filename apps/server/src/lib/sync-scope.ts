@@ -16,9 +16,15 @@ export function cachedSyncScope(): string | null {
 export async function resolveSyncScope(): Promise<string | null> {
   const session = getSession();
   if (!session) return null;
-  const organizationId = await resolveActiveOrgId(session.token);
-  if (!organizationId) return null;
-  const scope = syncScopeKey({ userId: session.user.id, organizationId });
-  writeSetting(settingKey(session.host, session.user.id), scope);
-  return scope;
+  try {
+    const organizationId = await resolveActiveOrgId(session.token);
+    if (!organizationId) return null;
+    const scope = syncScopeKey({ userId: session.user.id, organizationId });
+    writeSetting(settingKey(session.host, session.user.id), scope);
+    return scope;
+  } catch {
+    // Scope resolution is a cache optimization. It must not turn a public
+    // config request or a normal Cloud request into a local-server failure.
+    return null;
+  }
 }

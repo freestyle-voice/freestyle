@@ -305,7 +305,10 @@ jobs:
 
       - name: Assemble debug APK
         working-directory: apps/mobile/android
-        run: ./gradlew assembleDebug --no-daemon --build-cache
+        # This is a CI smoke build, not a release artifact. Building every
+        # native ABI makes APK packaging exceed the hosted runner's Gradle
+        # heap; keep production's ABI defaults intact and exercise x86_64.
+        run: ./gradlew assembleDebug -PreactNativeArchitectures=x86_64 --no-daemon --build-cache
 
   build-linux:
     name: Build (Linux)

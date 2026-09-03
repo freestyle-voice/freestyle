@@ -2,7 +2,7 @@
   "name": "@freestyle-voice/electron",
   "productName": "Freestyle",
   "desktopName": "freestyle.desktop",
-  "version": "0.8.9",
+  "version": "0.9.0",
   "description": "The intelligent reminders app",
   "author": "freestyle-voice",
   "homepage": "https://github.com/freestyle-voice/freestyle",

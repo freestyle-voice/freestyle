@@ -1,8 +1,15 @@
+import { createRequire } from "node:module";
 import { resolve } from "node:path";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 import { visualizer } from "rollup-plugin-visualizer";
+
+const require = createRequire(import.meta.url);
+const { version: electronVersion } = require("./package.json") as {
+  version: string;
+};
 
 const workspaceAliases = {
   "freestyle-voice": resolve("../../packages/sdk/src/index.ts"),
@@ -19,6 +26,60 @@ const workspaceAliases = {
 // Bundle analysis is opt-in via `ANALYZE=1` (see the `analyze` npm script).
 // Each build target writes its own treemap so reports don't clobber each other.
 const analyze = process.env.ANALYZE === "1";
+const uploadSentrySourceMaps = process.env.SENTRY_UPLOAD_SOURCEMAPS === "1";
+const emitSourceMaps = analyze || uploadSentrySourceMaps;
+
+type ElectronBuildTarget = "main" | "preload" | "renderer";
+
+function sentrySourceMapPlugins(target: ElectronBuildTarget) {
+  if (!uploadSentrySourceMaps) return [];
+
+  const { SENTRY_AUTH_TOKEN, SENTRY_ORG, SENTRY_PROJECT } = process.env;
+  if (!SENTRY_AUTH_TOKEN || !SENTRY_ORG || !SENTRY_PROJECT) {
+    throw new Error(
+      "SENTRY_AUTH_TOKEN, SENTRY_ORG, and SENTRY_PROJECT are required when uploading source maps.",
+    );
+  }
+
+  const release = { name: electronVersion, inject: false };
+  if (target === "renderer") {
+    return [
+      sentryVitePlugin({
+        org: SENTRY_ORG,
+        project: SENTRY_PROJECT,
+        authToken: SENTRY_AUTH_TOKEN,
+        telemetry: false,
+        sourcemaps: { disable: true },
+        // Renderer failures are forwarded to the embedded server instead of
+        // captured by a renderer SDK, so upload release artifacts that match
+        // the app://renderer URLs in their forwarded stack frames.
+        release: {
+          ...release,
+          uploadLegacySourcemaps: {
+            paths: ["out/renderer"],
+            urlPrefix: "app://renderer",
+            rewrite: true,
+            stripCommonPrefix: true,
+          },
+        },
+      }),
+    ];
+  }
+
+  return [
+    sentryVitePlugin({
+      org: SENTRY_ORG,
+      project: SENTRY_PROJECT,
+      authToken: SENTRY_AUTH_TOKEN,
+      telemetry: false,
+      release,
+      sourcemaps: {
+        filesToDeleteAfterUpload: [`out/${target}/**/*.map`],
+      },
+    }),
+  ];
+}
+
 const mkVisualizer = (name: string) =>
   visualizer({
     filename: resolve(`stats/${name}.html`),
@@ -30,6 +91,7 @@ const mkVisualizer = (name: string) =>
 
 export default defineConfig({
   main: {
+    plugins: sentrySourceMapPlugins("main"),
     resolve: {
       alias: workspaceAliases,
     },
@@ -40,7 +102,7 @@ export default defineConfig({
     },
     build: {
       externalizeDeps: false,
-      sourcemap: analyze,
+      sourcemap: emitSourceMaps,
       rollupOptions: {
         external: ["electron", "bufferutil", "utf-8-validate"],
         plugins: analyze ? [mkVisualizer("main")] : [],
@@ -48,8 +110,9 @@ export default defineConfig({
     },
   },
   preload: {
+    plugins: sentrySourceMapPlugins("preload"),
     build: {
-      sourcemap: analyze,
+      sourcemap: emitSourceMaps,
       rollupOptions: {
         input: {
           index: resolve("src/preload/index.ts"),
@@ -74,9 +137,9 @@ export default defineConfig({
         "@shared": resolve("src/shared"),
       },
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), ...sentrySourceMapPlugins("renderer")],
     build: {
-      sourcemap: analyze,
+      sourcemap: emitSourceMaps,
       rollupOptions: {
         input: {
           index: resolve("src/renderer/index.html"),

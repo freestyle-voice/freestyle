@@ -48,4 +48,30 @@ describe("agent stop proxy", () => {
       }),
     );
   });
+
+  it("forwards recoverable run history with the server-owned session", async () => {
+    setSession({
+      token: "cloud-session",
+      user: { id: "user-1", email: "user@example.com" },
+      host: "https://cloud.test",
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ runs: [] }), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await agentRoute.request("/thread/thread%2Fone/runs");
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://cloud.test/v2/threads/thread%2Fone/runs",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: "Bearer cloud-session",
+        }),
+      }),
+    );
+  });
 });

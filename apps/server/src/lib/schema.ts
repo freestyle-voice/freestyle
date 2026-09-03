@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 27;
+const SCHEMA_VERSION = 29;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -687,7 +687,7 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
   }
 
   if (currentVersion < 24) {
-    // Companion agent threads. Whole-thread UIMessage JSON per row: threads
+    // Remix workspace agent threads. Whole-thread UIMessage JSON per row: threads
     // are small, single-user, and read/written whole on each turn, so
     // per-message rows buy nothing here.
     db.exec(`
@@ -711,6 +711,65 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
     // silently diverge after the cutover.
     db.exec("DROP TABLE IF EXISTS notification_outbox");
     db.exec("DROP TABLE IF EXISTS notifications");
+  }
+
+  // Restore the desktop-only credential store used by the legacy Models page.
+  // This is intentionally a new, forward-only table: the v23 removal was
+  // destructive, so no old key material is recreated or synced from Cloud.
+  if (currentVersion < 28) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS api_keys (
+        provider TEXT PRIMARY KEY,
+        key TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        status TEXT NOT NULL DEFAULT 'unknown'
+      )
+    `);
+  }
+
+  // Device-local MCP connections. Secrets, OAuth state, and cached tool
+  // schemas live behind the local server boundary; no part of this data is
+  // synced to Freestyle Cloud.
+  if (currentVersion < 29) {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mcp_connections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        transport TEXT NOT NULL CHECK(transport IN ('stdio', 'http')),
+        endpoint TEXT,
+        command TEXT,
+        args_json TEXT NOT NULL DEFAULT '[]',
+        cwd TEXT,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        auth_type TEXT NOT NULL DEFAULT 'none'
+          CHECK(auth_type IN ('none', 'bearer', 'headers', 'oauth')),
+        secret_json TEXT NOT NULL DEFAULT '{}',
+        last_error TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS mcp_oauth (
+        connection_id INTEGER PRIMARY KEY REFERENCES mcp_connections(id) ON DELETE CASCADE,
+        tokens_json TEXT,
+        client_information_json TEXT,
+        code_verifier TEXT,
+        state TEXT,
+        state_expires_at INTEGER,
+        discovery_json TEXT,
+        updated_at INTEGER NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS mcp_tools (
+        connection_id INTEGER NOT NULL REFERENCES mcp_connections(id) ON DELETE CASCADE,
+        original_name TEXT NOT NULL,
+        wire_name TEXT NOT NULL UNIQUE,
+        description TEXT NOT NULL,
+        input_schema_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY(connection_id, original_name)
+      );
+    `);
   }
 
   // Upsert schema version

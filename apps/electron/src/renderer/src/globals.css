@@ -1,0 +1,398 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* Used by vendored agents/motion scrollers (composer textarea, etc.). */
+@utility scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/*
+ * Warm cream/olive editorial palette
+ * Reference colors:
+ *   canvas:      #F4F0E4   paper:       #ECE7D6   elevated:    #FBF8EE
+ *   rule:        #D6CDB8   rule-soft:   #E3DCC8   ink:         #16140F
+ *   ink-soft:    #34302A   mute:        #7B7461   olive:       #6B8F12
+ *   olive-deep:  #4A6309   olive-ink:   #2E3F05   olive-soft:  #E8EFC9
+ *   blush:       #DD6E4E   plum:        #5E4E78
+ */
+:root {
+  --radius: 0.625rem;
+  --background: #F4F0E4;
+  --foreground: #16140F;
+  --card: #FBF8EE;
+  --card-foreground: #16140F;
+  --popover: #FBF8EE;
+  --popover-foreground: #16140F;
+  --primary: #6B8F12;
+  --primary-foreground: #FBF8EE;
+  --secondary: #ECE7D6;
+  --secondary-foreground: #34302A;
+  --muted: #ECE7D6;
+  --muted-foreground: #7B7461;
+  --accent: #E8EFC9;
+  --accent-foreground: #2E3F05;
+  --destructive: #DD6E4E;
+  --destructive-foreground: #FBF8EE;
+  --border: #D6CDB8;
+  --input: #E3DCC8;
+  --ring: #6B8F12;
+  --chart-1: #6B8F12;
+  --chart-2: #4A6309;
+  --chart-3: #5E4E78;
+  --chart-4: #DD6E4E;
+  --chart-5: #7B7461;
+  --sidebar: #ECE7D6;
+  --sidebar-foreground: #34302A;
+  --sidebar-primary: #6B8F12;
+  --sidebar-primary-foreground: #FBF8EE;
+  --sidebar-accent: #FBF8EE;
+  --sidebar-accent-foreground: #16140F;
+  --sidebar-border: #D6CDB8;
+  --sidebar-ring: #6B8F12;
+  --glass-window-solid: #F4F0E4;
+  --glass-window: #F4F0E4;
+  --glass-sidebar-solid: #ECE7D6;
+  --glass-sidebar: #ECE7D6;
+  --glass-topbar-solid: #F4F0E4;
+  --glass-topbar: rgba(244, 240, 228, 0.96);
+  --glass-border: rgba(214, 205, 184, 0.72);
+  --glass-shadow: rgba(22, 20, 15, 0.18);
+  --glass-nav-active: rgba(251, 248, 238, 0.94);
+  --glass-nav-active-border: rgba(214, 205, 184, 0.82);
+  --glass-card: rgba(251, 248, 238, 0.9);
+  --glass-card-border: rgba(214, 205, 184, 0.78);
+}
+
+/*
+ * Dark mode — deep warm neutrals with olive accent
+ * Derived from the light palette, inverted for comfortable dark UI
+ */
+.dark {
+  --background: #16140F;
+  --foreground: #ECE7D6;
+  --card: #1E1C16;
+  --card-foreground: #ECE7D6;
+  --popover: #1E1C16;
+  --popover-foreground: #ECE7D6;
+  --primary: #8AB62A;
+  --primary-foreground: #16140F;
+  --secondary: #2A2720;
+  --secondary-foreground: #ECE7D6;
+  --muted: #2A2720;
+  --muted-foreground: #9E977F;
+  --accent: #2E3F05;
+  --accent-foreground: #E8EFC9;
+  --destructive: #E0805F;
+  --destructive-foreground: #16140F;
+  --border: #3A362D;
+  --input: #3A362D;
+  --ring: #8AB62A;
+  --chart-1: #8AB62A;
+  --chart-2: #6B8F12;
+  --chart-3: #8A7AAE;
+  --chart-4: #E0805F;
+  --chart-5: #9E977F;
+  --sidebar: #1E1C16;
+  --sidebar-foreground: #ECE7D6;
+  --sidebar-primary: #8AB62A;
+  --sidebar-primary-foreground: #16140F;
+  --sidebar-accent: #2A2720;
+  --sidebar-accent-foreground: #ECE7D6;
+  --sidebar-border: #3A362D;
+  --sidebar-ring: #8AB62A;
+  --glass-window-solid: #16140F;
+  --glass-window: rgba(22, 20, 15, 0.82);
+  --glass-sidebar-solid: #1E1C16;
+  --glass-sidebar: rgba(22, 20, 15, 0.64);
+  --glass-topbar-solid: #16140F;
+  --glass-topbar: rgba(22, 20, 15, 0.9);
+  --glass-border: rgba(58, 54, 45, 0.52);
+  --glass-shadow: rgba(0, 0, 0, 0.42);
+  --glass-nav-active: rgba(255, 250, 235, 0.065);
+  --glass-nav-active-border: rgba(255, 250, 235, 0.1);
+  --glass-card: rgba(255, 250, 235, 0.07);
+  --glass-card-border: rgba(255, 250, 235, 0.12);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    @apply text-foreground;
+    background: transparent;
+    font-family: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection {
+    background-color: rgba(107, 143, 18, 0.25);
+  }
+
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+}
+
+.serif {
+  font-family: "Instrument Serif", "Times New Roman", serif;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+}
+
+.serif-italic {
+  font-family: "Instrument Serif", "Times New Roman", serif;
+  font-style: italic;
+  letter-spacing: -0.005em;
+  line-height: 0.95;
+}
+
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+
+@layer components {
+  /*
+   * Surfaces are SOLID by default so that non-transparent windows render
+   * correctly. Only macOS sets the window to `transparent` + native vibrancy
+   * (see createSettingsWindow); on Windows/Linux the window stays opaque, so
+   * translucent surfaces would composite over the window's default (white)
+   * background and wash the theme out.
+   *
+   * The translucent "glass" treatment is therefore opt-in via `html.glass`,
+   * a class added in the renderer entry only when window.api.platform is
+   * "darwin". Everything below the `html.glass` rules is macOS-only.
+   */
+  .glass-window-shell {
+    background: var(--glass-window-solid);
+  }
+
+  .glass-content {
+    background: var(--glass-window-solid);
+  }
+
+  .glass-sidebar {
+    background: var(--glass-sidebar-solid);
+    border-color: var(--border);
+  }
+
+  .glass-topbar {
+    background: var(--glass-topbar-solid);
+    border-color: var(--border);
+    box-shadow: 0 10px 28px -22px var(--glass-shadow);
+  }
+
+  .glass-nav-active {
+    background: var(--card);
+    border-color: var(--border);
+  }
+
+  .glass-card {
+    background: var(--card);
+    border-color: var(--border);
+  }
+
+  /*
+   * macOS glass treatment. The shell becomes a transparent, blur-only
+   * container so per-pane tints don't stack on a shared background (which is
+   * what lets the sidebar read as glassier than the solid main content). The
+   * backdrop blur lives only on the shell to avoid redundant nested filters.
+   */
+  html.glass .glass-window-shell {
+    background: transparent;
+  }
+
+  html.glass .glass-content {
+    background: var(--glass-window);
+  }
+
+  html.glass .glass-sidebar {
+    background: var(--glass-sidebar);
+    border-color: var(--glass-border);
+  }
+
+  html.glass .glass-topbar {
+    background: var(--glass-topbar);
+    border-color: var(--glass-border);
+  }
+
+  /* Frosted highlight for the active sidebar nav item so it reads as selected
+     without the hard opaque block that bg-card produced over the glass. */
+  html.glass .glass-nav-active {
+    background: var(--glass-nav-active);
+    border-color: var(--glass-nav-active-border);
+    box-shadow: inset 0 1px 0 0 var(--glass-nav-active-border);
+  }
+
+  /* Frosted card surface (e.g. the cloud promo) so it blends with the glass
+     sidebar instead of reading as a hard opaque rectangle. */
+  html.glass .glass-card {
+    background: var(--glass-card);
+    border-color: var(--glass-card-border);
+    box-shadow: inset 0 1px 0 0 var(--glass-card-border);
+  }
+
+  @supports ((backdrop-filter: blur(24px)) or (-webkit-backdrop-filter: blur(24px))) {
+    html.glass .glass-window-shell {
+      -webkit-backdrop-filter: blur(28px) saturate(1.25);
+      backdrop-filter: blur(28px) saturate(1.25);
+    }
+
+    /* Light mode: desaturate the blur so colorful wallpapers don't muddy the
+       warm cream palette. Dark mode keeps the richer saturation. */
+    html.glass:not(.dark) .glass-window-shell {
+      -webkit-backdrop-filter: blur(32px) saturate(0.82);
+      backdrop-filter: blur(32px) saturate(0.82);
+    }
+  }
+
+  /* Honor the OS "reduce transparency" setting even on macOS. */
+  @media (prefers-reduced-transparency: reduce) {
+    html.glass .glass-window-shell {
+      background: var(--glass-window-solid);
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+
+    html.glass .glass-content {
+      background: var(--glass-window-solid);
+    }
+
+    html.glass .glass-sidebar {
+      background: var(--glass-sidebar-solid);
+      border-color: var(--border);
+    }
+
+    html.glass .glass-topbar {
+      background: var(--glass-topbar-solid);
+      border-color: var(--border);
+    }
+
+    html.glass .glass-nav-active {
+      background: var(--card);
+      border-color: var(--border);
+      box-shadow: none;
+    }
+
+    html.glass .glass-card {
+      background: var(--card);
+      border-color: var(--border);
+      box-shadow: none;
+    }
+  }
+
+  .responsive-page-scroll {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-inline: 3rem;
+    padding-bottom: 3rem;
+  }
+
+  .responsive-standalone-pad {
+    padding-inline: 1.5rem;
+  }
+
+  .dictionary-entry-row {
+    grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) 90px 70px;
+  }
+
+  .vocabulary-entry-row {
+    grid-template-columns: minmax(120px, 220px) minmax(0, 1fr) 70px;
+  }
+
+  @media (max-width: 1080px) {
+    .responsive-page-scroll {
+      padding-inline: 2rem;
+      padding-bottom: 2rem;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .dictionary-entry-row,
+    .vocabulary-entry-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+  }
+
+  @media (max-width: 820px) {
+    .responsive-page-scroll {
+      padding-inline: 1rem;
+      padding-bottom: 1.5rem;
+    }
+
+    .responsive-standalone-pad {
+      padding-inline: 1rem;
+    }
+  }
+
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}

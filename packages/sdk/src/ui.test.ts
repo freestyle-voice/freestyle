@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { parsePluginPillPanel as parsePluginPillPanelPublic } from "./index.js";
 import {
   parsePluginPages,
+  parsePluginPillPanel,
   parsePluginSettingsFields,
   pluginSlug,
 } from "./ui.js";
@@ -66,6 +68,60 @@ describe("parsePluginPages", () => {
       },
     });
     expect(pages.map((p) => p.id)).toEqual(["a"]);
+  });
+});
+
+describe("parsePluginPillPanel", () => {
+  it("is available through the public SDK entrypoint", () => {
+    expect(parsePluginPillPanelPublic).toBe(parsePluginPillPanel);
+  });
+
+  it("parses a single bounded pill companion contribution", () => {
+    expect(
+      parsePluginPillPanel({
+        contributes: {
+          pill: {
+            id: "handoff",
+            title: "Handoff",
+            entry: "ui/pill.html",
+            expand: { width: 360, height: 260 },
+          },
+        },
+      }),
+    ).toEqual({
+      id: "handoff",
+      title: "Handoff",
+      entry: "ui/pill.html",
+      expand: { width: 360, height: 260 },
+    });
+  });
+
+  it("drops malformed, unsafe, and oversized pill companion contributions", () => {
+    expect(parsePluginPillPanel(undefined)).toBeUndefined();
+    expect(
+      parsePluginPillPanel({
+        contributes: {
+          pill: {
+            id: "handoff",
+            title: "Handoff",
+            entry: "../outside.html",
+            expand: { width: 360, height: 260 },
+          },
+        },
+      }),
+    ).toBeUndefined();
+    expect(
+      parsePluginPillPanel({
+        contributes: {
+          pill: {
+            id: "handoff",
+            title: "Handoff",
+            entry: "ui/pill.html",
+            expand: { width: 4_000, height: 260 },
+          },
+        },
+      }),
+    ).toBeUndefined();
   });
 });
 

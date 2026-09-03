@@ -4,6 +4,14 @@ Implementation spec for the Remix AI writing agent, grounded in the codebase as
 of `main` @ `f529a40` (desktop) and the current `cloud` repo. Companion to the
 product spec ("Freestyle Remix Product Spec — Revised Draft" in Drive).
 
+> **Historical implementation record.** This document captures the original
+> agent/pill proposal. The current desktop presentation is a single Remix
+> workspace: chat stays central, an optional right context rail contains Tasks,
+> Notes, and Brain, and Settings is routed in that workspace. Treat current
+> source and the user-facing [Remix guide](../apps/docs/features/remix.mdx) as
+> authoritative for UI behavior; do not reintroduce a separate settings window
+> or full-page Remix context tabs from this proposal.
+
 ---
 
 ## 1. Summary

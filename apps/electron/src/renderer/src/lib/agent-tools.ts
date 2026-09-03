@@ -1,3 +1,4 @@
+import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import {
   connectorToolActionName,
@@ -273,4 +274,29 @@ export function agentToolResultTelemetry({
       ? { exitCode }
       : {}),
   };
+}
+
+/** Report every locally executed agent action through one path so the full
+ * workspace and compact Remix pill have comparable safety telemetry. */
+export function reportAgentToolResult(
+  call: AgentToolCall,
+  output: ToolOutput,
+  startedAt: number,
+): void {
+  const send = (appVersion: string): void => {
+    capture(
+      "agent_tool_result",
+      agentToolResultTelemetry({
+        tool: call.toolName,
+        platform: window.api.platform,
+        appVersion,
+        durationMs: Date.now() - startedAt,
+        output,
+      }),
+    );
+  };
+  void window.api
+    .getAppVersion()
+    .then(send)
+    .catch(() => send("unknown"));
 }

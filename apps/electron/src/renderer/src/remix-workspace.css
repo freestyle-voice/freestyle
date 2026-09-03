@@ -1,0 +1,2764 @@
+/*
+ * Remix uses the current agent runtime, but deliberately sits in the restored
+ * dark desktop system instead of inheriting the old floating companion card.
+ */
+.remix-workspace {
+  --tavern-card: var(--background);
+  --tavern-parchment: var(--card);
+  --tavern-ink: var(--foreground);
+  --tavern-lantern: var(--primary);
+  --tavern-robe: var(--primary);
+  --tavern-rust: var(--destructive);
+  --tavern-rule: var(--border);
+  --tavern-mute: var(--muted-foreground);
+  --tavern-wash: var(--secondary);
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+  background: var(--background);
+}
+
+.remix-session-search-dialog {
+  position: fixed;
+  z-index: 51;
+  top: 32%;
+  left: 50%;
+  display: grid;
+  width: min(620px, calc(100vw - 48px));
+  max-height: min(560px, calc(100dvh - 96px));
+  overflow: hidden;
+  transform: translate(-50%, -50%);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.48);
+  color: var(--foreground);
+  outline: none;
+  animation: remix-command-in 120ms ease-out;
+}
+
+.remix-session-search-input {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  color: var(--muted-foreground);
+}
+
+.remix-session-search-input svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  stroke-width: 1.8;
+}
+
+.remix-session-search-input input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 16px;
+  letter-spacing: -0.015em;
+}
+
+.remix-session-search-input input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.88;
+}
+
+.remix-session-search-input kbd {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 5px;
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 10px;
+}
+
+.remix-session-search-results {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.remix-session-search-results .tavern-thread-divider {
+  margin: 10px 6px 5px;
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.remix-session-search-results .tavern-thread-row {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 9px 10px;
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.remix-session-search-results .tavern-thread-row:hover,
+.remix-session-search-results .tavern-thread-row.is-current {
+  border-color: var(--border);
+  background: var(--secondary);
+  box-shadow: none;
+}
+
+.remix-session-search-results .tavern-thread-empty {
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+@keyframes remix-command-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-50% - 8px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+.remix-sidebar-sessions {
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  /* Match Dictate's sidebar gutter. This keeps the selection surface aligned
+     with the app navigation even when a user widens the sidebar. */
+  margin: 0 12px;
+}
+
+.remix-sidebar-sessions-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.remix-sidebar-new {
+  display: inline-flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  min-height: 30px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: left;
+}
+
+.remix-sidebar-new:hover {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--secondary) 82%, transparent);
+}
+
+.remix-sidebar-new.is-current {
+  border-color: color-mix(in srgb, var(--primary) 42%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, var(--secondary));
+  color: var(--foreground);
+}
+
+.remix-sidebar-new svg {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+
+.remix-sidebar-sessions-list {
+  min-height: 0;
+  flex: 1;
+  margin-top: 6px;
+  overflow-y: auto;
+  padding: 0 0 12px;
+  scrollbar-gutter: stable;
+}
+
+/* The history continues below the viewport. Fade only when it genuinely can
+ * scroll farther, so the final session remains fully readable at the end. */
+.remix-sidebar-sessions-list[data-has-more="true"] {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 34px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0, #000 calc(100% - 34px), transparent 100%);
+}
+
+.remix-sidebar-sessions .tavern-thread-search {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 8px;
+  background: color-mix(in srgb, var(--card) 76%, transparent);
+  color: var(--muted-foreground);
+}
+
+.remix-sidebar-sessions .tavern-thread-search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.remix-sidebar-sessions .tavern-thread-search svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+.remix-sidebar-sessions .tavern-thread-search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  padding: 7px 0;
+  background: transparent;
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 11.5px;
+  line-height: 1;
+}
+
+.remix-sidebar-sessions .tavern-thread-search input::placeholder {
+  color: var(--muted-foreground);
+  opacity: 0.72;
+}
+
+.remix-sidebar-sessions .tavern-thread-divider {
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  margin: 12px 0 4px;
+}
+
+.remix-sidebar-sessions .tavern-thread-row {
+  display: flex;
+  min-height: 34px;
+  width: 100%;
+  box-sizing: border-box;
+  align-items: center;
+  gap: 2px;
+  margin: 1px 0;
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  color: var(--muted-foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 12.5px;
+  font-weight: 450;
+  line-height: 1.35;
+}
+
+.remix-sidebar-sessions .tavern-thread-row:hover,
+.remix-sidebar-sessions .tavern-thread-row.is-current {
+  background: color-mix(in srgb, var(--secondary) 68%, transparent);
+  color: var(--foreground);
+}
+
+.remix-sidebar-sessions .tavern-thread-row.is-current {
+  border-color: color-mix(in srgb, var(--border) 84%, transparent);
+  background: color-mix(in srgb, var(--card) 88%, var(--secondary));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+  font-weight: 600;
+}
+
+/* Direct rows are the session-list shape used in Remix. Give them their own
+ * inner inset so the selected surface never runs into either sidebar edge. */
+.remix-sidebar-sessions .tavern-thread-row-direct {
+  padding: 7px 12px;
+}
+
+.remix-sidebar-sessions .tavern-thread-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-sidebar-sessions .tavern-thread-pick {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  overflow: hidden;
+  border: 0;
+  padding: 6px 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A session's current run belongs in the navigation, but it must remain
+ * quiet: an 11px spinner while the local Hono owner is active, followed by a
+ * small blue return marker once a background response becomes available. */
+.remix-sidebar-sessions .tavern-thread-activity {
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  place-items: center;
+  margin-left: 7px;
+}
+
+.remix-sidebar-sessions .tavern-thread-activity > span {
+  display: block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+
+.remix-sidebar-sessions .tavern-thread-activity.is-working > span {
+  box-sizing: border-box;
+  border: 1.5px solid color-mix(in srgb, var(--primary) 26%, transparent);
+  border-top-color: var(--primary);
+  animation: remix-session-spin 780ms linear infinite;
+}
+
+.remix-sidebar-sessions .tavern-thread-activity.is-complete > span {
+  background: hsl(208 90% 62%);
+  box-shadow: 0 0 0 3px hsl(208 90% 62% / 14%), 0 0 10px hsl(208 90% 62% / 24%);
+}
+
+@keyframes remix-session-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remix-sidebar-sessions .tavern-thread-activity.is-working > span {
+    animation: none;
+    border-color: var(--primary);
+    opacity: 0.72;
+  }
+}
+
+.remix-sidebar-sessions .tavern-empty {
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--muted-foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
+.remix-agent {
+  --remix-reading-width: 760px;
+  --remix-content-gutter: max(20px, calc((100% - var(--remix-reading-width)) / 2));
+  --remix-row-rule: color-mix(in srgb, var(--border) 72%, transparent);
+  display: flex;
+  min-width: 0;
+  flex: 1;
+}
+
+.remix-agent-panel.tavern-panel {
+  height: 100%;
+  margin: 0;
+  flex: 1;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--background);
+  background-image: none;
+}
+
+.remix-agent .tavern {
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
+.remix-agent .tavern-workspace-head {
+  display: none;
+}
+
+.remix-agent .tavern-head-name {
+  font-family: "Instrument Serif", "Times New Roman", serif;
+  font-size: 22px;
+  letter-spacing: -0.02em;
+}
+
+.remix-agent .tavern-sprite-badge {
+  display: none;
+}
+
+.remix-agent .tavern-workspace-icon-btn,
+.remix-agent .tavern-close {
+  border-color: var(--border);
+  color: var(--muted-foreground);
+}
+
+.remix-agent .tavern-workspace-icon-btn:hover,
+.remix-agent .tavern-workspace-icon-btn.is-active {
+  border-color: var(--primary);
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-workspace-mobile-tools {
+  min-height: 44px;
+  box-sizing: border-box;
+  gap: 20px;
+  padding: 0 var(--remix-content-gutter);
+  border-bottom-color: var(--border);
+  background: color-mix(in srgb, var(--background) 92%, var(--card));
+}
+
+.remix-agent .tavern-workspace-mobile-tools button {
+  color: var(--muted-foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 520;
+}
+
+.remix-agent .tavern-workspace-mobile-tools button[aria-selected="true"] {
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-workspace-mobile-tools button[aria-selected="true"]::after {
+  background: var(--primary);
+}
+
+/* Context stays beside the conversation rather than replacing it. Three
+   independent cards make the useful state visible without turning Remix into
+   another tabbed dashboard. */
+.remix-agent .tavern-workspace {
+  --remix-context-width: 304px;
+  position: relative;
+}
+
+.remix-agent .remix-chat-header {
+  display: flex;
+  min-height: 54px;
+  flex: 0 0 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  padding: 0 20px;
+  background: color-mix(in srgb, var(--background) 92%, var(--card));
+}
+
+.remix-agent .remix-chat-session,
+.remix-agent .remix-chat-header-actions {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.remix-agent .remix-chat-session {
+  position: relative;
+  gap: 4px;
+}
+
+.remix-agent .remix-chat-session h1 {
+  overflow: hidden;
+  margin: 0;
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 620;
+  letter-spacing: -0.018em;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-agent .remix-schedule-create {
+  display: inline-flex;
+  min-height: 30px;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--primary);
+  border-radius: 7px;
+  padding: 0 10px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.remix-agent .remix-schedule-create:hover {
+  filter: brightness(1.08);
+}
+
+.remix-agent .remix-schedule-create .tavern-workspace-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.remix-agent .remix-chat-session-actions,
+.remix-agent .remix-context-toggle,
+.remix-agent .remix-chat-title-edit button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.remix-agent .remix-chat-session-actions:hover,
+.remix-agent .remix-context-toggle:hover,
+.remix-agent .remix-context-toggle[aria-pressed="true"],
+.remix-agent .remix-chat-title-edit button:hover {
+  border-color: color-mix(in srgb, var(--primary) 56%, var(--border));
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.remix-agent .remix-chat-session-actions:focus-visible,
+.remix-agent .remix-context-toggle:focus-visible,
+.remix-agent .remix-chat-title-edit button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.remix-agent .remix-chat-session-actions svg,
+.remix-agent .remix-context-toggle > svg,
+.remix-agent .remix-chat-title-edit button svg {
+  width: 15px;
+  height: 15px;
+}
+
+.remix-agent .remix-chat-title-edit {
+  display: flex;
+  width: min(330px, 50vw);
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 2px;
+  background: var(--card);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.remix-agent .remix-chat-title-edit input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  padding: 4px 7px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+}
+
+.remix-agent .remix-chat-title-edit button:first-of-type {
+  color: var(--primary);
+}
+
+.remix-agent .remix-chat-session-error {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 4px);
+  left: 0;
+  margin: 0;
+  padding: 4px 6px;
+  border: 1px solid color-mix(in srgb, var(--destructive) 36%, var(--border));
+  border-radius: 5px;
+  background: var(--card);
+  color: var(--destructive);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.remix-agent .remix-context-toggle {
+  border-color: var(--border);
+  background: var(--background);
+}
+
+.remix-context-rail {
+  position: absolute;
+  z-index: 3;
+  inset: 0 0 0 auto;
+  display: flex;
+  width: 0;
+  min-width: 0;
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  padding: 12px 0 14px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(20px);
+  transition:
+    width 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    flex-basis 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    padding 240ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 160ms ease,
+    transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.remix-agent .is-context-open .remix-context-rail {
+  width: var(--remix-context-width);
+  padding: 12px 12px 14px;
+  overflow-y: auto;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+}
+
+.remix-context-card {
+  --remix-context-accent: var(--primary);
+  position: relative;
+  isolation: isolate;
+  min-width: min(280px, var(--remix-context-width));
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 88%, var(--remix-context-accent));
+  border-radius: 12px;
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--card) 96%, var(--remix-context-accent)) 0%,
+    color-mix(in srgb, var(--card) 84%, var(--background)) 100%
+  );
+  box-shadow: 0 18px 30px -30px color-mix(in srgb, #000 82%, transparent);
+  transition:
+    border-color 180ms ease,
+    background 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.remix-context-card::before {
+  position: absolute;
+  z-index: 0;
+  top: -56px;
+  right: -44px;
+  width: 150px;
+  height: 150px;
+  border-radius: 999px;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--remix-context-accent) 12%, transparent),
+    transparent 70%
+  );
+  content: "";
+  pointer-events: none;
+}
+
+.remix-context-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.remix-context-card:hover {
+  border-color: color-mix(in srgb, var(--remix-context-accent) 46%, var(--border));
+  box-shadow: 0 20px 34px -28px color-mix(in srgb, #000 88%, transparent);
+}
+
+.remix-context-card[data-context-kind="notes"] {
+  --remix-context-accent: color-mix(in srgb, var(--primary) 72%, var(--foreground));
+}
+
+.remix-context-card[data-context-kind="brain"] {
+  --remix-context-accent: color-mix(in srgb, var(--primary) 84%, var(--foreground));
+}
+
+.remix-context-card.is-attention {
+  border-color: color-mix(in srgb, var(--remix-context-accent) 76%, var(--border));
+  background: linear-gradient(
+    145deg,
+    color-mix(in srgb, var(--card) 86%, var(--remix-context-accent)) 0%,
+    color-mix(in srgb, var(--card) 82%, var(--background)) 100%
+  );
+}
+
+.remix-context-card-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  padding: 0 12px;
+  background: color-mix(in srgb, var(--card) 48%, transparent);
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.remix-context-card-count {
+  display: inline-grid;
+  min-width: 22px;
+  min-height: 22px;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 6px;
+  background: color-mix(in srgb, var(--secondary) 76%, var(--remix-context-accent));
+  color: var(--foreground);
+  font-size: 9px;
+  letter-spacing: 0;
+}
+
+.remix-context-card-title {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+
+.remix-context-card-title:not(:disabled) {
+  cursor: pointer;
+}
+
+.remix-context-card-title:not(:disabled):hover {
+  color: var(--foreground);
+}
+
+.remix-context-card-title:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 3px;
+}
+
+.remix-context-card-icon {
+  display: grid;
+  width: 23px;
+  height: 23px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--remix-context-accent) 44%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--remix-context-accent) 10%, transparent);
+  color: var(--remix-context-accent);
+}
+
+.remix-context-card-icon svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 1.7;
+}
+
+.remix-context-list {
+  display: flex;
+  max-height: 190px;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.remix-context-task,
+.remix-context-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 64%, transparent);
+  padding: 10px 12px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+  font: inherit;
+}
+
+.remix-context-task:last-child,
+.remix-context-row:last-child {
+  border-bottom: 0;
+}
+
+.remix-context-task input {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  accent-color: var(--primary);
+}
+
+.remix-context-task span {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-context-task:has(input:checked) span {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+.remix-context-row {
+  display: grid;
+  cursor: pointer;
+  gap: 2px;
+}
+
+.remix-context-file {
+  grid-template-columns: 25px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.remix-context-file-icon {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--remix-context-accent));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--remix-context-accent) 8%, transparent);
+  color: color-mix(in srgb, var(--remix-context-accent) 78%, var(--foreground));
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.remix-context-file-icon svg {
+  width: 13px;
+  height: 13px;
+  stroke-width: 1.7;
+}
+
+.remix-context-file-copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.remix-context-file:hover .remix-context-file-icon,
+.remix-context-file.is-selected .remix-context-file-icon {
+  border-color: color-mix(in srgb, var(--remix-context-accent) 58%, var(--border));
+  background: color-mix(in srgb, var(--remix-context-accent) 16%, transparent);
+  color: var(--remix-context-accent);
+}
+
+.remix-context-row:hover,
+.remix-context-row.is-selected {
+  background: color-mix(in srgb, var(--remix-context-accent) 8%, var(--secondary));
+}
+
+.remix-context-row:focus-visible,
+.remix-context-view-all:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.remix-context-row strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-context-row span,
+.remix-context-empty {
+  overflow: hidden;
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-context-empty {
+  position: relative;
+  z-index: 1;
+  min-height: 48px;
+  padding: 14px 12px;
+  background: color-mix(in srgb, var(--secondary) 32%, transparent);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: normal;
+}
+
+.remix-context-view-all {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  padding: 3px 2px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+}
+
+.remix-context-view-all:hover {
+  color: var(--foreground);
+}
+
+.remix-context-view-all svg {
+  width: 12px;
+  height: 12px;
+  transition: transform 140ms ease;
+}
+
+.remix-context-view-all svg.is-open {
+  transform: rotate(180deg);
+}
+
+.remix-context-add {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 32px;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  margin: 8px 10px 10px;
+  border: 1px solid color-mix(in srgb, var(--border) 86%, var(--remix-context-accent));
+  border-radius: 8px;
+  padding: 0 9px;
+  background: color-mix(in srgb, var(--background) 34%, transparent);
+  color: color-mix(in srgb, var(--muted-foreground) 88%, var(--remix-context-accent));
+  transition:
+    border-color 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
+}
+
+.remix-context-add:focus-within {
+  border-color: color-mix(in srgb, var(--remix-context-accent) 64%, var(--border));
+  background: color-mix(in srgb, var(--remix-context-accent) 8%, var(--background));
+  color: var(--remix-context-accent);
+}
+
+.remix-context-add svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+  stroke-width: 1.8;
+}
+
+.remix-context-add input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+}
+
+.remix-context-add input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.remix-context-view-all {
+  margin: 0 10px 8px;
+}
+
+/* The overview remains scannable. Detailed work lives beside the conversation,
+   so it reads as a real workspace instead of a temporary overlay. */
+.remix-inspector {
+  position: relative;
+  z-index: 4;
+  display: flex;
+  width: min(var(--remix-inspector-width), 50%);
+  max-width: 50%;
+  min-width: min(360px, 46vw);
+  flex: 0 1 min(var(--remix-inspector-width), 50%);
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--background);
+  animation: remix-inspector-in 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes remix-inspector-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.remix-inspector-resize-handle {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  width: 10px;
+  cursor: col-resize;
+}
+
+.remix-inspector-resize-handle:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+.remix-inspector-head {
+  display: flex;
+  min-height: 42px;
+  flex: 0 0 42px;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+
+.remix-inspector-tabs {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: stretch;
+  gap: 0;
+  overflow-x: auto;
+  padding: 0 6px;
+}
+
+.remix-inspector-tab-wrap {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.remix-inspector-tab-wrap button {
+  display: inline-flex;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0 10px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.remix-inspector-tab-wrap button[role="tab"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.remix-inspector-tab-wrap button[aria-selected="true"] {
+  color: var(--foreground);
+  border-bottom-color: var(--foreground);
+}
+
+.remix-inspector-tab-wrap button svg,
+.remix-inspector-document-head button svg,
+.remix-inspector-file-list button > svg {
+  width: 13px;
+  height: 13px;
+}
+
+.remix-inspector-tab-wrap button:hover,
+.remix-inspector-document-head button:hover {
+  color: var(--foreground);
+}
+
+.remix-inspector-body {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 18px;
+}
+
+.remix-inspector-document-head {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  color: var(--muted-foreground);
+}
+
+.remix-inspector-document-location {
+  overflow: hidden;
+  min-width: 0;
+}
+
+.remix-inspector-document-location [data-slot="breadcrumb-list"] {
+  flex-wrap: nowrap;
+  gap: 5px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-family: var(--tavern-mono);
+  font-size: 10.5px;
+  line-height: 1;
+}
+
+.remix-inspector-document-location [data-slot="breadcrumb-item"] {
+  min-width: 0;
+}
+
+.remix-inspector-document-location [data-slot="breadcrumb-item"] > span,
+.remix-inspector-document-location [data-slot="breadcrumb-page"] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-inspector-document-location [data-slot="breadcrumb-item"] > span {
+  color: var(--muted-foreground);
+}
+
+.remix-inspector-document-location [data-slot="breadcrumb-page"] {
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.remix-inspector-document-location [data-slot="breadcrumb-separator"] {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.remix-inspector-document-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.remix-inspector-document-action-group {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+  background: var(--card);
+}
+
+.remix-inspector-document-head button {
+  display: inline-flex;
+  min-height: 27px;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 0 9px;
+  background: transparent;
+  color: var(--secondary-foreground);
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 620;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.remix-inspector-document-head button svg {
+  width: 13px;
+  height: 13px;
+  flex: 0 0 auto;
+}
+
+.remix-inspector-revert {
+  width: 27px;
+  padding: 0 !important;
+}
+
+.remix-inspector-document-head button:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--secondary);
+}
+
+.remix-inspector-document-head button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.remix-inspector-save {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+  min-width: 62px;
+  box-shadow: 0 5px 12px -8px color-mix(in srgb, var(--primary) 90%, transparent);
+}
+
+.remix-inspector-save:hover:not(:disabled) {
+  border-color: var(--primary) !important;
+  background: color-mix(in srgb, var(--primary) 92%, #fff) !important;
+  color: var(--primary-foreground) !important;
+}
+
+.remix-inspector-save:disabled {
+  cursor: default;
+  opacity: 0.72;
+}
+
+.remix-inspector-document-state,
+.remix-inspector-document-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  font-weight: 560;
+}
+
+.remix-inspector-document-state svg {
+  width: 13px;
+  height: 13px;
+  color: var(--primary);
+}
+
+.remix-inspector-document-state.is-dirty {
+  color: color-mix(in srgb, var(--primary) 82%, var(--foreground));
+}
+
+.remix-inspector-document-state.is-dirty::before {
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--primary);
+  content: "";
+}
+
+.remix-inspector-document-error {
+  color: var(--destructive);
+}
+
+.remix-inspector-editor {
+  width: 100%;
+  min-height: min(510px, calc(100dvh - 165px));
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  outline: 0;
+  padding: 14px;
+  background: var(--card);
+  color: var(--foreground);
+  font-family: var(--tavern-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.remix-inspector-editor:focus {
+  border-color: color-mix(in srgb, var(--primary) 64%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+}
+
+.remix-inspector-file-list {
+  display: grid;
+  gap: 6px;
+}
+
+.remix-inspector-task-list {
+  display: grid;
+  gap: 3px;
+}
+
+.remix-inspector-task-list label {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 62%, transparent);
+  color: var(--secondary-foreground);
+  font-size: 12px;
+}
+
+.remix-inspector-task-list input {
+  accent-color: var(--primary);
+}
+
+.remix-inspector-task-list input:checked + span {
+  color: var(--muted-foreground);
+  text-decoration: line-through;
+}
+
+.remix-inspector-task-add {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0 10px;
+  color: var(--primary);
+}
+
+.remix-inspector-task-add input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+}
+
+.remix-inspector-empty-copy {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.remix-inspector-file-list button {
+  display: flex;
+  width: 100%;
+  min-height: 54px;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: transparent;
+  color: var(--secondary-foreground);
+  text-align: left;
+}
+
+.remix-inspector-file-list button:hover {
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.remix-inspector-file-list button > svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.remix-inspector-file-list button > span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.remix-inspector-file-list strong,
+.remix-inspector-file-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-inspector-file-list strong {
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.remix-inspector-file-list small,
+.remix-inspector-empty {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.remix-inspector-empty {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.remix-inspector-empty p {
+  margin: 0;
+}
+
+.remix-inspector-empty button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11px;
+}
+
+@media (max-width: 1080px) {
+  .remix-agent .tavern-workspace {
+    --remix-context-width: min(304px, calc(100vw - 82px));
+  }
+
+}
+
+@media (max-width: 760px) {
+  .remix-inspector {
+    position: absolute;
+    z-index: 8;
+    inset: 0;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+    border-left: 0;
+  }
+
+  .remix-inspector-resize-handle {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remix-context-card,
+  .remix-context-card-foot svg,
+  .remix-context-view-all svg,
+  .remix-context-rail,
+  .remix-agent .remix-context-toggle {
+    transition: none;
+  }
+
+  .remix-agent .remix-conversation-skeleton-line::after {
+    animation: none;
+  }
+}
+
+.remix-agent .tavern-body {
+  background: var(--background);
+}
+
+.remix-agent .tavern-conversation {
+  padding: 24px var(--remix-content-gutter);
+}
+
+/* Scheduled work uses the same restrained content column as a Remix chat; it
+   is a workspace view, not a separate landing page. */
+.remix-agent .tavern-schedule-page {
+  width: min(760px, 100%);
+  margin: 0 auto 36px;
+}
+
+/* Capabilities are a destination in their own right. Keep their wider card
+   gallery, but give it the same deliberate workspace column as schedules. */
+.remix-agent .tavern-capabilities-page {
+  width: min(1040px, 100%);
+  margin: 0 auto 36px;
+}
+
+.remix-agent .tavern-capabilities-page > .tavern-set-hint.is-lead {
+  margin: 0;
+  padding: 0 0 15px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+.remix-agent .tavern-capabilities-page .tavern-cap-group:first-of-type {
+  margin-top: 18px;
+}
+
+.remix-agent .tavern-schedule-page-head {
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 0 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  padding: 0 0 15px;
+}
+
+.remix-agent .tavern-schedule-page-head h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
+}
+
+.remix-agent .tavern-schedule-page-head p {
+  margin: 4px 0 0;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+}
+
+.remix-agent .tavern-schedule-page-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.remix-agent .tavern-schedule-create {
+  display: inline-flex;
+  min-height: 36px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  padding: 0 13px;
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  transition: transform 140ms ease, filter 140ms ease;
+}
+
+.remix-agent .tavern-schedule-create:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.remix-agent .tavern-schedule-create:focus-visible,
+.remix-agent .tavern-schedule-edit:focus-visible,
+.remix-agent .tavern-schedule-run:focus-visible,
+.remix-agent .tavern-schedule-state:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.remix-agent .tavern-schedule-create svg,
+.remix-agent .tavern-schedule-edit svg,
+.remix-agent .tavern-schedule-run svg {
+  width: 14px;
+  height: 14px;
+}
+
+.remix-agent .tavern-schedule-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.remix-agent .tavern-schedule-card {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, transparent);
+  border-radius: 14px;
+  padding: 17px;
+  background: var(--card);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 5%, transparent);
+  transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.remix-agent .tavern-schedule-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
+  transform: translateY(-1px);
+}
+
+.remix-agent .tavern-schedule-card.is-paused {
+  opacity: 0.7;
+}
+
+.remix-agent .tavern-schedule-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.remix-agent .tavern-schedule-card-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.remix-agent .tavern-schedule-card-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--primary) 43%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: var(--primary);
+}
+
+.remix-agent .tavern-schedule-card-icon svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.7;
+}
+
+.remix-agent .tavern-schedule-card h3,
+.remix-agent .tavern-schedule-card-title p {
+  overflow: hidden;
+  margin: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-agent .tavern-schedule-card h3 {
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+}
+
+.remix-agent .tavern-schedule-card-title p {
+  margin-top: 3px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.remix-agent .tavern-schedule-state {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.remix-agent .tavern-schedule-state.is-on {
+  border-color: color-mix(in srgb, var(--primary) 65%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+
+.remix-agent .tavern-schedule-state:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.remix-agent .tavern-schedule-prompt {
+  display: -webkit-box;
+  min-height: 42px;
+  margin: 17px 0 0;
+  overflow: hidden;
+  color: var(--secondary-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+}
+
+.remix-agent .tavern-schedule-timing {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 16px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  padding-top: 11px;
+}
+
+.remix-agent .tavern-schedule-timing dt {
+  color: var(--muted-foreground);
+  font-family: var(--tavern-mono);
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.remix-agent .tavern-schedule-timing dd {
+  overflow: hidden;
+  margin: 3px 0 0;
+  color: var(--foreground);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-agent .tavern-schedule-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: auto;
+  padding-top: 17px;
+}
+
+.remix-agent .tavern-schedule-edit,
+.remix-agent .tavern-schedule-run,
+.remix-agent .tavern-schedule-view-brief {
+  display: inline-flex;
+  min-height: 31px;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 7px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.remix-agent .tavern-schedule-edit,
+.remix-agent .tavern-schedule-view-brief {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--secondary-foreground);
+}
+
+.remix-agent .tavern-schedule-edit:hover,
+.remix-agent .tavern-schedule-view-brief:hover {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-schedule-run {
+  border: 1px solid var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.remix-agent .tavern-schedule-run:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.remix-agent .tavern-schedule-run:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.remix-agent .tavern-schedule-delete {
+  display: inline-grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  margin-left: auto;
+  border: 1px solid color-mix(in srgb, var(--destructive) 30%, var(--border));
+  border-radius: 7px;
+  padding: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--destructive) 82%, var(--muted-foreground));
+}
+
+.remix-agent .tavern-schedule-delete:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--destructive) 55%, var(--border));
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+  color: var(--destructive);
+}
+
+.remix-agent .tavern-schedule-delete:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.remix-agent .tavern-schedule-delete svg {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 760px) {
+  .remix-agent .tavern-schedule-page-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .remix-agent .tavern-schedule-page-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .remix-agent .tavern-schedule-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Preserve the page's reading rhythm while a newly selected conversation is
+   fetched. These deliberately resemble message columns rather than a generic
+   page loader, so the titlebar and sidebar feel immediately connected. */
+.remix-agent .remix-conversation-skeleton {
+  display: flex;
+  width: min(680px, 100%);
+  flex: 1;
+  flex-direction: column;
+  align-self: center;
+  gap: 12px;
+  padding-top: 10px;
+}
+
+.remix-agent .remix-conversation-skeleton-line {
+  position: relative;
+  display: block;
+  width: min(74%, 520px);
+  height: 54px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--card) 74%, var(--background));
+}
+
+.remix-agent .remix-conversation-skeleton-line::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--foreground) 7%, transparent),
+    transparent
+  );
+  animation: remix-conversation-sheen 1.65s ease-in-out infinite;
+}
+
+.remix-agent .remix-conversation-skeleton-line.is-user {
+  width: min(57%, 390px);
+  height: 48px;
+  align-self: flex-end;
+  background: color-mix(in srgb, var(--primary) 8%, var(--card));
+}
+
+.remix-agent .remix-conversation-skeleton-line.is-assistant-short {
+  width: min(46%, 310px);
+  height: 18px;
+}
+
+@keyframes remix-conversation-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.remix-agent .tavern-openers {
+  width: min(680px, 100%);
+  margin: auto;
+  gap: 16px;
+}
+
+.remix-agent .tavern-opener-welcome {
+  margin-bottom: 2px;
+  text-align: center;
+}
+
+.remix-agent .tavern-opener-welcome h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-family: "Instrument Serif", "Times New Roman", serif;
+  font-size: clamp(28px, 3.5vw, 38px);
+  font-weight: 400;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+.remix-agent .tavern-opener-welcome p {
+  margin: 8px 0 0;
+  color: var(--muted-foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.remix-agent .tavern-opener-suggestions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.remix-agent .tavern-opener-row,
+.remix-agent .tavern-opener-line {
+  min-width: 0;
+}
+
+.remix-agent .tavern-opener-line {
+  position: relative;
+  min-height: 92px;
+  border-color: var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 72%, var(--background));
+}
+
+.remix-agent .tavern-opener-line:hover:has(.tavern-opener:not(:disabled)),
+.remix-agent .tavern-opener-line:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 62%, var(--border));
+  box-shadow: none;
+}
+
+.remix-agent .tavern-opener {
+  min-height: 92px;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 15px 16px;
+}
+
+.remix-agent .tavern-opener-mark {
+  padding-top: 1px;
+  font-size: 13px;
+}
+
+.remix-agent .tavern-opener-title {
+  overflow: visible;
+  padding-right: 8px;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.35;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.remix-agent .tavern-opener-go {
+  position: absolute;
+  right: 15px;
+  bottom: 11px;
+  color: var(--primary);
+  font-size: 16px;
+  opacity: 0.75;
+}
+
+.remix-agent .tavern-opener-x {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  border: 0;
+  padding: 4px 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: color 120ms ease, opacity 120ms ease;
+}
+
+.remix-agent .tavern-opener-line:hover .tavern-opener-x,
+.remix-agent .tavern-opener-line:focus-within .tavern-opener-x {
+  opacity: 1;
+}
+
+.remix-agent .tavern-opener-x:hover {
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-opener-todos {
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--secondary) 65%, var(--background));
+}
+
+.remix-agent .tavern-opener-more {
+  justify-self: center;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+
+@media (max-width: 620px) {
+  .remix-agent .tavern-opener-suggestions {
+    grid-template-columns: 1fr;
+  }
+}
+
+.remix-agent .tavern-msg-user-wrap {
+  width: fit-content;
+  max-width: min(700px, 82%);
+}
+
+.remix-agent .tavern-msg-user {
+  border: 1px solid var(--border);
+  border-radius: 10px 10px 3px 10px;
+  padding: 8px 12px;
+  background: color-mix(in srgb, var(--secondary) 88%, var(--background));
+  box-shadow: none;
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.remix-agent .tavern-msg-actions {
+  min-height: 26px;
+  gap: 3px;
+}
+
+.remix-agent .tavern-msg-action {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  color: var(--muted-foreground);
+}
+
+.remix-agent .tavern-msg-action:hover:not(:disabled) {
+  border-color: var(--border);
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-msg-action.is-copied {
+  color: var(--primary);
+}
+
+.remix-agent .tavern-tool-activity {
+  align-self: flex-start;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.remix-agent .tavern-tool-activity > summary {
+  gap: 5px;
+  padding: 1px 0;
+  color: var(--muted-foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.remix-agent .tavern-tool-activity > summary::after {
+  margin-left: 2px;
+  color: var(--muted-foreground);
+  content: "›";
+  font-size: 14px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 140ms ease;
+}
+
+.remix-agent .tavern-tool-activity[open] > summary {
+  border-bottom: 0;
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-tool-activity[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.remix-agent .tavern-tool-activity .tavern-tool-mark {
+  color: var(--primary);
+  font-size: 11px;
+}
+
+.remix-agent .tavern-tool-activity-list {
+  margin: 6px 0 0 5px;
+  padding: 3px 0 3px 10px;
+  border-left: 1px solid var(--border);
+}
+
+.remix-agent .tavern-agent-brief {
+  align-self: stretch;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  line-height: 1.6;
+}
+
+.remix-agent .tavern-agent-brief-headline .tavern-md {
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.remix-agent .tavern-agent-brief-summary {
+  margin-top: 10px;
+}
+
+.remix-agent .tavern-agent-brief ul {
+  margin: 10px 0 0;
+  padding-left: 19px;
+}
+
+.remix-agent .tavern-agent-brief li {
+  margin: 5px 0;
+}
+
+.remix-agent .tavern-agent-brief li .tavern-md p {
+  margin: 0;
+}
+
+.remix-agent .tavern-composer {
+  width: min(var(--remix-reading-width), calc(100% - 40px));
+  box-sizing: border-box;
+  align-items: flex-end;
+  gap: 5px;
+  margin: 0 auto 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 5px 6px 5px 11px;
+  background: color-mix(in srgb, var(--card) 86%, var(--background));
+  box-shadow: 0 10px 22px -20px color-mix(in srgb, #000 72%, transparent);
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.remix-agent .tavern-composer:focus-within {
+  border-color: color-mix(in srgb, var(--primary) 72%, var(--border));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 13%, transparent);
+}
+
+.remix-agent .tavern-input {
+  min-height: 24px;
+  padding: 7px 1px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.remix-agent .tavern-input:focus-visible {
+  border: 0;
+}
+
+.remix-agent .tavern-btn-send {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Workspace tools ----------------------------------------------------------
+   Chat stays the expressive surface. Everything behind its tabs uses one
+   quieter, document-like rhythm so tasks, notes, files and settings feel like
+   parts of the same desktop workspace rather than nested Tavern panels. */
+.remix-agent .tavern-conversation {
+  gap: 8px;
+}
+
+.remix-agent .tavern-conversation:not([data-remix-view="chat"]) {
+  gap: 0;
+}
+
+.remix-agent .tavern-empty {
+  align-self: stretch;
+  min-height: 72px;
+  border-color: var(--border);
+  border-style: solid;
+  border-radius: 8px;
+  padding: 15px;
+  background: color-mix(in srgb, var(--card) 72%, transparent);
+  color: var(--muted-foreground);
+}
+
+.remix-agent .tavern-todo {
+  min-height: 40px;
+  gap: 10px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--remix-row-rule);
+}
+
+.remix-agent .tavern-todo + .tavern-todo {
+  margin-top: 0;
+}
+
+.remix-agent .tavern-todo:hover {
+  background: color-mix(in srgb, var(--secondary) 54%, transparent);
+}
+
+.remix-agent .tavern-todo-check {
+  width: 15px;
+  height: 15px;
+  border-width: 1px;
+  border-radius: 4px;
+  border-color: var(--muted-foreground);
+}
+
+.remix-agent .tavern-todo-check:checked {
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: inset 0 0 0 2px var(--card);
+}
+
+.remix-agent .tavern-todo-text,
+.remix-agent .tavern-todo-edit {
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+}
+
+.remix-agent .tavern-todo-add,
+.remix-agent .tavern-file-new {
+  margin-top: 8px;
+  border: 0;
+  border-radius: 5px;
+  padding: 7px 8px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 12px;
+}
+
+.remix-agent .tavern-todo-add:focus-visible,
+.remix-agent .tavern-file-new:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.remix-agent .tavern-todo-add:hover,
+.remix-agent .tavern-file-new:hover {
+  background: color-mix(in srgb, var(--secondary) 58%, transparent);
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-todo-streak {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+}
+
+.remix-agent .tavern-note-row {
+  gap: 4px;
+  min-height: 52px;
+  padding: 9px 8px;
+  border: 0;
+  border-bottom: 1px solid var(--remix-row-rule);
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-note-row + .tavern-note-row {
+  margin-top: 0;
+}
+
+.remix-agent .tavern-note-row:hover {
+  background: color-mix(in srgb, var(--secondary) 54%, transparent);
+}
+
+.remix-agent .tavern-note-title {
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.remix-agent .tavern-note-date,
+.remix-agent .tavern-note-snippet {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.remix-agent .tavern-note-bar,
+.remix-agent .tavern-file-back {
+  color: var(--muted-foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+}
+
+.remix-agent .tavern-note-delete,
+.remix-agent .tavern-file-delete {
+  color: color-mix(in srgb, var(--destructive) 74%, var(--foreground));
+}
+
+.remix-agent .tavern-note-editor,
+.remix-agent .tavern-note-rendered,
+.remix-agent .tavern-editor,
+.remix-agent .tavern-editor-name {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--card) 70%, transparent);
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-brain-files {
+  gap: 6px;
+}
+
+.remix-agent .tavern-brain-files-head,
+.remix-agent .tavern-sched-label {
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+}
+
+.remix-agent .tavern-brain-files-head em {
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+.remix-agent .tavern-tree {
+  gap: 0;
+  padding: 0;
+}
+
+.remix-agent .tavern-tree-row {
+  min-height: 36px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--remix-row-rule);
+  border-radius: 0;
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-tree-row:hover {
+  background: color-mix(in srgb, var(--secondary) 54%, transparent);
+}
+
+.remix-agent .tavern-sched-section {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.remix-agent .tavern-sched.is-card {
+  padding: 8px;
+  border-bottom: 1px solid var(--remix-row-rule);
+}
+
+.remix-agent .tavern-sched-schedule,
+.remix-agent .tavern-sched-meta {
+  color: var(--muted-foreground);
+}
+
+/* Settings use a single divided list; account and billing remain the only
+   contained information blocks, avoiding a wall of repeated rounded cards. */
+.remix-agent .tavern-set-row {
+  min-height: 42px;
+  padding: 9px 5px;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--foreground);
+}
+
+.remix-agent .tavern-set-row + .tavern-set-row {
+  margin-top: 0;
+}
+
+.remix-agent .tavern-set-row:not(.is-static):hover {
+  background: color-mix(in srgb, var(--secondary) 54%, transparent);
+}
+
+.remix-agent .tavern-set-label {
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.remix-agent .tavern-set-detail,
+.remix-agent .tavern-set-hint {
+  color: var(--muted-foreground);
+}
+
+.remix-agent .tavern-set-card {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--card) 76%, transparent);
+  box-shadow: none;
+}
+
+.remix-agent .tavern-set-section {
+  margin-top: 17px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+}
+
+.remix-agent .tavern-set-switch.is-on,
+.remix-agent .tavern-set-seg-btn.is-on {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+/* Apps is a deliberately wider library canvas than chat: three composed cards
+   make scanning tools faster without turning the rest of Remix into a grid. */
+.remix-agent .tavern-conversation[data-remix-view="apps"] {
+  --remix-apps-width: 1040px;
+  padding-right: max(20px, calc((100% - var(--remix-apps-width)) / 2));
+  padding-left: max(20px, calc((100% - var(--remix-apps-width)) / 2));
+}
+
+.remix-agent .connected-apps {
+  display: flex;
+  width: min(100%, 1040px);
+  margin: 0 auto;
+  gap: 20px;
+}
+
+.remix-agent .connector-search {
+  width: 100%;
+  margin: 0;
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.remix-agent .connector-group {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.remix-agent .connector-group-label,
+.remix-agent .connector-group .connector-skeleton,
+.remix-agent .connector-group .connector-empty {
+  grid-column: 1 / -1;
+}
+
+.remix-agent .connector-group-label {
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.remix-agent .connector-group-label em {
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+.remix-agent .connector-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px;
+  border-color: var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  box-shadow: none;
+}
+
+.remix-agent .connector-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 44%, var(--border));
+  background: var(--card);
+  transform: none;
+}
+
+.remix-agent .connector-card.is-connected,
+.remix-agent .connector-card.needs-reconnect {
+  border-color: var(--border);
+}
+
+.remix-agent .connector-card-open {
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  cursor: default;
+}
+
+.remix-agent .connector-logo,
+.remix-agent .connector-mark {
+  width: 36px;
+  height: 36px;
+  border-color: var(--border);
+  border-radius: 9px;
+  background: var(--background);
+}
+
+.remix-agent .connector-card-copy p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.remix-agent .connector-card-actions {
+  flex-direction: row;
+  margin-top: 0;
+  align-items: center;
+}
+
+.remix-agent .connector-card .connector-action,
+.remix-agent .connector-card .connector-card-details {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-color: var(--border);
+  background: transparent;
+  color: var(--foreground);
+  text-align: center;
+}
+
+.remix-agent .connector-card .connector-card-details {
+  border: 0;
+  padding-right: 4px;
+  padding-left: 0;
+  color: var(--muted-foreground);
+}
+
+.remix-agent .connector-card .connector-card-details:hover {
+  background: transparent;
+  color: var(--foreground);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.remix-agent .connector-card .connector-action:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 11%, transparent);
+  color: var(--foreground);
+}
+
+.remix-agent .connector-state {
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+.remix-agent .connector-skeleton {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.remix-agent .connector-skeleton-row {
+  min-height: 118px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-content: start;
+  padding: 12px;
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+}
+
+.remix-agent .connector-skeleton-action {
+  grid-column: 1 / -1;
+  width: 58px;
+  margin-top: 10px;
+}
+
+/* Apps lives in Settings now. Keep the same compact directory geometry and
+   interaction language there instead of inheriting the old full-page rows. */
+.settings-connected-apps .connected-apps {
+  display: flex;
+  width: min(100%, 1040px);
+  margin: 0;
+  gap: 20px;
+}
+
+.settings-connected-apps .connector-search {
+  width: 100%;
+  margin: 0;
+  border-color: var(--border);
+  background: var(--card);
+}
+
+.settings-connected-apps .connector-search:focus-within {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+
+.settings-connected-apps .connector-search-icon {
+  color: var(--muted-foreground);
+}
+
+.settings-connected-apps .connector-search input {
+  color: var(--foreground);
+}
+
+.settings-connected-apps .connector-search input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.settings-connected-apps .connector-search button {
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+.settings-connected-apps .connector-group {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-connected-apps .connector-group-label,
+.settings-connected-apps .connector-group .connector-skeleton,
+.settings-connected-apps .connector-group .connector-empty {
+  grid-column: 1 / -1;
+}
+
+.settings-connected-apps .connector-group-label {
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.settings-connected-apps .connector-group-label em {
+  background: var(--secondary);
+  color: var(--muted-foreground);
+}
+
+.settings-connected-apps .connector-card {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 12px;
+  border-color: var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+  box-shadow: none;
+}
+
+.settings-connected-apps .connector-card:hover {
+  border-color: color-mix(in srgb, var(--primary) 44%, var(--border));
+  background: var(--card);
+  transform: none;
+}
+
+.settings-connected-apps .connector-card.is-connected,
+.settings-connected-apps .connector-card.needs-reconnect {
+  border-color: var(--border);
+}
+
+.settings-connected-apps .connector-card-open {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-items: start;
+  gap: 10px;
+  cursor: default;
+}
+
+.settings-connected-apps .connector-logo,
+.settings-connected-apps .connector-mark {
+  width: 36px;
+  height: 36px;
+  border-color: var(--border);
+  border-radius: 9px;
+  background: var(--background);
+}
+
+.settings-connected-apps .connector-card-copy p {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 4px;
+  color: var(--muted-foreground);
+  font-size: 11.5px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.settings-connected-apps .connector-card-copy .connector-reason {
+  color: var(--destructive);
+}
+
+.settings-connected-apps .connector-card-actions {
+  display: flex;
+  flex-direction: row;
+  margin-top: 0;
+  align-items: center;
+}
+
+.settings-connected-apps .connector-card .connector-action {
+  min-height: 30px;
+  border-color: var(--border);
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--foreground);
+}
+
+.settings-connected-apps .connector-card .connector-action:hover:not(:disabled) {
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 11%, transparent);
+  color: var(--foreground);
+}
+
+.settings-connected-apps .connector-skeleton {
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-connected-apps .connector-skeleton-row {
+  min-height: 118px;
+  grid-template-columns: 36px minmax(0, 1fr);
+  align-content: start;
+  padding: 12px;
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--card) 80%, transparent);
+}
+
+.settings-connected-apps .connector-skeleton-mark,
+.settings-connected-apps .connector-skeleton-copy i,
+.settings-connected-apps .connector-skeleton-action {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--secondary) 76%, var(--card)) 25%,
+    color-mix(in srgb, var(--muted-foreground) 20%, var(--secondary)) 50%,
+    color-mix(in srgb, var(--secondary) 76%, var(--card)) 75%
+  );
+}
+
+.connector-credentials-dialog .connector-keyform {
+  margin-top: 16px;
+}
+
+.connector-credentials-dialog .connector-action {
+  justify-self: start;
+}
+
+/* The shared data skeleton already uses Tavern variables. Connector loading
+   predates it and carried a fixed light glint, so keep its shimmer inside the
+   same dark, low-contrast surface as every other Remix view. */
+.remix-agent .connector-skeleton-mark,
+.remix-agent .connector-skeleton-copy i,
+.remix-agent .connector-skeleton-action {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--secondary) 76%, var(--card)) 25%,
+    color-mix(in srgb, var(--muted-foreground) 20%, var(--secondary)) 50%,
+    color-mix(in srgb, var(--secondary) 76%, var(--card)) 75%
+  );
+}
+
+@media (max-width: 640px) {
+  .remix-agent .tavern-conversation {
+    padding: 18px;
+  }
+
+  .remix-agent .tavern-workspace-mobile-tools {
+    padding: 0 18px;
+  }
+
+  .remix-agent .tavern-composer {
+    width: calc(100% - 36px);
+  }
+
+  .remix-agent .tavern-conversation[data-remix-view="apps"] {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .remix-agent .connector-group,
+  .remix-agent .connector-skeleton,
+  .settings-connected-apps .connector-group,
+  .settings-connected-apps .connector-skeleton {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 641px) and (max-width: 920px) {
+  .remix-agent .connector-group,
+  .remix-agent .connector-skeleton,
+  .settings-connected-apps .connector-group,
+  .settings-connected-apps .connector-skeleton {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

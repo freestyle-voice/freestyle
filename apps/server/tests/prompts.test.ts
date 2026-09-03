@@ -1,4 +1,4 @@
-import { CLEANUP_PRESET_PROMPTS } from "@freestyle-voice/validations";
+import { CLEANUP_PRESET_PROMPTS } from "@freestyle-voice/validations/cleanup-presets";
 import { describe, expect, it } from "vitest";
 import {
   buildLanguageBlock,

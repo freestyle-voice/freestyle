@@ -1,0 +1,109 @@
+/*
+ * AppShell renders before every route, including the cold Dictate route. Keep
+ * titlebar rules here rather than in the lazy Remix chunk so the selector
+ * cannot briefly fall back to unstyled inline content at startup.
+ */
+.glass-content-titlebar {
+  position: absolute;
+  z-index: 10;
+  inset: 0 0 auto;
+  height: 8px;
+  background: transparent;
+}
+
+.remix-sidebar-titlebar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 10px 20px 8px;
+}
+
+.remix-workspace-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 6px;
+  margin: -4px -6px;
+  padding: 6px;
+  background: transparent;
+  color: var(--foreground);
+  font-family: "DM Sans", system-ui, sans-serif;
+  font-size: 20px;
+  font-weight: 560;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  outline: none;
+  transition: color 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+.remix-workspace-switcher:is(:hover, [data-state="open"]) {
+  background: var(--secondary);
+  box-shadow: inset 0 0 0 1px var(--border);
+}
+
+.remix-workspace-switcher:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 4px;
+}
+
+.remix-workspace-switcher svg {
+  width: 16px;
+  height: 16px;
+  color: var(--muted-foreground);
+  stroke-width: 1.8;
+  transition: color 120ms ease;
+}
+
+.remix-workspace-switcher:is(:hover, [data-state="open"]) svg {
+  color: var(--primary);
+}
+
+/* A quiet environment marker that reads as part of the titlebar, not a button. */
+.remix-dev-badge {
+  display: inline-flex;
+  height: 18px;
+  flex: 0 0 auto;
+  align-items: center;
+  border: 1px solid color-mix(in srgb, var(--primary) 58%, var(--border));
+  border-radius: 999px;
+  padding: 0 6px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: var(--primary);
+  font-family: "SF Mono", "Cascadia Code", ui-monospace, monospace;
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  line-height: 1;
+}
+
+.remix-session-search-trigger {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.remix-session-search-trigger:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.remix-session-search-trigger:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.remix-session-search-trigger svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 1.8;
+}

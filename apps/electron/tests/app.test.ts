@@ -14,20 +14,18 @@ import { _electron as electron } from "playwright";
 // ---------------------------------------------------------------------------
 
 let app: ElectronApplication | undefined;
-let companionPage: Page;
+let pillPage: Page;
 let serverPort: number;
 
-const DEFAULT_PORT = 4649;
-
-/** The companion (corner sprite) is the app's only boot window. */
-async function waitForCompanionWindow(
+/** The pill is the only default boot surface; the pet is opt-in. */
+async function waitForPillWindow(
   electronApp: ElectronApplication,
   timeoutMs = 10_000,
 ): Promise<Page> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const win of electronApp.windows()) {
-      if (win.url().includes("companion")) {
+      if (win.url().includes("pill")) {
         await win.waitForLoadState("domcontentloaded");
         return win;
       }
@@ -37,9 +35,25 @@ async function waitForCompanionWindow(
   return electronApp.windows()[0];
 }
 
+async function waitForWorkspaceWindow(
+  electronApp: ElectronApplication,
+  timeoutMs = 10_000,
+): Promise<Page> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    for (const win of electronApp.windows()) {
+      if (win.url().includes("panel")) {
+        await win.waitForLoadState("domcontentloaded");
+        return win;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  throw new Error("Workspace window did not open");
+}
+
 test.beforeAll(async () => {
   const userDataDir = mkdtempSync(join(tmpdir(), "freestyle-e2e-"));
-  const dbPath = join(userDataDir, "freestyle.db");
 
   try {
     app = await electron.launch({
@@ -47,30 +61,22 @@ test.beforeAll(async () => {
       env: {
         ...process.env,
         NODE_ENV: "development",
-        FREESTYLE_DB_PATH: dbPath,
         FREESTYLE_E2E: "1",
+        // The main process owns FREESTYLE_DB_PATH from Electron's user-data
+        // directory. Point Electron itself at the fixture so this test cannot
+        // inherit a developer's settings or local history.
+        FREESTYLE_USER_DATA: userDataDir,
         ELECTRON_DISABLE_SECURITY_WARNINGS: "true",
       },
       timeout: 30_000,
     });
 
     await app.firstWindow();
-    companionPage = await waitForCompanionWindow(app, 15_000);
+    pillPage = await waitForPillWindow(app, 15_000);
 
-    // Resolve the actual server port by probing the default port from the
-    // main process. The server starts on DEFAULT_PORT and only falls back
-    // to a random port when DEFAULT_PORT is already in use.
-    const portResult = await app.evaluate(async (_electron, port) => {
-      try {
-        const res = await fetch(`http://127.0.0.1:${port}/api/health`);
-        if (res.ok) return port;
-      } catch {
-        // port not available
-      }
-      return 0;
-    }, DEFAULT_PORT);
-
-    serverPort = portResult || DEFAULT_PORT;
+    // Ask the app that was just launched rather than probing 4649. Isolated
+    // E2E uses a random port so it cannot attach to a developer's live app.
+    serverPort = await pillPage.evaluate(() => window.api.getServerPort());
   } catch (error) {
     console.error("Failed to launch Electron app:", error);
     if (app) {
@@ -120,9 +126,9 @@ test("app version is defined", async () => {
   expect(version).toMatch(/^\d+\.\d+/);
 });
 
-test("companion window boots", async () => {
-  expect(companionPage.url()).toContain("companion");
-  const body = await companionPage.locator("body").count();
+test("pill window boots", async () => {
+  expect(pillPage.url()).toContain("pill");
+  const body = await pillPage.locator("body").count();
   expect(body).toBe(1);
 });
 
@@ -131,12 +137,12 @@ test("embedded server answers health checks", async () => {
   expect(res.ok).toBe(true);
 });
 
-test("companion is served from the trusted app:// origin", async () => {
-  expect(companionPage.url()).toMatch(/^app:\/\/renderer\//);
+test("pill is served from the trusted app:// origin", async () => {
+  expect(pillPage.url()).toMatch(/^app:\/\/renderer\//);
 });
 
-test("companion can open the dictation WebSocket", async () => {
-  const outcome = await companionPage.evaluate(
+test("pill can open the dictation WebSocket", async () => {
+  const outcome = await pillPage.evaluate(
     (port) =>
       new Promise<string>((resolve) => {
         const ws = new WebSocket(`ws://127.0.0.1:${port}/stream`);
@@ -159,10 +165,60 @@ test("companion can open the dictation WebSocket", async () => {
   expect(outcome).toMatch(/^message:\{"type":"(config|error)"/);
 });
 
-test("no dashboard window exists", async () => {
+test("pet window stays absent until enabled", async () => {
   const urls = (app?.windows() ?? []).map((w) => w.url());
   for (const url of urls) {
-    expect(url).not.toContain("index.html");
-    expect(url).not.toContain("pill");
+    expect(url).not.toContain("companion");
   }
+});
+
+test("workspace opens as a primary application window", async () => {
+  await pillPage.evaluate(() => {
+    window.electron.ipcRenderer.send("e2e:open-panel");
+  });
+  const workspace = await waitForWorkspaceWindow(app!);
+  await expect(
+    workspace.getByRole("heading", { name: "Sign in to Freestyle" }),
+  ).toBeVisible();
+
+  const properties = await app!.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find((candidate) =>
+      candidate.webContents.getURL().includes("panel.html"),
+    );
+    if (!window) return null;
+    return {
+      bounds: window.getBounds(),
+      alwaysOnTop: window.isAlwaysOnTop(),
+      resizable: window.isResizable(),
+    };
+  });
+
+  expect(properties).not.toBeNull();
+  expect(properties?.bounds.width).toBeGreaterThanOrEqual(900);
+  expect(properties?.bounds.height).toBeGreaterThanOrEqual(680);
+  expect(properties?.alwaysOnTop).toBe(false);
+  expect(properties?.resizable).toBe(true);
+});
+
+test("workspace uses the restored legacy dark visual system", async () => {
+  await pillPage.evaluate(() => {
+    window.electron.ipcRenderer.send("e2e:open-panel");
+  });
+  const workspace = await waitForWorkspaceWindow(app!);
+  // ThemeProvider owns this class. Changing Electron's nativeTheme after a
+  // renderer launches does not reliably update prefers-color-scheme in
+  // headless Linux, so assert the dark visual contract at that boundary.
+  await workspace.locator("html").evaluate((html) => {
+    html.classList.add("dark");
+  });
+  const visual = await workspace.locator("html").evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    return {
+      primary: root.getPropertyValue("--primary").trim(),
+      canvas: root.getPropertyValue("--background").trim(),
+    };
+  });
+
+  expect(visual.primary).toBe("#8ab62a");
+  expect(visual.canvas).toBe("#16140f");
 });

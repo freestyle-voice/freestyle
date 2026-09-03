@@ -1,6 +1,17 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
-import { Markdown } from "@renderer/components/markdown";
+import { DeleteConfirmationDialog } from "@renderer/components/delete-confirmation-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@renderer/components/ui/dialog";
 import { capture } from "@renderer/lib/analytics";
+import {
+  setDeletionConfirmationSkipped,
+  shouldSkipDeletionConfirmation,
+} from "@renderer/lib/deletion-confirmation";
 import { queryKeys, scheduledTasksQueryOptions } from "@renderer/lib/query";
 import {
   clearRunNow,
@@ -16,14 +27,12 @@ import {
   updateScheduledTask,
 } from "@renderer/lib/scheduled-tasks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CalendarClock, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import type React from "react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
-type View =
-  | { kind: "list" }
-  | { kind: "detail"; id: string }
-  | { kind: "edit"; id: string; draft: ScheduledTaskInput }
-  | { kind: "create"; draft: ScheduledTaskInput };
+type Editor = { id: string | null; draft: ScheduledTaskInput };
+type ScheduledTasksVariant = "compact" | "workspace";
 
 function relative(value: string | null, prefix: string): string | null {
   if (!value) return null;
@@ -42,8 +51,10 @@ function relative(value: string | null, prefix: string): string | null {
               month: "short",
               day: "numeric",
             });
-  if (abs >= 60 * 24) return `${prefix} ${when}`;
-  return diffMin < 0 ? `${prefix} ${when} ago` : `${prefix} in ${when}`;
+  const label = (suffix: string): string =>
+    prefix ? `${prefix} ${suffix}` : suffix;
+  if (abs >= 60 * 24) return label(when);
+  return diffMin < 0 ? label(`${when} ago`) : label(`in ${when}`);
 }
 
 function meta(task: ScheduledTaskView): string {
@@ -153,14 +164,66 @@ function TaskForm({
   );
 }
 
+function ScheduleEditorDialog({
+  editor,
+  busy,
+  onDraft,
+  onSave,
+  onClose,
+}: {
+  editor: Editor | null;
+  busy: boolean;
+  onDraft: (draft: ScheduledTaskInput) => void;
+  onSave: () => void;
+  onClose: () => void;
+}): React.JSX.Element {
+  const creating = editor?.id === null;
+  return (
+    <Dialog
+      open={Boolean(editor)}
+      onOpenChange={(open) => {
+        if (!open && !busy) onClose();
+      }}
+    >
+      <DialogContent className="tavern-schedule-dialog">
+        <DialogHeader>
+          <DialogTitle>
+            {creating ? "New schedule" : "Edit schedule"}
+          </DialogTitle>
+          <DialogDescription>
+            {creating
+              ? "Give Remix a recurring piece of work to take care of."
+              : "Change what runs and when it should happen."}
+          </DialogDescription>
+        </DialogHeader>
+        {editor ? (
+          <TaskForm
+            draft={editor.draft}
+            onDraft={onDraft}
+            onSave={onSave}
+            onCancel={onClose}
+            busy={busy}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function ScheduledTasks({
   mascot = "Freestyle",
-  onOpenChange,
   onOpenThread,
+  variant = "compact",
+  workspaceHeader = true,
+  createRequest = 0,
 }: {
   mascot?: string;
-  onOpenChange?: (open: boolean) => void;
-  onOpenThread?: (threadId: string) => void;
+  onOpenThread?: (threadId: string, title: string) => void;
+  variant?: ScheduledTasksVariant;
+  /** The outer Remix workspace owns this header when it renders one. */
+  workspaceHeader?: boolean;
+  /** Changes when an outer workspace header requests a new-schedule dialog. */
+  createRequest?: number;
 }): React.JSX.Element {
   const queryClient = useQueryClient();
   const tasksQuery = useQuery(scheduledTasksQueryOptions());
@@ -170,26 +233,29 @@ export function ScheduledTasks({
     runNowSnapshot,
     runNowSnapshot,
   );
-  const [view, setViewState] = useState<View>({ kind: "list" });
+  const [editor, setEditor] = useState<Editor | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [pendingDeletion, setPendingDeletion] =
+    useState<ScheduledTaskView | null>(null);
+  const lastCreateRequestRef = useRef(createRequest);
   const [error, setError] = useState<string | null>(null);
 
-  const setView = (next: View): void => {
+  const openEditor = (next: Editor): void => {
     setError(null);
-    setConfirming(null);
-    setViewState(next);
-    onOpenChange?.(next.kind !== "list");
+    setEditor(next);
   };
 
-  const openId =
-    view.kind === "detail" || view.kind === "edit" ? view.id : null;
-  const openTask = tasks.find((t) => t.id === openId);
+  const closeEditor = (): void => {
+    setEditor(null);
+  };
+
   useEffect(() => {
-    if (!openId || !tasksQuery.isSuccess || openTask) return;
-    setViewState({ kind: "list" });
-    onOpenChange?.(false);
-  }, [openId, openTask, tasksQuery.isSuccess, onOpenChange]);
+    if (createRequest === lastCreateRequestRef.current) return;
+    lastCreateRequestRef.current = createRequest;
+    setError(null);
+    setPendingDeletion(null);
+    setEditor({ id: null, draft: emptyDraft() });
+  }, [createRequest]);
 
   const refresh = (): Promise<void> =>
     queryClient.invalidateQueries({ queryKey: queryKeys.scheduled.tasks });
@@ -233,11 +299,16 @@ export function ScheduledTasks({
       <>
         <button
           type="button"
-          className="tavern-sched-action"
+          className={
+            variant === "workspace"
+              ? "tavern-schedule-run"
+              : "tavern-sched-action"
+          }
           aria-label={`Run ${task.name} now`}
           disabled={running}
           onClick={() => runNow(task)}
         >
+          {variant === "workspace" ? <Play aria-hidden="true" /> : null}
           {running
             ? "Running…"
             : runState?.status === "ran"
@@ -247,11 +318,15 @@ export function ScheduledTasks({
         {runState?.status === "ran" && runState.threadId && onOpenThread ? (
           <button
             type="button"
-            className="tavern-sched-action"
+            className={
+              variant === "workspace"
+                ? "tavern-schedule-view-brief"
+                : "tavern-sched-action"
+            }
             onClick={() => {
               const threadId = runState.threadId;
               clearRunNow(task.id);
-              if (threadId) onOpenThread(threadId);
+              if (threadId) onOpenThread(threadId, task.name);
             }}
           >
             View brief
@@ -279,11 +354,20 @@ export function ScheduledTasks({
     capture("scheduled_task_deleted", { task: task.name });
     void deleteScheduledTask(task.id)
       .then(() => {
-        setView({ kind: "list" });
+        closeEditor();
         void refresh();
       })
       .catch(fail("Couldn’t delete that task."))
       .finally(() => setBusy(null));
+  };
+
+  const requestRemove = (task: ScheduledTaskView): void => {
+    setError(null);
+    if (shouldSkipDeletionConfirmation("schedule")) {
+      remove(task);
+      return;
+    }
+    setPendingDeletion(task);
   };
 
   const save = (id: string | null, draft: ScheduledTaskInput): void => {
@@ -298,7 +382,7 @@ export function ScheduledTasks({
           task: task.name,
         });
         void refresh();
-        setView({ kind: "detail", id: task.id });
+        closeEditor();
       })
       .catch(fail("Couldn’t save that task."))
       .finally(() => setBusy(null));
@@ -330,190 +414,205 @@ export function ScheduledTasks({
     );
   }
 
-  if (view.kind === "create") {
-    return (
-      <>
+  const taskCards = tasks.map((task) => {
+    const running = runStates.get(task.id)?.status === "running";
+    const actions = (
+      <div className="tavern-schedule-actions">
         <button
           type="button"
-          className="tavern-file-back"
-          onClick={() => setView({ kind: "list" })}
+          className={
+            variant === "workspace"
+              ? "tavern-schedule-edit"
+              : "tavern-sched-action"
+          }
+          onClick={() => openEditor({ id: task.id, draft: draftOf(task) })}
         >
-          ← New scheduled task
+          {variant === "workspace" ? <Pencil aria-hidden="true" /> : null}
+          {variant === "workspace" ? "Edit schedule" : "Edit"}
         </button>
-        {notice}
-        <TaskForm
-          draft={view.draft}
-          onDraft={(draft) => setViewState({ ...view, draft })}
-          onSave={() => save(null, view.draft)}
-          onCancel={() => setView({ kind: "list" })}
-          busy={busy === "new"}
-        />
-      </>
+        {runControls(task)}
+        {variant === "workspace" ? (
+          <button
+            type="button"
+            className="tavern-schedule-delete"
+            aria-label={`Delete ${task.name}`}
+            title={`Delete ${task.name}`}
+            disabled={busy === task.id}
+            onClick={() => requestRemove(task)}
+          >
+            <Trash2 aria-hidden="true" />
+          </button>
+        ) : null}
+      </div>
     );
-  }
 
-  if (view.kind === "edit") {
-    const task = openTask;
-    return (
-      <>
-        <button
-          type="button"
-          className="tavern-file-back"
-          onClick={() => setView({ kind: "detail", id: view.id })}
-        >
-          ← {task?.name ?? "Scheduled task"}
-        </button>
-        {notice}
-        <TaskForm
-          draft={view.draft}
-          onDraft={(draft) => setViewState({ ...view, draft })}
-          onSave={() => save(view.id, view.draft)}
-          onCancel={() => setView({ kind: "detail", id: view.id })}
-          busy={busy === view.id}
-        />
-      </>
-    );
-  }
-
-  if (view.kind === "detail") {
-    const task = openTask;
-    if (!task) return <DataSkeleton label="Loading scheduled task" />;
-    return (
-      <>
-        <button
-          type="button"
-          className="tavern-file-back"
-          onClick={() => setView({ kind: "list" })}
-        >
-          ← Scheduled
-        </button>
-        {notice}
-        {refreshFailed}
-        {runNotices([task.id])}
+    if (variant !== "workspace") {
+      return (
         <div
-          className={`tavern-sched is-detail${task.enabled ? "" : " is-off"}`}
+          key={task.id}
+          className={`tavern-sched is-card${task.enabled ? "" : " is-off"}`}
         >
-          <div className="tavern-sched-head">
+          <div className="tavern-sched-open">
             <span className="tavern-sched-name">{task.name}</span>
+            <p className="tavern-sched-schedule">{task.schedule}</p>
+            <p className="tavern-sched-instruction">{task.instruction}</p>
+            <span className="tavern-sched-meta">{meta(task)}</span>
+          </div>
+          <div className="tavern-sched-side">
             <button
               type="button"
               className={`tavern-sched-toggle${task.enabled ? " is-on" : ""}`}
               role="switch"
               aria-checked={task.enabled}
               aria-label={`${task.name} enabled`}
-              disabled={
-                busy === task.id || runStates.get(task.id)?.status === "running"
-              }
+              disabled={busy === task.id || running}
               onClick={() => toggle(task)}
             >
               {task.enabled ? "On" : "Off"}
             </button>
+            {actions}
           </div>
-          <p className="tavern-sched-schedule">{task.schedule}</p>
-          <span className="tavern-sched-meta">
-            {task.cron ? `cron ${task.cron} · ` : ""}
-            {task.timezone}
-          </span>
-          <span className="tavern-sched-meta">{meta(task)}</span>
         </div>
-        <p className="tavern-sched-label">What {mascot} does</p>
-        <Markdown text={task.instruction} />
-        <div className="tavern-sched-actions">
-          <button
-            type="button"
-            className="tavern-sched-action"
-            onClick={() =>
-              setView({ kind: "edit", id: task.id, draft: draftOf(task) })
-            }
-          >
-            Edit
-          </button>
-          {runControls(task)}
-          {confirming === task.id ? (
-            <>
-              <button
-                type="button"
-                className="tavern-sched-action is-danger"
-                disabled={busy === task.id}
-                onClick={() => remove(task)}
-              >
-                Delete for good
-              </button>
-              <button
-                type="button"
-                className="tavern-sched-action"
-                onClick={() => setConfirming(null)}
-              >
-                Keep
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className="tavern-sched-action is-danger"
-              onClick={() => setConfirming(task.id)}
-            >
-              Delete
-            </button>
-          )}
-        </div>
-      </>
-    );
-  }
+      );
+    }
 
-  return (
-    <section className="tavern-sched-section" aria-label="Scheduled tasks">
-      <p className="tavern-sched-label">Scheduled</p>
-      {notice}
-      {refreshFailed}
-      {runNotices(tasks.map((t) => t.id))}
-      {tasks.length === 0 ? (
-        <div className="tavern-empty tavern-sched-empty">
-          Nothing scheduled. Ask {mascot} to do something regularly — "check the
-          stocks every weekday morning" — and it lands here.
-        </div>
-      ) : (
-        tasks.map((task) => (
-          <div
-            key={task.id}
-            className={`tavern-sched is-card${task.enabled ? "" : " is-off"}`}
-          >
-            <button
-              type="button"
-              className="tavern-sched-open"
-              onClick={() => setView({ kind: "detail", id: task.id })}
-            >
-              <span className="tavern-sched-name">{task.name}</span>
-              <p className="tavern-sched-schedule">{task.schedule}</p>
-              <span className="tavern-sched-meta">{meta(task)}</span>
-            </button>
-            <div className="tavern-sched-side">
-              <button
-                type="button"
-                className={`tavern-sched-toggle${task.enabled ? " is-on" : ""}`}
-                role="switch"
-                aria-checked={task.enabled}
-                aria-label={`${task.name} enabled`}
-                disabled={
-                  busy === task.id ||
-                  runStates.get(task.id)?.status === "running"
-                }
-                onClick={() => toggle(task)}
-              >
-                {task.enabled ? "On" : "Off"}
-              </button>
-              {runControls(task)}
+    return (
+      <article
+        key={task.id}
+        className={`tavern-schedule-card${task.enabled ? "" : " is-paused"}`}
+      >
+        <div className="tavern-schedule-card-head">
+          <div className="tavern-schedule-card-title">
+            <span className="tavern-schedule-card-icon" aria-hidden="true">
+              <CalendarClock />
+            </span>
+            <div>
+              <h3>{task.name}</h3>
+              <p>{task.schedule}</p>
             </div>
           </div>
-        ))
+          <button
+            type="button"
+            className={`tavern-schedule-state${task.enabled ? " is-on" : ""}`}
+            role="switch"
+            aria-checked={task.enabled}
+            aria-label={`${task.name} enabled`}
+            disabled={busy === task.id || running}
+            onClick={() => toggle(task)}
+          >
+            {task.enabled ? "Active" : "Paused"}
+          </button>
+        </div>
+        <p className="tavern-schedule-prompt">{task.instruction}</p>
+        <dl className="tavern-schedule-timing">
+          <div>
+            <dt>Next</dt>
+            <dd>
+              {task.enabled
+                ? (relative(task.nextDueAt, "") ?? "Not scheduled")
+                : "Paused"}
+            </dd>
+          </div>
+          <div>
+            <dt>Last run</dt>
+            <dd>{relative(task.lastCompletedAt, "") ?? "Not yet"}</dd>
+          </div>
+          <div>
+            <dt>Timezone</dt>
+            <dd>{task.timezone}</dd>
+          </div>
+        </dl>
+        {actions}
+      </article>
+    );
+  });
+
+  const empty = (
+    <div className="tavern-empty tavern-sched-empty">
+      Nothing scheduled. Ask {mascot} to do something regularly — "check the
+      stocks every weekday morning" — and it lands here.
+    </div>
+  );
+
+  return (
+    <>
+      {variant === "workspace" ? (
+        <section className="tavern-schedule-page" aria-label="Scheduled tasks">
+          {workspaceHeader ? (
+            <header className="tavern-schedule-page-head">
+              <div>
+                <h2>Schedules</h2>
+                <p>Work Remix keeps moving in the background.</p>
+              </div>
+              <div className="tavern-schedule-page-actions">
+                <button
+                  type="button"
+                  className="tavern-schedule-create"
+                  onClick={() => openEditor({ id: null, draft: emptyDraft() })}
+                >
+                  <Plus aria-hidden="true" />
+                  New schedule
+                </button>
+              </div>
+            </header>
+          ) : null}
+          {notice}
+          {refreshFailed}
+          {runNotices(tasks.map((task) => task.id))}
+          <div className="tavern-schedule-grid">
+            {tasks.length === 0 ? empty : taskCards}
+          </div>
+        </section>
+      ) : (
+        <section className="tavern-sched-section" aria-label="Scheduled tasks">
+          <p className="tavern-sched-label">Scheduled</p>
+          {notice}
+          {refreshFailed}
+          {runNotices(tasks.map((task) => task.id))}
+          {tasks.length === 0 ? empty : taskCards}
+          <button
+            type="button"
+            className="tavern-file-new tavern-sched-new"
+            onClick={() => openEditor({ id: null, draft: emptyDraft() })}
+          >
+            ＋ New scheduled task
+          </button>
+        </section>
       )}
-      <button
-        type="button"
-        className="tavern-file-new tavern-sched-new"
-        onClick={() => setView({ kind: "create", draft: emptyDraft() })}
-      >
-        ＋ New scheduled task
-      </button>
-    </section>
+      <ScheduleEditorDialog
+        editor={editor}
+        busy={busy === (editor?.id ?? "new")}
+        onDraft={(draft) => {
+          if (editor) setEditor({ ...editor, draft });
+        }}
+        onSave={() => {
+          if (editor) save(editor.id, editor.draft);
+        }}
+        onClose={closeEditor}
+      />
+      <DeleteConfirmationDialog
+        open={pendingDeletion !== null}
+        scope="schedule"
+        title={
+          pendingDeletion
+            ? `Delete ${pendingDeletion.name}?`
+            : "Delete schedule?"
+        }
+        description="This permanently removes the schedule."
+        confirmLabel="Delete schedule"
+        busy={pendingDeletion ? busy === pendingDeletion.id : false}
+        onOpenChange={(open) => {
+          if (!open) setPendingDeletion(null);
+        }}
+        onConfirm={(skipConfirmation) => {
+          const task = pendingDeletion;
+          setPendingDeletion(null);
+          if (!task) return;
+          if (skipConfirmation)
+            setDeletionConfirmationSkipped("schedule", true);
+          remove(task);
+        }}
+      />
+    </>
   );
 }

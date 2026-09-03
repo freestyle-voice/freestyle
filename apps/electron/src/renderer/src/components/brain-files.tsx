@@ -12,13 +12,15 @@ import {
 } from "@renderer/lib/brain-fs";
 import { queryKeys } from "@renderer/lib/query";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { FileText, Pencil, Save, Trash2, X } from "lucide-react";
 import type React from "react";
 import { Fragment, useState } from "react";
 
 type FileView =
   | { kind: "list" }
+  | { kind: "loading"; path: string }
   | { kind: "view"; path: string; text: string }
-  | { kind: "edit"; path: string; draft: string }
+  | { kind: "edit"; path: string; draft: string; saved: string }
   | { kind: "create"; name: string; draft: string };
 
 function slugify(name: string): string {
@@ -37,43 +39,55 @@ function slugify(name: string): string {
 function FileEditor({
   label,
   draft,
+  dirty,
   onDraft,
   onSave,
   onCancel,
 }: {
   label: string;
   draft: string;
+  dirty: boolean;
   onDraft: (text: string) => void;
   onSave: () => void;
   onCancel: () => void;
 }): React.JSX.Element {
   return (
-    <>
-      <span className="tavern-file-back">{label}</span>
+    <section className="tavern-brain-document" aria-label={`Editing ${label}`}>
+      <div className="tavern-brain-document-head">
+        <span className="tavern-brain-document-title">
+          <FileText aria-hidden="true" />
+          {label}
+          {dirty ? <span aria-label="Unsaved changes" role="status" /> : null}
+        </span>
+        <span className="tavern-brain-document-mode">Editing</span>
+      </div>
       <textarea
         className="tavern-editor"
         value={draft}
         onChange={(e) => onDraft(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Escape") {
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "s") {
+            e.preventDefault();
+            onSave();
+          } else if (e.key === "Escape") {
             e.stopPropagation();
             onCancel();
           }
         }}
       />
-      <div className="tavern-approve-actions">
+      <div className="tavern-brain-document-actions">
         <button
           type="button"
           className="tavern-approve-btn tavern-approve-allow"
           onClick={onSave}
         >
-          Save
+          <Save aria-hidden="true" /> Save
         </button>
         <button type="button" className="tavern-approve-btn" onClick={onCancel}>
-          Cancel
+          <X aria-hidden="true" /> Cancel
         </button>
       </div>
-    </>
+    </section>
   );
 }
 
@@ -188,32 +202,59 @@ export function BrainFiles({
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [view, setView] = useState<FileView>({ kind: "list" });
   const [error, setError] = useState<string | null>(null);
-  const [scheduledOpen, setScheduledOpen] = useState(false);
   const scheduled = root === "";
 
   const openFile = (path: string): void => {
+    setError(null);
+    setView({ kind: "loading", path });
     void readBrainFile(path)
       .then((text) => {
-        if (text !== null) setView({ kind: "view", path, text });
+        if (text === null) {
+          setError("Couldn't open that file. Try again.");
+          setView({ kind: "list" });
+          return;
+        }
+        setView({ kind: "view", path, text });
       })
-      .catch(() => {});
+      .catch(() => {
+        setError("Couldn't open that file. Try again.");
+        setView({ kind: "list" });
+      });
   };
 
   const saveFile = (path: string, text: string): void => {
     setError(null);
-    void writeBrainFile(path, text).then((ok) => {
-      if (!ok) {
-        setError("Couldn't save that file. Try again.");
-        return;
-      }
-      void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
-      setView({ kind: "view", path, text });
-    });
+    void writeBrainFile(path, text)
+      .then((ok) => {
+        if (!ok) {
+          setError("Couldn't save that file. Try again.");
+          return;
+        }
+        void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
+        setView({ kind: "view", path, text });
+      })
+      .catch(() => setError("Couldn't save that file. Try again."));
   };
 
   const createFile = (name: string, text: string): void => {
     const wanted = `${root ? `${root}/` : ""}${slugify(name)}.md`;
-    void uniqueBrainPath(wanted).then((path) => saveFile(path, text));
+    void uniqueBrainPath(wanted)
+      .then((path) => saveFile(path, text))
+      .catch(() => setError("Couldn't create that file. Try again."));
+  };
+
+  const removeFile = (path: string): void => {
+    setError(null);
+    void deleteBrainFile(path)
+      .then((ok) => {
+        if (!ok) {
+          setError("Couldn't delete that file. Try again.");
+          return;
+        }
+        setView({ kind: "list" });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
+      })
+      .catch(() => setError("Couldn't delete that file. Try again."));
   };
 
   const notice = error ? (
@@ -222,10 +263,9 @@ export function BrainFiles({
     </p>
   ) : null;
 
-  if (view.kind === "view") {
+  if (view.kind === "loading") {
     return (
       <>
-        {notice}
         <button
           type="button"
           className="tavern-file-back"
@@ -233,37 +273,54 @@ export function BrainFiles({
         >
           ← {view.path.replace(/\\/g, "/")}
         </button>
-        <Markdown text={view.text} />
-        <div className="tavern-approve-actions">
-          <button
-            type="button"
-            className="tavern-approve-btn"
-            onClick={() =>
-              setView({ kind: "edit", path: view.path, draft: view.text })
-            }
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            className="tavern-file-delete"
-            onClick={() => {
-              void deleteBrainFile(view.path).then((ok) => {
-                if (!ok) {
-                  setError("Couldn't delete that file. Try again.");
-                  return;
-                }
-                setView({ kind: "list" });
-                void queryClient.invalidateQueries({
-                  queryKey: queryKeys.brain.all,
-                });
-              });
-            }}
-          >
-            Delete
-          </button>
-        </div>
+        <DataSkeleton label="Loading Brain file" rows={4} variant="files" />
       </>
+    );
+  }
+
+  if (view.kind === "view") {
+    return (
+      <section className="tavern-brain-document" aria-label={view.path}>
+        {notice}
+        <div className="tavern-brain-document-head">
+          <button
+            type="button"
+            className="tavern-brain-document-title tavern-file-back"
+            onClick={() => setView({ kind: "list" })}
+          >
+            <FileText aria-hidden="true" />
+            {view.path.replace(/\\/g, "/")}
+          </button>
+          <span className="tavern-brain-document-actions">
+            <button
+              type="button"
+              className="tavern-icon-button"
+              title="Edit file"
+              onClick={() =>
+                setView({
+                  kind: "edit",
+                  path: view.path,
+                  draft: view.text,
+                  saved: view.text,
+                })
+              }
+            >
+              <Pencil aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="tavern-icon-button tavern-file-delete"
+              title="Delete file"
+              onClick={() => removeFile(view.path)}
+            >
+              <Trash2 aria-hidden="true" />
+            </button>
+          </span>
+        </div>
+        <div className="tavern-brain-document-preview">
+          <Markdown text={view.text} />
+        </div>
+      </section>
     );
   }
 
@@ -274,9 +331,12 @@ export function BrainFiles({
         <FileEditor
           label={view.path.replace(/\\/g, "/")}
           draft={view.draft}
+          dirty={view.draft !== view.saved}
           onDraft={(draft) => setView({ ...view, draft })}
           onSave={() => saveFile(view.path, view.draft)}
-          onCancel={() => openFile(view.path)}
+          onCancel={() =>
+            setView({ kind: "view", path: view.path, text: view.saved })
+          }
         />
       </>
     );
@@ -301,6 +361,7 @@ export function BrainFiles({
         <FileEditor
           label={`${root ? `${root}/` : ""}${slugify(view.name)}.md`}
           draft={view.draft}
+          dirty={view.draft.length > 0}
           onDraft={(draft) => setView({ ...view, draft })}
           onSave={() => {
             capture("brain_file_created", { folder: root || "root" });
@@ -312,21 +373,10 @@ export function BrainFiles({
     );
   }
 
-  if (scheduled && scheduledOpen)
-    return (
-      <ScheduledTasks
-        onOpenChange={setScheduledOpen}
-        {...(onOpenThread ? { onOpenThread } : {})}
-      />
-    );
-
   return (
     <>
       {scheduled ? (
-        <ScheduledTasks
-          onOpenChange={setScheduledOpen}
-          {...(onOpenThread ? { onOpenThread } : {})}
-        />
+        <ScheduledTasks {...(onOpenThread ? { onOpenThread } : {})} />
       ) : null}
       <section
         className={`tavern-brain-files${scheduled ? " has-scheduled" : ""}`}
@@ -337,7 +387,7 @@ export function BrainFiles({
           {filesQuery.isSuccess ? <em>{files.length}</em> : null}
         </div>
         {filesQuery.isLoading ? (
-          <DataSkeleton label="Loading Brain files" />
+          <DataSkeleton label="Loading Brain files" variant="files" />
         ) : filesQuery.isError ? (
           <div className="tavern-empty">
             <p>Couldn&apos;t load Brain files.</p>

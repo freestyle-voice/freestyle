@@ -278,6 +278,13 @@ destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
 
 - The app is an Electron desktop window. The top 36–38px is a **draggable
   titlebar** (`WebkitAppRegion: drag`); interactive content sets `no-drag`.
+- **Workspace, not tabs:** Remix keeps chat as the primary column. Its optional
+  right context rail contains independently expandable Tasks, Notes, and Brain
+  cards; expanding a card never replaces or navigates away from the chat.
+- **Settings is a workspace route:** Settings uses its own left navigation in
+  the existing workspace window. Do not introduce a second settings window or
+  a nested settings sidebar inside the page content. The Models and Companion
+  pages belong to the General settings group; Connected apps belongs to Remix.
 - Page scroll area uses `.responsive-page-scroll` — `padding-inline: 3rem`
   (→ 2rem ≤1080px → 1rem ≤820px), `padding-bottom: 3rem`.
 - Content **max-width ~760px**, centered, for settings/editorial pages — keep

@@ -51,6 +51,57 @@ describe("PanelRendererMessageQueue", () => {
     ]);
   });
 
+  it("navigates to Remix before delivering queued workspace interaction", () => {
+    const delivered: PanelRendererMessage[] = [];
+    const queue = new PanelRendererMessageQueue((message) => {
+      delivered.push(message);
+    });
+
+    queue.send({ channel: "dashboard:navigate", payload: "/remix" });
+    queue.send({ channel: "panel:focus-composer" });
+
+    queue.markReady();
+
+    expect(delivered).toEqual([
+      { channel: "dashboard:navigate", payload: "/remix" },
+      { channel: "panel:focus-composer" },
+    ]);
+  });
+
+  it("delivers a queued thread refresh after the selected thread", () => {
+    const delivered: PanelRendererMessage[] = [];
+    const queue = new PanelRendererMessageQueue((message) => {
+      delivered.push(message);
+    });
+
+    queue.send({ channel: "panel:open-thread", payload: "thread-1" });
+    queue.send({ channel: "panel:thread-updated", payload: "thread-1" });
+
+    queue.markReady();
+
+    expect(delivered).toEqual([
+      { channel: "panel:open-thread", payload: "thread-1" },
+      { channel: "panel:thread-updated", payload: "thread-1" },
+    ]);
+  });
+
+  it("delivers a queued Settings navigation once the workspace is ready", () => {
+    const delivered: PanelRendererMessage[] = [];
+    const queue = new PanelRendererMessageQueue((message) => {
+      delivered.push(message);
+    });
+
+    queue.send({ channel: "dashboard:navigate", payload: "/settings" });
+
+    expect(delivered).toEqual([]);
+
+    queue.markReady();
+
+    expect(delivered).toEqual([
+      { channel: "dashboard:navigate", payload: "/settings" },
+    ]);
+  });
+
   it("keeps only the latest dictation state while the renderer is unready", () => {
     const delivered: PanelRendererMessage[] = [];
     const queue = new PanelRendererMessageQueue((message) => {

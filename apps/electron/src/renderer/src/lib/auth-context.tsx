@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import type { CloudUser } from "../../../shared/cloud-user";
-import { getClient } from "./api";
+import { getClient, resolveApiBase } from "./api";
 import { resetBrainCache } from "./brain-fs";
 import { queryKeys } from "./query";
 
@@ -63,6 +63,7 @@ function useCloudAuthState(): UseCloudAuth {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
     const run = (async () => {
       let reached = false;
+      await resolveApiBase();
       const user = await getClient()
         .api.auth.status.$get()
         .then(async (res) => {

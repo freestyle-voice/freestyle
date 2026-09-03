@@ -1,18 +1,20 @@
-import { capture } from "@renderer/lib/analytics";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@renderer/components/ui/dialog";
 import {
   type ConnectorAuthField,
-  type ConnectorAutomation,
   type ConnectorCatalogItem,
   type ConnectorConnection,
   disconnectToolkit,
 } from "@renderer/lib/connectors";
-import { applyOpenerTemplate } from "@renderer/lib/openers";
 import {
   connectorCatalogInfiniteQueryOptions,
   connectorConnectionsQueryOptions,
-  connectorDetailsQueryOptions,
   connectorSearchInfiniteQueryOptions,
-  connectorSuggestedQueryOptions,
   queryKeys,
 } from "@renderer/lib/query";
 import {
@@ -160,23 +162,6 @@ function connectionCopy(
   return description ?? "Available to Freestyle";
 }
 
-function connectionBadge(
-  connection: ConnectorConnection | null,
-  phase: ConnectPhase | undefined,
-): string | null {
-  if (phase === "pending") return "In progress";
-  switch (connection?.status) {
-    case "active":
-      return "Connected";
-    case "pending":
-      return "In progress";
-    case "needs_reconnect":
-      return "Needs attention";
-    default:
-      return null;
-  }
-}
-
 function actionLabel(
   connection: ConnectorConnection | null,
   phase: ConnectPhase | undefined,
@@ -189,73 +174,66 @@ function actionLabel(
   return "Connect";
 }
 
+export function connectorMatchesSearch(
+  item: ConnectorCatalogItem,
+  query: string,
+): boolean {
+  const normalized = query.trim().toLocaleLowerCase();
+  return [item.name, item.description, ...(item.categories ?? [])]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+    .toLocaleLowerCase()
+    .includes(normalized);
+}
+
 function ConnectorCard({
   connector,
   phase,
   busy,
   onConnect,
   onDisconnect,
-  onOpen,
+  onSetUp,
 }: {
   connector: ConnectorCatalogItem;
   phase: ConnectPhase | undefined;
   busy: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
-  onOpen: () => void;
+  onSetUp: () => void;
 }): React.JSX.Element {
   const connection = connector.connection;
   const connected = connection?.status === "active";
   const pending = phase === "pending" || connection?.status === "pending";
   const reconnect = connection?.status === "needs_reconnect";
-  // API-key apps collect credentials in the detail pane, so Connect opens it.
-  const opensDetail = connector.authMode === "api_key" && !connected;
+  const opensCredentials = connector.authMode === "api_key" && !connected;
 
   return (
     <article
       className={`connector-card${connected ? " is-connected" : ""}${pending ? " is-pending" : ""}${reconnect ? " needs-reconnect" : ""}`}
     >
-      <button
-        type="button"
-        className="connector-card-open"
-        aria-label={`About ${connector.name}`}
-        onClick={onOpen}
-      >
+      <div className="connector-card-open">
         <ConnectorLogo name={connector.name} logo={connector.logo} />
         <div className="connector-card-copy">
           <div className="connector-card-heading">
             <strong>{connector.name}</strong>
-            {connectionBadge(connection, phase) ? (
-              <span className="connector-state">
-                {connectionBadge(connection, phase)}
-              </span>
-            ) : null}
           </div>
           <p>{connectionCopy(connection, phase, connector.description)}</p>
           {connection?.statusReason ? (
             <p className="connector-reason">{connection.statusReason}</p>
           ) : null}
         </div>
-      </button>
+      </div>
       <div className="connector-card-actions">
         <button
           type="button"
-          className={`connector-action${connected ? " is-secondary" : ""}`}
+          className="connector-action"
           disabled={busy || phase === "opening"}
-          onClick={connected ? onDisconnect : opensDetail ? onOpen : onConnect}
+          onClick={
+            connected ? onDisconnect : opensCredentials ? onSetUp : onConnect
+          }
         >
-          {busy && !connected ? "Opening…" : actionLabel(connection, phase)}
+          {busy ? "Working…" : actionLabel(connection, phase)}
         </button>
-        {pending || reconnect ? (
-          <button
-            type="button"
-            className="connector-cancel"
-            disabled={busy}
-            onClick={onDisconnect}
-          >
-            {pending ? "Cancel" : "Remove"}
-          </button>
-        ) : null}
       </div>
     </article>
   );
@@ -278,260 +256,10 @@ function ConnectedAppsSkeleton(): React.JSX.Element {
   );
 }
 
-function AutomationRow({
-  automation,
-  disabled,
-}: {
-  automation: ConnectorAutomation;
-  disabled: boolean;
-}): React.JSX.Element {
-  const [state, setState] = useState<"idle" | "busy" | "on" | "error">("idle");
-
-  const turnOn = (): void => {
-    setState("busy");
-    capture("automation_applied", {
-      surface: "apps",
-      templateId: automation.id,
-    });
-    void applyOpenerTemplate(automation.id)
-      .then((result) => setState(result.applied.length > 0 ? "on" : "error"))
-      .catch(() => setState("error"));
-  };
-
-  return (
-    <div className="connector-workflow is-static">
-      <strong>{automation.name}</strong>
-      <small>
-        {state === "on"
-          ? "On. Manage it in Brain \u2192 Scheduled."
-          : state === "error"
-            ? "Couldn't set that up. Ask in chat instead."
-            : `Runs ${automation.schedule}. Only notifies when it matters.`}
-      </small>
-      {state === "on" ? null : (
-        <button
-          type="button"
-          className="connector-action connector-workflow-action"
-          disabled={disabled || state === "busy"}
-          onClick={turnOn}
-        >
-          {state === "busy"
-            ? "Setting up\u2026"
-            : disabled
-              ? "Connect first"
-              : "Turn on"}
-        </button>
-      )}
-    </div>
-  );
-}
-
-function ConnectorDetail({
-  slug,
-  phase,
-  busyDisconnect,
-  onBack,
-  onConnect,
-  onConnectWithKey,
-  onDisconnect,
-  onUseWorkflow,
-  actionError,
-}: {
-  slug: string;
-  phase: ConnectPhase | undefined;
-  busyDisconnect: boolean;
-  onBack: () => void;
-  onConnect: () => void;
-  onConnectWithKey: (credentials: Record<string, string>) => void;
-  onDisconnect: () => void;
-  onUseWorkflow?: (prompt: string) => void;
-  actionError?: string | null;
-}): React.JSX.Element {
-  const detailsQuery = useQuery(connectorDetailsQueryOptions(slug));
-  const details = detailsQuery.data;
-  const connection = details?.connection ?? null;
-  const connected = connection?.status === "active";
-
-  return (
-    <section className="connector-detail">
-      <button type="button" className="connector-detail-back" onClick={onBack}>
-        ‹ Apps
-      </button>
-
-      {actionError ? (
-        <div className="connector-error" role="alert">
-          <span>{actionError}</span>
-        </div>
-      ) : null}
-
-      {detailsQuery.isLoading ? (
-        <ConnectedAppsSkeleton />
-      ) : detailsQuery.isError || !details ? (
-        <div className="connector-error" role="alert">
-          <span>That app's details are unavailable right now.</span>
-          <button type="button" onClick={() => void detailsQuery.refetch()}>
-            Try again
-          </button>
-        </div>
-      ) : (
-        <>
-          <header className="connector-detail-head">
-            <ConnectorLogo name={details.name} logo={details.logo} large />
-            <div className="connector-detail-title">
-              <div className="connector-card-heading">
-                <strong>{details.name}</strong>
-                {connectionBadge(connection, phase) ? (
-                  <span className="connector-state">
-                    {connectionBadge(connection, phase)}
-                  </span>
-                ) : null}
-              </div>
-              {details.description ? <p>{details.description}</p> : null}
-            </div>
-          </header>
-
-          <div className="connector-detail-meta">
-            {details.categories?.map((category) => (
-              <span key={category} className="connector-chip">
-                {category}
-              </span>
-            ))}
-            {details.toolsCount ? (
-              <span className="connector-chip is-muted">
-                {details.toolsCount} tools
-              </span>
-            ) : null}
-            {details.appUrl ? (
-              <button
-                type="button"
-                className="connector-chip is-link"
-                onClick={() => void window.api.openExternal(details.appUrl!)}
-              >
-                Website ↗
-              </button>
-            ) : null}
-          </div>
-
-          {details.authMode === "api_key" && !connected ? (
-            <div className="connector-detail-keyform">
-              <p className="connector-detail-status">
-                This app connects with an API key from your account. It goes
-                straight to the cloud and is never stored on this device.
-              </p>
-              <ApiKeyForm
-                fields={details.authFields ?? DEFAULT_AUTH_FIELDS}
-                busy={phase === "opening"}
-                onSubmit={onConnectWithKey}
-              />
-            </div>
-          ) : (
-            <div className="connector-detail-actions">
-              <button
-                type="button"
-                className={`connector-action connector-detail-action${connected ? " is-secondary" : ""}`}
-                disabled={busyDisconnect || phase === "opening"}
-                onClick={connected ? onDisconnect : onConnect}
-              >
-                {actionLabel(connection, phase)}
-              </button>
-              {phase === "pending" ||
-              connection?.status === "pending" ||
-              connection?.status === "needs_reconnect" ? (
-                <button
-                  type="button"
-                  className="connector-cancel"
-                  disabled={busyDisconnect}
-                  onClick={onDisconnect}
-                >
-                  {connection?.status === "needs_reconnect" &&
-                  phase !== "pending"
-                    ? "Remove"
-                    : "Cancel"}
-                </button>
-              ) : null}
-            </div>
-          )}
-          {details.authMode === "api_key" && !connected ? null : (
-            <p className="connector-detail-status">
-              {connectionCopy(connection, phase)}
-            </p>
-          )}
-
-          {(details.plays ?? []).length > 0 ? (
-            <div className="connector-detail-section">
-              <div className="connector-group-label">
-                <span>Try it now</span>
-              </div>
-              <div className="connector-workflows">
-                {(details.plays ?? []).map((play) => (
-                  <button
-                    key={play.name}
-                    type="button"
-                    className="connector-workflow"
-                    disabled={!onUseWorkflow}
-                    title={play.prompt}
-                    onClick={() => onUseWorkflow?.(play.prompt)}
-                  >
-                    <strong>{play.name}</strong>
-                    <small>{play.description}</small>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {(details.automations ?? []).length > 0 ? (
-            <div className="connector-detail-section">
-              <div className="connector-group-label">
-                <span>Run it on a schedule</span>
-              </div>
-              <div className="connector-workflows">
-                {(details.automations ?? []).map((automation) => (
-                  <AutomationRow
-                    key={automation.id}
-                    automation={automation}
-                    disabled={!connected}
-                  />
-                ))}
-              </div>
-            </div>
-          ) : null}
-
-          {details.tools.length > 0 ? (
-            <div className="connector-detail-section">
-              <div className="connector-group-label">
-                <span>What it can do</span>
-                <em>{details.tools.length}</em>
-              </div>
-              <ul className="connector-tools">
-                {details.tools.map((tool) => (
-                  <li key={tool.name}>
-                    <strong>
-                      {tool.name}
-                      {tool.readOnly ? (
-                        <span className="connector-tool-ro">read-only</span>
-                      ) : null}
-                    </strong>
-                    {tool.description ? <p>{tool.description}</p> : null}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </>
-      )}
-    </section>
-  );
-}
-
-export function ConnectedApps({
-  onUseWorkflow,
-}: {
-  onUseWorkflow?: (prompt: string) => void;
-}): React.JSX.Element {
+export function ConnectedApps(): React.JSX.Element {
   const [query, setQuery] = useState("");
-  const [search, setSearch] = useState("");
-  const [detailSlug, setDetailSlug] = useState<string | null>(null);
+  const [apiKeyConnector, setApiKeyConnector] =
+    useState<ConnectorCatalogItem | null>(null);
   const queryClient = useQueryClient();
   const {
     connect,
@@ -543,16 +271,11 @@ export function ConnectedApps({
   } = useConnectorConnect();
   const [actionError, setActionError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSearch(query.trim()), 300);
-    return () => window.clearTimeout(timer);
-  }, [query]);
-
   const connectionsQuery = useQuery(connectorConnectionsQueryOptions());
-  const suggestedQuery = useQuery(connectorSuggestedQueryOptions());
   const browseQuery = useInfiniteQuery(connectorCatalogInfiniteQueryOptions());
+  const searchTerm = query.trim();
   const searchQuery = useInfiniteQuery(
-    connectorSearchInfiniteQueryOptions(search),
+    connectorSearchInfiniteQueryOptions(searchTerm),
   );
 
   const connections = useMemo(
@@ -576,31 +299,28 @@ export function ConnectedApps({
       })),
     [connections],
   );
-  const suggested = useMemo(
-    () =>
-      (suggestedQuery.data?.connectors ?? []).filter(
-        (item) => !connectedSlugs.has(item.slug),
-      ),
-    [suggestedQuery.data, connectedSlugs],
-  );
-  const suggestedHeading = suggestedQuery.data?.heading ?? "Suggested";
-  const suggestedSlugs = useMemo(
-    () =>
-      new Set((suggestedQuery.data?.connectors ?? []).map((item) => item.slug)),
-    [suggestedQuery.data],
-  );
   const browse = useMemo(
     () =>
       (browseQuery.data?.pages.flatMap((page) => page.connectors) ?? []).filter(
-        (item) =>
-          !connectedSlugs.has(item.slug) && !suggestedSlugs.has(item.slug),
+        (item) => !connectedSlugs.has(item.slug),
       ),
-    [browseQuery.data, connectedSlugs, suggestedSlugs],
+    [browseQuery.data, connectedSlugs],
   );
-  const searchResults = useMemo(
-    () => searchQuery.data?.pages.flatMap((page) => page.connectors) ?? [],
-    [searchQuery.data],
-  );
+  const searchResults = useMemo(() => {
+    const bySlug = new Map<string, ConnectorCatalogItem>();
+
+    for (const item of connectedItems) {
+      if (connectorMatchesSearch(item, searchTerm)) {
+        bySlug.set(item.slug, item);
+      }
+    }
+    for (const item of searchQuery.data?.pages.flatMap(
+      (page) => page.connectors,
+    ) ?? []) {
+      if (!bySlug.has(item.slug)) bySlug.set(item.slug, item);
+    }
+    return [...bySlug.values()];
+  }, [connectedItems, searchQuery.data, searchTerm]);
 
   const disconnectMutation = useMutation({
     mutationFn: disconnectToolkit,
@@ -628,7 +348,6 @@ export function ConnectedApps({
   };
 
   const searching = query.trim().length > 0;
-  const searchPending = searching && search !== query.trim();
 
   const [loadMoreEl, setLoadMoreEl] = useState<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -658,42 +377,18 @@ export function ConnectedApps({
 
   // Present the directory as one coherent surface rather than letting each
   // source shift the page as it happens to arrive.
-  const initialLoading =
-    connectionsQuery.isLoading ||
-    suggestedQuery.isLoading ||
-    browseQuery.isLoading;
+  const initialLoading = connectionsQuery.isLoading || browseQuery.isLoading;
   const error =
     actionError ??
     connectError ??
     (browseQuery.error instanceof Error
       ? browseQuery.error.message
-      : browseQuery.isError ||
-          suggestedQuery.isError ||
-          connectionsQuery.isError
+      : browseQuery.isError || searchQuery.isError || connectionsQuery.isError
         ? "Connected apps are unavailable."
         : null);
   const busyDisconnect = disconnectMutation.isPending
     ? disconnectMutation.variables
     : null;
-
-  if (detailSlug) {
-    return (
-      <ConnectorDetail
-        slug={detailSlug}
-        phase={phases[detailSlug]}
-        busyDisconnect={busyDisconnect === detailSlug}
-        onBack={() => setDetailSlug(null)}
-        onConnect={() => startConnect(detailSlug)}
-        onConnectWithKey={(credentials) => {
-          setActionError(null);
-          connectWithCredentials(detailSlug, credentials);
-        }}
-        onDisconnect={() => disconnect(detailSlug)}
-        onUseWorkflow={onUseWorkflow}
-        actionError={actionError ?? connectError}
-      />
-    );
-  }
 
   const renderCards = (items: ConnectorCatalogItem[]) =>
     items.map((connector) => (
@@ -704,7 +399,7 @@ export function ConnectedApps({
         busy={busyDisconnect === connector.slug}
         onConnect={() => startConnect(connector.slug)}
         onDisconnect={() => disconnect(connector.slug)}
-        onOpen={() => setDetailSlug(connector.slug)}
+        onSetUp={() => setApiKeyConnector(connector)}
       />
     ));
 
@@ -713,8 +408,8 @@ export function ConnectedApps({
       className="connected-apps"
       aria-busy={
         connectionsQuery.isFetching ||
-        suggestedQuery.isFetching ||
-        browseQuery.isFetching
+        browseQuery.isFetching ||
+        searchQuery.isFetching
       }
     >
       <label className="connector-search" htmlFor="connector-search">
@@ -746,8 +441,8 @@ export function ConnectedApps({
               setActionError(null);
               clearError();
               void browseQuery.refetch();
-              void suggestedQuery.refetch();
               void connectionsQuery.refetch();
+              if (searching) void searchQuery.refetch();
             }}
           >
             Try again
@@ -770,7 +465,7 @@ export function ConnectedApps({
             <span>Results</span>
             <em>{searchResults.length}</em>
           </div>
-          {searchPending || searchQuery.isLoading ? (
+          {searchQuery.isLoading && searchResults.length === 0 ? (
             <ConnectedAppsSkeleton />
           ) : searchResults.length > 0 ? (
             <>
@@ -810,15 +505,6 @@ export function ConnectedApps({
             </div>
           ) : null}
 
-          {!initialLoading && suggested.length > 0 ? (
-            <div className="connector-group">
-              <div className="connector-group-label">
-                <span>{suggestedHeading}</span>
-              </div>
-              {renderCards(suggested)}
-            </div>
-          ) : null}
-
           {!initialLoading && browse.length > 0 ? (
             <div className="connector-group">
               <div className="connector-group-label">
@@ -855,6 +541,32 @@ export function ConnectedApps({
           ) : null}
         </>
       )}
+      <Dialog
+        open={apiKeyConnector !== null}
+        onOpenChange={(open) => {
+          if (!open) setApiKeyConnector(null);
+        }}
+      >
+        <DialogContent className="connector-credentials-dialog">
+          <DialogHeader>
+            <DialogTitle>Connect {apiKeyConnector?.name ?? "app"}</DialogTitle>
+            <DialogDescription>
+              Enter the credentials from your account to let Remix use this app.
+            </DialogDescription>
+          </DialogHeader>
+          {apiKeyConnector ? (
+            <ApiKeyForm
+              fields={apiKeyConnector.authFields ?? DEFAULT_AUTH_FIELDS}
+              busy={phases[apiKeyConnector.slug] === "opening"}
+              onSubmit={(credentials) => {
+                setActionError(null);
+                connectWithCredentials(apiKeyConnector.slug, credentials);
+                setApiKeyConnector(null);
+              }}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

@@ -10,7 +10,11 @@ export default defineConfig({
   },
   test: {
     globals: true,
-    include: ["src/renderer/**/*.test.ts", "src/main/**/*.test.ts"],
+    include: [
+      "src/renderer/**/*.test.ts",
+      "src/main/**/*.test.ts",
+      "src/shared/**/*.test.ts",
+    ],
     environment: "node",
   },
 });

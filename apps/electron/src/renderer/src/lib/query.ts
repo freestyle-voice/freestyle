@@ -1,5 +1,10 @@
-import { type InfiniteData, QueryClient } from "@tanstack/react-query";
-import { getClient } from "./api";
+import {
+  type InfiniteData,
+  QueryClient,
+  type QueryKey,
+} from "@tanstack/react-query";
+import { getClient, resolveApiBase } from "./api";
+import { getAttention } from "./attention";
 import { listNoteSummaries } from "./brain-views";
 import {
   type ConnectorCatalogPage,
@@ -11,11 +16,14 @@ import {
 import type { AvailableModel } from "./models";
 import { listScheduledTasks } from "./scheduled-tasks";
 import {
+  getDurableThreadRuns,
+  getDurableTurnEvents,
   getLatestThread,
   getThread,
   listThreads,
   type ThreadOrigin,
   type ThreadPage,
+  type ThreadState,
   type ThreadSummary,
 } from "./threads";
 
@@ -24,6 +32,7 @@ export const ONE_HOUR = 60 * 60 * 1000;
 
 /** Entry shape for the plugin-updates query key (name + installed version). */
 type PluginUpdateEntry = { name: string; currentVersion: string };
+const THREAD_LIST_QUERY_KEY = ["threads", "list"] as const;
 
 /**
  * Single source of truth for every React Query key in the renderer.
@@ -47,6 +56,9 @@ export const queryKeys = {
     available: ["models", "available"] as const,
     configured: ["models", "configured"] as const,
   },
+  apiKeys: ["api-keys"] as const,
+  whisperStatus: ["whisper-status"] as const,
+  mlxStatus: ["mlx-status"] as const,
 
   /** Experimental feature flags (`GET /api/config`). */
   config: ["config"] as const,
@@ -90,10 +102,16 @@ export const queryKeys = {
     details: (slug: string) => ["connectors", "details", slug] as const,
   },
 
+  mcp: {
+    all: ["mcp"] as const,
+    connections: ["mcp", "connections"] as const,
+  },
+
   threads: {
     all: ["threads"] as const,
     latest: ["threads", "latest"] as const,
-    list: (origin: ThreadOrigin) => ["threads", "list", origin] as const,
+    lists: THREAD_LIST_QUERY_KEY,
+    list: (origin: ThreadOrigin) => [...THREAD_LIST_QUERY_KEY, origin] as const,
     detail: (id: string) => ["threads", "detail", id] as const,
   },
   brain: {
@@ -109,9 +127,17 @@ export const queryKeys = {
 
   /** Empty-state opener cards (`GET /api/suggestions/home`). */
   openers: ["openers"] as const,
+  /** Capability gallery (`GET /api/suggestions/capabilities`). */
+  capabilities: ["capabilities"] as const,
 
   /** Remix practice runs. */
   remixRuns: ["remix", "runs"] as const,
+  durableTurnTimeline: (turnId: string) =>
+    ["remix", "runs", "timeline", turnId] as const,
+  durableThreadRuns: (threadId: string) =>
+    ["remix", "runs", "thread", threadId] as const,
+  /** A compact, display-only view of work that needs the user's attention. */
+  attention: ["attention"] as const,
 
   cloud: {
     usage: ["cloud-usage"] as const,
@@ -137,6 +163,7 @@ export function settingsQueryOptions() {
   return {
     queryKey: queryKeys.settings,
     queryFn: async (): Promise<Record<string, string>> => {
+      await resolveApiBase();
       const res = await getClient().api.settings.$get();
       if (!res.ok) throw new Error("Failed to load settings");
       return (await res.json()) as Record<string, string>;
@@ -276,6 +303,36 @@ export function latestThreadQueryOptions() {
   };
 }
 
+export function attentionQueryOptions() {
+  return {
+    queryKey: queryKeys.attention,
+    queryFn: getAttention,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+    retry: 1,
+  };
+}
+
+export function durableTurnTimelineQueryOptions(turnId: string) {
+  return {
+    queryKey: queryKeys.durableTurnTimeline(turnId),
+    queryFn: () => getDurableTurnEvents(turnId),
+    enabled: turnId.length > 0,
+    staleTime: 5_000,
+    refetchInterval: 2_000,
+  };
+}
+
+export function durableThreadRunsQueryOptions(threadId: string) {
+  return {
+    queryKey: queryKeys.durableThreadRuns(threadId),
+    queryFn: () => getDurableThreadRuns(threadId),
+    enabled: threadId.length > 0,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  };
+}
+
 export function threadQueryOptions(id: string) {
   return {
     queryKey: queryKeys.threads.detail(id),
@@ -318,6 +375,80 @@ export function prependThreadToHistory(
       return { ...data, pages: [{ ...first, threads }, ...rest] };
     },
   );
+}
+
+/** Remove a session from every cached history page before a delete reaches the
+ * server. The mutation restores its snapshots if that request fails. */
+export function removeThreadFromHistory(
+  queryClient: QueryClient,
+  threadId: string,
+): void {
+  queryClient.setQueriesData<InfiniteData<ThreadPage, number | null>>(
+    { queryKey: queryKeys.threads.lists },
+    (data) => {
+      if (!data) return data;
+      return {
+        ...data,
+        pages: data.pages.map((page) => ({
+          ...page,
+          threads: page.threads.filter((thread) => thread.id !== threadId),
+        })),
+      };
+    },
+  );
+}
+
+export type ThreadDeletionSnapshot = {
+  history: Array<
+    [QueryKey, InfiniteData<ThreadPage, number | null> | undefined]
+  >;
+  detail: ThreadState | null | undefined;
+  latest: ThreadState | null | undefined;
+  localTitles: Record<string, string>;
+};
+
+/**
+ * Apply a session deletion after the caller has cancelled in-flight thread
+ * reads. Keeping cancellation outside this synchronous helper lets the React
+ * Query mutation await that boundary before changing the cache.
+ */
+export function optimisticallyDeleteThread(
+  queryClient: QueryClient,
+  threadId: string,
+  localTitles: Record<string, string>,
+): ThreadDeletionSnapshot {
+  const history = queryClient.getQueriesData<
+    InfiniteData<ThreadPage, number | null>
+  >({ queryKey: queryKeys.threads.lists });
+  const detail = queryClient.getQueryData<ThreadState | null>(
+    queryKeys.threads.detail(threadId),
+  );
+  const latest = queryClient.getQueryData<ThreadState | null>(
+    queryKeys.threads.latest,
+  );
+
+  removeThreadFromHistory(queryClient, threadId);
+  queryClient.removeQueries({
+    queryKey: queryKeys.threads.detail(threadId),
+  });
+  if (latest?.id === threadId) {
+    queryClient.setQueryData(queryKeys.threads.latest, null);
+  }
+
+  return { history, detail, latest, localTitles };
+}
+
+/** Restore the exact cache snapshot only if the asynchronous deletion fails. */
+export function restoreOptimisticallyDeletedThread(
+  queryClient: QueryClient,
+  threadId: string,
+  snapshot: ThreadDeletionSnapshot,
+): void {
+  for (const [key, data] of snapshot.history) {
+    queryClient.setQueryData(key, data);
+  }
+  queryClient.setQueryData(queryKeys.threads.detail(threadId), snapshot.detail);
+  queryClient.setQueryData(queryKeys.threads.latest, snapshot.latest);
 }
 
 export function brainFileQueryOptions(path: string) {

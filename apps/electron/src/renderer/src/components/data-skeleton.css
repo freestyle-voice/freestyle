@@ -1,0 +1,164 @@
+.tavern-data-skeleton {
+  /* Skeletons are part of the application surface, not the retired Tavern
+     palette. Keeping these on the live theme tokens makes them dark in dark
+     mode and prevents a light flash while a view hydrates. */
+  --data-skeleton-card: var(--card);
+  --data-skeleton-surface: var(--secondary);
+  --data-skeleton-muted: var(--muted-foreground);
+  --data-skeleton-rule: var(--border);
+  --data-skeleton-base: color-mix(
+    in srgb,
+    var(--data-skeleton-surface) 82%,
+    var(--data-skeleton-card)
+  );
+  --data-skeleton-glint: color-mix(
+    in srgb,
+    var(--data-skeleton-muted) 18%,
+    var(--data-skeleton-surface)
+  );
+  display: grid;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.tavern-data-skeleton-row {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  overflow: hidden;
+  background: var(--data-skeleton-base);
+}
+
+.tavern-data-skeleton-row::after {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 34%,
+    color-mix(in srgb, var(--data-skeleton-glint) 62%, transparent) 50%,
+    transparent 66%
+  );
+  content: "";
+  transform: translateX(-100%);
+  animation: tavern-skeleton-sheen 1.8s ease-in-out infinite;
+}
+
+.tavern-data-skeleton-copy {
+  display: grid;
+  min-width: 0;
+  gap: 6px;
+}
+
+.tavern-data-skeleton-copy i,
+.tavern-data-skeleton-check,
+.tavern-data-skeleton-file-mark {
+  display: block;
+  background: var(--data-skeleton-glint);
+}
+
+.tavern-data-skeleton-copy i {
+  width: 176px;
+  max-width: min(46vw, 100%);
+  height: 8px;
+  border-radius: 999px;
+}
+
+.tavern-data-skeleton-copy i + i {
+  width: 110px;
+  height: 6px;
+  opacity: 0.7;
+}
+
+.tavern-data-skeleton.is-list .tavern-data-skeleton-row {
+  height: 46px;
+  border: 1px solid color-mix(in srgb, var(--data-skeleton-rule) 74%, transparent);
+  border-radius: 8px;
+  padding: 0 12px;
+}
+
+.tavern-data-skeleton.is-tasks {
+  gap: 3px;
+  padding-top: 0;
+}
+
+.tavern-data-skeleton.is-tasks .tavern-data-skeleton-row {
+  height: 29px;
+  gap: 9px;
+  padding: 0 2px;
+}
+
+.tavern-data-skeleton-check {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  border: 2px solid var(--data-skeleton-glint);
+  background: transparent;
+}
+
+.tavern-data-skeleton.is-tasks .tavern-data-skeleton-row:nth-child(2) .tavern-data-skeleton-copy i:first-child {
+  width: 128px;
+}
+
+.tavern-data-skeleton.is-notes .tavern-data-skeleton-row {
+  min-height: 56px;
+  border: 1px solid color-mix(in srgb, var(--data-skeleton-rule) 74%, transparent);
+  border-radius: 8px;
+  padding: 11px;
+}
+
+.tavern-data-skeleton.is-notes .tavern-data-skeleton-row:nth-child(2) .tavern-data-skeleton-copy i:first-child {
+  width: 138px;
+}
+
+.tavern-data-skeleton.is-files {
+  gap: 2px;
+  padding-top: 0;
+}
+
+.tavern-data-skeleton.is-files .tavern-data-skeleton-row {
+  height: 28px;
+  gap: 8px;
+  padding-left: 4px;
+}
+
+.tavern-data-skeleton-file-mark {
+  width: 14px;
+  height: 16px;
+  flex: 0 0 14px;
+  border-radius: 2px;
+}
+
+.tavern-data-skeleton.is-files .tavern-data-skeleton-copy {
+  gap: 3px;
+}
+
+.tavern-data-skeleton.is-files .tavern-data-skeleton-copy i:first-child {
+  width: 152px;
+  height: 7px;
+}
+
+.tavern-data-skeleton.is-files .tavern-data-skeleton-copy i + i {
+  width: 74px;
+  height: 5px;
+}
+
+.tavern-data-skeleton.is-files .tavern-data-skeleton-row:nth-child(2) {
+  padding-left: 26px;
+}
+
+.tavern-data-skeleton.is-files .tavern-data-skeleton-row:nth-child(2) .tavern-data-skeleton-copy i:first-child {
+  width: 118px;
+}
+
+@keyframes tavern-skeleton-sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tavern-data-skeleton-row::after {
+    animation: none;
+  }
+}

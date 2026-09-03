@@ -1,42 +1,30 @@
-import type { BubbleState } from "@renderer/components/companion";
-import type { CompanionState } from "@shared/companion";
+import type { CompanionFacing, CompanionState } from "@shared/companion";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import { SheetEngine } from "./engine";
 import { Performer } from "./performer";
 import type { SheetSpriteDefinition } from "./types";
 
-function bubbleText(
-  bubble: BubbleState | null,
-  maxChars: number,
-): string | null {
-  if (!bubble) return null;
-  const partial = bubble.partial.trim();
-  if (partial) {
-    return partial.length > maxChars ? `…${partial.slice(-maxChars)}` : partial;
-  }
-  if (bubble.phase === "error") return "Something went wrong";
-  return bubble.phase === "recording" ? "I'm listening…" : "…";
-}
-
 /**
- * The stage for any sheet sprite: one canvas driven by SheetEngine, a
- * Performer arbitrating the event stream, the body hitbox for hover, and
- * the speech bubble for dictation. Sprite-specific facts all come from the
- * definition — this component never mentions a character by name.
+ * The stage for any sheet sprite: one canvas driven by SheetEngine and a
+ * Performer that observes sprite events. Sprite-specific facts all come from
+ * the definition — this component never mentions a character by name.
  */
 export function SpriteStage({
   def,
   state,
-  bubble,
+  facing,
+  hotRect = def.hotRect,
 }: {
   def: SheetSpriteDefinition;
   state: CompanionState;
-  bubble: BubbleState | null;
+  facing: CompanionFacing;
+  hotRect?: SheetSpriteDefinition["hotRect"];
 }): React.JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const performerRef = useRef<Performer | null>(null);
-  const [say, setSay] = useState<string | null>(null);
+  const facingRef = useRef(facing);
+  facingRef.current = facing;
   const [shout, setShout] = useState<string | null>(null);
   const shoutTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -44,6 +32,7 @@ export function SpriteStage({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const engine = new SheetEngine(canvas, def);
+    engine.facing = facingRef.current;
     const performer = new Performer(
       engine,
       def,
@@ -63,7 +52,6 @@ export function SpriteStage({
       snapshot: () => performer.snapshot(),
     };
 
-    window.api.companionSetHotRect(def.hotRect);
     const offEvents = window.api.onSpriteEvent((ev) => performer.handle(ev));
     const offHot = window.api.onCompanionHotEnter(() => performer.wake());
     const hitbox = document.getElementById("sprite-hitbox");
@@ -82,19 +70,22 @@ export function SpriteStage({
   }, [def]);
 
   useEffect(() => {
+    // This is the companion's resting direction. A short choreography may
+    // briefly choose a direction of its own, but the next dock update and the
+    // end of that performance return it to the display-facing pose.
+    performerRef.current?.setDockFacing(facing);
+  }, [facing]);
+
+  useEffect(() => {
+    window.api.companionSetHotRect(hotRect);
+  }, [hotRect]);
+
+  useEffect(() => {
     performerRef.current?.handle({ kind: "thinking", on: state === "working" });
     if (state === "suggestion") {
       performerRef.current?.handle({ kind: "emote", emotion: "proud" });
     }
   }, [state]);
-
-  useEffect(() => {
-    performerRef.current?.handle({
-      kind: "listening",
-      on: bubble !== null && bubble.phase !== "error",
-    });
-    setSay(bubbleText(bubble, def.bubble.maxChars));
-  }, [bubble, def]);
 
   return (
     <div className="sprite-stage">
@@ -102,43 +93,6 @@ export function SpriteStage({
         html, body, #root { margin: 0; height: 100%; background: transparent; overflow: hidden; }
         .sprite-stage { position: relative; width: ${def.windowSize}px; height: ${def.windowSize}px; -webkit-user-select: none; user-select: none; }
         canvas { image-rendering: pixelated; }
-        /* Manga speech balloon (listening): tail pinned to the mouth. */
-        .sprite-bubble {
-          position: absolute;
-          left: ${def.bubble.x}px;
-          bottom: ${def.bubble.y}px;
-          max-width: ${def.windowSize - def.bubble.x - 14}px;
-          padding: 8px 12px;
-          background: #fbf5e4;
-          border: 3px solid #2a2114;
-          border-radius: 16px;
-          color: #8e7f5f;
-          font: 500 11px/1.45 "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
-          text-align: left;
-          pointer-events: none;
-          white-space: pre-wrap;
-          box-shadow: 4px 4px 0 rgba(42, 33, 20, 0.8);
-        }
-        .sprite-bubble::before {
-          content: "";
-          position: absolute;
-          left: 12px;
-          bottom: -17px;
-          border-style: solid;
-          border-width: 18px 16px 0 5px;
-          border-color: #2a2114 transparent transparent transparent;
-          transform: rotate(14deg);
-        }
-        .sprite-bubble::after {
-          content: "";
-          position: absolute;
-          left: 16px;
-          bottom: -11px;
-          border-style: solid;
-          border-width: 13px 12px 0 3px;
-          border-color: #fbf5e4 transparent transparent transparent;
-          transform: rotate(14deg);
-        }
         /* Shout burst (paste lands): jagged flash. */
         .sprite-shout {
           position: absolute;
@@ -170,11 +124,7 @@ export function SpriteStage({
           height: def.hotRect.height,
         }}
       />
-      {shout ? (
-        <div className="sprite-shout">{shout}</div>
-      ) : say ? (
-        <div className="sprite-bubble">{say}</div>
-      ) : null}
+      {shout ? <div className="sprite-shout">{shout}</div> : null}
     </div>
   );
 }

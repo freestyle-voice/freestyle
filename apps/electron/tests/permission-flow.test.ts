@@ -42,7 +42,7 @@ interface LaunchOptions {
 
 interface LaunchedApp {
   app: ElectronApplication;
-  companion: Page;
+  pill: Page;
   eventsPath: string;
 }
 
@@ -66,17 +66,15 @@ async function closePermissionApp(app: ElectronApplication): Promise<void> {
   ]);
 }
 
-async function waitForCompanion(app: ElectronApplication): Promise<Page> {
+async function waitForPill(app: ElectronApplication): Promise<Page> {
   await app.firstWindow();
   await expect
-    .poll(() => app.windows().find((page) => page.url().includes("companion")))
+    .poll(() => app.windows().find((page) => page.url().includes("pill")))
     .toBeTruthy();
-  const companion = app
-    .windows()
-    .find((page) => page.url().includes("companion"));
-  if (!companion) throw new Error("Companion window did not open");
-  await companion.waitForLoadState("domcontentloaded");
-  return companion;
+  const pill = app.windows().find((page) => page.url().includes("pill"));
+  if (!pill) throw new Error("Pill window did not open");
+  await pill.waitForLoadState("domcontentloaded");
+  return pill;
 }
 
 function readEvents(eventsPath: string): RecordedEvent[] {
@@ -120,7 +118,7 @@ async function launchPermissionApp(
     timeout: 30_000,
   });
 
-  return { app, companion: await waitForCompanion(app), eventsPath };
+  return { app, pill: await waitForPill(app), eventsPath };
 }
 
 async function waitForBoot(app: ElectronApplication): Promise<void> {
@@ -128,7 +126,9 @@ async function waitForBoot(app: ElectronApplication): Promise<void> {
     .poll(async () => {
       try {
         return await app.evaluate(({ BrowserWindow }) =>
-          BrowserWindow.getAllWindows().some((win) => win.isVisible()),
+          BrowserWindow.getAllWindows().some((win) =>
+            win.webContents.getURL().includes("pill"),
+          ),
         );
       } catch {
         return false;
@@ -157,11 +157,9 @@ async function triggerEscape(page: Page): Promise<void> {
 async function instrumentMicrophoneRequest(
   app: ElectronApplication,
 ): Promise<void> {
-  const companion = app
-    .windows()
-    .find((page) => page.url().includes("companion"));
-  if (!companion) throw new Error("Companion window did not open");
-  await companion.evaluate(() => {
+  const pill = app.windows().find((page) => page.url().includes("pill"));
+  if (!pill) throw new Error("Pill window did not open");
+  await pill.evaluate(() => {
     const original = navigator.mediaDevices.getUserMedia.bind(
       navigator.mediaDevices,
     );
@@ -242,7 +240,7 @@ test("denied Accessibility blocks dictation before RecordingStarted", async () =
     const dialogsBefore = readEvents(launched.eventsPath).filter(
       (event) => event.type === "dialog",
     ).length;
-    await triggerHotkeyDown(launched.companion);
+    await triggerHotkeyDown(launched.pill);
     await expect
       .poll(
         () =>
@@ -283,7 +281,7 @@ test("denied Microphone blocks dictation before RecordingStarted", async () => {
     await waitForBoot(launched.app);
     await instrumentMicrophoneRequest(launched.app);
     const dialogsBefore = permissionDialogs(launched.eventsPath).length;
-    await triggerHotkeyDown(launched.companion);
+    await triggerHotkeyDown(launched.pill);
     await expect
       .poll(() => permissionDialogs(launched.eventsPath).length)
       .toBe(dialogsBefore + 1);
@@ -314,7 +312,7 @@ test("granted permissions allow the existing dictation flow", async () => {
   try {
     await waitForBoot(launched.app);
     await instrumentMicrophoneRequest(launched.app);
-    await triggerHotkeyDown(launched.companion);
+    await triggerHotkeyDown(launched.pill);
     await expect
       .poll(() =>
         readEvents(launched.eventsPath).some(
@@ -337,9 +335,7 @@ test("granted permissions allow the existing dictation flow", async () => {
       .poll(() =>
         launched.app.evaluate(({ BrowserWindow }) =>
           BrowserWindow.getAllWindows()
-            .filter((window) =>
-              window.webContents.getURL().includes("companion"),
-            )
+            .filter((window) => window.webContents.getURL().includes("pill"))
             .some((window) => window.isVisible()),
         ),
       )
@@ -358,7 +354,7 @@ test("Escape cancels an active dictation session", async () => {
   try {
     await waitForBoot(launched.app);
     await instrumentMicrophoneRequest(launched.app);
-    await triggerHotkeyDown(launched.companion);
+    await triggerHotkeyDown(launched.pill);
     await expect
       .poll(() =>
         readEvents(launched.eventsPath).some(
@@ -369,7 +365,7 @@ test("Escape cancels an active dictation session", async () => {
       )
       .toBe(true);
 
-    await triggerEscape(launched.companion);
+    await triggerEscape(launched.pill);
 
     await expect
       .poll(() =>

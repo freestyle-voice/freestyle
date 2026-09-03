@@ -2,59 +2,77 @@ import "../overlay.css";
 import "../tavern.css";
 
 import { useChat } from "@ai-sdk/react";
-import { BrainFiles } from "@renderer/components/brain-files";
+import { AgentMessageQueueControls } from "@renderer/components/agent-message-queue";
+import { RotatingThinkingLabel } from "@renderer/components/agents/loading-states/rotating-thinking-label";
+import { AttentionHome } from "@renderer/components/attention-home";
 import { Capabilities } from "@renderer/components/capabilities";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
-import { ConnectedApps } from "@renderer/components/connected-apps";
+import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
-import { NotesTab } from "@renderer/components/notes-tab";
 import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
 import { OpenerCards } from "@renderer/components/opener-cards";
 import {
-  SETTINGS_PAGE_TITLES,
-  type SettingsPage,
-  SettingsView,
-} from "@renderer/components/settings-view";
-import { Spark } from "@renderer/components/spark";
+  type RemixContextKind,
+  RemixContextRail,
+  useRemixContextRailVisibility,
+} from "@renderer/components/remix-context-rail";
+import {
+  RemixInspector,
+  type RemixInspectorTarget,
+} from "@renderer/components/remix-inspector";
+import {
+  type RemixWorkspaceSurface,
+  useRemixSession,
+} from "@renderer/components/remix-session-context";
+import { ScheduledTasks } from "@renderer/components/scheduled-tasks";
 import { ThreadHistory } from "@renderer/components/thread-history";
-import { TodosTab } from "@renderer/components/todos-tab";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@renderer/components/ui/dropdown-menu";
 import {
   agentWorkDuration,
   toolActivityParts,
 } from "@renderer/lib/agent-activity";
 import { readAgentBrief } from "@renderer/lib/agent-brief";
+import { useAgentMessageQueue } from "@renderer/lib/agent-message-queue";
 import {
   type AgentToolCall,
-  agentToolResultTelemetry,
   agentToolTier,
   DECLINED_OUTPUT,
   describeAgentAction,
   executeAgentTool,
+  reportAgentToolResult,
   requestAgentFileSaveGrant,
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
-import { apiFetch, initApiBase, refreshApiBase } from "@renderer/lib/api";
-import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
+import { apiFetch } from "@renderer/lib/api";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import { resetBrainCache } from "@renderer/lib/brain-fs";
 import { composerAction } from "@renderer/lib/composer-action";
 import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
-  createQueryClient,
+  durableThreadRunsQueryOptions,
+  durableTurnTimelineQueryOptions,
   invalidateThreads,
-  latestThreadQueryOptions,
   prependThreadToHistory,
   queryKeys,
 } from "@renderer/lib/query";
-import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
+import { executeRemixTool } from "@renderer/lib/remix-tool-executor";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
   cancelDurableTurn,
   type DurableThreadAction,
+  type DurableThreadRun,
+  displayThreadTitle,
   getThread,
   getThreadRuntime,
   sendDurableTurnCommand,
   type ThreadState,
+  type ThreadSummary,
 } from "@renderer/lib/threads";
 import { highlightToolJson, toolJson } from "@renderer/lib/tool-json";
 import {
@@ -65,58 +83,42 @@ import {
 import { compactActivitySummary } from "@renderer/lib/workspace-navigation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
-import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH, type PanelTab } from "@shared/panel";
+import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH } from "@shared/panel";
 import { SPRITES_INFO } from "@shared/sprites";
-import {
-  QueryClientProvider,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DefaultChatTransport,
   lastAssistantMessageIsCompleteWithToolCalls,
   type UIMessage,
 } from "ai";
+import {
+  Check,
+  Copy,
+  Ellipsis,
+  PanelRightClose,
+  Pencil,
+  RotateCcw,
+  Trash2,
+  X,
+} from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createRoot } from "react-dom/client";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-type WorkspaceView = PanelTab;
-
-const TAB_PLACEHOLDER: Record<WorkspaceView, string> = {
-  chat: "Ask anything, or point at something on screen.",
-  history: "Past conversations land here — pick one to continue it.",
-  todos: "Nothing to do yet.",
-  notes: "No notes yet.",
-  brain:
-    "Everything Freestyle knows lives here — scheduled tasks, memories, notes, skills, todos.",
-  apps: "Connect the apps you live in, and Freestyle can work them for you.",
-};
+type WorkspaceView = "chat" | "history";
 
 type WorkspaceIconName =
   | "history"
-  | "settings"
   | "close"
+  | "context"
   | "plus"
   | "send"
   | "stop";
 const WORKSPACE_VIEW_LABELS: Record<WorkspaceView, string> = {
   chat: "Chat",
   history: "History",
-  todos: "Tasks",
-  notes: "Notes",
-  brain: "Brain",
-  apps: "Apps",
 };
 
-const WORKSPACE_TOP_VIEWS: WorkspaceView[] = [
-  "chat",
-  "history",
-  "todos",
-  "notes",
-  "brain",
-  "apps",
-];
+const WORKSPACE_TOP_VIEWS: WorkspaceView[] = ["chat", "history"];
 
 /** A small, consistent icon set for the compact workspace controls. */
 function WorkspaceIcon({
@@ -131,13 +133,13 @@ function WorkspaceIcon({
         <path d="M4 4v4.5h4.5M12 7.5V12l3 2" />
       </>
     ),
-    settings: (
+    close: <path d="m7 7 10 10M17 7 7 17" />,
+    context: (
       <>
-        <circle cx="12" cy="12" r="3" />
-        <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06-2.68 2.68-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21h-3.8v-.09a1.7 1.7 0 0 0-1.03-1.56 1.7 1.7 0 0 0-1.88.34l-.06.06-2.68-2.68.06-.06A1.7 1.7 0 0 0 5.12 15a1.7 1.7 0 0 0-1.56-1.03H3.5v-3.8h.06A1.7 1.7 0 0 0 5.12 9.14a1.7 1.7 0 0 0-.34-1.88l-.06-.06 2.68-2.68.06.06a1.7 1.7 0 0 0 1.88.34 1.7 1.7 0 0 0 1.03-1.56V3.3h3.8v.06a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.88-.34l.06-.06 2.68 2.68-.06.06a1.7 1.7 0 0 0-.34 1.88 1.7 1.7 0 0 0 1.56 1.03h.09v3.8h-.09A1.7 1.7 0 0 0 19.4 15Z" />
+        <rect x="4" y="5" width="16" height="14" rx="1.5" />
+        <path d="M14 5v14M7.5 9h3M7.5 12h3M7.5 15h3" />
       </>
     ),
-    close: <path d="m7 7 10 10M17 7 7 17" />,
     plus: <path d="M12 5v14M5 12h14" />,
     send: <path d="M12 18V6m0 0-4 4m4-4 4 4" />,
     stop: <rect x="7.5" y="7.5" width="9" height="9" rx="1.2" />,
@@ -158,29 +160,6 @@ function WorkspaceIcon({
       {paths[name]}
     </svg>
   );
-}
-
-function reportAgentToolResult(
-  call: AgentToolCall,
-  output: Record<string, unknown>,
-  startedAt: number,
-): void {
-  const send = (appVersion: string): void => {
-    capture(
-      "agent_tool_result",
-      agentToolResultTelemetry({
-        tool: call.toolName,
-        platform: window.api.platform,
-        appVersion,
-        durationMs: Date.now() - startedAt,
-        output,
-      }),
-    );
-  };
-  void window.api
-    .getAppVersion()
-    .then(send)
-    .catch(() => send("unknown"));
 }
 
 function ShikiJson({ value }: { value: unknown }): React.JSX.Element {
@@ -408,12 +387,20 @@ function AgentBriefCard({
 }): React.JSX.Element {
   return (
     <section className="tavern-agent-brief" aria-label="Brief">
-      <strong>{brief.headline}</strong>
-      {brief.summary ? <p>{brief.summary}</p> : null}
+      <div className="tavern-agent-brief-headline">
+        <Markdown text={brief.headline} />
+      </div>
+      {brief.summary ? (
+        <div className="tavern-agent-brief-summary">
+          <Markdown text={brief.summary} />
+        </div>
+      ) : null}
       {brief.points.length > 0 ? (
         <ul>
           {brief.points.map((point) => (
-            <li key={point}>{point}</li>
+            <li key={point}>
+              <Markdown text={point} />
+            </li>
           ))}
         </ul>
       ) : null}
@@ -459,7 +446,7 @@ function MessageActions({
         aria-label={copied ? "Message copied" : "Copy message"}
         title={copied ? "Copied" : "Copy message"}
       >
-        <span aria-hidden="true">{copied ? "✓" : "⧉"}</span>
+        {copied ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
       </button>
       {role === "user" && onEdit ? (
         <button
@@ -470,7 +457,7 @@ function MessageActions({
           aria-label="Edit and resend message"
           title="Edit and resend"
         >
-          <span aria-hidden="true">✎</span>
+          <Pencil aria-hidden="true" />
         </button>
       ) : null}
       {role === "assistant" && onRegenerate ? (
@@ -482,7 +469,7 @@ function MessageActions({
           aria-label="Regenerate response"
           title="Regenerate response"
         >
-          <span aria-hidden="true">↻</span>
+          <RotateCcw aria-hidden="true" />
         </button>
       ) : null}
     </div>
@@ -632,21 +619,6 @@ function ChatMessage({
   );
 }
 
-async function openThreadById(threadId: string): Promise<ThreadState | null> {
-  try {
-    const res = await apiFetch(`/api/agent/thread/${threadId}`);
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      thread: { id: string; messages: UIMessage[] } | null;
-    };
-    return data.thread
-      ? { id: data.thread.id, messages: data.thread.messages }
-      : null;
-  } catch {
-    return null;
-  }
-}
-
 function newThread(): ThreadState {
   return { id: crypto.randomUUID(), messages: [] };
 }
@@ -676,6 +648,16 @@ function touchesScheduled(message: UIMessage): boolean {
       part.type === "tool-scheduled_task_update" ||
       part.type === "tool-scheduled_task_delete",
   );
+}
+
+function contextKindFor(message: UIMessage): RemixContextKind | null {
+  if (touchesScheduled(message)) return "tasks";
+  if (!touchesBrain(message)) return null;
+
+  const detail = JSON.stringify(message.parts);
+  if (detail.includes("todos.md")) return "tasks";
+  if (detail.includes("notes/")) return "notes";
+  return "brain";
 }
 
 function PanelTail(): React.JSX.Element {
@@ -835,44 +817,54 @@ function SignInGate(): React.JSX.Element {
   );
 }
 
-function PanelRoot(): React.JSX.Element {
-  const [thread, setThread] = useState<ThreadState | null>(null);
-  const queryClient = useQueryClient();
-  const latestQuery = useQuery(latestThreadQueryOptions());
-  const selectionRef = useRef(0);
+/**
+ * The current durable agent runtime in a desktop-sized composition. The
+ * compact panel and the restored dashboard deliberately share this component
+ * so streaming, approvals, connected apps, and thread persistence remain one
+ * implementation.
+ */
+export function RemixWorkspace(): React.JSX.Element {
+  const {
+    thread,
+    switchThread,
+    selectThread,
+    isThreadLoading,
+    threadLoadError,
+    retryThreadLoad,
+    localTitles,
+    renameThread,
+    requestDeleteThread,
+    requestThreadTitleRefresh,
+    workspaceSurface,
+    openCapabilities,
+    openChat,
+  } = useRemixSession();
 
-  const switchThread = useCallback((next: ThreadState) => {
-    selectionRef.current += 1;
-    setThread(next);
-  }, []);
+  if (!thread) return <div className="remix-workspace" />;
 
-  useEffect(() => {
-    const off = window.api.onPanelOpenThread((threadId) => {
-      const selection = ++selectionRef.current;
-      void invalidateThreads(queryClient);
-      void getThread(threadId)
-        .catch(() => null)
-        .then((picked) => {
-          if (!picked || selectionRef.current !== selection) return;
-          queryClient.setQueryData(queryKeys.threads.detail(threadId), picked);
-          setThread(picked);
-        });
-    });
-    return () => {
-      off?.();
-    };
-  }, [queryClient]);
-
-  useEffect(() => {
-    if (latestQuery.isPending) return;
-    setThread((current) => current ?? latestQuery.data ?? newThread());
-  }, [latestQuery.data, latestQuery.isPending]);
-
-  if (!thread) return <div className="tavern tavern-panel" />;
-  return <PanelInner thread={thread} onSwitchThread={switchThread} />;
+  return (
+    <div className="remix-workspace">
+      <PanelInner
+        thread={thread}
+        onSwitchThread={switchThread}
+        onSelectThread={selectThread}
+        isSessionLoading={isThreadLoading}
+        sessionLoadError={threadLoadError}
+        onRetrySessionLoad={retryThreadLoad}
+        onRenameSession={renameThread}
+        onDeleteSession={requestDeleteThread}
+        onThreadSettled={requestThreadTitleRefresh}
+        sessionTitle={localTitles[thread.id] ?? displayThreadTitle(thread)}
+        desktopSurface={workspaceSurface}
+        onOpenCapabilities={openCapabilities}
+        onOpenChat={openChat}
+        desktop
+      />
+    </div>
+  );
 }
 
-function PanelNotificationAuthBridge({
+export function PanelNotificationAuthBridge({
   children,
 }: {
   children: React.ReactNode;
@@ -888,20 +880,379 @@ function PanelNotificationAuthBridge({
   return <>{children}</>;
 }
 
+function RemixChatHeader({
+  thread,
+  title,
+  onRename,
+  onDelete,
+  children,
+}: {
+  thread: ThreadState;
+  title: string;
+  onRename?: (threadId: string, title: string) => Promise<void>;
+  onDelete?: (threadId: string, title: string) => void;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!renaming) setDraft(title);
+  }, [renaming, title]);
+
+  useEffect(() => {
+    if (renaming) renameInputRef.current?.focus();
+  }, [renaming]);
+
+  const saveTitle = (): void => {
+    const nextTitle = draft.trim();
+    if (!nextTitle) {
+      setActionError("A session needs a name.");
+      return;
+    }
+    if (!onRename) return;
+    setActionError(null);
+    void onRename(thread.id, nextTitle)
+      .then(() => setRenaming(false))
+      .catch(() => setActionError("Couldn’t rename this session."));
+  };
+
+  const deleteSession = (): void => {
+    if (!onDelete) return;
+    setActionError(null);
+    // Session deletion owns confirmation, optimistic rollback, and failure
+    // feedback in the session provider; this header only requests the action.
+    onDelete(thread.id, title);
+  };
+
+  return (
+    <header className="remix-chat-header">
+      <div className="remix-chat-session">
+        {renaming ? (
+          <form
+            className="remix-chat-title-edit"
+            onSubmit={(event) => {
+              event.preventDefault();
+              saveTitle();
+            }}
+          >
+            <input
+              ref={renameInputRef}
+              value={draft}
+              aria-label="Session name"
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key !== "Escape") return;
+                event.preventDefault();
+                setActionError(null);
+                setRenaming(false);
+              }}
+            />
+            <button type="submit" aria-label="Save session name">
+              <Check aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              aria-label="Cancel rename"
+              onClick={() => {
+                setActionError(null);
+                setRenaming(false);
+              }}
+            >
+              <X aria-hidden="true" />
+            </button>
+          </form>
+        ) : (
+          <>
+            <h1 title={title}>{title}</h1>
+            {thread.messages.length > 0 && onRename && onDelete ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="remix-chat-session-actions"
+                    aria-label={`Session actions for ${title}`}
+                    title="Session actions"
+                  >
+                    <Ellipsis aria-hidden="true" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="min-w-35">
+                  <DropdownMenuItem
+                    onSelect={() => {
+                      setDraft(title);
+                      setActionError(null);
+                      setRenaming(true);
+                    }}
+                  >
+                    <Pencil aria-hidden="true" />
+                    Rename
+                  </DropdownMenuItem>
+                  {thread.messages.length > 0 ? (
+                    <DropdownMenuItem
+                      variant="destructive"
+                      onSelect={deleteSession}
+                    >
+                      <Trash2 aria-hidden="true" />
+                      Delete
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+          </>
+        )}
+        {actionError ? (
+          <p className="remix-chat-session-error" role="status">
+            {actionError}
+          </p>
+        ) : null}
+      </div>
+      <div className="remix-chat-header-actions">{children}</div>
+    </header>
+  );
+}
+
+function RemixSchedulesHeader({
+  onCreate,
+}: {
+  onCreate: () => void;
+}): React.JSX.Element {
+  return (
+    <header className="remix-chat-header remix-schedules-header">
+      <div className="remix-chat-session">
+        <h1>Schedules</h1>
+      </div>
+      <div className="remix-chat-header-actions">
+        <button
+          type="button"
+          className="remix-schedule-create"
+          onClick={onCreate}
+        >
+          <WorkspaceIcon name="plus" />
+          New schedule
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function RemixCapabilitiesHeader(): React.JSX.Element {
+  return (
+    <header className="remix-chat-header remix-capabilities-header">
+      <div className="remix-chat-session">
+        <h1>What Freestyle can do</h1>
+      </div>
+    </header>
+  );
+}
+
+function ConversationSkeleton(): React.JSX.Element {
+  return (
+    <div
+      className="remix-conversation-skeleton"
+      role="status"
+      aria-live="polite"
+      aria-label="Loading conversation"
+    >
+      <span className="remix-conversation-skeleton-line is-user" />
+      <span className="remix-conversation-skeleton-line is-assistant" />
+      <span className="remix-conversation-skeleton-line is-assistant-short" />
+      <span className="sr-only">Loading conversation</span>
+    </div>
+  );
+}
+
+function timelineLabel(event: {
+  eventType: "turn" | "action";
+  status: string;
+}): string {
+  if (event.eventType === "action") {
+    const actionLabels: Record<string, string> = {
+      pending: "Waiting for your approval",
+      claimed: "Action approved and started",
+      completed: "Action completed",
+      declined: "Action declined",
+      expired: "Action expired",
+      failed: "Action failed",
+    };
+    return actionLabels[event.status] ?? "Action updated";
+  }
+  const runLabels: Record<string, string> = {
+    queued: "Queued",
+    running: "Remix is working",
+    waiting_approval: "Waiting for approval",
+    waiting_desktop: "Waiting for this desktop",
+    needs_desktop: "A desktop is needed",
+    completed: "Completed",
+    canceled: "Canceled",
+    failed: "Needs attention",
+  };
+  return runLabels[event.status] ?? "Run updated";
+}
+
+function DurableRunTimeline({
+  turnId,
+}: {
+  turnId: string;
+}): React.JSX.Element | null {
+  const timeline = useQuery(durableTurnTimelineQueryOptions(turnId));
+  if (timeline.isPending) {
+    return (
+      <section className="tavern-run-timeline" aria-label="Run activity">
+        <span className="tavern-run-timeline-label">Run activity</span>
+        <DataSkeleton label="Loading run activity" rows={2} />
+      </section>
+    );
+  }
+  if (!timeline.data || timeline.data.length === 0) return null;
+
+  return (
+    <details className="tavern-run-timeline" open>
+      <summary>
+        <span className="tavern-run-timeline-label">Run activity</span>
+        <span>{timeline.data.length} events</span>
+      </summary>
+      <ol>
+        {timeline.data.map((event) => (
+          <li key={event.id} className={`is-${event.status}`}>
+            <span className="tavern-run-timeline-dot" aria-hidden="true" />
+            <span>
+              <strong>{timelineLabel(event)}</strong>
+              {event.summary ? <small>{event.summary}</small> : null}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
+}
+
+function runStatusLabel(run: DurableThreadRun): string {
+  if (run.status === "completed") return "Completed";
+  if (run.status === "failed") return "Needs attention";
+  if (run.status === "canceled") return "Canceled";
+  if (run.status === "waiting_approval") return "Waiting for approval";
+  if (run.status === "waiting_desktop" || run.status === "needs_desktop") {
+    return "Waiting for a desktop";
+  }
+  return run.status === "running" ? "Remix is working" : "Queued";
+}
+
+/** Finished turns remain recoverable after the floating pill has gone away. */
+function DurableRunHistory({
+  threadId,
+  activeTurnId,
+}: {
+  threadId: string;
+  activeTurnId?: string;
+}): React.JSX.Element | null {
+  const history = useQuery(durableThreadRunsQueryOptions(threadId));
+  const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
+  const runs = (history.data ?? []).filter((run) => run.id !== activeTurnId);
+  const selected = runs.find((run) => run.id === selectedTurnId) ?? null;
+
+  if (runs.length === 0) return null;
+
+  return (
+    <details className="tavern-run-history">
+      <summary>
+        <span className="tavern-run-timeline-label">Recent run activity</span>
+        <span>{runs.length} runs</span>
+      </summary>
+      <div className="tavern-run-history-list">
+        {runs.map((run) => (
+          <button
+            key={run.id}
+            type="button"
+            className={
+              selectedTurnId === run.id
+                ? "tavern-run-history-item is-selected"
+                : "tavern-run-history-item"
+            }
+            onClick={() =>
+              setSelectedTurnId((current) =>
+                current === run.id ? null : run.id,
+              )
+            }
+          >
+            <span className={`tavern-run-timeline-dot is-${run.status}`} />
+            <span>
+              <strong>{runStatusLabel(run)}</strong>
+              {run.error ? <small>{run.error}</small> : null}
+            </span>
+          </button>
+        ))}
+      </div>
+      {selected ? <DurableRunTimeline turnId={selected.id} /> : null}
+    </details>
+  );
+}
+
 function PanelInner({
   thread,
   onSwitchThread,
+  onSelectThread,
+  isSessionLoading = false,
+  sessionLoadError = null,
+  onRetrySessionLoad,
+  onRenameSession,
+  onDeleteSession,
+  onThreadSettled,
+  sessionTitle: currentSessionTitle,
+  desktopSurface = "chat",
+  onOpenCapabilities,
+  onOpenChat,
+  desktop = false,
 }: {
   thread: ThreadState;
   onSwitchThread: (thread: ThreadState) => void;
+  onSelectThread?: (thread: ThreadSummary) => void;
+  isSessionLoading?: boolean;
+  sessionLoadError?: string | null;
+  onRetrySessionLoad?: () => void;
+  onRenameSession?: (threadId: string, title: string) => Promise<void>;
+  onDeleteSession?: (threadId: string, title: string) => void;
+  onThreadSettled?: (threadId: string) => void;
+  sessionTitle?: string;
+  desktopSurface?: RemixWorkspaceSurface;
+  onOpenCapabilities?: () => void;
+  onOpenChat?: () => void;
+  /** Render inside the restored full-window Remix workspace rather than a popover. */
+  desktop?: boolean;
 }): React.JSX.Element {
   const [tab, setTab] = useState<WorkspaceView>("chat");
+  const [scheduleCreateRequest, setScheduleCreateRequest] = useState(0);
+  const [contextRailOpen, setContextRailOpen] = useRemixContextRailVisibility();
+  const [narrowRemix, setNarrowRemix] = useState(
+    () => window.matchMedia("(max-width: 1080px)").matches,
+  );
+  const [narrowContextOpen, setNarrowContextOpen] = useState(false);
+  const [contextAttention, setContextAttention] =
+    useState<RemixContextKind | null>(null);
+  const [inspectorTarget, setInspectorTarget] =
+    useState<RemixInspectorTarget | null>(null);
+  const restoreContextRailOnInspectorCloseRef = useRef(false);
   const queryClient = useQueryClient();
   const auth = useCloudAuth();
   const onboarding = useOnboarding(!!auth.user);
   const [spriteForm, setSpriteForm] = useState<CompanionForm>(
     DEFAULT_COMPANION_FORM,
   );
+
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1080px)");
+    const update = (): void => setNarrowRemix(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    if (narrowRemix) setNarrowContextOpen(false);
+  }, [narrowRemix]);
 
   useEffect(() => {
     void window.api
@@ -937,17 +1288,16 @@ function PanelInner({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsPage, setSettingsPage] = useState<SettingsPage>("root");
-  const [capabilitiesOpen, setCapabilitiesOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
   const dictationBaseRef = useRef<string | null>(null);
+  const contextAttentionMessageRef = useRef<string | null>(null);
   // Whether the current draft arrived by voice, so message_sent can say so.
   const dictatedRef = useRef(false);
 
   const durableRuntime = useQuery({
     queryKey: ["durable-thread-runtime", thread.id],
     queryFn: () => getThreadRuntime(thread.id),
+    enabled: !isSessionLoading,
     retry: false,
     refetchInterval: (query) =>
       query.state.data?.activeTurn || query.state.data?.pendingAction
@@ -977,10 +1327,12 @@ function PanelInner({
     status,
     addToolOutput,
     setMessages,
+    resumeStream,
   } = useChat({
     id: thread.id,
     messages: thread.messages,
     transport,
+    resume: true,
     sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
     onFinish: ({ messages: finished }) => {
       queryClient.setQueryData(queryKeys.threads.detail(thread.id), {
@@ -988,6 +1340,11 @@ function PanelInner({
         messages: finished,
       });
       void invalidateThreads(queryClient);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.durableThreadRuns(thread.id),
+      });
+      if (!thread.title?.trim()) onThreadSettled?.(thread.id);
       if (finished.length === 0) return;
       const last = finished[finished.length - 1];
       if (last?.role !== "assistant") return;
@@ -999,6 +1356,11 @@ function PanelInner({
         void queryClient.invalidateQueries({
           queryKey: queryKeys.scheduled.tasks,
         });
+      }
+      const contextKind = contextKindFor(last);
+      if (contextKind) {
+        contextAttentionMessageRef.current = last.id;
+        setContextAttention(contextKind);
       }
     },
     onToolCall: async ({ toolCall }) => {
@@ -1016,8 +1378,8 @@ function PanelInner({
       const output =
         tier === "free"
           ? await executeAgentTool(call)
-          : { ok: false, reason: `unknown tool: ${call.toolName}` };
-      reportAgentToolResult(call, output, startedAt);
+          : await executeRemixTool(call);
+      if (tier !== null) reportAgentToolResult(call, output, startedAt);
       addToolOutput({
         tool: toolCall.toolName,
         toolCallId: toolCall.toolCallId,
@@ -1049,12 +1411,41 @@ function PanelInner({
     setCopiedMessageId(null);
     setEditingMessageId(null);
     setEditDraft("");
-    setSettingsOpen(false);
-    setSettingsPage("root");
-    setCapabilitiesOpen(false);
+    setContextAttention(null);
+    contextAttentionMessageRef.current = null;
     dictationBaseRef.current = null;
     dictatedRef.current = false;
   }, [thread.id]);
+
+  // `useChat` retains message state across prop changes. Clear the previous
+  // conversation as soon as a different session is selected so stale content
+  // can never flash underneath this session's loading skeleton.
+  const chatThreadRef = useRef(thread.id);
+  useLayoutEffect(() => {
+    if (chatThreadRef.current === thread.id) return;
+    chatThreadRef.current = thread.id;
+    setMessages(thread.messages);
+  }, [setMessages, thread.id, thread.messages]);
+
+  useEffect(() => {
+    if (!contextAttention) return;
+    const timeout = window.setTimeout(() => setContextAttention(null), 3_000);
+    return () => window.clearTimeout(timeout);
+  }, [contextAttention]);
+
+  useEffect(() => {
+    const last = durableRuntime.data?.thread?.messages.at(-1);
+    if (
+      !last ||
+      last.role !== "assistant" ||
+      last.id === contextAttentionMessageRef.current
+    )
+      return;
+    const contextKind = contextKindFor(last);
+    if (!contextKind) return;
+    contextAttentionMessageRef.current = last.id;
+    setContextAttention(contextKind);
+  }, [durableRuntime.data?.thread?.messages]);
 
   useEffect(() => {
     if (status === "submitted" || status === "streaming") return;
@@ -1072,8 +1463,12 @@ function PanelInner({
   useEffect(() => {
     if (startedThreadRef.current === thread.id) return;
     startedThreadRef.current = thread.id;
-    startedRef.current = thread.messages.length > 0;
-  }, [thread.id, thread.messages.length]);
+    // A selected persisted session is briefly represented by an empty summary
+    // while its messages load. It is not a new draft: the previous chat's
+    // retained AI SDK messages must never turn that placeholder into a second
+    // "New conversation" entry.
+    startedRef.current = isSessionLoading || thread.messages.length > 0;
+  }, [isSessionLoading, thread.id, thread.messages.length]);
   useEffect(() => {
     if (startedRef.current || messages.length === 0) return;
     startedRef.current = true;
@@ -1086,6 +1481,57 @@ function PanelInner({
   }, [messages.length, queryClient, thread.id]);
 
   const busy = status === "submitted" || status === "streaming";
+  const queue = useAgentMessageQueue(thread.id);
+  const queueWasActiveRef = useRef(false);
+  const queueInitializedRef = useRef(false);
+  const queueHadItemsRef = useRef(false);
+  const queueNeedsRefreshRef = useRef(false);
+  const queueThreadRef = useRef(thread.id);
+  useEffect(() => {
+    if (queueThreadRef.current === thread.id) return;
+    queueThreadRef.current = thread.id;
+    queueWasActiveRef.current = false;
+    queueInitializedRef.current = false;
+    queueHadItemsRef.current = false;
+    queueNeedsRefreshRef.current = false;
+  }, [thread.id]);
+  useEffect(() => {
+    // Initial `resume: true` already attaches a newly opened workspace to a
+    // pill-owned stream. Resume only when the local queue later starts its
+    // next server-owned turn.
+    if (!queueInitializedRef.current) {
+      queueInitializedRef.current = true;
+      queueWasActiveRef.current = queue.active;
+      return;
+    }
+    if (!queue.active) {
+      queueWasActiveRef.current = false;
+      return;
+    }
+    if (busy || queueWasActiveRef.current) return;
+    queueWasActiveRef.current = true;
+    void getThread(thread.id)
+      .then((next) => {
+        if (next) setMessages(next.messages);
+        return resumeStream();
+      })
+      .catch(() => setNotice("Couldn’t resume the queued message."));
+  }, [busy, queue.active, resumeStream, setMessages, thread.id]);
+  useEffect(() => {
+    const hasItems = queue.items.length > 0;
+    if (queueHadItemsRef.current && !hasItems)
+      queueNeedsRefreshRef.current = true;
+    queueHadItemsRef.current = hasItems;
+    // If the local server completed a short follow-up between queue polls,
+    // there is no live stream to resume. Reload the durable thread once.
+    if (!queueNeedsRefreshRef.current || queue.active || busy) return;
+    queueNeedsRefreshRef.current = false;
+    void getThread(thread.id)
+      .then((next) => {
+        if (next) setMessages(next.messages);
+      })
+      .catch(() => {});
+  }, [busy, queue.active, queue.items.length, setMessages, thread.id]);
   const action = composerAction(status);
   // The spark loader holds the floor until the first response text streams in;
   // once text is flowing, the growing message itself is the indicator.
@@ -1101,7 +1547,7 @@ function PanelInner({
 
   const send = (): void => {
     const text = draft.trim();
-    if (!text || tab !== "chat" || busy || approvals.length > 0) return;
+    if (!text || tab !== "chat" || isSessionLoading || sessionLoadError) return;
     capture("message_sent", {
       source: dictatedRef.current ? "dictated" : "typed",
       chars: text.length,
@@ -1110,6 +1556,14 @@ function PanelInner({
     dictatedRef.current = false;
     setNotice(null);
     setDraft("");
+    if (busy) {
+      void queue
+        .enqueue(text)
+        .catch(() => setNotice("Couldn’t queue that message."));
+      capture("remix_message_queued", { source: "typed", chars: text.length });
+      return;
+    }
+    if (approvals.length > 0) return;
     void sendMessage({ text });
   };
 
@@ -1118,7 +1572,12 @@ function PanelInner({
     stop();
     const cancel = (turnId: string) =>
       void cancelDurableTurn(turnId)
-        .then(() => durableRuntime.refetch())
+        .then(async () => {
+          await durableRuntime.refetch();
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.durableThreadRuns(thread.id),
+          });
+        })
         .catch(() =>
           setNotice(
             "Stopped locally, but couldn't cancel the server turn. Check this conversation when you're back online.",
@@ -1227,7 +1686,11 @@ function PanelInner({
           clientId: durableDesktopClientId(),
           result: output,
         });
+        void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
         await durableRuntime.refetch();
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.durableThreadRuns(thread.id),
+        });
       } else {
         addToolOutput({
           tool: call.toolName,
@@ -1246,7 +1709,13 @@ function PanelInner({
       type: allowed ? "approve" : "decline",
       actionId: action.id,
     })
-      .then(() => durableRuntime.refetch())
+      .then(async () => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
+        await durableRuntime.refetch();
+        return queryClient.invalidateQueries({
+          queryKey: queryKeys.durableThreadRuns(thread.id),
+        });
+      })
       .catch(() => setNotice("Couldn't resolve this connected-app action."));
   };
 
@@ -1280,26 +1749,30 @@ function PanelInner({
       const output =
         tier === "free"
           ? await executeAgentTool(call)
-          : { ok: false, reason: `unknown tool: ${call.toolName}` };
-      reportAgentToolResult(call, output, Date.now());
+          : await executeRemixTool(call);
+      if (tier !== null) reportAgentToolResult(call, output, Date.now());
       await sendDurableTurnCommand(action.turnId, {
         type: "desktop_complete",
         actionId: action.id,
         clientId: durableDesktopClientId(),
         result: output,
       });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
       await durableRuntime.refetch();
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.durableThreadRuns(thread.id),
+      });
     })().catch(() => setNotice("Couldn't run that desktop action."));
   };
 
   useEffect(() => {
     // Every tab renders into the same .tavern-body scroller, so without this
     // guard a streaming turn yanks Settings/History/Brain to the bottom.
-    if (tab !== "chat" || settingsOpen) return;
+    if (!desktop && tab !== "chat") return;
     const el = bodyRef.current;
     if (el && (messages.length > 0 || approvals.length > 0))
       el.scrollTop = el.scrollHeight;
-  }, [messages, approvals, tab, settingsOpen]);
+  }, [desktop, messages, approvals, tab]);
 
   const pinned = busy || approvals.length > 0;
   useEffect(() => {
@@ -1311,7 +1784,6 @@ function PanelInner({
     // The composer only exists on the chat tab — dictation and explicit
     // focus requests must surface it first.
     const showComposer = (): void => {
-      setSettingsOpen(false);
       setTab("chat");
     };
     const offFocus = window.api.onPanelFocusComposer(() => {
@@ -1319,9 +1791,6 @@ function PanelInner({
       requestAnimationFrame(() =>
         document.getElementById("panel-composer")?.focus(),
       );
-    });
-    const offShowSettings = window.api.onPanelShowSettings(() => {
-      setSettingsOpen(true);
     });
     const offDictation = window.api.onPanelDictation((ev) => {
       if (ev.kind !== "error") showComposer();
@@ -1359,14 +1828,20 @@ function PanelInner({
     window.api.panelRendererReady();
     return () => {
       offFocus?.();
-      offShowSettings?.();
       offDictation?.();
     };
   }, []);
 
+  useEffect(
+    () => () => {
+      window.api.panelSetComposerFocused(false);
+    },
+    [],
+  );
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
-      if (e.key === "Escape") window.api.panelClose();
+      if (!desktop && e.key === "Escape") window.api.panelClose();
     };
     const onLeave = (): void => window.api.panelPointerLeft();
     const onEnter = (): void => window.api.panelPointerEntered();
@@ -1378,15 +1853,34 @@ function PanelInner({
       document.removeEventListener("mouseleave", onLeave);
       document.removeEventListener("mouseenter", onEnter);
     };
-  }, []);
+  }, [desktop]);
 
-  const chatActive = tab === "chat";
+  const chatActive = desktop ? desktopSurface === "chat" : tab === "chat";
+  const contextRailVisible =
+    desktop &&
+    desktopSurface === "chat" &&
+    (narrowRemix ? narrowContextOpen : contextRailOpen);
+  const toggleContextRail = (): void => {
+    if (narrowRemix) setNarrowContextOpen((open) => !open);
+    else setContextRailOpen(!contextRailOpen);
+  };
+  const openInspector = (target: RemixInspectorTarget): void => {
+    restoreContextRailOnInspectorCloseRef.current = contextRailVisible;
+    setInspectorTarget(target);
+  };
+  const closeInspector = (): void => {
+    const shouldRestoreContextRail =
+      restoreContextRailOnInspectorCloseRef.current;
+    restoreContextRailOnInspectorCloseRef.current = false;
+    setInspectorTarget(null);
+
+    if (!shouldRestoreContextRail) return;
+    if (narrowRemix) setNarrowContextOpen(true);
+    else setContextRailOpen(true);
+  };
   const showChat = chatActive && messages.length > 0;
   const startNewChat = (): void => {
     setTab("chat");
-    setSettingsOpen(false);
-    setSettingsPage("root");
-    setCapabilitiesOpen(false);
     setDraft("");
     setNotice(null);
     dictationBaseRef.current = null;
@@ -1402,12 +1896,12 @@ function PanelInner({
   // flashing the gate at signed-in users.
   if (!auth.user) {
     return (
-      <div className="tavern-shell">
+      <div className={desktop ? "remix-agent" : "tavern-shell"}>
         <div className="tavern tavern-panel">
           {auth.loading ? null : <SignInGate />}
         </div>
-        <PanelTail />
-        <PanelResizeHandle />
+        {!desktop ? <PanelTail /> : null}
+        {!desktop ? <PanelResizeHandle /> : null}
       </div>
     );
   }
@@ -1417,7 +1911,7 @@ function PanelInner({
   // the intro at users who've already been through it.
   if (onboarding.status !== "done") {
     return (
-      <div className="tavern-shell">
+      <div className={desktop ? "remix-agent" : "tavern-shell"}>
         <div className="tavern tavern-panel">
           {onboarding.status === "show" ? (
             <OnboardingGate
@@ -1441,19 +1935,27 @@ function PanelInner({
             />
           ) : null}
         </div>
-        <PanelTail />
-        <PanelResizeHandle />
+        {!desktop ? <PanelTail /> : null}
+        {!desktop ? <PanelResizeHandle /> : null}
       </div>
     );
   }
 
   return (
-    <div className="tavern-shell">
-      <div className="tavern tavern-panel">
+    <div className={desktop ? "remix-agent" : "tavern-shell"}>
+      <div
+        className={`tavern tavern-panel${desktop ? " remix-agent-panel" : ""}`}
+      >
         <div className="tavern-head tavern-workspace-head">
           <SpriteBadge form={spriteForm} working={busy} size={22} />
           <span className="tavern-head-name">
-            freestyle<i>.</i>
+            {desktop ? (
+              "Remix"
+            ) : (
+              <>
+                freestyle<i>.</i>
+              </>
+            )}
           </span>
           <span className="tavern-head-spacer" />
           {updateStatus.version ? (
@@ -1495,74 +1997,80 @@ function PanelInner({
           >
             <WorkspaceIcon name="plus" />
           </button>
-          <button
-            type="button"
-            className="tavern-workspace-icon-btn"
-            aria-label="Open conversations"
-            aria-pressed={tab === "history"}
-            onClick={() => {
-              setSettingsOpen(false);
-              setSettingsPage("root");
-              setTab("history");
-            }}
-          >
-            <WorkspaceIcon name="history" />
-          </button>
-          <button
-            type="button"
-            className={`tavern-workspace-icon-btn${settingsOpen ? " is-active" : ""}`}
-            aria-label="Settings"
-            aria-pressed={settingsOpen}
-            onClick={() => {
-              setCapabilitiesOpen(false);
-              setSettingsOpen((open) => {
-                if (open) setSettingsPage("root");
-                return !open;
-              });
-            }}
-          >
-            <WorkspaceIcon name="settings" />
-          </button>
-          <button
-            type="button"
-            className="tavern-close"
-            aria-label="Close"
-            onClick={() => window.api.panelClose()}
-          >
-            <WorkspaceIcon name="close" />
-          </button>
+          {!desktop ? (
+            <button
+              type="button"
+              className="tavern-workspace-icon-btn"
+              aria-label="Open conversations"
+              aria-pressed={tab === "history"}
+              onClick={() => {
+                setTab("history");
+              }}
+            >
+              <WorkspaceIcon name="history" />
+            </button>
+          ) : null}
+          {!desktop ? (
+            <button
+              type="button"
+              className="tavern-close"
+              aria-label="Close"
+              onClick={() => window.api.panelClose()}
+            >
+              <WorkspaceIcon name="close" />
+            </button>
+          ) : null}
         </div>
-        <div className="tavern-workspace">
-          <div className="tavern-workspace-main">
-            {settingsOpen ? (
-              <div className="tavern-settings-context">
-                <div className="tavern-settings-context-path">
-                  {settingsPage === "root" ? (
-                    <span>Settings</span>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => setSettingsPage("root")}
-                      >
-                        Settings
-                      </button>
-                      <span aria-hidden="true">/</span>
-                      <strong>{SETTINGS_PAGE_TITLES[settingsPage]}</strong>
-                    </>
-                  )}
-                </div>
+        {desktop ? (
+          desktopSurface === "chat" ? (
+            <RemixChatHeader
+              thread={thread}
+              title={currentSessionTitle ?? displayThreadTitle(thread)}
+              onRename={onRenameSession}
+              onDelete={onDeleteSession}
+            >
+              {inspectorTarget ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    setSettingsOpen(false);
-                    setSettingsPage("root");
-                  }}
+                  className="remix-context-toggle"
+                  aria-label="Close context inspector"
+                  title="Close context inspector"
+                  onClick={closeInspector}
                 >
-                  Done
+                  <PanelRightClose aria-hidden="true" />
                 </button>
-              </div>
-            ) : (
+              ) : (
+                <button
+                  type="button"
+                  className="remix-context-toggle"
+                  aria-label={
+                    contextRailVisible ? "Hide context" : "Show context"
+                  }
+                  aria-pressed={contextRailVisible}
+                  title={contextRailVisible ? "Hide context" : "Show context"}
+                  onClick={toggleContextRail}
+                >
+                  <WorkspaceIcon name="context" />
+                </button>
+              )}
+            </RemixChatHeader>
+          ) : desktopSurface === "capabilities" ? (
+            <RemixCapabilitiesHeader />
+          ) : (
+            <RemixSchedulesHeader
+              onCreate={() =>
+                setScheduleCreateRequest((current) => current + 1)
+              }
+            />
+          )
+        ) : null}
+        <div
+          className={`tavern-workspace${
+            contextRailVisible ? " is-context-open" : ""
+          }${inspectorTarget ? " is-inspector-open" : ""}`}
+        >
+          <div className="tavern-workspace-main">
+            {!desktop ? (
               <nav
                 className="tavern-workspace-mobile-tools"
                 aria-label="Workspace"
@@ -1581,73 +2089,61 @@ function PanelInner({
                   </button>
                 ))}
               </nav>
-            )}
+            ) : null}
             <div
               className="tavern-body tavern-conversation"
+              data-remix-view={tab}
               role="tabpanel"
               ref={bodyRef}
             >
-              {capabilitiesOpen ? (
-                <>
-                  <button
-                    type="button"
-                    className="tavern-file-back"
-                    onClick={() => setCapabilitiesOpen(false)}
-                  >
-                    ← What Freestyle can do
-                  </button>
+              {desktop && desktopSurface === "scheduled" ? (
+                <ScheduledTasks
+                  variant="workspace"
+                  workspaceHeader={false}
+                  createRequest={scheduleCreateRequest}
+                  onOpenThread={(id, title) =>
+                    onSelectThread?.({ id, title, updatedAt: Date.now() })
+                  }
+                />
+              ) : desktop && desktopSurface === "capabilities" ? (
+                <section
+                  className="tavern-capabilities-page"
+                  aria-label="What Freestyle can do"
+                >
                   <Capabilities
                     onPrompt={(text) => {
-                      setCapabilitiesOpen(false);
+                      onOpenChat?.();
                       setNotice(null);
                       void sendMessage({ text });
                     }}
                     onOpenApps={() => {
-                      setCapabilitiesOpen(false);
-                      setTab("apps");
+                      window.api.openSettings();
                     }}
                   />
-                </>
-              ) : settingsOpen ? (
-                <SettingsView
-                  page={settingsPage}
-                  onPageChange={setSettingsPage}
-                  onOpenThread={(threadId) => {
-                    setSettingsOpen(false);
-                    setSettingsPage("root");
-                    setTab("chat");
-                    void openThreadById(threadId).then((picked) => {
-                      if (picked) onSwitchThread(picked);
-                    });
-                  }}
-                  onThreadsCleared={() => {
-                    void invalidateThreads(queryClient);
-                    onSwitchThread(newThread());
-                  }}
-                  onReplayIntro={() => {
-                    setSettingsOpen(false);
-                    onboarding.replay();
-                  }}
-                />
+                </section>
               ) : tab === "history" ? (
                 <ThreadHistory
                   currentId={thread.id}
                   onPick={(picked) => {
                     setTab("chat");
-                    if (picked.id !== thread.id) onSwitchThread(picked);
+                    if (picked.id !== thread.id) {
+                      onSelectThread?.(picked);
+                    }
                   }}
                 />
-              ) : tab === "apps" ? (
-                <ConnectedApps
-                  onUseWorkflow={(prompt) => {
-                    setTab("chat");
-                    // Sending past a pending approval strands the tool call, which
-                    // leaves an unanswerable tool_use in the thread forever.
-                    if (pinned) return;
-                    setNotice(null);
-                    void sendMessage({ text: prompt });
-                  }}
-                />
+              ) : isSessionLoading && chatActive ? (
+                <ConversationSkeleton />
+              ) : sessionLoadError && chatActive ? (
+                <div className="tavern-empty" role="status">
+                  <p>{sessionLoadError}</p>
+                  <button
+                    type="button"
+                    className="tavern-retry"
+                    onClick={onRetrySessionLoad}
+                  >
+                    Retry
+                  </button>
+                </div>
               ) : showChat ? (
                 <>
                   {messages.map((m) => (
@@ -1666,6 +2162,15 @@ function PanelInner({
                       onRegenerate={() => regenerateMessage(m)}
                     />
                   ))}
+                  {durableRuntime.data?.activeTurn ? (
+                    <DurableRunTimeline
+                      turnId={durableRuntime.data.activeTurn.id}
+                    />
+                  ) : null}
+                  <DurableRunHistory
+                    threadId={thread.id}
+                    activeTurnId={durableRuntime.data?.activeTurn?.id}
+                  />
                   {approvals.map((approval) => (
                     <div
                       key={approval.call.toolCallId}
@@ -1761,100 +2266,131 @@ function PanelInner({
                     <div
                       className="tavern-stream-wait"
                       role="status"
-                      aria-label="Thinking"
+                      aria-label="Remix is working"
+                      aria-live="polite"
+                      aria-atomic="true"
                     >
-                      <Spark state="idle" size={11} />
+                      <span
+                        className="tavern-stream-wait-signal"
+                        aria-hidden="true"
+                      />
+                      <RotatingThinkingLabel className="tavern-stream-wait-copy" />
                     </div>
                   ) : null}
                 </>
-              ) : tab === "todos" ? (
-                <TodosTab mascot={SPRITES_INFO[spriteForm].label} />
-              ) : tab === "notes" ? (
-                <NotesTab />
-              ) : tab === "brain" ? (
-                <BrainFiles
-                  root=""
-                  emptyText={TAB_PLACEHOLDER.brain}
-                  newLabel="New file"
-                  onOpenThread={(threadId) => {
-                    setTab("chat");
-                    void openThreadById(threadId).then((picked) => {
-                      if (picked) onSwitchThread(picked);
-                    });
-                  }}
-                />
               ) : chatActive ? (
-                <OpenerCards
-                  busy={busy}
-                  onShowAll={() => setCapabilitiesOpen(true)}
-                  onPrompt={(text) => {
-                    setNotice(null);
-                    void sendMessage({ text });
-                  }}
-                />
-              ) : (
-                <div className="tavern-empty">{TAB_PLACEHOLDER[tab]}</div>
-              )}
+                <>
+                  <AttentionHome
+                    onOpenThread={(id, title, updatedAt) =>
+                      onSelectThread?.({
+                        id,
+                        title,
+                        updatedAt: Date.parse(updatedAt),
+                      })
+                    }
+                    onOpenSettings={() => window.api.openSettings()}
+                  />
+                  <OpenerCards
+                    busy={busy}
+                    onShowAll={onOpenCapabilities}
+                    onPrompt={(text) => {
+                      setNotice(null);
+                      void sendMessage({ text });
+                    }}
+                  />
+                </>
+              ) : null}
               {notice ? <p className="tavern-notice">{notice}</p> : null}
             </div>
 
-            {chatActive && !settingsOpen && !capabilitiesOpen ? (
-              <div className="tavern-composer">
-                <textarea
-                  id="panel-composer"
-                  className="tavern-input"
-                  value={draft}
-                  rows={1}
-                  placeholder="Message Freestyle"
-                  onMouseDown={() => window.api.panelRequestFocus()}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (
-                      e.key === "Enter" &&
-                      !e.shiftKey &&
-                      !e.nativeEvent.isComposing
-                    ) {
-                      e.preventDefault();
-                      send();
-                    }
-                  }}
+            {chatActive ? (
+              <>
+                <AgentMessageQueueControls
+                  items={queue.items}
+                  onUpdate={queue.update}
+                  onRemove={queue.remove}
+                  onSteer={queue.steer}
+                  onError={setNotice}
                 />
-                <button
-                  type="button"
-                  className={`tavern-btn tavern-btn-send${action === "stop" ? " is-stop" : ""}`}
-                  aria-label={action === "stop" ? "Stop generating" : "Send"}
-                  title={action === "stop" ? "Stop generating" : "Send"}
-                  onClick={action === "stop" ? stopGeneration : send}
-                >
-                  <WorkspaceIcon name={action === "stop" ? "stop" : "send"} />
-                </button>
-              </div>
+                <div className="tavern-composer">
+                  <textarea
+                    id="panel-composer"
+                    className="tavern-input"
+                    value={draft}
+                    rows={1}
+                    placeholder={
+                      isSessionLoading
+                        ? "Loading conversation…"
+                        : busy
+                          ? "Add a follow-up…"
+                          : "Message Freestyle"
+                    }
+                    disabled={isSessionLoading || Boolean(sessionLoadError)}
+                    onMouseDown={() => window.api.panelRequestFocus()}
+                    onFocus={() => window.api.panelSetComposerFocused(true)}
+                    onBlur={() => window.api.panelSetComposerFocused(false)}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key === "Enter" &&
+                        !e.shiftKey &&
+                        !e.nativeEvent.isComposing
+                      ) {
+                        e.preventDefault();
+                        send();
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={`tavern-btn tavern-btn-send${action === "stop" && !draft.trim() ? " is-stop" : ""}`}
+                    aria-label={
+                      action === "stop" && !draft.trim()
+                        ? "Stop generating"
+                        : busy
+                          ? "Queue message"
+                          : "Send"
+                    }
+                    title={
+                      action === "stop" && !draft.trim()
+                        ? "Stop generating"
+                        : busy
+                          ? "Queue message"
+                          : "Send"
+                    }
+                    disabled={
+                      isSessionLoading ||
+                      Boolean(sessionLoadError) ||
+                      (action !== "stop" && !draft.trim())
+                    }
+                    onClick={
+                      action === "stop" && !draft.trim() ? stopGeneration : send
+                    }
+                  >
+                    <WorkspaceIcon
+                      name={
+                        action === "stop" && !draft.trim() ? "stop" : "send"
+                      }
+                    />
+                  </button>
+                </div>
+              </>
             ) : null}
           </div>
+          {desktop ? (
+            <RemixContextRail
+              attention={contextAttention}
+              open={contextRailVisible}
+              onOpenInspector={openInspector}
+            />
+          ) : null}
+          {desktop && inspectorTarget ? (
+            <RemixInspector target={inspectorTarget} />
+          ) : null}
         </div>
       </div>
-      <PanelTail />
-      <PanelResizeHandle />
+      {!desktop ? <PanelTail /> : null}
+      {!desktop ? <PanelResizeHandle /> : null}
     </div>
   );
 }
-
-initApiBase();
-installGlobalErrorHandlers();
-
-const queryClient = createQueryClient();
-window.api.onServerChanged(() => {
-  void refreshApiBase().then(() => queryClient.invalidateQueries());
-});
-
-const container = document.getElementById("root");
-if (container)
-  createRoot(container).render(
-    <QueryClientProvider client={queryClient}>
-      <CloudAuthProvider>
-        <PanelNotificationAuthBridge>
-          <PanelRoot />
-        </PanelNotificationAuthBridge>
-      </CloudAuthProvider>
-    </QueryClientProvider>,
-  );

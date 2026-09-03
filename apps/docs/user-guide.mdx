@@ -36,6 +36,35 @@ Under **Output mode** you can choose **Paste into app** (text is typed straight 
   On macOS, paste needs **Accessibility** permission. On Linux it uses `xdotool` or `wtype`. If nothing shows up, check **Settings → Permissions**.
 </Note>
 
+## Work with Remix
+
+Remix is Freestyle's agent workspace. It keeps the conversation in the center
+of the desktop window so you can ask a question, continue a thread, or work
+from a selection without losing your place.
+
+Use the Remix hotkey to begin a voice request: **Fn + Control** on macOS and
+**Ctrl + Alt + E** on Windows and Linux. You can change it under
+**Settings → Remix**. A short press opens Remix; hold it while speaking to send
+a request. Use the expand control in the floating Remix surface to continue in
+the full workspace.
+
+In the workspace, the Context control opens a right rail with **Tasks**,
+**Notes**, and **Brain**. These are quick context surfaces, not separate pages:
+you can add or complete a task, read a note or file preview, and expand a card
+to see more while the chat stays visible. Hide the rail when you need more room
+for the conversation.
+
+For tools beyond the built-in connected apps, add a trusted local or remote
+server at **Settings → Remix → MCP connections**. OAuth, tokens, and local
+commands stay in the desktop app. Remix Cloud sees the enabled tool
+descriptions it needs to request a call, then receives only that call's
+bounded, sanitized result so it can complete the reply.
+
+<Tip>
+  Models, connected apps, and companion controls are all inside Settings. The
+  app does not open a separate Settings window.
+</Tip>
+
 ## Transcription
 
 Freestyle Transcribe is the built-in transcription service, built by the Freestyle team and tuned for developer dictation. Sign in and it works — there is nothing to configure and no API key to paste.
@@ -48,6 +77,9 @@ Freestyle Transcribe is the built-in transcription service, built by the Freesty
 Freestyle has four features that turn raw speech into exactly the text you want. Each has its own page with examples and details:
 
 <CardGroup cols={2}>
+  <Card title="Remix" icon="wand-magic-sparkles" href="/features/remix">
+    Ask, write, and research from the agent workspace without losing your chat context.
+  </Card>
   <Card title="AI cleanup" icon="sparkles" href="/features/cleanup">
     Run your transcript through a language model to fix punctuation, drop filler, and polish phrasing — at the intensity you choose.
   </Card>

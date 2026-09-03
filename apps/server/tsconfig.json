@@ -12,19 +12,16 @@
     "declarationDir": "./dist",
     "emitDeclarationOnly": true,
     "paths": {
-      "freestyle-voice": ["../../packages/sdk/src/index.ts"],
-      "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
+      "freestyle-voice": ["../../packages/sdk/dist/index.d.ts"],
+      "@freestyle-voice/utils": ["../../packages/utils/dist/index.d.ts"],
       "@freestyle-voice/validations": [
-        "../../packages/validations/src/index.ts"
+        "../../packages/validations/dist/index.d.ts"
       ],
-      "@freestyle-voice/stt": ["../../packages/stt/src/index.ts"]
+      "@freestyle-voice/validations/cleanup-presets": [
+        "../../packages/validations/dist/cleanup-presets.d.ts"
+      ],
+      "@freestyle-voice/stt": ["../../packages/stt/dist/index.d.ts"]
     }
   },
-  "include": [
-    "src/**/*",
-    "../../packages/sdk/src/**/*",
-    "../../packages/utils/src/**/*",
-    "../../packages/validations/src/**/*",
-    "../../packages/stt/src/**/*"
-  ]
+  "include": ["src/**/*"]
 }

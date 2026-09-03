@@ -1,7 +1,13 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
-import type { CompanionForm, CompanionState } from "../shared/companion";
+import type {
+  CompanionFacing,
+  CompanionForm,
+  CompanionState,
+  CompanionStatus,
+} from "../shared/companion";
 import type { DictationPrefs } from "../shared/dictation-prefs";
+import type { PetState } from "../shared/pet";
 import type {
   RemixContextResult,
   RemixCopyResult,
@@ -14,6 +20,12 @@ declare global {
   interface Window {
     electron: ElectronAPI;
     api: {
+      /**
+       * Transitional legacy renderer bridge. Explicit modern methods below
+       * remain typed; the historic desktop modules use additional IPC members
+       * while they are ported onto those current contracts.
+       */
+      [legacyMethod: string]: any;
       platform: string;
       pasteText: (text: string, appContext?: string | null) => Promise<void>;
       copyText: (text: string, appContext?: string | null) => Promise<void>;
@@ -36,11 +48,12 @@ declare global {
       onServerChanged: (callback: () => void) => () => void;
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
-      onTalkDown: (cb: () => void) => () => void;
-      onTalkUp: (cb: () => void) => () => void;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
       onDictationCancel: (callback: () => void) => () => void;
+      onFullscreenChanged: (
+        callback: (fullscreen: boolean) => void,
+      ) => () => void;
       setDictationPhase: (phase: "idle" | "recording" | "transcribing") => void;
       onHotkeyError: (callback: (message: string) => void) => () => void;
       setHotkeyMode: (mode: "hold" | "toggle") => void;
@@ -50,12 +63,28 @@ declare global {
       remixSetClipboard: (text: string) => Promise<RemixPrimitiveResult>;
       remixPasteClipboard: () => Promise<RemixPrimitiveResult>;
       remixGetClipboard: () => Promise<RemixCopyResult>;
+      setRemixEscapeActive: (active: boolean) => void;
+      openRemixWorkspace: (threadId: string) => void;
+      remixThreadUpdated: (threadId: string) => void;
+      onRemixObserverHandoff: (
+        callback: (threadId: string) => void,
+      ) => () => void;
       companionForm: () => Promise<CompanionForm>;
+      companionOrientation: () => Promise<CompanionFacing>;
+      companionStatus: () => Promise<CompanionStatus | null>;
+      petEnabled: () => Promise<boolean>;
+      setPetEnabled: (enabled: boolean) => void;
+      wakeCompanion: () => void;
+      openCompanionWorkspace: () => void;
+      beginCompanionPositionDrag: () => void;
+      companionPointerLeft: () => void;
+      setPetState: (state: PetState) => void;
+      setCompanionStatus: (status: CompanionStatus | null) => void;
       companionSetHotRect: (
         rect: { x: number; y: number; width: number; height: number } | null,
       ) => void;
-      companionHover: () => void;
       setCompanionForm: (form: CompanionForm) => void;
+      companionContextMenu: () => void;
       panelOpenForDictation: () => void;
       panelDictationPartial: (text: string) => void;
       panelDictationFinal: (text: string) => void;
@@ -75,11 +104,17 @@ declare global {
       panelClose: () => void;
       panelResizeWidth: (width: number) => void;
       panelCommitWidth: () => void;
+      openSettings: () => void;
+      settingsClose: () => void;
       panelSetBusy: (busy: boolean) => void;
+      panelSetComposerFocused: (focused: boolean) => void;
       panelRequestFocus: () => void;
       panelPointerLeft: () => void;
       panelPointerEntered: () => void;
       onPanelFocusComposer: (callback: () => void) => () => void;
+      onDashboardNavigate: (
+        callback: (route: "/settings" | "/remix") => void,
+      ) => () => void;
       notificationPresent: (payload: {
         messageId: string;
         title: string;
@@ -94,10 +129,18 @@ declare global {
         callback: (messageId: string) => void,
       ) => () => void;
       onPanelOpenThread: (callback: (threadId: string) => void) => () => void;
-      onPanelShowSettings: (callback: () => void) => () => void;
+      onPanelThreadUpdated: (
+        callback: (threadId: string) => void,
+      ) => () => void;
       onCompanionForm: (callback: (form: CompanionForm) => void) => () => void;
       onCompanionState: (
         callback: (state: CompanionState) => void,
+      ) => () => void;
+      onCompanionOrientation: (
+        callback: (facing: CompanionFacing) => void,
+      ) => () => void;
+      onCompanionStatus: (
+        callback: (status: CompanionStatus | null) => void,
       ) => () => void;
       onCompanionHotEnter: (callback: () => void) => () => void;
       spriteEvent: (ev: SpriteEvent) => void;
@@ -147,6 +190,15 @@ declare global {
       // Launch at startup setting
       getLaunchAtStartup: () => Promise<boolean>;
       setLaunchAtStartup: (enabled: boolean) => void;
+      // Electron-local workspace launch preference
+      getShowDashboardOnLaunch: () => Promise<boolean>;
+      setShowDashboardOnLaunch: (enabled: boolean) => void;
+      // Electron-local Remix session display names; never sent to Cloud.
+      getRemixSessionTitles: () => Promise<Record<string, string>>;
+      setRemixSessionTitle: (
+        threadId: string,
+        title: string | null,
+      ) => Promise<boolean>;
       // Context-aware dictation
       getFrontmostApp: () => Promise<string | null>;
       // Transcription completion broadcast

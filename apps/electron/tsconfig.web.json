@@ -6,11 +6,11 @@
     "src/renderer/src/**/*.tsx",
     "src/preload/*.d.ts",
     "src/shared/**/*",
-    "../server/src/**/*",
     "../../packages/sdk/src/**/*",
     "../../packages/utils/src/**/*",
     "../../packages/validations/src/**/*"
   ],
+  "exclude": ["src/renderer/src/pages/models/**/*"],
   "compilerOptions": {
     "composite": true,
     "jsx": "react-jsx",
@@ -19,7 +19,7 @@
       "@renderer/*": ["src/renderer/src/*"],
       "@shared/*": ["src/shared/*"],
       "freestyle-voice": ["../../packages/sdk/src/index.ts"],
-      "@freestyle-voice/server": ["../server/src/index.ts"],
+      "@freestyle-voice/server": ["../server/dist/index.d.ts"],
       "@freestyle-voice/utils": ["../../packages/utils/src/index.ts"],
       "@freestyle-voice/validations": [
         "../../packages/validations/src/index.ts"

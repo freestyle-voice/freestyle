@@ -1,4 +1,5 @@
 import { z } from "zod/v3";
+import { remixMcpToolsSchema } from "./mcp.js";
 
 /**
  * Remix: the AI writing agent on the cursor. Two lanes share these contracts:
@@ -105,14 +106,63 @@ export const remixContextSchema = z.object({
 export type RemixContext = z.infer<typeof remixContextSchema>;
 
 /**
+ * The Cloud owns tool definitions; a client may only advertise names of
+ * handlers it actually implements. Keep this list mirrored with Cloud so the
+ * local proxy cannot send a tool that the canonical agent does not allow.
+ */
+export const REMIX_LOCAL_TOOL_NAMES = [
+  "current_time",
+  "emote",
+  "save_file",
+  "Bash",
+  "Read",
+  "Write",
+  "Edit",
+  "Glob",
+  "Grep",
+] as const;
+
+export const remixClientCapabilitiesSchema = z.object({
+  platform: z.enum(["darwin", "win32", "linux", "ios", "android"]).optional(),
+  localTools: z
+    .array(z.enum(REMIX_LOCAL_TOOL_NAMES))
+    .max(REMIX_LOCAL_TOOL_NAMES.length)
+    .optional(),
+  supportsDownloadsSave: z.boolean().optional(),
+  supportsKeyboardInsertion: z.boolean().optional(),
+  supportsConnectorApprovals: z.boolean().optional(),
+  /** Desktop cursor/document handlers for canonical Remix sessions. */
+  supportsCursorActions: z.boolean().optional(),
+});
+
+export type RemixClientCapabilities = z.infer<
+  typeof remixClientCapabilitiesSchema
+>;
+export type RemixLocalToolName = (typeof REMIX_LOCAL_TOOL_NAMES)[number];
+
+export function isMobileRemixClient(client?: RemixClientCapabilities): boolean {
+  return client?.platform === "ios" || client?.platform === "android";
+}
+
+/**
  * One agent request. The server is stateless: `messages` is the full
  * UIMessage thread and IS the conversation state. UIMessage's shape belongs
  * to the AI SDK — validating it structurally here would chase SDK versions,
  * so the array passes through and `convertToModelMessages` is the validator.
  */
 export const remixAgentRequestSchema = z.object({
-  messages: z.array(z.unknown()).min(1).max(80),
+  // Keep the canonical Remix endpoint aligned with the legacy agent so an
+  // existing workspace thread does not begin failing after 80 messages.
+  messages: z.array(z.unknown()).min(1).max(400),
+  /** Stable desktop conversation id. When present, Cloud persists this run
+   * alongside the ordinary Remix workspace thread history. */
+  threadId: z.string().min(1).max(100).optional(),
+  /** Lets the shared personal-agent prompt introduce a brand-new chat. */
+  firstTurn: z.boolean().optional(),
   context: remixContextSchema,
+  client: remixClientCapabilitiesSchema.optional(),
+  /** Enabled desktop-owned MCP tool schemas. Cloud receives no credentials. */
+  mcpTools: remixMcpToolsSchema.optional(),
 });
 
 export type RemixAgentRequest = z.infer<typeof remixAgentRequestSchema>;

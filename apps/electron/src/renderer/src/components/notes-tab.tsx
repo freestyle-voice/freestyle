@@ -56,6 +56,7 @@ function noteDate(ts: number): string {
 
 type NoteView =
   | { kind: "list" }
+  | { kind: "loading"; path: string }
   | { kind: "note"; path: string | null; draft: string; editing: boolean };
 
 export function NotesTab(): React.JSX.Element {
@@ -63,26 +64,34 @@ export function NotesTab(): React.JSX.Element {
   const notesQuery = useQuery(notesQueryOptions());
   const notes: NoteSummary[] = notesQuery.data ?? [];
   const [view, setView] = useState<NoteView>({ kind: "list" });
+  const [error, setError] = useState<string | null>(null);
   const saveTimer = useRef<NodeJS.Timeout | null>(null);
   const viewRef = useRef(view);
   viewRef.current = view;
 
   const persist = useCallback(async (): Promise<void> => {
-    const current = viewRef.current;
-    if (current.kind !== "note") return;
-    const text = current.draft;
-    if (!text.trim()) return;
-    let path = current.path;
-    if (!path) {
-      const slug = slugForTitle(noteLines(text).title);
-      path = await uniqueBrainPath(`notes/${slug}.md`);
-      const chosen = path;
-      setView((v) => (v.kind === "note" ? { ...v, path: chosen } : v));
+    try {
+      const current = viewRef.current;
+      if (current.kind !== "note") return;
+      const text = current.draft;
+      if (!text.trim()) return;
+      let path = current.path;
+      if (!path) {
+        const slug = slugForTitle(noteLines(text).title);
+        path = await uniqueBrainPath(`notes/${slug}.md`);
+        const chosen = path;
+        setView((v) => (v.kind === "note" ? { ...v, path: chosen } : v));
+      }
+      const ok = await writeBrainFile(path, text);
+      if (!ok) {
+        setError("Couldn't save that note. Try again.");
+        return;
+      }
+      queryClient.setQueryData(queryKeys.brain.file(path), text);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
+    } catch {
+      setError("Couldn't save that note. Try again.");
     }
-    const ok = await writeBrainFile(path, text);
-    if (!ok) return;
-    queryClient.setQueryData(queryKeys.brain.file(path), text);
-    await queryClient.invalidateQueries({ queryKey: queryKeys.brain.all });
   }, [queryClient]);
 
   const scheduleSave = useCallback((): void => {
@@ -112,9 +121,33 @@ export function NotesTab(): React.JSX.Element {
     setView({ kind: "list" });
   };
 
+  const notice = error ? (
+    <p className="tavern-notice" role="alert">
+      {error}
+    </p>
+  ) : null;
+
+  if (view.kind === "loading") {
+    return (
+      <>
+        <div className="tavern-note-bar">
+          <button
+            type="button"
+            className="tavern-file-back"
+            onClick={() => setView({ kind: "list" })}
+          >
+            ← Notes
+          </button>
+        </div>
+        <DataSkeleton label="Loading note" rows={3} variant="notes" />
+      </>
+    );
+  }
+
   if (view.kind === "note") {
     return (
       <>
+        {notice}
         <div className="tavern-note-bar">
           <button
             type="button"
@@ -137,12 +170,19 @@ export function NotesTab(): React.JSX.Element {
                   saveTimer.current = null;
                 }
                 setView({ kind: "list" });
-                void deleteBrainFile(target).then((ok) => {
-                  if (ok)
+                void deleteBrainFile(target)
+                  .then((ok) => {
+                    if (!ok) {
+                      setError("Couldn't delete that note. Try again.");
+                      return;
+                    }
                     void queryClient.invalidateQueries({
                       queryKey: queryKeys.brain.all,
                     });
-                });
+                  })
+                  .catch(() => {
+                    setError("Couldn't delete that note. Try again.");
+                  });
               }}
             >
               Delete
@@ -192,7 +232,8 @@ export function NotesTab(): React.JSX.Element {
     );
   }
 
-  if (notesQuery.isLoading) return <DataSkeleton label="Loading notes" />;
+  if (notesQuery.isLoading)
+    return <DataSkeleton label="Loading notes" variant="notes" />;
   if (notesQuery.isError)
     return (
       <div className="tavern-empty">
@@ -205,6 +246,7 @@ export function NotesTab(): React.JSX.Element {
 
   return (
     <>
+      {notice}
       {notes.length === 0 ? (
         <div className="tavern-empty">
           No notes yet — write one, or ask Freestyle to take one.
@@ -216,6 +258,8 @@ export function NotesTab(): React.JSX.Element {
           type="button"
           className="tavern-note-row"
           onClick={() => {
+            setError(null);
+            setView({ kind: "loading", path: n.path });
             void queryClient
               .fetchQuery(brainFileQueryOptions(n.path))
               .then((text) => {
@@ -226,7 +270,10 @@ export function NotesTab(): React.JSX.Element {
                   editing: false,
                 });
               })
-              .catch(() => {});
+              .catch(() => {
+                setError("Couldn't open that note. Try again.");
+                setView({ kind: "list" });
+              });
           }}
         >
           <span className="tavern-note-title">{n.title}</span>
@@ -241,9 +288,10 @@ export function NotesTab(): React.JSX.Element {
       <button
         type="button"
         className="tavern-file-new"
-        onClick={() =>
-          setView({ kind: "note", path: null, draft: "", editing: true })
-        }
+        onClick={() => {
+          setError(null);
+          setView({ kind: "note", path: null, draft: "", editing: true });
+        }}
       >
         ＋ New note
       </button>

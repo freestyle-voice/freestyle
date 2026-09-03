@@ -20,6 +20,22 @@ export interface PluginUIPage {
 }
 
 /**
+ * A compact, optional companion a plugin can contribute to the floating pill.
+ * The host owns window placement and focus; a plugin only supplies its
+ * sandboxed content and a bounded preferred expanded size.
+ */
+export interface PluginPillPanel {
+  /** Stable, plugin-unique id for the companion surface. */
+  id: string;
+  /** Display title available to host accessibility affordances. */
+  title: string;
+  /** Path to the panel entry relative to the plugin package root. */
+  entry: string;
+  /** Preferred expanded size, constrained by the host for safe placement. */
+  expand: { width: number; height: number };
+}
+
+/**
  * A single declarative settings field a plugin contributes. The host renders
  * these in the plugin's detail page and persists values to this plugin's
  * namespaced settings (`ctx.settings.getOwn(key)`), so a plugin gets
@@ -53,6 +69,7 @@ export type PluginSettingField =
 export interface PluginContributes {
   pages?: PluginUIPage[];
   settings?: PluginSettingField[];
+  pill?: PluginPillPanel;
 }
 
 /** The `freestyle` block of a plugin's `package.json`. */
@@ -92,6 +109,61 @@ export function pluginSlug(name: string): string {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const PILL_PANEL_MIN_WIDTH = 240;
+const PILL_PANEL_MAX_WIDTH = 480;
+const PILL_PANEL_MIN_HEIGHT = 120;
+const PILL_PANEL_MAX_HEIGHT = 560;
+
+function isSafeRelativeEntry(entry: string): boolean {
+  if (!entry || entry.startsWith("/") || entry.includes("\\")) return false;
+  return entry
+    .split("/")
+    .every((segment) => segment && segment !== "." && segment !== "..");
+}
+
+/**
+ * Parse the optional `freestyle.contributes.pill` declaration. Malformed,
+ * traversal-prone, or unreasonably sized contributions are ignored so plugin
+ * discovery cannot expand or navigate the pill outside host constraints.
+ */
+export function parsePluginPillPanel(
+  freestyleField: unknown,
+): PluginPillPanel | undefined {
+  if (!isRecord(freestyleField)) return undefined;
+  const contributes = freestyleField.contributes;
+  if (!isRecord(contributes)) return undefined;
+  const pill = contributes.pill;
+  if (!isRecord(pill)) return undefined;
+
+  const { id, title, entry, expand } = pill;
+  if (
+    typeof id !== "string" ||
+    !id.trim() ||
+    typeof title !== "string" ||
+    !title.trim() ||
+    typeof entry !== "string" ||
+    !isSafeRelativeEntry(entry) ||
+    !isRecord(expand) ||
+    typeof expand.width !== "number" ||
+    typeof expand.height !== "number" ||
+    !Number.isInteger(expand.width) ||
+    !Number.isInteger(expand.height) ||
+    expand.width < PILL_PANEL_MIN_WIDTH ||
+    expand.width > PILL_PANEL_MAX_WIDTH ||
+    expand.height < PILL_PANEL_MIN_HEIGHT ||
+    expand.height > PILL_PANEL_MAX_HEIGHT
+  ) {
+    return undefined;
+  }
+
+  return {
+    id: id.trim(),
+    title: title.trim(),
+    entry,
+    expand: { width: expand.width, height: expand.height },
+  };
 }
 
 /**

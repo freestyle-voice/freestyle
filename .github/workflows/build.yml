@@ -156,7 +156,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server (generates type declarations)
-        run: pnpm turbo build --filter=@freestyle-voice/server
+        run: pnpm turbo build --filter=@freestyle-voice/server --force
 
       - name: Typecheck electron (web)
         working-directory: apps/electron
@@ -203,7 +203,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb libglib2.0-0 libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libgtk-3-0 libgbm1 libasound2t64 libx11-xcb1 libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev
 
       - name: Build server
-        run: pnpm turbo build --filter=@freestyle-voice/server
+        run: pnpm turbo build --filter=@freestyle-voice/server --force
 
       - name: Build electron app
         working-directory: apps/electron
@@ -305,7 +305,10 @@ jobs:
 
       - name: Assemble debug APK
         working-directory: apps/mobile/android
-        run: ./gradlew assembleDebug --no-daemon --build-cache
+        # This is a CI smoke build, not a release artifact. Building every
+        # native ABI makes APK packaging exceed the hosted runner's Gradle
+        # heap; keep production's ABI defaults intact and exercise x86_64.
+        run: ./gradlew assembleDebug -PreactNativeArchitectures=x86_64 --no-daemon --build-cache
 
   build-linux:
     name: Build (Linux)
@@ -325,7 +328,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
-        run: pnpm turbo build --filter=@freestyle-voice/server
+        run: pnpm turbo build --filter=@freestyle-voice/server --force
 
       - name: Install native build dependencies
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxtst-dev libxext-dev libglib2.0-dev cmake libx11-xcb-dev binutils
@@ -366,7 +369,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
-        run: pnpm turbo build --filter=@freestyle-voice/server
+        run: pnpm turbo build --filter=@freestyle-voice/server --force
 
       - name: Build electron (macOS)
         working-directory: apps/electron
@@ -416,7 +419,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Build server
-        run: pnpm turbo build --filter=@freestyle-voice/server
+        run: pnpm turbo build --filter=@freestyle-voice/server --force
 
       - name: Run focused agent OS tests
         run: pnpm --filter @freestyle-voice/server exec vitest run tests/agent-os.test.ts

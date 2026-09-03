@@ -9,6 +9,8 @@ import {
   cleanupWorkToneSchema,
   disabledPluginsSettingSchema,
   historyRetentionDaysSettingSchema,
+  localLlmConfigSchema,
+  openaiSttConfigSchema,
   pluginsSettingSchema,
   proxyUrlSettingSchema,
   settingValueSchema,
@@ -30,6 +32,53 @@ import {
   pushSettingToCloud,
   SYNCED_SETTING_KEYS,
 } from "../lib/preferences-sync.js";
+
+function normalizeOpenaiBaseUrl(input: string): string {
+  return input.replace(/\/+$/, "").replace(/\/v1(?:\/[^?#]*)?$/, "");
+}
+
+type OpenAiCompatibleEndpoint = {
+  url: string;
+  api_key?: string;
+};
+
+/**
+ * Probe the one capability both endpoint forms rely on: the standard OpenAI
+ * models list. Keeping this in one place prevents the local-LLM and custom
+ * STT forms from drifting in auth, timeout, or error behaviour.
+ */
+async function probeOpenAiCompatibleEndpoint(
+  input: OpenAiCompatibleEndpoint,
+): Promise<{ ok: true; models: string[] } | { ok: false; error: string }> {
+  const url = normalizeOpenaiBaseUrl(input.url);
+
+  try {
+    const response = await fetch(`${url}/v1/models`, {
+      headers: input.api_key
+        ? { Authorization: `Bearer ${input.api_key}` }
+        : undefined,
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        error: `Server returned ${response.status}: ${response.statusText}`,
+      };
+    }
+    const data = (await response.json()) as { data?: { id: string }[] };
+    return {
+      ok: true,
+      models: Array.isArray(data.data)
+        ? data.data.map((model) => model.id)
+        : [],
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "Failed to connect",
+    };
+  }
+}
 
 const settings = new Hono()
   .get("/", (c) => {
@@ -184,6 +233,22 @@ const settings = new Hono()
 
     return c.json({ key, value: body.value });
   })
+  .post(
+    "/local-llm/test",
+    zValidator("json", localLlmConfigSchema),
+    async (c) => {
+      const result = await probeOpenAiCompatibleEndpoint(c.req.valid("json"));
+      return result.ok ? c.json(result) : c.json(result, 502);
+    },
+  )
+  .post(
+    "/openai-stt/test",
+    zValidator("json", openaiSttConfigSchema),
+    async (c) => {
+      const result = await probeOpenAiCompatibleEndpoint(c.req.valid("json"));
+      return result.ok ? c.json(result) : c.json(result, 502);
+    },
+  )
   .delete("/:key", (c) => {
     const db = getDb();
     const key = c.req.param("key");

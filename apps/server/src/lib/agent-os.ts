@@ -16,6 +16,7 @@ const WALK_MAX_ENTRIES = 1_000;
 const GREP_MAX_MATCHES = 60;
 const GREP_FILE_MAX_BYTES = 262_144;
 const SKIP_DIRS = new Set(["node_modules", ".git", ".Trash", "Library"]);
+const WINDOWS_SHELLS = ["pwsh.exe", "powershell.exe"] as const;
 
 export type AgentCommandCategory =
   | "success"
@@ -290,17 +291,32 @@ export function runAgentBash(
 
     if (platform === "win32") {
       const run = (options.execFile ?? execFile) as FileExecutor;
-      run(
-        "powershell.exe",
-        [
-          "-NoProfile",
-          "-NonInteractive",
-          "-Command",
-          powerShellCommand(command),
-        ],
-        common,
-        complete,
-      );
+      const runPowerShell = (shellIndex: number): void => {
+        run(
+          WINDOWS_SHELLS[shellIndex],
+          [
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            powerShellCommand(command),
+          ],
+          common,
+          (err, stdout, stderr) => {
+            // PowerShell 7 is more reliable for non-interactive desktop work
+            // (and is what our Windows CI uses), but Windows PowerShell remains
+            // the compatibility fallback for machines without pwsh.
+            if (
+              err?.code === "ENOENT" &&
+              shellIndex < WINDOWS_SHELLS.length - 1
+            ) {
+              runPowerShell(shellIndex + 1);
+              return;
+            }
+            complete(err, stdout, stderr);
+          },
+        );
+      };
+      runPowerShell(0);
       return;
     }
 

@@ -22,6 +22,15 @@ import { useEffect, useRef, useState } from "react";
 const VISIBLE_CARDS = 2;
 const VISIBLE_TODOS = 3;
 
+function OpenerWelcome(): React.JSX.Element {
+  return (
+    <header className="tavern-opener-welcome">
+      <h2>Where should we start?</h2>
+      <p>Choose a suggestion or type a message below.</p>
+    </header>
+  );
+}
+
 function FallbackStarters({
   busy,
   onPrompt,
@@ -31,18 +40,18 @@ function FallbackStarters({
 }): React.JSX.Element {
   return (
     <div className="tavern-openers">
-      <div className="tavern-starters">
-        {starterPrompts().map((prompt) => (
-          <button
-            key={prompt}
-            type="button"
-            className="tavern-starter"
-            disabled={busy}
-            onClick={() => onPrompt(prompt)}
-          >
-            {prompt}
-          </button>
-        ))}
+      <OpenerWelcome />
+      <div className="tavern-opener-suggestions">
+        {starterPrompts()
+          .slice(0, VISIBLE_CARDS)
+          .map((prompt) => (
+            <OpenerRow
+              key={prompt}
+              label={prompt}
+              busy={busy}
+              onRun={() => onPrompt(prompt)}
+            />
+          ))}
       </div>
     </div>
   );
@@ -203,7 +212,7 @@ export function OpenerCards({
     return <FallbackStarters busy={busy} onPrompt={onPrompt} />;
   }
   if (!query.data || (cards.length === 0 && todos.length === 0)) {
-    return <div className="tavern-openers" aria-busy="true" />;
+    return <FallbackStarters busy={busy} onPrompt={onPrompt} />;
   }
 
   const dismiss = (card: OpenerCard): void => {
@@ -226,6 +235,7 @@ export function OpenerCards({
 
   return (
     <div className="tavern-openers">
+      <OpenerWelcome />
       {todos.length > 0 ? (
         <div className="tavern-opener-todos">
           <span className="tavern-openers-label">Your todos</span>
@@ -252,95 +262,99 @@ export function OpenerCards({
           ))}
         </div>
       ) : null}
-      {cards.map((card) => {
-        if (card.kind === "prompt" && card.action.prompt) {
-          const prompt = card.action.prompt;
-          return (
-            <OpenerRow
-              key={card.id}
-              label={card.title}
-              busy={busy}
-              onRun={() => {
-                accepted(card);
-                onPrompt(prompt);
-              }}
-              onDismiss={() => dismiss(card)}
-            />
-          );
-        }
+      <div className="tavern-opener-suggestions">
+        {cards.map((card) => {
+          if (card.kind === "prompt" && card.action.prompt) {
+            const prompt = card.action.prompt;
+            return (
+              <OpenerRow
+                key={card.id}
+                label={card.title}
+                busy={busy}
+                onRun={() => {
+                  accepted(card);
+                  onPrompt(prompt);
+                }}
+                onDismiss={() => dismiss(card)}
+              />
+            );
+          }
 
-        if (card.kind === "connect" && card.action.toolkitSlug) {
-          const slug = card.action.toolkitSlug;
-          const name = card.action.toolkitName ?? slug;
-          const phase = phases[slug];
-          const apiKey = card.action.authMode === "api_key";
-          const label =
-            phase === "connected"
-              ? `${name} connected`
-              : phase === "opening"
-                ? "Opening…"
-                : phase === "pending"
-                  ? "Finish in your browser…"
-                  : apiKey
-                    ? `Add your ${name} API key`
-                    : `Connect ${name}`;
-          return (
-            <OpenerRow
-              key={card.id}
-              label={label}
-              logo={card.action.toolkitLogo}
-              logoName={name}
-              busy={phase === "opening" || phase === "pending"}
-              onRun={() => {
-                accepted(card);
-                if (apiKey) {
-                  setKeyFormSlug((current) => (current === slug ? null : slug));
-                } else {
-                  connect(slug);
+          if (card.kind === "connect" && card.action.toolkitSlug) {
+            const slug = card.action.toolkitSlug;
+            const name = card.action.toolkitName ?? slug;
+            const phase = phases[slug];
+            const apiKey = card.action.authMode === "api_key";
+            const label =
+              phase === "connected"
+                ? `${name} connected`
+                : phase === "opening"
+                  ? "Opening…"
+                  : phase === "pending"
+                    ? "Finish in your browser…"
+                    : apiKey
+                      ? `Add your ${name} API key`
+                      : `Connect ${name}`;
+            return (
+              <OpenerRow
+                key={card.id}
+                label={label}
+                logo={card.action.toolkitLogo}
+                logoName={name}
+                busy={phase === "opening" || phase === "pending"}
+                onRun={() => {
+                  accepted(card);
+                  if (apiKey) {
+                    setKeyFormSlug((current) =>
+                      current === slug ? null : slug,
+                    );
+                  } else {
+                    connect(slug);
+                  }
+                }}
+              >
+                {apiKey && keyFormSlug === slug && phase !== "connected" ? (
+                  <div className="tavern-opener-keyform">
+                    <ApiKeyForm
+                      fields={card.action.authFields ?? DEFAULT_AUTH_FIELDS}
+                      busy={phase === "opening"}
+                      onSubmit={(credentials) =>
+                        connectWithCredentials(slug, credentials)
+                      }
+                    />
+                  </div>
+                ) : null}
+              </OpenerRow>
+            );
+          }
+
+          if (card.kind === "apply_template" && card.action.templateId) {
+            const templateId = card.action.templateId;
+            const isOn = applied.has(templateId);
+            const isApplying =
+              applyTemplate.isPending && applyTemplate.variables === templateId;
+            return (
+              <OpenerRow
+                key={card.id}
+                label={
+                  isOn
+                    ? `${card.title} is on`
+                    : isApplying
+                      ? "Setting up…"
+                      : `Turn on ${card.title.toLowerCase()}`
                 }
-              }}
-            >
-              {apiKey && keyFormSlug === slug && phase !== "connected" ? (
-                <div className="tavern-opener-keyform">
-                  <ApiKeyForm
-                    fields={card.action.authFields ?? DEFAULT_AUTH_FIELDS}
-                    busy={phase === "opening"}
-                    onSubmit={(credentials) =>
-                      connectWithCredentials(slug, credentials)
-                    }
-                  />
-                </div>
-              ) : null}
-            </OpenerRow>
-          );
-        }
-
-        if (card.kind === "apply_template" && card.action.templateId) {
-          const templateId = card.action.templateId;
-          const isOn = applied.has(templateId);
-          const isApplying =
-            applyTemplate.isPending && applyTemplate.variables === templateId;
-          return (
-            <OpenerRow
-              key={card.id}
-              label={
-                isOn
-                  ? `${card.title} is on`
-                  : isApplying
-                    ? "Setting up…"
-                    : `Turn on ${card.title.toLowerCase()}`
-              }
-              busy={isApplying || isOn}
-              onRun={() => {
-                accepted(card);
-                applyTemplate.mutate(templateId);
-              }}
-              onDismiss={() => dismiss(card)}
-            />
-          );
-        }
-        return null;
-      })}
+                busy={isApplying || isOn}
+                onRun={() => {
+                  accepted(card);
+                  applyTemplate.mutate(templateId);
+                }}
+                onDismiss={() => dismiss(card)}
+              />
+            );
+          }
+          return null;
+        })}
+      </div>
       {connectError ? (
         <p className="tavern-connect-error" role="alert">
           {connectError}

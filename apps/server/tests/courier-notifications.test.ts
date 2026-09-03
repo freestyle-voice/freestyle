@@ -41,6 +41,39 @@ describe("Courier notification token proxy", () => {
     );
   });
 
+  it("shares one Cloud token fetch between concurrent local renderers", async () => {
+    setSession({
+      token: "cloud-session-secret",
+      user: { id: "user-1", email: "user@example.com" },
+      host: "https://service.freestylevoice.com",
+    });
+    let resolveCloud!: (response: Response) => void;
+    const cloud = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveCloud = resolve;
+        }),
+    );
+    vi.stubGlobal("fetch", cloud);
+
+    const app = createApp();
+    const first = app.request("/api/notifications/token", { method: "POST" });
+    const second = app.request("/api/notifications/token", { method: "POST" });
+
+    await vi.waitFor(() => expect(cloud).toHaveBeenCalledTimes(1));
+    resolveCloud(
+      new Response(JSON.stringify({ token: "courier-client-jwt" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }),
+    );
+
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      expect.objectContaining({ status: 200 }),
+      expect.objectContaining({ status: 200 }),
+    ]);
+  });
+
   it("does not contact Cloud when the desktop is signed out", async () => {
     const cloud = vi.fn();
     vi.stubGlobal("fetch", cloud);

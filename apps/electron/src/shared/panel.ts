@@ -8,7 +8,8 @@ export const PANEL_TABS = [
 ] as const;
 export type PanelTab = (typeof PANEL_TABS)[number];
 
-// 390px of bubble + 7px of hard shadow.
+// Retained for the modern workspace module while the legacy dashboard shell
+// becomes the default desktop surface.
 export const PANEL_WIDTH = 397;
 export const PANEL_MIN_WIDTH = 340;
 export const PANEL_MAX_WIDTH = 760;

@@ -426,7 +426,7 @@ export function useHotkeyRecorder(
     rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
     setBlockedNotice(false);
-    window.api?.startHotkeyRecording();
+    window.api?.startHotkeyRecording?.();
   }, []);
 
   const cancelRecording = useCallback(() => {
@@ -438,7 +438,7 @@ export function useHotkeyRecorder(
     rightModifierLatchRef.current = null;
     setInvalidReleaseNotice(false);
     setBlockedNotice(false);
-    window.api?.stopHotkeyRecording();
+    window.api?.stopHotkeyRecording?.();
   }, [clearWarningTimer]);
 
   const completeRecording = useCallback(() => {
@@ -457,7 +457,7 @@ export function useHotkeyRecorder(
     if (!accel) {
       if (draft.key || draft.modifiers.length > 0) {
         showInvalidReleaseNotice();
-        window.api?.stopHotkeyRecording();
+        window.api?.stopHotkeyRecording?.();
         recordingActiveRef.current = false;
         setState("idle");
         draftComboRef.current = EMPTY_COMBO;
@@ -471,7 +471,7 @@ export function useHotkeyRecorder(
       // Stop without an accelerator: main re-registers the current hotkey,
       // so the rejected combo never becomes the live listener.
       showBlockedNotice();
-      window.api?.stopHotkeyRecording();
+      window.api?.stopHotkeyRecording?.();
       recordingActiveRef.current = false;
       setState("idle");
       draftComboRef.current = EMPTY_COMBO;
@@ -488,7 +488,7 @@ export function useHotkeyRecorder(
     // The remix key only stops the recorder here: main re-reads that one
     // from settings, so re-registering is `onRecord`'s job — it is the only
     // caller that knows when the write has actually landed.
-    window.api?.stopHotkeyRecording(
+    window.api?.stopHotkeyRecording?.(
       targetRef.current === "remix" ? undefined : accel,
     );
     recordingActiveRef.current = false;
@@ -638,7 +638,7 @@ export function useHotkeyRecorder(
       clearWarningTimer();
       if (recordingActiveRef.current) {
         recordingActiveRef.current = false;
-        window.api?.stopHotkeyRecording();
+        window.api?.stopHotkeyRecording?.();
       }
     };
   }, [clearWarningTimer]);

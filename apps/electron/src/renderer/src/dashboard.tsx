@@ -16,6 +16,7 @@ import {
   installGlobalErrorHandlers,
   reportError,
 } from "@renderer/lib/report-error";
+import { startSyncInvalidation } from "@renderer/lib/sync-events";
 import {
   DEFAULT_WORKSPACE,
   isWorkspace,
@@ -75,6 +76,11 @@ function ThemePreferenceBridge(): React.JSX.Element | null {
     appliedPreference.current = preference;
   }, [preference, setTheme]);
 
+  return null;
+}
+
+function SyncInvalidationBridge(): React.JSX.Element | null {
+  useEffect(() => startSyncInvalidation(queryClient), []);
   return null;
 }
 
@@ -182,6 +188,7 @@ function mount(): void {
             >
               <QueryClientProvider client={queryClient}>
                 <ThemePreferenceBridge />
+                <SyncInvalidationBridge />
                 <TooltipProvider>
                   <CloudAuthProvider>
                     <RemixSessionProvider>

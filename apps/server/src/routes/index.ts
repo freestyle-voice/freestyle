@@ -39,6 +39,7 @@ import scheduledRoute from "./scheduled.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
 import suggestionsRoute from "./suggestions.js";
+import syncRoute from "./sync.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
 import usage from "./usage.js";
 import vocabulary from "./vocabulary.js";
@@ -90,6 +91,7 @@ const apiRouter = new Hono()
     return c.json({ ok: true });
   })
   .route("/settings", settings)
+  .route("/sync", syncRoute)
   .route("/keys", apiKeys)
   .route("/config", configRoute)
   .route("/connectors", connectorsRoute)

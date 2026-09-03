@@ -7,6 +7,7 @@ import {
 } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
+import { getDb } from "../lib/db.js";
 import {
   clearCachedOrgSlug,
   DeviceFlowError,
@@ -39,6 +40,8 @@ import {
   setSession,
 } from "../lib/sessions.js";
 import { clearOutbox, drainOutbox } from "../lib/sync-outbox.js";
+import { cachedSyncScope, resolveSyncScope } from "../lib/sync-scope.js";
+import { LocalSyncStore } from "../lib/sync-store.js";
 import { syncTimezoneToCloud } from "../lib/timezone-sync.js";
 import { isTrustedRendererOrigin } from "../lib/trusted-origin.js";
 
@@ -93,6 +96,8 @@ const auth = new Hono()
       // Seed local cleanup preferences from the cloud snapshot (cross-device
       // sync). Fire-and-forget — sign-in must not block on it.
       void pullCloudPreferences();
+      // Establish the account/org namespace before any cloud data is cached.
+      void resolveSyncScope();
       // Let the cloud know this machine's timezone so scheduled tasks fire on
       // the user's clock. Fire-and-forget.
       void syncTimezoneToCloud();
@@ -122,6 +127,7 @@ const auth = new Hono()
   })
   .post("/sign-out", async (c) => {
     const session = getSession();
+    const scope = cachedSyncScope();
     if (session) {
       await signOutCloud(session.token).catch(() => {});
     }
@@ -130,6 +136,7 @@ const auth = new Hono()
     // Discard any preference syncs queued under this account so they aren't
     // delivered to a different account that signs in next.
     clearOutbox();
+    if (scope) new LocalSyncStore(getDb()).clearScope(scope);
     // Re-arm the one-time preference backfill so the next account to sign in on
     // this device seeds the cloud from its own snapshot.
     resetPreferencesBackfill();

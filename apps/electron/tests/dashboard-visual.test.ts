@@ -211,7 +211,10 @@ test.afterAll(async () => {
   await app?.close();
 });
 
-test("captures every main dashboard page while loading and after data resolves", async (_fixtures, testInfo) => {
+test("captures every main dashboard page while loading and after data resolves", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
   for (const scenario of DASHBOARD_SCENARIOS) {
     // Vary the query string as well as the hash. A hash-only navigation would
     // reuse the already-loaded document and skip the fixture init script.

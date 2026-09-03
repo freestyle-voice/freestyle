@@ -42,7 +42,9 @@ function sentrySourceMapPlugins(target: ElectronBuildTarget) {
     );
   }
 
-  const release = { name: electronVersion, inject: false };
+  // Keep this exactly aligned with initElectronSentry() so events resolve the
+  // source maps uploaded by this build.
+  const release = { name: `freestyle@${electronVersion}`, inject: false };
   if (target === "renderer") {
     return [
       sentryVitePlugin({

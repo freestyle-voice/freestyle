@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const sentryVitePlugin = vi.hoisted(() =>
+  vi.fn((_options: unknown) => ({ name: "sentry-test" })),
+);
+
+vi.mock("@sentry/vite-plugin", () => ({ sentryVitePlugin }));
+
 const originalEnv = { ...process.env };
 
 afterEach(() => {
   process.env = { ...originalEnv };
+  sentryVitePlugin.mockClear();
   vi.resetModules();
 });
 
@@ -21,5 +28,11 @@ describe("Electron production build configuration", () => {
     expect(config.main?.build?.sourcemap).toBe(true);
     expect(config.preload?.build?.sourcemap).toBe(true);
     expect(config.renderer?.build?.sourcemap).toBe(true);
+    expect(sentryVitePlugin).toHaveBeenCalledTimes(3);
+    for (const [options] of sentryVitePlugin.mock.calls) {
+      expect(
+        (options as { release?: { name?: string } }).release,
+      ).toMatchObject({ name: "freestyle@0.8.9" });
+    }
   });
 });

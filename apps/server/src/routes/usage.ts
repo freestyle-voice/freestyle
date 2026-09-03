@@ -2,6 +2,7 @@ import { createAppLogger } from "@freestyle-voice/utils";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
+import { cachedCloudJson } from "../lib/cloud-cache.js";
 import { formatError } from "../lib/format-error.js";
 import { fetchCloudUsage } from "../lib/freestyle-cloud.js";
 import { registerSuperProperties, setPersonProperties } from "../lib/sentry.js";
@@ -39,7 +40,14 @@ const usage = new Hono().get(
       // Forward the caller's `?fresh=1` (set by the post-checkout poll) so the
       // cloud bypasses its plan cache and reports an upgrade immediately.
       const { fresh } = c.req.valid("query");
-      const balance = await fetchCloudUsage(token, { fresh: fresh === "1" });
+      const balance = fresh
+        ? await fetchCloudUsage(token, { fresh: true })
+        : await cachedCloudJson({
+            resource: "usage",
+            id: "current",
+            maxAgeMs: 60_000,
+            load: () => fetchCloudUsage(token),
+          });
       rememberPlan(balance.plan ?? "free");
       return c.json(balance);
     } catch (err) {

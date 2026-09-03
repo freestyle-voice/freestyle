@@ -1,6 +1,7 @@
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { z } from "zod";
+import { cachedCloudJson } from "../lib/cloud-cache.js";
 import {
   freestyleConfigSchema,
   getConfig,
@@ -25,7 +26,12 @@ const config = new Hono()
    */
   .get("/cloud", async (c) => {
     try {
-      const cloud = await fetchCloudConfig();
+      const cloud = await cachedCloudJson({
+        resource: "config",
+        id: "cloud",
+        maxAgeMs: 24 * 60 * 60_000,
+        load: fetchCloudConfig,
+      });
       return c.json({
         suggestedLanguages: cloud.suggestedLanguages,
       });

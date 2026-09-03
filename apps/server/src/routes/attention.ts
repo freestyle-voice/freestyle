@@ -1,5 +1,6 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
+import { cachedCloudJson } from "../lib/cloud-cache.js";
 import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
 import { getSessionToken, invalidateSession } from "../lib/sessions.js";
 
@@ -15,22 +16,27 @@ const attention = new Hono().get("/", async (c) => {
   if (!token) return c.json({ error: "cloud_auth_required" }, 401);
 
   try {
-    const upstream = await fetch(`${freestyleCloudUrl()}/v2/attention`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: c.req.raw.signal,
-    });
-    if (upstream.status === 401) {
-      invalidateSession();
-      return c.json({ error: "cloud_auth_required" }, 401);
-    }
-    return new Response(upstream.body, {
-      status: upstream.status,
-      headers: {
-        "Content-Type":
-          upstream.headers.get("content-type") ?? "application/json",
+    const payload = await cachedCloudJson({
+      resource: "attention",
+      id: "current",
+      maxAgeMs: 60_000,
+      load: async () => {
+        const upstream = await fetch(`${freestyleCloudUrl()}/v2/attention`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (upstream.status === 401) {
+          invalidateSession();
+          throw new Error("cloud_auth_required");
+        }
+        if (!upstream.ok) throw new Error(`attention-${upstream.status}`);
+        return (await upstream.json()) as object;
       },
     });
+    return c.json(payload);
   } catch (error) {
+    if (error instanceof Error && error.message === "cloud_auth_required") {
+      return c.json({ error: "cloud_auth_required" }, 401);
+    }
     log.debug(
       `Attention cloud request failed: ${error instanceof Error ? error.message : String(error)}`,
     );

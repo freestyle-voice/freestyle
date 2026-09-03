@@ -4,10 +4,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { formatError } from "../lib/format-error.js";
 import { fetchCloudUsage } from "../lib/freestyle-cloud.js";
-import {
-  registerSuperProperties,
-  setPersonProperties,
-} from "../lib/posthog.js";
+import { registerSuperProperties, setPersonProperties } from "../lib/sentry.js";
 import { getSessionToken } from "../lib/sessions.js";
 
 const log = createAppLogger("usage");

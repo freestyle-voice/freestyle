@@ -27,8 +27,8 @@ import {
   postProcess,
   resolveAppContextForCleanup,
 } from "../lib/post-process.js";
-import { capture, captureException } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
+import { capture, captureException } from "../lib/sentry.js";
 import { invalidateSession } from "../lib/sessions.js";
 import { shouldKeepStreamingUpstreamAlive } from "../lib/streaming/session-policy.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";

@@ -52,7 +52,10 @@ import {
   captureException,
   closeDb,
   disposeServerPlugins,
-  shutdownPosthog,
+  isTelemetryEnabled,
+  removeLegacyTelemetryIdentity,
+  setTelemetrySettingChangeHandler,
+  shutdownSentry,
   startServer as startFreestyleServer,
 } from "@freestyle-voice/server";
 import { createAppLogger, enableFileLogging } from "@freestyle-voice/utils";
@@ -60,6 +63,7 @@ import {
   REMIX_CLIPBOARD_LIMIT,
   serverUrlSchema,
 } from "@freestyle-voice/validations";
+import * as Sentry from "@sentry/electron/main";
 import {
   app,
   BrowserWindow,
@@ -176,6 +180,40 @@ import {
 } from "./sprite-travel";
 import { createTrayImage } from "./tray-image";
 
+process.env.FREESTYLE_ENV ??= is.dev ? "development" : "production";
+process.env.FREESTYLE_APP_VERSION ??= app.getVersion();
+
+function initElectronSentry(): void {
+  Sentry.init({
+    dsn:
+      process.env.SENTRY_ELECTRON_DSN ??
+      "https://0c24cb10d17fe12504a6d1ade2c4314d@o4509750817325057.ingest.us.sentry.io/4512022418096128",
+    environment: process.env.FREESTYLE_ENV,
+    release: `freestyle@${process.env.FREESTYLE_APP_VERSION}`,
+    enabled: isTelemetryEnabled(),
+    // The app already forwards explicit main- and renderer-process errors.
+    // Keep Sentry free of automatic sessions, minidumps, and instrumentation
+    // so an opt-out blocks every outbound envelope and the pill stays lean.
+    defaultIntegrations: false,
+    skipOpenTelemetrySetup: true,
+    tracesSampleRate: 0,
+    enableLogs: true,
+    enableMetrics: true,
+    sendDefaultPii: false,
+    attachScreenshot: false,
+    // Renderer errors use the existing local server endpoint. Avoid the custom
+    // protocol path that previously caused Linux CORS failures in the pill.
+    ipcMode: Sentry.IPCMode.Classic,
+    beforeSend: (event) => (isTelemetryEnabled() ? event : null),
+    beforeSendTransaction: (event) => (isTelemetryEnabled() ? event : null),
+    beforeSendLog: (log) => (isTelemetryEnabled() ? log : null),
+  });
+  setTelemetrySettingChangeHandler(() => {
+    const client = Sentry.getClient();
+    if (client) client.getOptions().enabled = isTelemetryEnabled();
+  });
+}
+
 // Test isolation: E2E/probe runs in the unpackaged dev binary would otherwise
 // share the real "Electron" userData (settings.json included) with a running
 // dev instance. Must be set before anything reads app.getPath("userData").
@@ -202,7 +240,7 @@ try {
 }
 
 // Global crash handlers — without these, errors in the main process vanish
-// silently (no console in a packaged app). Log + report to PostHog, then for a
+// silently (no console in a packaged app). Log + report to Sentry, then for a
 // truly uncaught exception show a dialog and quit, since process state is
 // unknown after that point.
 let isHandlingFatal = false;
@@ -227,7 +265,7 @@ process.on("uncaughtException", (err, origin) => {
   } catch {
     // dialog may be unavailable before the app is ready
   }
-  void shutdownPosthog()
+  void shutdownSentry()
     .catch(() => {})
     .finally(() => app.exit(1));
 });
@@ -2157,10 +2195,12 @@ app.whenReady().then(async () => {
 
   // Set database path for the server before any API calls
   process.env.FREESTYLE_DB_PATH = join(app.getPath("userData"), "freestyle.db");
+  removeLegacyTelemetryIdentity();
+  initElectronSentry();
 
   process.env.FREESTYLE_ENV = is.dev ? "development" : "production";
-  // Expose the app version to the in-process server so PostHog events
-  // (including autocaptured exceptions) carry the release they came from.
+  // Expose the app version to the in-process server so Sentry events carry
+  // their release even when it runs outside Electron.
   process.env.FREESTYLE_APP_VERSION = app.getVersion();
 
   // Start the Hono HTTP server with WebSocket support (or reuse an existing one).
@@ -5012,6 +5052,8 @@ app.on("before-quit", (event) => {
       }`,
     );
   } finally {
-    app.exit(0);
+    void shutdownSentry()
+      .catch(() => {})
+      .finally(() => app.exit(0));
   }
 });

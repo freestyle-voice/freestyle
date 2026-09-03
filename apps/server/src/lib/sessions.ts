@@ -1,7 +1,7 @@
 import { getDb } from "./db.js";
 import { DEFAULT_CLOUD_URL, freestyleCloudUrl } from "./freestyle-cloud.js";
 import { revertFreestyleCloudDefaults } from "./freestyle-cloud-defaults.js";
-import { resetCloudIdentity } from "./posthog.js";
+import { resetCloudIdentity } from "./sentry.js";
 
 export interface CloudUser {
   id: string;

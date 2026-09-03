@@ -2,7 +2,7 @@ import { apiKeySchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
-import { capture } from "../lib/posthog.js";
+import { capture } from "../lib/sentry.js";
 import { validateApiKey } from "../lib/validate-key.js";
 
 const apiKeys = new Hono()

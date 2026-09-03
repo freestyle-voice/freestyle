@@ -149,7 +149,7 @@ function DashboardHomeRedirect(): React.JSX.Element {
   return <Navigate to={workspaceHomeRoute(workspace)} replace />;
 }
 
-// Analytics is captured server-side (see apps/server/src/lib/posthog.ts);
+// Analytics is captured server-side (see apps/server/src/lib/sentry.ts);
 // the renderer ships no analytics SDK.
 installGlobalErrorHandlers();
 

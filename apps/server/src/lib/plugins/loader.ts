@@ -11,7 +11,7 @@ import {
   type PluginRegistry,
 } from "freestyle-voice";
 import { readSetting } from "../db.js";
-import { captureException } from "../posthog.js";
+import { captureException } from "../sentry.js";
 import { buildPluginContext } from "./context.js";
 
 const log = createAppLogger("plugins");

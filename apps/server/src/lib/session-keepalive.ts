@@ -4,7 +4,7 @@ import {
   fetchCloudUser,
   SESSION_LIFETIME_MS,
 } from "./freestyle-cloud.js";
-import { captureException } from "./posthog.js";
+import { captureException } from "./sentry.js";
 import {
   getSession,
   invalidateSession,

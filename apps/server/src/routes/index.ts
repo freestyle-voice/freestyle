@@ -9,9 +9,8 @@ import { z } from "zod";
 import {
   capture,
   captureException,
-  getDeviceId,
   setPersonProperties,
-} from "../lib/posthog.js";
+} from "../lib/sentry.js";
 import agentRoute from "./agent.js";
 import agentOsRoute from "./agent-os.js";
 import agentThreadsRoute from "./agent-threads.js";
@@ -49,10 +48,9 @@ const clientLog = createAppLogger("renderer");
 
 const apiRouter = new Hono()
   .get("/health", (c) => c.json({ status: "ok", name: "freestyle" }))
-  .get("/device-id", (c) => c.json({ deviceId: getDeviceId() }))
   // Renderer-side telemetry (e.g. onboarding UI events) funnels through the
   // same server-side capture() as every other product event, so it honors the
-  // telemetry opt-out, DO_NOT_TRACK, and device-id attribution in one place.
+  // telemetry opt-out and DO_NOT_TRACK in one place.
   .post("/telemetry", zValidator("json", telemetrySchema), (c) => {
     const { event, properties } = c.req.valid("json");
     capture(event, properties);
@@ -73,7 +71,7 @@ const apiRouter = new Hono()
   )
   // Crash/error reports from the renderer (window.onerror, unhandled
   // rejections, React error boundary). Always persisted to the local log file
-  // for diagnostics; PostHog reporting is gated by the telemetry opt-out inside
+  // for diagnostics; Sentry reporting is gated by the telemetry opt-out inside
   // captureException. Only message/stack/source/context are accepted — callers
   // must never include transcript or clipboard text.
   .post("/client-error", zValidator("json", clientErrorSchema), (c) => {

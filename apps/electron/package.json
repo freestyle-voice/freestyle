@@ -34,6 +34,8 @@
     "@freestyle-voice/utils": "workspace:*",
     "@freestyle-voice/validations": "workspace:*",
     "@hookform/resolvers": "^5.4.0",
+    "@opentelemetry/core": "^2.11.0",
+    "@sentry/electron": "^7.18.0",
     "@tanstack/react-query": "^5.101.2",
     "@trycourier/courier-react": "^9.2.12",
     "ai": "^6.0.191",
@@ -65,6 +67,7 @@
   "devDependencies": {
     "@electron-toolkit/tsconfig": "^2.0.0",
     "@playwright/test": "^1.60.0",
+    "@sentry/vite-plugin": "^5.4.0",
     "@tailwindcss/vite": "^4.3.0",
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.7",

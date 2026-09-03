@@ -3,7 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { likePattern } from "../lib/like-pattern.js";
-import { capture } from "../lib/posthog.js";
+import { capture } from "../lib/sentry.js";
 
 interface HistoryRow {
   id: number;

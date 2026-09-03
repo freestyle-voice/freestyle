@@ -1,8 +1,8 @@
 import { serverStartSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
-import { capture } from "../lib/posthog.js";
 import { getDefaultModels } from "../lib/providers.js";
+import { capture } from "../lib/sentry.js";
 import { stripProviderPrefix } from "../lib/streaming/types.js";
 import {
   isBinaryAvailable,

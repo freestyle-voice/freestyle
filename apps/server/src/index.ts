@@ -24,8 +24,13 @@ import {
   initServerPlugins,
   plugins,
 } from "./lib/plugins/index.js";
-import { captureException, shutdownPosthog } from "./lib/posthog.js";
 import { pullCloudPreferences } from "./lib/preferences-sync.js";
+import {
+  captureException,
+  initSentry,
+  removeLegacyTelemetryIdentity,
+  shutdownSentry,
+} from "./lib/sentry.js";
 import {
   startSessionKeepAlive,
   stopSessionKeepAlive,
@@ -43,6 +48,9 @@ import {
 import routes from "./routes";
 
 const httpLog = createAppLogger("http");
+
+initSentry();
+removeLegacyTelemetryIdentity();
 
 // Lightweight CRUD routers get a request timeout. Transcription, post-process,
 // and the auth device-flow poll are intentionally excluded — they can
@@ -66,7 +74,7 @@ async function shutdownServer(): Promise<void> {
   stopHistoryRetentionSweep();
   stopOutboxDrain();
   await disposeServerPlugins().catch(() => {});
-  await shutdownPosthog();
+  await shutdownSentry();
 }
 
 process.on("SIGINT", () => shutdownServer().finally(() => process.exit(0)));
@@ -292,7 +300,13 @@ export {
   resolvePackage,
   uninstallPackage,
 } from "./lib/plugins/installer.js";
-export { captureException, shutdownPosthog } from "./lib/posthog.js";
+export {
+  captureException,
+  isTelemetryEnabled,
+  removeLegacyTelemetryIdentity,
+  setTelemetrySettingChangeHandler,
+  shutdownSentry,
+} from "./lib/sentry.js";
 export type AppType = ReturnType<typeof createApp>;
 
 export default createApp;

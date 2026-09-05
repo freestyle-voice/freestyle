@@ -43,7 +43,7 @@ export function AttentionHome({
   const auth = useCloudAuth();
   const query = useQuery({
     ...attentionQueryOptions(),
-    enabled: !auth.loading && Boolean(auth.user),
+    enabled: auth.canRequestData,
   });
 
   if (auth.loading || !auth.user) return null;

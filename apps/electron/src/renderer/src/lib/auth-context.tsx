@@ -1,4 +1,8 @@
-import { type QueryClient, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import {
   createContext,
   useCallback,
@@ -8,7 +12,7 @@ import {
   useState,
 } from "react";
 import type { CloudUser } from "../../../shared/cloud-user";
-import { getClient, resolveApiBase } from "./api";
+import { getClient, resolveApiBase, subscribeToUnauthorized } from "./api";
 import { resetBrainCache } from "./brain-fs";
 import { queryKeys } from "./query";
 
@@ -19,6 +23,10 @@ function resetAccountCaches(queryClient: QueryClient): void {
 
 export interface UseCloudAuth {
   user: CloudUser | null;
+  /** Whether the server has not yet definitively accepted or rejected the session. */
+  phase: "checking" | "authenticated" | "signed_out";
+  /** Read-only requests may use the stored bearer while the profile reconciles. */
+  canRequestData: boolean;
   loading: boolean;
   signingIn: boolean;
   /** Device user code, surfaced while a sign-in is pending. */
@@ -37,86 +45,83 @@ const CloudAuthContext = createContext<UseCloudAuth | null>(null);
 /** Renderer-side state for Freestyle Cloud sign-in (drives the OAuth device flow in main). */
 function useCloudAuthState(): UseCloudAuth {
   const queryClient = useQueryClient();
-  const [user, setUser] = useState<CloudUser | null>(null);
-  const [loading, setLoading] = useState(true);
   const [signingIn, setSigningIn] = useState(false);
   const [userCode, setUserCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const [forcedSignedOut, setForcedSignedOut] = useState(false);
   const wasSignedInRef = useRef(false);
   const cancelledRef = useRef(false);
   const signInPromiseRef = useRef<Promise<CloudUser | null> | null>(null);
   const signInAttemptRef = useRef(0);
-  // Collapses concurrent status checks into one in-flight request. On a fresh
-  // window the mount retry-loop and the `focus` listener (fired the moment the
-  // just-shown window focuses) both call refreshInternal within the same tick —
-  // without this they'd hit /api/auth/status twice back-to-back.
-  const refreshInFlightRef = useRef<Promise<{
-    user: CloudUser | null;
-    reached: boolean;
-  }> | null>(null);
-
-  const refreshInternal = useCallback(async (): Promise<{
-    user: CloudUser | null;
-    reached: boolean;
-  }> => {
-    if (refreshInFlightRef.current) return refreshInFlightRef.current;
-    const run = (async () => {
-      let reached = false;
+  const authStatusQuery = useQuery({
+    queryKey: queryKeys.cloud.authStatus,
+    queryFn: async (): Promise<{
+      user: CloudUser | null;
+      reached: boolean;
+    }> => {
       await resolveApiBase();
-      const user = await getClient()
-        .api.auth.status.$get()
-        .then(async (res) => {
-          if (!res.ok) return null;
-          reached = true;
-          const data = await res.json();
-          return data.user ?? null;
-        })
-        .catch(() => null);
-      if (reached) {
-        if (!user && wasSignedInRef.current) {
-          setSessionExpired(true);
-          queryClient.removeQueries({
-            queryKey: queryKeys.connectors.all,
-          });
-        }
-        if (user) setSessionExpired(false);
-        wasSignedInRef.current = !!user;
-        setUser(user);
-      }
-      return { user, reached };
-    })();
-    refreshInFlightRef.current = run;
-    try {
-      return await run;
-    } finally {
-      refreshInFlightRef.current = null;
+      const response = await getClient().api.auth.status.$get();
+      // Only a successfully decoded status response can declare the visitor
+      // signed out. A timeout, offline error, or 5xx leaves the shell usable
+      // and lets each requested resource report its own state.
+      if (!response.ok) return { user: null, reached: false };
+      const data = await response.json();
+      return { user: data.user ?? null, reached: true };
+    },
+    enabled: !forcedSignedOut,
+    retry: false,
+    refetchOnWindowFocus: false,
+    // A transient startup outage must not switch the window to sign-in, but
+    // it should still reconcile promptly once the local server or network is
+    // available again. Stop this cadence as soon as status is authoritative.
+    refetchInterval: (query) => (query.state.data?.reached ? false : 5_000),
+  });
+
+  const status = authStatusQuery.data;
+  const { refetch: refetchAuthStatus } = authStatusQuery;
+  const phase = forcedSignedOut
+    ? "signed_out"
+    : status?.reached
+      ? status.user
+        ? "authenticated"
+        : "signed_out"
+      : "checking";
+  const user = phase === "authenticated" ? (status?.user ?? null) : null;
+  const loading = phase === "checking";
+  const canRequestData = phase !== "signed_out";
+
+  useEffect(() => {
+    if (!status?.reached) return;
+    if (!status.user && wasSignedInRef.current) {
+      setSessionExpired(true);
+      queryClient.removeQueries({ queryKey: queryKeys.connectors.all });
     }
-  }, [queryClient]);
+    if (status.user) setSessionExpired(false);
+    wasSignedInRef.current = !!status.user;
+  }, [queryClient, status]);
+
+  useEffect(
+    () =>
+      subscribeToUnauthorized(() => {
+        const wasSignedIn = wasSignedInRef.current;
+        wasSignedInRef.current = false;
+        setSessionExpired(wasSignedIn);
+        setForcedSignedOut(true);
+        resetAccountCaches(queryClient);
+      }),
+    [queryClient],
+  );
 
   const refresh = useCallback(
-    async (): Promise<CloudUser | null> => (await refreshInternal()).user,
-    [refreshInternal],
+    async (): Promise<CloudUser | null> =>
+      (await refetchAuthStatus()).data?.user ?? null,
+    [refetchAuthStatus],
   );
 
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      for (let attempt = 0; attempt < 15 && !cancelled; attempt++) {
-        const { reached } = await refreshInternal();
-        if (reached) break;
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-      }
-      if (!cancelled) setLoading(false);
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshInternal]);
-
-  useEffect(() => {
     const revalidate = (): void => {
-      void refreshInternal();
+      void refetchAuthStatus();
     };
     window.addEventListener("focus", revalidate);
     const timer = setInterval(revalidate, 5 * 60 * 1000);
@@ -124,7 +129,7 @@ function useCloudAuthState(): UseCloudAuth {
       window.removeEventListener("focus", revalidate);
       clearInterval(timer);
     };
-  }, [refreshInternal]);
+  }, [refetchAuthStatus]);
 
   const signIn = useCallback(async (): Promise<CloudUser | null> => {
     if (signInPromiseRef.current) return signInPromiseRef.current;
@@ -170,7 +175,11 @@ function useCloudAuthState(): UseCloudAuth {
         resetAccountCaches(queryClient);
         wasSignedInRef.current = true;
         setSessionExpired(false);
-        setUser(data.user);
+        setForcedSignedOut(false);
+        queryClient.setQueryData(queryKeys.cloud.authStatus, {
+          user: data.user,
+          reached: true,
+        });
         return data.user;
       }
       throw new Error("Sign-in timed out. Please try again.");
@@ -208,12 +217,14 @@ function useCloudAuthState(): UseCloudAuth {
       .catch(() => {});
     wasSignedInRef.current = false;
     setSessionExpired(false);
-    setUser(null);
+    setForcedSignedOut(true);
     resetAccountCaches(queryClient);
   }, [queryClient]);
 
   return {
     user,
+    phase,
+    canRequestData,
     loading,
     signingIn,
     userCode,

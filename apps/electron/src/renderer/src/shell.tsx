@@ -332,6 +332,7 @@ function RemixSidebarSessions({
     completedSessionIds,
     markSessionSeen,
   } = useRemixSession();
+  const { phase } = useCloudAuth();
   const listRef = useRef<HTMLDivElement>(null);
   const [hasMoreSessions, setHasMoreSessions] = useState(false);
 
@@ -378,6 +379,7 @@ function RemixSidebarSessions({
           type="button"
           className="remix-sidebar-new"
           onClick={startNewThread}
+          disabled={phase === "checking"}
         >
           <Plus aria-hidden="true" />
           New chat
@@ -389,6 +391,7 @@ function RemixSidebarSessions({
           }`}
           aria-current={workspaceSurface === "scheduled" ? "page" : undefined}
           onClick={openScheduledTasks}
+          disabled={phase === "checking"}
         >
           <CalendarClock aria-hidden="true" />
           Schedules
@@ -623,7 +626,7 @@ export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const { user, loading: authLoading } = useCloudAuth();
+  const { user, phase, canRequestData } = useCloudAuth();
   const isRemixRoute = location.pathname === "/remix";
   const isSettingsRoute =
     location.pathname === "/settings" ||
@@ -703,7 +706,7 @@ export default function AppShell(): React.JSX.Element {
   const { data: plugins = [] } = useQuery({
     queryKey: queryKeys.plugins,
     queryFn: () => listPlugins(),
-    enabled: !authLoading && !!user,
+    enabled: canRequestData,
   });
 
   const pluginNav = usePluginNavItems(plugins);
@@ -744,7 +747,7 @@ export default function AppShell(): React.JSX.Element {
   // established a user, the sign-in route owns the entire window; rendering
   // the app sidebar beside it makes the login experience look like a broken
   // half-loaded workspace and can briefly expose stale navigation state.
-  if (!user) return <SignedOutShell />;
+  if (phase === "signed_out") return <SignedOutShell />;
 
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
@@ -784,7 +787,7 @@ export default function AppShell(): React.JSX.Element {
                   DEV
                 </span>
               )}
-              {isRemixSidebar && !authLoading && user ? (
+              {isRemixSidebar && canRequestData ? (
                 <button
                   type="button"
                   aria-label="Search sessions"
@@ -801,7 +804,7 @@ export default function AppShell(): React.JSX.Element {
               className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
-              {isRemixSidebar && !authLoading && user ? (
+              {isRemixSidebar && canRequestData ? (
                 <RemixSidebarSessions searchQuery="" />
               ) : (
                 <>
@@ -839,7 +842,7 @@ export default function AppShell(): React.JSX.Element {
         onWidthChange={setSidebarWidth}
       />
 
-      {isRemixSidebar && !authLoading && user ? (
+      {isRemixSidebar && canRequestData ? (
         <SessionSearchDialog
           open={isSessionSearchOpen}
           onOpenChange={handleSessionSearchOpenChange}

@@ -4,7 +4,7 @@ import {
 } from "@freestyle-voice/validations";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { DragSpacer } from "@renderer/components/drag-spacer";
-import { DictionaryLikePageSkeleton } from "@renderer/components/page-loading-skeleton";
+import { DictionaryLikeEntriesSkeleton } from "@renderer/components/page-loading-skeleton";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
@@ -225,7 +225,8 @@ export default function VocabularyPage(): React.JSX.Element {
 
   const importRef = useRef<HTMLInputElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const searchShortcutEnabled = !(total === 0 && !search && !showForm);
+  const searchShortcutEnabled =
+    loading || !(total === 0 && !search && !showForm);
 
   useEffect(() => {
     if (!searchShortcutEnabled) return;
@@ -291,11 +292,7 @@ export default function VocabularyPage(): React.JSX.Element {
     [invalidate, t],
   );
 
-  if (loading) {
-    return <DictionaryLikePageSkeleton />;
-  }
-
-  const isEmpty = total === 0 && !search;
+  const isEmpty = !loading && total === 0 && !search;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -452,7 +449,9 @@ export default function VocabularyPage(): React.JSX.Element {
               </form>
             )}
 
-            {entries.length === 0 ? (
+            {loading ? (
+              <DictionaryLikeEntriesSkeleton />
+            ) : entries.length === 0 ? (
               <NoSearchResults search={search} />
             ) : (
               <>

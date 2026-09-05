@@ -24,7 +24,21 @@ const DASHBOARD_SCENARIOS = [
 ] as const;
 
 const DASHBOARD_URL = "app://renderer/index.html";
-const FIXTURE_DELAY_MS = 650;
+const PAGE_DATA_DELAY_MS = 650;
+const AUTH_STATUS_DELAY_MS = 1_800;
+
+const STATIC_LOADING_HEADINGS: Partial<
+  Record<(typeof DASHBOARD_SCENARIOS)[number]["id"], RegExp>
+> = {
+  "settings-transcription": /Dictation/,
+  "settings-models": /Models/,
+  "settings-application": /Application/,
+  dictionary: /Shortcuts/,
+  vocabulary: /Vocabulary/,
+  tone: /Tone/,
+  profile: /Profile/,
+  plugins: /Plugins/,
+};
 
 let app: ElectronApplication | undefined;
 let pill: Page;
@@ -32,11 +46,13 @@ let dashboard: Page;
 
 async function installDashboardFixtures(page: Page): Promise<void> {
   await page.addInitScript(
-    ({ delayMs }) => {
+    ({ authStatusDelayMs, pageDataDelayMs }) => {
       const visualReviewWindow = window as typeof window & {
         __visualReviewErrors?: string[];
+        __visualReviewRequests?: string[];
       };
       visualReviewWindow.__visualReviewErrors = [];
+      visualReviewWindow.__visualReviewRequests = [];
       const originalFetch = window.fetch.bind(window);
       window.fetch = async (input, init) => {
         const url = new URL(
@@ -48,12 +64,23 @@ async function installDashboardFixtures(page: Page): Promise<void> {
         );
         if (!url.pathname.startsWith("/api/"))
           return originalFetch(input, init);
+        visualReviewWindow.__visualReviewRequests?.push(url.pathname);
 
         if (url.pathname === "/api/client-error") {
           visualReviewWindow.__visualReviewErrors?.push(
             typeof init?.body === "string" ? init.body : "Unknown client error",
           );
           return new Response(JSON.stringify({ ok: true }), {
+            headers: { "content-type": "application/json" },
+          });
+        }
+
+        const protected401 =
+          new URLSearchParams(window.location.search).get("visual") ===
+            "protected-401" && url.pathname === "/api/history";
+        if (protected401) {
+          return new Response(JSON.stringify({ error: "Unauthorized" }), {
+            status: 401,
             headers: { "content-type": "application/json" },
           });
         }
@@ -147,15 +174,23 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           return {};
         })();
 
-        if (url.pathname !== "/api/auth/status") {
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
-        }
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            url.pathname === "/api/auth/status"
+              ? authStatusDelayMs
+              : pageDataDelayMs,
+          ),
+        );
         return new Response(JSON.stringify(body), {
           headers: { "content-type": "application/json" },
         });
       };
     },
-    { delayMs: FIXTURE_DELAY_MS },
+    {
+      authStatusDelayMs: AUTH_STATUS_DELAY_MS,
+      pageDataDelayMs: PAGE_DATA_DELAY_MS,
+    },
   );
 }
 
@@ -229,6 +264,39 @@ test("captures every main dashboard page while loading and after data resolves",
       dashboard.getByRole("button", { name: "Sign in via browser" }),
     ).toBeHidden();
 
+    if (scenario.id === "today") {
+      await expect(dashboard.getByLabel("Loading profile")).toBeVisible();
+      await expect(
+        dashboard.getByLabel("Loading transcription history"),
+      ).toBeVisible();
+      await expect(dashboard.getByPlaceholder(/Search/)).toBeVisible();
+    }
+    if (scenario.id === "remix") {
+      await expect(dashboard.getByLabel("Loading profile")).toBeVisible();
+      await expect(dashboard.getByLabel("Loading sessions")).toBeVisible();
+      await expect(dashboard.getByLabel("Loading conversation")).toBeVisible();
+      await expect(
+        dashboard.getByRole("button", { name: "Switch workspace" }),
+      ).toBeVisible();
+    }
+    const staticHeading = STATIC_LOADING_HEADINGS[scenario.id];
+    if (staticHeading) {
+      await expect(
+        dashboard.getByRole("heading", { level: 1, name: staticHeading }),
+      ).toBeVisible();
+    }
+    if (
+      scenario.id === "dictionary" ||
+      scenario.id === "vocabulary" ||
+      scenario.id === "tone"
+    ) {
+      await expect(
+        dashboard.getByLabel(
+          scenario.id === "tone" ? "Loading tone settings" : "Loading entries",
+        ),
+      ).toBeVisible();
+    }
+
     const loading = testInfo.outputPath(`${scenario.id}.loading.png`);
     await dashboard.screenshot({ path: loading });
     await testInfo.attach(`${scenario.id}-loading`, {
@@ -236,7 +304,9 @@ test("captures every main dashboard page while loading and after data resolves",
       contentType: "image/png",
     });
 
-    await dashboard.waitForTimeout(FIXTURE_DELAY_MS + 150);
+    await dashboard.waitForTimeout(
+      AUTH_STATUS_DELAY_MS + PAGE_DATA_DELAY_MS + 150,
+    );
     // A fixed delay is not sufficient when the lazy route itself loads before
     // it starts its data query. Wait for the semantic loading state to clear
     // so the second capture is genuinely the settled UI rather than another
@@ -251,6 +321,20 @@ test("captures every main dashboard page while loading and after data resolves",
       return visualReviewWindow.__visualReviewErrors ?? [];
     });
     expect(reportedErrors).toEqual([]);
+    const requestedEndpoints = await dashboard.evaluate(() => {
+      const visualReviewWindow = window as typeof window & {
+        __visualReviewRequests?: string[];
+      };
+      return visualReviewWindow.__visualReviewRequests ?? [];
+    });
+    if (scenario.id === "today") {
+      expect(requestedEndpoints).toContain("/api/auth/status");
+      expect(requestedEndpoints).toContain("/api/history");
+    }
+    if (scenario.id === "remix") {
+      expect(requestedEndpoints).toContain("/api/auth/status");
+      expect(requestedEndpoints).toContain("/api/agent/thread/latest");
+    }
     await expect(
       dashboard.getByRole("heading", {
         name: "Freestyle hit an unexpected error.",
@@ -265,4 +349,21 @@ test("captures every main dashboard page while loading and after data resolves",
       contentType: "image/png",
     });
   }
+});
+
+test("shows full-window sign-in after a protected request returns 401", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=protected-401#/today`);
+
+  await expect(
+    dashboard.getByRole("button", { name: "Sign in via browser" }),
+  ).toBeVisible();
+  await expect(dashboard.locator(".glass-sidebar")).toHaveCount(0);
+
+  const requestedEndpoints = await dashboard.evaluate(() => {
+    const visualReviewWindow = window as typeof window & {
+      __visualReviewRequests?: string[];
+    };
+    return visualReviewWindow.__visualReviewRequests ?? [];
+  });
+  expect(requestedEndpoints).toContain("/api/history");
 });

@@ -6,23 +6,9 @@ export function LoginGate({
 }: {
   children: React.ReactNode;
 }): React.JSX.Element | null {
-  const { user, loading } = useCloudAuth();
-  // AppShell supplies a neutral, full-window signed-out frame while this
-  // check runs. Keep protected content empty until we know whether the app or
-  // sign-in screen belongs there; this avoids exposing user data during an
-  // auth transition without briefly rendering the app sidebar.
-  if (loading) return <StartupContentPlaceholder />;
-  if (!user) return <LoginPage />;
+  const { phase } = useCloudAuth();
+  if (phase === "signed_out") return <LoginPage />;
   return <>{children}</>;
-}
-
-/**
- * The surrounding signed-out shell is already visible during auth
- * verification. This intentionally leaves it empty rather than rendering a
- * fake skeleton before the sign-in page or authenticated route mounts.
- */
-function StartupContentPlaceholder(): React.JSX.Element {
-  return <div className="min-h-0 flex-1" aria-busy="true" />;
 }
 
 /** The same page as onboarding's sign-in step, minus the step machinery. */

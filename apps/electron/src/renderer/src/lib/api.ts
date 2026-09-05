@@ -43,6 +43,31 @@ async function observedFetch(
   return response;
 }
 
+/**
+ * Hono constructs a request URL when `getClient()` is called. During startup
+ * that can precede the asynchronous IPC read of the configured server target.
+ * Resolve and rebuild the request at dispatch time so a cached typed client
+ * never sends its first request to the default loopback port or omits a
+ * newly-read bearer token.
+ */
+async function resolvedClientFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  await resolveApiBase();
+
+  const original = new Request(input, init);
+  const url = new URL(original.url);
+  const target = `${getApiBase()}${url.pathname}${url.search}${url.hash}`;
+  const headers = new Headers(original.headers);
+  for (const [key, value] of Object.entries(bearerAuthHeaders(serverToken))) {
+    if (!headers.has(key)) headers.set(key, value);
+  }
+
+  const routedRequest = new Request(target, original);
+  return observedFetch(new Request(routedRequest, { headers }));
+}
+
 /** Base URL of the locally-run server (used when no server URL is configured). */
 export function getLocalApiBase(): string {
   return `http://127.0.0.1:${resolvedPort}`;
@@ -199,7 +224,7 @@ export function getClient() {
   if (!_client || _clientBase !== base || _clientToken !== serverToken) {
     _client = hc<AppType>(base, {
       headers: bearerAuthHeaders(serverToken),
-      fetch: observedFetch,
+      fetch: resolvedClientFetch,
     });
     _clientBase = base;
     _clientToken = serverToken;

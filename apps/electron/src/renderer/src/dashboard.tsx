@@ -31,7 +31,14 @@ import { ThemeProvider, useTheme } from "next-themes";
 import { lazy, StrictMode, Suspense, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { I18nextProvider } from "react-i18next";
-import { HashRouter, Navigate, Outlet, Route, Routes } from "react-router";
+import {
+  HashRouter,
+  Navigate,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+} from "react-router";
 
 // Route-level code splitting: the landing route (Today), the app shell, and the
 // tiny not-found page load eagerly; every other page is lazy so the initial
@@ -81,7 +88,73 @@ function ThemePreferenceBridge(): React.JSX.Element | null {
 // Keep the workspace shell and its geometry present while a lazy page chunk
 // arrives. The page's own loading state replaces this next; this only covers
 // the short gap before that component can mount.
+type RouteFallbackCopy = {
+  eyebrow?: string;
+  title: string;
+  subtitle?: string;
+};
+
+const PAGE_FALLBACKS: Record<string, RouteFallbackCopy> = {
+  "/remix": { title: "Remix" },
+  "/dictionary": {
+    title: "Shortcuts",
+    subtitle: "Shortcuts that expand as you speak. Say the key, get the value.",
+  },
+  "/vocabulary": { title: "Vocabulary" },
+  "/tone": {
+    title: "Tone",
+    subtitle: "How much Freestyle cleans up — and how it sounds in each app.",
+  },
+  "/settings/models": { title: "Models" },
+  "/help": { title: "Help" },
+  "/profile": {
+    title: "Profile",
+    subtitle: "Manage your account details.",
+  },
+  "/plugins": {
+    title: "Plugins",
+    subtitle:
+      "Install plugins to add features. Each runs in the dictation pipeline and can ship its own page.",
+  },
+};
+
+const SETTINGS_FALLBACKS: Record<string, RouteFallbackCopy> = {
+  application: { eyebrow: "Settings", title: "Application" },
+  companion: { eyebrow: "Settings", title: "Companion" },
+  recording: { eyebrow: "Settings", title: "Dictation" },
+  remix: { eyebrow: "Settings", title: "Remix" },
+  mcp: { eyebrow: "Settings", title: "MCP connections" },
+  display: { eyebrow: "Settings", title: "Appearance" },
+  permissions: { eyebrow: "Settings", title: "Permissions" },
+  data: { eyebrow: "Settings", title: "Data" },
+  notifications: { eyebrow: "Settings", title: "Notifications" },
+  connectedApps: { eyebrow: "Settings", title: "Connected apps" },
+  billing: { eyebrow: "Settings", title: "Usage & billing" },
+  network: { eyebrow: "Settings", title: "Network" },
+};
+
+function fallbackCopyForPath(pathname: string): RouteFallbackCopy {
+  const pageFallback = PAGE_FALLBACKS[pathname];
+  if (pageFallback) return pageFallback;
+
+  if (pathname.startsWith("/settings/")) {
+    const section = pathname.slice("/settings/".length);
+    return SETTINGS_FALLBACKS[section] ?? SETTINGS_FALLBACKS.recording;
+  }
+
+  if (pathname.startsWith("/plugins/")) return { title: "Plugin" };
+
+  return { title: "Freestyle" };
+}
+
+// This copy intentionally stays local and synchronous. Locale files load after
+// mount, so waiting for translated strings here would recreate the blank/skeleton
+// gap that this fallback is meant to avoid. The lazy page replaces it as soon as
+// its chunk (and its translated content) is available.
 function RouteFallback(): React.JSX.Element {
+  const { pathname } = useLocation();
+  const { eyebrow, title, subtitle } = fallbackCopyForPath(pathname);
+
   return (
     <div
       aria-busy="true"
@@ -89,9 +162,21 @@ function RouteFallback(): React.JSX.Element {
       className="dashboard-route-skeleton flex min-h-0 flex-1 flex-col gap-7 px-6 pb-8 pt-12 sm:px-10"
       role="status"
     >
-      <div className="max-w-xl space-y-3">
-        <div className="dashboard-route-skeleton-line h-9 w-56 animate-pulse rounded-md bg-muted/65" />
-        <div className="dashboard-route-skeleton-line h-3 w-80 max-w-full animate-pulse rounded-full bg-muted/55" />
+      <div className="max-w-xl">
+        {eyebrow ? (
+          <p className="text-muted-foreground mono mb-2 text-[10px] font-semibold tracking-[0.16em] uppercase">
+            {eyebrow}
+          </p>
+        ) : null}
+        <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
+          <span className="serif-italic text-primary">{title}</span>
+          <span>.</span>
+        </h1>
+        {subtitle ? (
+          <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">
+            {subtitle}
+          </p>
+        ) : null}
       </div>
       <div className="grid max-w-5xl gap-4 md:grid-cols-2">
         {["first", "second"].map((card) => (

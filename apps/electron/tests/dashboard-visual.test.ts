@@ -27,6 +27,19 @@ const DASHBOARD_URL = "app://renderer/index.html";
 const PAGE_DATA_DELAY_MS = 650;
 const AUTH_STATUS_DELAY_MS = 1_800;
 
+const STATIC_LOADING_HEADINGS: Partial<
+  Record<(typeof DASHBOARD_SCENARIOS)[number]["id"], RegExp>
+> = {
+  "settings-transcription": /Dictation/,
+  "settings-models": /Models/,
+  "settings-application": /Application/,
+  dictionary: /Shortcuts/,
+  vocabulary: /Vocabulary/,
+  tone: /Tone/,
+  profile: /Profile/,
+  plugins: /Plugins/,
+};
+
 let app: ElectronApplication | undefined;
 let pill: Page;
 let dashboard: Page;
@@ -264,6 +277,23 @@ test("captures every main dashboard page while loading and after data resolves",
       await expect(dashboard.getByLabel("Loading conversation")).toBeVisible();
       await expect(
         dashboard.getByRole("button", { name: "Switch workspace" }),
+      ).toBeVisible();
+    }
+    const staticHeading = STATIC_LOADING_HEADINGS[scenario.id];
+    if (staticHeading) {
+      await expect(
+        dashboard.getByRole("heading", { level: 1, name: staticHeading }),
+      ).toBeVisible();
+    }
+    if (
+      scenario.id === "dictionary" ||
+      scenario.id === "vocabulary" ||
+      scenario.id === "tone"
+    ) {
+      await expect(
+        dashboard.getByLabel(
+          scenario.id === "tone" ? "Loading tone settings" : "Loading entries",
+        ),
       ).toBeVisible();
     }
 

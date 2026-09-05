@@ -49,6 +49,11 @@ describe("dashboard startup rendering", () => {
     expect(dashboard).toContain('aria-label="Loading page"');
     expect(dashboard).toContain("dashboard-route-skeleton");
     expect(dashboard).toContain("dashboard-route-skeleton-line");
+    expect(dashboard).toContain("const SETTINGS_FALLBACKS");
+    expect(dashboard).toContain('title: "Shortcuts"');
+    expect(dashboard).toContain('title: "Vocabulary"');
+    expect(dashboard).toContain('title: "Plugins"');
+    expect(dashboard).toContain('title: "Profile"');
     expect(dashboard).not.toContain(
       'return <div className="min-h-0 flex-1" />;',
     );
@@ -62,7 +67,11 @@ describe("dashboard startup rendering", () => {
     );
 
     for (const page of [dictionary, vocabulary]) {
-      expect(page).toContain("DictionaryLikePageSkeleton");
+      expect(page).toContain("DictionaryLikeEntriesSkeleton");
+      expect(page).toContain(
+        "loading || !(total === 0 && !search && !showForm)",
+      );
+      expect(page).not.toContain("return <DictionaryLike");
       expect(page).not.toMatch(/t\("(?:dictionary|vocabulary)\.loading"\)/);
     }
 
@@ -86,7 +95,7 @@ describe("dashboard startup rendering", () => {
       ]);
 
     expect(api).toContain("export function subscribeToUnauthorized");
-    expect(api).toContain("fetch: observedFetch");
+    expect(api).toContain("fetch: resolvedClientFetch");
     expect(auth).toContain("subscribeToUnauthorized");
     expect(auth).toContain("resetAccountCaches(queryClient)");
     expect(auth).toContain("refetchInterval");

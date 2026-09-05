@@ -89,6 +89,8 @@ describe("dashboard startup rendering", () => {
     expect(api).toContain("fetch: observedFetch");
     expect(auth).toContain("subscribeToUnauthorized");
     expect(auth).toContain("resetAccountCaches(queryClient)");
+    expect(auth).toContain("refetchInterval");
+    expect(auth).toContain("enabled: !forcedSignedOut");
     expect(sessions).toContain("enabled: canRequestData");
     expect(shell).toContain("enabled: canRequestData");
     expect(sessions).toContain(

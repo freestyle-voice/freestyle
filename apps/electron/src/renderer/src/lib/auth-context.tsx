@@ -69,8 +69,13 @@ function useCloudAuthState(): UseCloudAuth {
       const data = await response.json();
       return { user: data.user ?? null, reached: true };
     },
+    enabled: !forcedSignedOut,
     retry: false,
     refetchOnWindowFocus: false,
+    // A transient startup outage must not switch the window to sign-in, but
+    // it should still reconcile promptly once the local server or network is
+    // available again. Stop this cadence as soon as status is authoritative.
+    refetchInterval: (query) => (query.state.data?.reached ? false : 5_000),
   });
 
   const status = authStatusQuery.data;

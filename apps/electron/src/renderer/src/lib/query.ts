@@ -140,6 +140,7 @@ export const queryKeys = {
   attention: ["attention"] as const,
 
   cloud: {
+    authStatus: ["cloud-auth-status"] as const,
     usage: ["cloud-usage"] as const,
     orgs: ["cloud-orgs"] as const,
     activeOrg: ["cloud-active-org"] as const,

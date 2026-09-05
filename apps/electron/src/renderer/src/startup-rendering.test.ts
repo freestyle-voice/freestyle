@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 const rendererRoot = dirname(fileURLToPath(import.meta.url));
 
 describe("dashboard startup rendering", () => {
-  it("uses a full-window signed-out shell while authentication verifies", async () => {
+  it("keeps the application shell and page data mounted while authentication verifies", async () => {
     const [dashboard, gate, shell] = await Promise.all([
       readFile(resolve(rendererRoot, "dashboard.tsx"), "utf8"),
       readFile(resolve(rendererRoot, "components/login-gate.tsx"), "utf8"),
@@ -15,10 +15,12 @@ describe("dashboard startup rendering", () => {
 
     expect(dashboard).toContain("<Route element={<AppShell />}>");
     expect(dashboard).toContain("<ProtectedOutlet />");
-    expect(gate).toContain("function StartupContentPlaceholder");
-    expect(gate).not.toContain("function AuthLoadingFrame");
+    expect(gate).not.toContain("StartupContentPlaceholder");
+    expect(gate).toContain('if (phase === "signed_out") return <LoginPage />;');
     expect(shell).toContain("function SignedOutShell");
-    expect(shell).toContain("if (!user) return <SignedOutShell />;");
+    expect(shell).toContain(
+      'if (phase === "signed_out") return <SignedOutShell />;',
+    );
     expect(shell).toContain(
       'className="glass-content relative flex min-h-0 min-w-0 flex-1 flex-col"',
     );
@@ -68,18 +70,34 @@ describe("dashboard startup rendering", () => {
     expect(tone).not.toContain('t("tone.loading")');
   });
 
-  it("does not start account-only data queries until authentication resolves", async () => {
-    const [sessions, shell, upgrade] = await Promise.all([
-      readFile(
-        resolve(rendererRoot, "components/remix-session-context.tsx"),
-        "utf8",
-      ),
-      readFile(resolve(rendererRoot, "shell.tsx"), "utf8"),
-      readFile(resolve(rendererRoot, "components/upgrade-modal.tsx"), "utf8"),
-    ]);
+  it("starts read-only data queries while authentication is still checking", async () => {
+    const [api, auth, history, panel, sessions, shell, upgrade] =
+      await Promise.all([
+        readFile(resolve(rendererRoot, "lib/api.ts"), "utf8"),
+        readFile(resolve(rendererRoot, "lib/auth-context.tsx"), "utf8"),
+        readFile(resolve(rendererRoot, "pages/history.tsx"), "utf8"),
+        readFile(resolve(rendererRoot, "components/panel.tsx"), "utf8"),
+        readFile(
+          resolve(rendererRoot, "components/remix-session-context.tsx"),
+          "utf8",
+        ),
+        readFile(resolve(rendererRoot, "shell.tsx"), "utf8"),
+        readFile(resolve(rendererRoot, "components/upgrade-modal.tsx"), "utf8"),
+      ]);
 
-    expect(sessions).toContain("enabled: !loading && !!user");
-    expect(shell).toContain("enabled: !authLoading && !!user");
+    expect(api).toContain("export function subscribeToUnauthorized");
+    expect(api).toContain("fetch: observedFetch");
+    expect(auth).toContain("subscribeToUnauthorized");
+    expect(auth).toContain("resetAccountCaches(queryClient)");
+    expect(sessions).toContain("enabled: canRequestData");
+    expect(shell).toContain("enabled: canRequestData");
+    expect(sessions).toContain(
+      "const { canRequestData, phase } = useCloudAuth();",
+    );
+    expect(history).toContain('aria-label="Loading transcription history"');
+    expect(history).toContain("{searchRow}");
+    expect(panel).toContain("RemixWorkspaceLoadingSkeleton");
+    expect(panel).toContain('aria-label="Loading conversation"');
     expect(upgrade).toContain("useCheckoutState");
     expect(upgrade).toContain('open || checkoutStatus === "pending"');
   });

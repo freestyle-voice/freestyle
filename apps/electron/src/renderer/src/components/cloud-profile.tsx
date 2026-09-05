@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
 import { Progress } from "@renderer/components/ui/progress";
+import { Skeleton } from "@renderer/components/ui/skeleton";
 import { useUpgradeModal } from "@renderer/components/upgrade-modal";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { formatNumber } from "@renderer/lib/format";
@@ -110,7 +111,7 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
 }
 
 export function CloudProfileButton(): React.JSX.Element {
-  const { user, loading, signingIn, signIn, signOut } = useCloudAuth();
+  const { user, phase, signingIn, signIn, signOut } = useCloudAuth();
   const { isPro, openBillingPortal } = useCloudUsage(!!user);
   const { data: activeOrg } = useActiveOrganization(!!user);
   const { data: orgs } = useListOrganizations(!!user);
@@ -119,11 +120,15 @@ export function CloudProfileButton(): React.JSX.Element {
 
   const hasMultipleOrgs = orgs && orgs.length > 1;
 
-  if (loading) {
+  if (phase === "checking") {
     return (
-      <div className={cn(ROW, "text-muted-foreground/50")}>
-        <Loader2 className="size-3.5 shrink-0 animate-spin" />
-        <span className="flex-1 text-left">…</span>
+      <div
+        className={cn(ROW, "pointer-events-none")}
+        role="status"
+        aria-label="Loading profile"
+      >
+        <Skeleton className="size-6 shrink-0 rounded-full" />
+        <Skeleton className="h-3.5 w-24 rounded-full" />
       </div>
     );
   }

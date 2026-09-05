@@ -824,6 +824,7 @@ function SignInGate(): React.JSX.Element {
  * implementation.
  */
 export function RemixWorkspace(): React.JSX.Element {
+  const { phase } = useCloudAuth();
   const {
     thread,
     switchThread,
@@ -840,7 +841,13 @@ export function RemixWorkspace(): React.JSX.Element {
     openChat,
   } = useRemixSession();
 
-  if (!thread) return <div className="remix-workspace" />;
+  if (!thread) {
+    return phase === "checking" ? (
+      <RemixWorkspaceLoadingSkeleton />
+    ) : (
+      <div className="remix-workspace" />
+    );
+  }
 
   return (
     <div className="remix-workspace">
@@ -860,6 +867,14 @@ export function RemixWorkspace(): React.JSX.Element {
         onOpenChat={openChat}
         desktop
       />
+    </div>
+  );
+}
+
+function RemixWorkspaceLoadingSkeleton(): React.JSX.Element {
+  return (
+    <div className="remix-workspace">
+      <ConversationSkeleton />
     </div>
   );
 }
@@ -1057,9 +1072,9 @@ function ConversationSkeleton(): React.JSX.Element {
       aria-live="polite"
       aria-label="Loading conversation"
     >
-      <span className="remix-conversation-skeleton-line is-user" />
-      <span className="remix-conversation-skeleton-line is-assistant" />
-      <span className="remix-conversation-skeleton-line is-assistant-short" />
+      <span className="remix-conversation-skeleton-line is-user block h-12 w-[min(57%,390px)] self-end rounded-xl border border-border bg-card" />
+      <span className="remix-conversation-skeleton-line is-assistant block h-[54px] w-[min(74%,520px)] rounded-xl border border-border bg-card" />
+      <span className="remix-conversation-skeleton-line is-assistant-short block h-[18px] w-[min(46%,310px)] rounded-xl border border-border bg-card" />
       <span className="sr-only">Loading conversation</span>
     </div>
   );
@@ -1892,13 +1907,19 @@ function PanelInner({
   };
 
   // Signed out, the gate is the entire panel — no head, no tabs, no way to
-  // reach the agent. While auth status resolves, show nothing rather than
-  // flashing the gate at signed-in users.
+  // reach the agent. While auth status resolves, keep the conversation's
+  // layout visible but withhold its sensitive controls and content.
   if (!auth.user) {
     return (
       <div className={desktop ? "remix-agent" : "tavern-shell"}>
-        <div className="tavern tavern-panel">
-          {auth.loading ? null : <SignInGate />}
+        <div
+          className={`tavern tavern-panel${desktop ? " remix-agent-panel" : ""}`}
+        >
+          {auth.phase === "checking" ? (
+            <ConversationSkeleton />
+          ) : (
+            <SignInGate />
+          )}
         </div>
         {!desktop ? <PanelTail /> : null}
         {!desktop ? <PanelResizeHandle /> : null}

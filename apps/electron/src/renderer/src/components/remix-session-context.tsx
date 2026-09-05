@@ -119,10 +119,10 @@ export function RemixSessionProvider({
     title: string;
   } | null>(null);
   const queryClient = useQueryClient();
-  const { user, loading } = useCloudAuth();
+  const { canRequestData, phase } = useCloudAuth();
   const latestQuery = useQuery({
     ...latestThreadQueryOptions(),
-    enabled: !loading && !!user,
+    enabled: canRequestData,
   });
   const selectionRef = useRef(0);
   const deletionVersionRef = useRef(0);
@@ -227,7 +227,7 @@ export function RemixSessionProvider({
   );
 
   useEffect(() => {
-    if (loading || !user) {
+    if (phase === "signed_out") {
       setThread(null);
       setWorkspaceSurface("chat");
       setLoadingThreadId(null);
@@ -244,10 +244,10 @@ export function RemixSessionProvider({
       ?.getRemixSessionTitles?.()
       .then((titles) => setLocalTitles(titles))
       .catch(() => {});
-  }, [loading, user]);
+  }, [phase]);
 
   useEffect(() => {
-    if (loading || !user) return;
+    if (!canRequestData) return;
     return subscribeToAgentThreadActivity(({ threads: entries }) => {
       const next = Object.fromEntries(
         entries.map((entry) => [entry.threadId, entry]),
@@ -271,7 +271,7 @@ export function RemixSessionProvider({
         });
       }
     });
-  }, [loading, user]);
+  }, [canRequestData]);
 
   const renameThread = useCallback(async (threadId: string, title: string) => {
     const nextTitle = title.trim();
@@ -434,7 +434,7 @@ export function RemixSessionProvider({
   }, [deleteNotice]);
 
   useEffect(() => {
-    if (loading || !user) return;
+    if (!canRequestData) return;
     const off = window.api.onPanelOpenThread((threadId) => {
       openChat();
       const selection = ++selectionRef.current;
@@ -451,10 +451,10 @@ export function RemixSessionProvider({
         });
     });
     return () => off?.();
-  }, [loading, markSessionSeen, openChat, queryClient, user]);
+  }, [canRequestData, markSessionSeen, openChat, queryClient]);
 
   useEffect(() => {
-    if (loading || !user) return;
+    if (!canRequestData) return;
     const off = window.api?.onPanelThreadUpdated?.((threadId) => {
       // This is an observation update, not a navigation command. If someone
       // opened the pill in the workspace and then selected another session,
@@ -463,7 +463,7 @@ export function RemixSessionProvider({
       requestThreadTitleRefresh(threadId);
     });
     return () => off?.();
-  }, [loading, refreshThread, requestThreadTitleRefresh, user]);
+  }, [canRequestData, refreshThread, requestThreadTitleRefresh]);
 
   useEffect(() => {
     if (latestQuery.isPending) return;

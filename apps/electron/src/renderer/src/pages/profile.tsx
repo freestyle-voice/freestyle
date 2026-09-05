@@ -62,7 +62,9 @@ function initialsFor(user: {
 }
 
 export default function ProfilePage(): React.JSX.Element {
-  const { user } = useCloudAuth();
+  const { user, phase } = useCloudAuth();
+
+  if (phase === "checking") return <ProfilePageSkeleton />;
 
   if (!user) {
     return (
@@ -111,6 +113,36 @@ export default function ProfilePage(): React.JSX.Element {
 
         {/* Connected accounts */}
         <ConnectedAccountsCard enabled={!!user} />
+      </div>
+    </PageShell>
+  );
+}
+
+function ProfilePageSkeleton(): React.JSX.Element {
+  return (
+    <PageShell>
+      <PageHeader title="Profile" subtitle="Manage your account details." />
+      <div className="mx-auto max-w-2xl space-y-6" aria-busy="true">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-4">
+              <Skeleton className="size-16 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-48" />
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-4 w-64" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-9 w-full max-w-sm" />
+          </CardContent>
+        </Card>
       </div>
     </PageShell>
   );

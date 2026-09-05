@@ -19,6 +19,29 @@ let apiBaseResolution: Promise<void> | null = null;
 // The in-flight health probe, shared so concurrent callers do not each run a
 // redundant server check during the same startup tick.
 let initPromise: Promise<void> | null = null;
+const unauthorizedListeners = new Set<() => void>();
+
+/**
+ * Subscribe to definitive protected-request failures observed by either API
+ * transport. A 401 is the server's authoritative signal that the locally
+ * stored session can no longer be used; transport failures are deliberately
+ * not reported here.
+ */
+export function subscribeToUnauthorized(listener: () => void): () => void {
+  unauthorizedListeners.add(listener);
+  return () => unauthorizedListeners.delete(listener);
+}
+
+async function observedFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  const response = await fetch(input, init);
+  if (response.status === 401) {
+    for (const listener of unauthorizedListeners) listener();
+  }
+  return response;
+}
 
 /** Base URL of the locally-run server (used when no server URL is configured). */
 export function getLocalApiBase(): string {
@@ -59,7 +82,7 @@ export function apiFetch(
     for (const [key, value] of Object.entries(bearerAuthHeaders(serverToken))) {
       if (!headers.has(key)) headers.set(key, value);
     }
-    return fetch(`${getApiBase()}${path}`, { ...init, headers });
+    return observedFetch(`${getApiBase()}${path}`, { ...init, headers });
   });
 }
 
@@ -174,7 +197,10 @@ export function getClient() {
   // client is otherwise stable, so this avoids allocating a fresh one — and
   // re-parsing headers — on every query/mutation call site.
   if (!_client || _clientBase !== base || _clientToken !== serverToken) {
-    _client = hc<AppType>(base, { headers: bearerAuthHeaders(serverToken) });
+    _client = hc<AppType>(base, {
+      headers: bearerAuthHeaders(serverToken),
+      fetch: observedFetch,
+    });
     _clientBase = base;
     _clientToken = serverToken;
   }

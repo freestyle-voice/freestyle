@@ -546,31 +546,6 @@ export default function HistoryPage(): React.JSX.Element {
     return out;
   }, [dailyData, hasDevSeedEntry]);
 
-  if (loading) {
-    // Keep the real page frame (DragSpacer + scroll column) and show placeholder
-    // rows instead of a blank centered spinner, so the panel shows structure
-    // immediately while the first /api/history fetch resolves. Matches the main
-    // return's wrapper so there's no layout shift when content arrives.
-    return (
-      <div className="flex h-full min-h-0 flex-col">
-        <DragSpacer />
-        <div
-          className="responsive-page-scroll flex-1 overflow-auto pt-5"
-          style={{ scrollbarWidth: "none" } as React.CSSProperties}
-        >
-          <div className="animate-pulse space-y-3" aria-hidden="true">
-            {["s1", "s2", "s3", "s4", "s5", "s6"].map((k) => (
-              <div
-                key={k}
-                className="border-border/50 bg-card/60 h-16 rounded-lg border"
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const isGenuineEmpty = stats?.unfiltered_total_sessions === 0;
 
   const hero = heroReady && !heroDismissed && !isGenuineEmpty && (
@@ -722,6 +697,37 @@ export default function HistoryPage(): React.JSX.Element {
       </div>
     </div>
   );
+
+  if (loading) {
+    // Keep navigation affordances available while the initial history request
+    // resolves. Only the sensitive rows are placeholders, so the first paint
+    // already reads as the usable Dictate history surface.
+    return (
+      <div className="flex h-full min-h-0 flex-col">
+        <DragSpacer />
+        <div
+          className="responsive-page-scroll flex-1 overflow-auto pt-5"
+          style={{ scrollbarWidth: "none" } as React.CSSProperties}
+        >
+          {searchRow}
+          <div
+            className="animate-pulse space-y-3"
+            aria-busy="true"
+            aria-label="Loading transcription history"
+            role="status"
+          >
+            {["s1", "s2", "s3", "s4", "s5", "s6"].map((k) => (
+              <div
+                key={k}
+                className="border-border/50 bg-card/60 h-16 rounded-lg border"
+                aria-hidden="true"
+              />
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const filtersModal = (
     <FiltersModal

@@ -19,6 +19,7 @@ import {
   getNeedsAppContextForCleanup,
   refreshNeedsAppContextForCleanup,
 } from "@renderer/lib/cleanup-app-context";
+import { recoverFromLocalWhisperSetup } from "@renderer/lib/local-whisper-recovery";
 import { Recorder, RecorderSupersededError } from "@renderer/lib/recorder";
 import { Streamer, type StreamerConnectionState } from "@renderer/lib/streamer";
 import {
@@ -383,6 +384,7 @@ interface TranscribeResult {
   error?: string;
   cloudAuthRequired?: boolean;
   usageExceeded?: boolean;
+  localWhisperSetupRequired?: boolean;
   providerCategory?: string;
   /**
    * Terminal pipeline disposition from the server. A plugin that called
@@ -820,6 +822,32 @@ export default function AppPage(): React.JSX.Element {
           void window.api.cloudPromptUpgrade();
           return;
         }
+        if (results.some((r) => r.localWhisperSetupRequired)) {
+          const errMsg =
+            results.find((r) => r.localWhisperSetupRequired)?.error ??
+            "Local Whisper needs setup";
+          failedTranscriptionErrorRef.current = errMsg;
+          setCanRetry(streamerRef.current?.hasCapturedAudio() ?? false);
+          setPillNotice("unavailable");
+          setPillState("error");
+          const recovered = await recoverFromLocalWhisperSetup({
+            prompt: () => window.api.localWhisperPromptRecovery(),
+            activateCloud: async () => {
+              const response = await apiFetch(
+                "/api/models/defaults/freestyle-cloud",
+                { method: "POST" },
+              );
+              if (response.status === 401) {
+                void window.api.cloudPromptSignIn();
+                return false;
+              }
+              return response.ok;
+            },
+            resume: retryFailedTranscription,
+          });
+          if (!recovered) hidePill();
+          return;
+        }
         const errMsg = results.find((r) => r.error)?.error;
         if (errMsg) {
           failedTranscriptionErrorRef.current = errMsg;
@@ -864,6 +892,7 @@ export default function AppPage(): React.JSX.Element {
           } else if (res.status === 401) {
             const body = (await res.json().catch(() => null)) as {
               error?: string;
+              detail?: string;
             } | null;
             if (body?.error === "cloud_auth_required") {
               hidePill();
@@ -1019,6 +1048,7 @@ export default function AppPage(): React.JSX.Element {
           if (!res.ok) {
             const body = (await res.json().catch(() => null)) as {
               error?: string;
+              detail?: string;
             } | null;
             if (res.status === 401 && body?.error === "cloud_auth_required") {
               return {
@@ -1034,6 +1064,17 @@ export default function AppPage(): React.JSX.Element {
                 cleaned: "",
                 error: USAGE_LIMIT_DIALOG_MESSAGE,
                 usageExceeded: true,
+              };
+            }
+            if (
+              res.status === 422 &&
+              body?.error === "local_whisper_setup_failed"
+            ) {
+              return {
+                raw: "",
+                cleaned: "",
+                error: body.detail ?? "Local Whisper needs setup",
+                localWhisperSetupRequired: true,
               };
             }
             return { raw: "", cleaned: "", error: errorMsg };
@@ -1984,6 +2025,17 @@ export default function AppPage(): React.JSX.Element {
               cleaned: "",
               error: USAGE_LIMIT_DIALOG_MESSAGE,
               usageExceeded: true,
+            };
+          }
+          if (
+            res.status === 422 &&
+            body?.error === "local_whisper_setup_failed"
+          ) {
+            return {
+              raw: "",
+              cleaned: "",
+              error: body.detail ?? "Local Whisper needs setup",
+              localWhisperSetupRequired: true,
             };
           }
           const msg =

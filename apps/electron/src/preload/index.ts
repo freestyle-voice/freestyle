@@ -61,6 +61,8 @@ const api = {
     ipcRenderer.invoke("cloud:prompt-sign-in"),
   cloudPromptUpgrade: (): Promise<boolean> =>
     ipcRenderer.invoke("cloud:prompt-upgrade"),
+  localWhisperPromptRecovery: (): Promise<"cloud" | "models" | "dismissed"> =>
+    ipcRenderer.invoke("local-whisper:prompt-recovery"),
   pasteRemixResult: (text: string): Promise<boolean> =>
     ipcRenderer.invoke("remix:paste", text),
   onRemixDown: (callback: () => void): (() => void) => {
@@ -286,9 +288,13 @@ const api = {
     ipcRenderer.on("panel:focus-composer", handler);
     return () => ipcRenderer.removeListener("panel:focus-composer", handler);
   },
-  onDashboardNavigate: (callback: (route: "/settings" | "/remix") => void) => {
-    const handler = (_e: unknown, route: "/settings" | "/remix"): void =>
-      callback(route);
+  onDashboardNavigate: (
+    callback: (route: "/settings" | "/settings/models" | "/remix") => void,
+  ) => {
+    const handler = (
+      _e: unknown,
+      route: "/settings" | "/settings/models" | "/remix",
+    ): void => callback(route);
     ipcRenderer.on("dashboard:navigate", handler);
     return () => ipcRenderer.removeListener("dashboard:navigate", handler);
   },

@@ -17,6 +17,32 @@ import { stripProviderPrefix } from "../types.js";
 
 const log = createAppLogger("whisper");
 
+export function getLocalWhisperSetupFailure(error: unknown): {
+  error: "local_whisper_setup_failed";
+  reason: "cmake_missing" | "setup_failed";
+  detail: string;
+} | null {
+  const message = error instanceof Error ? error.message : String(error);
+  if (
+    !message.startsWith(
+      "whisper-server binary not found and automatic setup failed:",
+    )
+  ) {
+    return null;
+  }
+
+  const cmakeMissing =
+    /spawn cmake ENOENT/.test(message) ||
+    message.includes("CMake is required to build Local Whisper");
+  return {
+    error: "local_whisper_setup_failed",
+    reason: cmakeMissing ? "cmake_missing" : "setup_failed",
+    detail: cmakeMissing
+      ? "Local Whisper needs CMake to finish setup. Choose Freestyle Cloud or another model in Settings > Models."
+      : "Local Whisper could not finish setup. Choose Freestyle Cloud or another model in Settings > Models.",
+  };
+}
+
 export class WhisperLocalTranscriptionProvider
   implements TranscriptionProvider
 {

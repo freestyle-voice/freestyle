@@ -191,6 +191,33 @@ export function capture(
   }
 }
 
+/** Record an explicit model configuration or default-selection change. */
+export function captureModelSelection({
+  provider,
+  modelId,
+  type,
+  action,
+}: {
+  provider: string;
+  modelId: string;
+  type: string;
+  action: "configured" | "selected";
+}): void {
+  if (!isTelemetryEnabled()) return;
+  try {
+    Sentry.metrics.count("freestyle.model_selection", 1, {
+      attributes: {
+        provider,
+        model_id: modelId,
+        type,
+        action,
+      },
+    });
+  } catch {
+    // Metrics must never alter model selection behavior.
+  }
+}
+
 export function captureException(
   error: unknown,
   additionalProperties?: Record<string, unknown>,

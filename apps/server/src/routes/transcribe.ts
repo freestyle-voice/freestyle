@@ -35,6 +35,7 @@ import { getDefaultModels } from "../lib/providers.js";
 import { capture, captureException } from "../lib/sentry.js";
 import { invalidateSession } from "../lib/sessions.js";
 import { CloudAuthError } from "../lib/streaming/providers/freestyle-cloud.js";
+import { getLocalWhisperSetupFailure } from "../lib/streaming/providers/whisper-local.js";
 import { getProvider } from "../lib/streaming/registry.js";
 import {
   getApiKeyForProvider,
@@ -449,6 +450,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       log.error(
         `transcribe failed (${voiceProvider}/${voiceModel}): ${formatError(err)}`,
       );
+      const localWhisperSetupFailure = getLocalWhisperSetupFailure(err);
+      if (localWhisperSetupFailure) {
+        return c.json(localWhisperSetupFailure, 422);
+      }
       if (!isTransientCloudError(err)) {
         captureException(err, { provider: voiceProvider, model: voiceModel });
       }

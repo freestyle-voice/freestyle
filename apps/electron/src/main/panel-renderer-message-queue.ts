@@ -8,7 +8,10 @@ export type PanelRendererMessage =
   | { channel: "panel:dictation"; payload: PanelDictationEvent }
   | { channel: "panel:open-thread"; payload: string }
   | { channel: "panel:thread-updated"; payload: string }
-  | { channel: "dashboard:navigate"; payload: "/settings" | "/remix" };
+  | {
+      channel: "dashboard:navigate";
+      payload: "/settings" | "/settings/models" | "/remix";
+    };
 
 /**
  * Holds panel messages until React has registered its IPC listeners. Electron's

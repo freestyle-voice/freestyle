@@ -4,6 +4,7 @@ import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
 } from "./freestyle-cloud.js";
+import { captureModelSelection } from "./sentry.js";
 
 export function applyFreestyleCloudDefaults(): void {
   const db = getDb();
@@ -38,6 +39,22 @@ export function applyFreestyleCloudDefaults(): void {
     `INSERT INTO settings (key, value, updated_at) VALUES ('llm_cleanup', 'true', datetime('now'))
      ON CONFLICT(key) DO UPDATE SET value = 'true', updated_at = datetime('now')`,
   ).run();
+}
+
+/** Keep telemetry aligned with the paired defaults applied above. */
+export function recordFreestyleCloudDefaultSelection(): void {
+  captureModelSelection({
+    provider: FREESTYLE_CLOUD_PROVIDER_ID,
+    modelId: FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
+    type: "voice",
+    action: "selected",
+  });
+  captureModelSelection({
+    provider: FREESTYLE_CLOUD_PROVIDER_ID,
+    modelId: FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
+    type: "llm",
+    action: "selected",
+  });
 }
 
 export function revertFreestyleCloudDefaults(): void {

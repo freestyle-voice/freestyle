@@ -7,7 +7,10 @@ import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
 } from "../lib/freestyle-cloud.js";
-import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
+import {
+  applyFreestyleCloudDefaults,
+  recordFreestyleCloudDefaultSelection,
+} from "../lib/freestyle-cloud-defaults.js";
 import {
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
@@ -499,18 +502,7 @@ const models = new Hono()
     }
 
     applyFreestyleCloudDefaults();
-    captureModelSelection({
-      provider: FREESTYLE_CLOUD_PROVIDER_ID,
-      modelId: FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
-      type: "voice",
-      action: "selected",
-    });
-    captureModelSelection({
-      provider: FREESTYLE_CLOUD_PROVIDER_ID,
-      modelId: FREESTYLE_CLOUD_CLEANUP_MODEL_ID,
-      type: "llm",
-      action: "selected",
-    });
+    recordFreestyleCloudDefaultSelection();
 
     return c.json({ ok: true });
   })

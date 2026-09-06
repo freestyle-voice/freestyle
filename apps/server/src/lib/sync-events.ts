@@ -1,4 +1,8 @@
-export type SyncEvent = { resource: string; entityId?: string };
+export type SyncEvent = {
+  resource: string;
+  entityId?: string;
+  source?: "local" | "remote";
+};
 
 const listeners = new Set<(event: SyncEvent) => void>();
 

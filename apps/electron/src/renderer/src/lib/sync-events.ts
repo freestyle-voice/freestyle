@@ -1,8 +1,13 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { getApiBase, resolveApiBase } from "./api";
+import { resetBrainCache } from "./brain-fs";
 import { queryKeys } from "./query";
 
-type SyncEvent = { resource: string; entityId?: string };
+type SyncEvent = {
+  resource: string;
+  entityId?: string;
+  source?: "local" | "remote";
+};
 
 const resourceKeys: Record<string, readonly unknown[]> = {
   "brain-list": queryKeys.brain.all,
@@ -33,6 +38,12 @@ export function startSyncInvalidation(queryClient: QueryClient): () => void {
         ) as SyncEvent;
         const queryKey = resourceKeys[event.resource];
         if (queryKey) void queryClient.invalidateQueries({ queryKey });
+        if (
+          event.source === "remote" &&
+          (event.resource === "brain-file" || event.resource === "brain-list")
+        ) {
+          resetBrainCache();
+        }
       } catch {
         // A malformed local event must never break the renderer's query cache.
       }

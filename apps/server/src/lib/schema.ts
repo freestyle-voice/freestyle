@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 30;
+const SCHEMA_VERSION = 31;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -811,6 +811,18 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
       CREATE INDEX IF NOT EXISTS idx_sync_operations_due ON sync_operations (scope, state, next_attempt_at);
       CREATE UNIQUE INDEX IF NOT EXISTS idx_sync_operations_entity
         ON sync_operations (scope, resource, entity_id);
+    `);
+  }
+
+  if (currentVersion < 31) {
+    // v30 allowed only one operation per entity. That let a later local edit
+    // replace an in-flight request and reach Cloud out of order.
+    db.exec(`
+      DROP INDEX IF EXISTS idx_sync_operations_entity;
+      ALTER TABLE sync_operations
+        ADD COLUMN sequence INTEGER NOT NULL DEFAULT 0;
+      CREATE INDEX IF NOT EXISTS idx_sync_operations_entity_order
+        ON sync_operations (scope, resource, entity_id, sequence);
     `);
   }
 

@@ -23,6 +23,15 @@ type CloudFailure = {
   current?: { content: string; version: number };
 };
 
+class BrainUpstreamError extends Error {
+  constructor(
+    readonly status: number,
+    readonly payload: Record<string, unknown>,
+  ) {
+    super(String(payload.reason ?? "brain-failed"));
+  }
+}
+
 async function forward(
   segment: string,
   method: "GET" | "POST",
@@ -67,89 +76,132 @@ function scopeForCache(): Promise<string | null> {
   return cached ? Promise.resolve(cached) : resolveSyncScope();
 }
 
-async function drainBrainOperations(scope: string): Promise<void> {
-  const store = new LocalSyncStore(getDb());
-  const operations = store
-    .dueOperations(scope)
-    .filter((operation) => operation.resource === "brain-file");
-  await Promise.all(
-    operations.map(async (operation) => {
-      const body = operation.payload as { text?: unknown };
-      const request =
-        operation.kind === "write"
-          ? {
-              path: operation.entityId,
-              text: typeof body.text === "string" ? body.text : "",
-              ifMatch: operation.expectedRevision ?? undefined,
-              clientOperationId: operation.operationId,
-            }
-          : {
-              path: operation.entityId,
-              clientOperationId: operation.operationId,
-            };
-      const { status, payload } = await forward(
-        operation.kind === "write" ? "write" : "delete",
-        "POST",
-        request,
-      );
-      if (payload.ok === true) {
-        store.completeOperation(operation.operationId);
-        if (operation.kind === "write") {
-          const cached = store.readCached(
-            scope,
-            "brain-file",
-            operation.entityId,
-          );
-          if (cached) {
-            store.writeCached({
-              scope,
-              resource: "brain-file",
-              id: operation.entityId,
-              value: cached.value,
-              revision:
-                typeof payload.version === "number"
-                  ? payload.version
-                  : cached.revision,
-            });
-          }
+const activeBrainDrains = new Map<string, Promise<void>>();
+const requestedBrainDrains = new Set<string>();
+const recoveredBrainScopes = new Set<string>();
+const clearingBrainScopes = new Set<string>();
+
+async function processBrainOperation(
+  store: LocalSyncStore,
+  scope: string,
+  operation: ReturnType<LocalSyncStore["claimDueOperations"]>[number],
+): Promise<void> {
+  const body = operation.payload as { text?: unknown };
+  const request =
+    operation.kind === "write"
+      ? {
+          path: operation.entityId,
+          text: typeof body.text === "string" ? body.text : "",
+          ifMatch: operation.expectedRevision ?? undefined,
+          clientOperationId: operation.operationId,
         }
-        emitSyncEvent({ resource: "brain-file", entityId: operation.entityId });
-        emitSyncEvent({ resource: "brain-list" });
-        return;
-      }
-      const reason =
-        typeof payload.reason === "string" ? payload.reason : `http-${status}`;
-      if (reason === "conflict") {
-        const current = (payload as unknown as CloudFailure).current;
-        if (current) {
-          store.writeCached({
-            scope,
-            resource: "brain-file",
-            id: operation.entityId,
-            value: {
-              ok: true,
-              text: current.content,
-              version: current.version,
-            },
-            revision: current.version,
-          });
-        }
-        store.failOperation(operation.operationId, "conflict");
-        emitSyncEvent({ resource: "brain-file", entityId: operation.entityId });
-        return;
-      }
-      if (status >= 400 && status < 500 && status !== 409) {
-        store.failOperation(operation.operationId, reason);
-        return;
-      }
-      store.deferOperation(
-        operation.operationId,
-        operation.attempts + 1,
-        syncBackoffMs(operation.attempts + 1),
-        reason,
-      );
-    }),
+      : {
+          path: operation.entityId,
+          clientOperationId: operation.operationId,
+        };
+  const { status, payload } = await forward(
+    operation.kind === "write" ? "write" : "delete",
+    "POST",
+    request,
   );
+  if (payload.ok === true) {
+    store.completeOperation(
+      operation.operationId,
+      operation.kind === "write" && typeof payload.version === "number"
+        ? payload.version
+        : undefined,
+    );
+    emitSyncEvent({
+      resource: "brain-file",
+      entityId: operation.entityId,
+      source: "remote",
+    });
+    emitSyncEvent({ resource: "brain-list", source: "remote" });
+    return;
+  }
+  const reason =
+    typeof payload.reason === "string" ? payload.reason : `http-${status}`;
+  if (reason === "conflict") {
+    const current = (payload as unknown as CloudFailure).current;
+    // Do not overwrite a newer local edit while its predecessor reports a
+    // conflict. The failed head blocks that successor until the user retries,
+    // preserving the edit rather than replacing it with stale Cloud content.
+    if (current) {
+      if (store.hasQueuedSuccessor(operation.operationId)) {
+        store.updateCachedRevision({
+          scope,
+          resource: "brain-file",
+          id: operation.entityId,
+          revision: current.version,
+        });
+      } else {
+        store.writeCached({
+          scope,
+          resource: "brain-file",
+          id: operation.entityId,
+          value: {
+            ok: true,
+            text: current.content,
+            version: current.version,
+          },
+          revision: current.version,
+        });
+      }
+    }
+    store.failOperation(operation.operationId, "conflict");
+    emitSyncEvent({
+      resource: "brain-file",
+      entityId: operation.entityId,
+      source: "remote",
+    });
+    emitSyncEvent({ resource: "brain-list", source: "remote" });
+    return;
+  }
+  if (status >= 400 && status < 500 && status !== 409) {
+    store.failOperation(operation.operationId, reason);
+    return;
+  }
+  store.deferOperation(
+    operation.operationId,
+    operation.attempts + 1,
+    syncBackoffMs(operation.attempts + 1),
+    reason,
+  );
+}
+
+async function drainBrainOperations(scope: string): Promise<void> {
+  const active = activeBrainDrains.get(scope);
+  if (active) {
+    requestedBrainDrains.add(scope);
+    return active;
+  }
+  const drain = (async () => {
+    const store = new LocalSyncStore(getDb());
+    if (!recoveredBrainScopes.has(scope)) {
+      store.recoverSyncingOperations(scope, "brain-file");
+      recoveredBrainScopes.add(scope);
+    }
+    do {
+      requestedBrainDrains.delete(scope);
+      while (true) {
+        const operations = store.claimDueOperations(scope, "brain-file");
+        if (operations.length === 0) break;
+        await Promise.all(
+          operations.map((operation) =>
+            processBrainOperation(store, scope, operation),
+          ),
+        );
+      }
+    } while (requestedBrainDrains.has(scope));
+  })();
+  activeBrainDrains.set(scope, drain);
+  try {
+    await drain;
+  } finally {
+    if (activeBrainDrains.get(scope) === drain) {
+      activeBrainDrains.delete(scope);
+    }
+  }
 }
 
 let drainTimer: NodeJS.Timeout | null = null;
@@ -191,37 +243,53 @@ async function cachedRead(
     load: async () => {
       const response = await forward(segment, method, body);
       loadedStatus = response.status;
-      if (response.payload.ok !== true) {
-        throw new Error(String(response.payload.reason ?? "brain-failed"));
-      }
+      if (response.payload.ok !== true)
+        throw new BrainUpstreamError(response.status, response.payload);
       return response.payload;
     },
   });
   return { status: loadedStatus === 502 ? 200 : loadedStatus, payload };
 }
 
+async function respondCachedRead(
+  load: () => Promise<{ status: number; payload: Record<string, unknown> }>,
+): Promise<Response> {
+  try {
+    const { status, payload } = await load();
+    return new Response(JSON.stringify(payload), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+  } catch (error) {
+    if (error instanceof BrainUpstreamError) {
+      return new Response(JSON.stringify(error.payload), {
+        status: error.status,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    throw error;
+  }
+}
+
 const brainRoute = new Hono()
-  .get("/list", async (c) => {
-    const { status, payload } = await cachedRead(
-      await scopeForCache(),
-      "brain-list",
-      "all",
-      BRAIN_LIST_TTL_MS,
-      "list",
-      "GET",
+  .get("/list", async () => {
+    const scope = await scopeForCache();
+    return respondCachedRead(() =>
+      cachedRead(scope, "brain-list", "all", BRAIN_LIST_TTL_MS, "list", "GET"),
     );
-    return c.json(payload, status as 200);
   })
-  .get("/graph", async (c) => {
-    const { status, payload } = await cachedRead(
-      await scopeForCache(),
-      "brain-graph",
-      "all",
-      BRAIN_LIST_TTL_MS,
-      "graph",
-      "GET",
+  .get("/graph", async () => {
+    const scope = await scopeForCache();
+    return respondCachedRead(() =>
+      cachedRead(
+        scope,
+        "brain-graph",
+        "all",
+        BRAIN_LIST_TTL_MS,
+        "graph",
+        "GET",
+      ),
     );
-    return c.json(payload, status as 200);
   })
   .get("/export", async (c) => {
     const { status, payload } = await forward("export", "GET");
@@ -232,16 +300,13 @@ const brainRoute = new Hono()
     if (typeof body.path !== "string") {
       return c.json({ ok: false, reason: "invalid-path" }, 400);
     }
-    const { status, payload } = await cachedRead(
-      await scopeForCache(),
-      "brain-file",
-      body.path,
-      BRAIN_BODY_TTL_MS,
-      "read",
-      "POST",
-      { path: body.path },
+    const path = body.path;
+    const scope = await scopeForCache();
+    return respondCachedRead(() =>
+      cachedRead(scope, "brain-file", path, BRAIN_BODY_TTL_MS, "read", "POST", {
+        path,
+      }),
     );
-    return c.json(payload, status as 200);
   })
   .post("/write", async (c) => {
     const body = (await c.req.json()) as BrainWrite;
@@ -252,6 +317,9 @@ const brainRoute = new Hono()
     if (!scope) {
       const { status, payload } = await forward("write", "POST", body);
       return c.json(payload, status as 200);
+    }
+    if (clearingBrainScopes.has(scope)) {
+      return c.json({ ok: false, reason: "brain-clear-in-progress" }, 409);
     }
     const store = new LocalSyncStore(getDb());
     const previous = store.readCached(scope, "brain-file", body.path);
@@ -264,9 +332,21 @@ const brainRoute = new Hono()
       value: { ok: true, text: body.text, version: body.ifMatch ?? null },
       expectedRevision,
     });
-    emitSyncEvent({ resource: "brain-file", entityId: body.path });
-    emitSyncEvent({ resource: "brain-list" });
-    void drainBrainOperations(scope);
+    store.applyBrainListMutation({
+      scope,
+      kind: "write",
+      path: body.path,
+      text: body.text,
+    });
+    emitSyncEvent({
+      resource: "brain-file",
+      entityId: body.path,
+      source: "local",
+    });
+    emitSyncEvent({ resource: "brain-list", source: "local" });
+    void drainBrainOperations(scope).catch((error) =>
+      log.error(`Brain operation drain failed: ${error}`),
+    );
     // The canonical revision is assigned by Cloud; do not pretend the old
     // ifMatch revision is current while this local-first operation is pending.
     return c.json({ ok: true, pending: true });
@@ -281,20 +361,55 @@ const brainRoute = new Hono()
       const { status, payload } = await forward("delete", "POST", body);
       return c.json(payload, status as 200);
     }
+    if (clearingBrainScopes.has(scope)) {
+      return c.json({ ok: false, reason: "brain-clear-in-progress" }, 409);
+    }
     const store = new LocalSyncStore(getDb());
     store.deleteAndEnqueue({
       scope,
       resource: "brain-file",
       entityId: body.path,
     });
-    emitSyncEvent({ resource: "brain-file", entityId: body.path });
-    emitSyncEvent({ resource: "brain-list" });
-    void drainBrainOperations(scope);
+    store.applyBrainListMutation({
+      scope,
+      kind: "delete",
+      path: body.path,
+    });
+    emitSyncEvent({
+      resource: "brain-file",
+      entityId: body.path,
+      source: "local",
+    });
+    emitSyncEvent({ resource: "brain-list", source: "local" });
+    void drainBrainOperations(scope).catch((error) =>
+      log.error(`Brain operation drain failed: ${error}`),
+    );
     return c.json({ ok: true, pending: true });
   })
   .post("/clear", async (c) => {
-    const { status, payload } = await forward("clear", "POST", {});
-    return c.json(payload, status as 200);
+    const scope = await scopeForCache();
+    if (!scope) {
+      const { status, payload } = await forward("clear", "POST", {});
+      return c.json(payload, status as 200);
+    }
+    clearingBrainScopes.add(scope);
+    try {
+      await drainBrainOperations(scope);
+      const store = new LocalSyncStore(getDb());
+      if (store.getBrainStatus(scope).pending > 0) {
+        return c.json({ ok: false, reason: "brain-sync-pending" }, 409);
+      }
+      const { status, payload } = await forward("clear", "POST", {});
+      if (payload.ok === true) {
+        store.clearBrain(scope);
+        emitSyncEvent({ resource: "brain-file", source: "remote" });
+        emitSyncEvent({ resource: "brain-list", source: "remote" });
+        emitSyncEvent({ resource: "brain-graph", source: "remote" });
+      }
+      return c.json(payload, status as 200);
+    } finally {
+      clearingBrainScopes.delete(scope);
+    }
   });
 
 export { drainBrainOperations, startBrainSyncDrain, stopBrainSyncDrain };

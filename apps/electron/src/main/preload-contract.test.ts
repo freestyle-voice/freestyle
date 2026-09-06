@@ -348,7 +348,52 @@ describe("preload contract", () => {
     expect(formHandler).toContain("panelWindow?.webContents");
     expect(formHandler).not.toContain("settingsWindow?.webContents");
     expect(menuHandler.indexOf("hideNotifications()")).toBeLessThan(
-      menuHandler.indexOf("destroyCompanionWindow()"),
+      menuHandler.indexOf("setPetEnabled(false)"),
     );
+  });
+
+  it("disables the companion when its menu closes it so it stays closed after restart", async () => {
+    const main = await readFile(mainPath, "utf8");
+    const menuHandler = main.slice(
+      main.indexOf('ipcMain.on("companion:context-menu"'),
+      main.indexOf('ipcMain.on("sprite:event"'),
+    );
+
+    expect(menuHandler).toContain("setPetEnabled(false)");
+  });
+
+  it("updates an open Settings page when companion availability changes", async () => {
+    const [main, preload, settings] = await Promise.all([
+      readFile(mainPath, "utf8"),
+      readFile(preloadPath, "utf8"),
+      readFile(join(rendererRoot, "pages/settings.tsx"), "utf8"),
+    ]);
+
+    expect(main).toContain('webContents.send("pet:enabled", enabled)');
+    expect(preload).toContain('ipcRenderer.on("pet:enabled"');
+    expect(settings).toContain(
+      "window.api.onPetEnabled(petEnabledSync.onChanged)",
+    );
+  });
+
+  it("subscribes before reading companion availability so a close event wins", async () => {
+    const settings = await readFile(
+      join(rendererRoot, "pages/settings.tsx"),
+      "utf8",
+    );
+
+    expect(settings.indexOf("window.api.onPetEnabled")).toBeLessThan(
+      settings.indexOf(".petEnabled()"),
+    );
+    expect(settings).toContain("createPetEnabledStateSync");
+  });
+
+  it("cancels an unmounted Settings page's initial companion read", async () => {
+    const settings = await readFile(
+      join(rendererRoot, "pages/settings.tsx"),
+      "utf8",
+    );
+
+    expect(settings).toContain("petEnabledSync.dispose()");
   });
 });

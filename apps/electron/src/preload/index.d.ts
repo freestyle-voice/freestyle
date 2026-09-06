@@ -77,6 +77,7 @@ declare global {
       companionStatus: () => Promise<CompanionStatus | null>;
       petEnabled: () => Promise<boolean>;
       setPetEnabled: (enabled: boolean) => void;
+      onPetEnabled: (callback: (enabled: boolean) => void) => () => void;
       wakeCompanion: () => void;
       openCompanionWorkspace: () => void;
       beginCompanionPositionDrag: () => void;

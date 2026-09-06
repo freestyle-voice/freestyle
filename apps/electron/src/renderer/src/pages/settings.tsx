@@ -64,6 +64,7 @@ import {
 } from "@renderer/lib/deletion-confirmation";
 import { formatNumber } from "@renderer/lib/format";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
+import { createPetEnabledStateSync } from "@renderer/lib/pet-enabled";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import {
   invalidateThreads,
@@ -548,15 +549,22 @@ export default function SettingsPage(): React.JSX.Element {
   }, [checkPermissions]);
 
   useEffect(() => {
+    const petEnabledSync = createPetEnabledStateSync(setPetEnabled);
+    const offPetEnabled = window.api.onPetEnabled(petEnabledSync.onChanged);
     void window.api
       .companionForm()
       .then(setCompanionForm)
       .catch(() => {});
     void window.api
       .petEnabled()
-      .then(setPetEnabled)
+      .then(petEnabledSync.onInitial)
       .catch(() => {});
-    return window.api.onCompanionForm(setCompanionForm);
+    const offForm = window.api.onCompanionForm(setCompanionForm);
+    return () => {
+      petEnabledSync.dispose();
+      offForm();
+      offPetEnabled();
+    };
   }, []);
 
   const handleDeviceChange = useCallback((deviceId: string) => {

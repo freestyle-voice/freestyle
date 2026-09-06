@@ -144,4 +144,19 @@ describe("a dictation that ends before its session is live", () => {
     ]);
     session.cancel();
   });
+
+  it("sends the live language list when opening a Cloud session", async () => {
+    const { session, socket } = await openSession("freestyle-cloud");
+
+    socket.open();
+
+    expect(socket.control.map((message) => JSON.parse(message))).toContainEqual(
+      {
+        type: "start",
+        languages: ["en"],
+        skipPostProcess: false,
+      },
+    );
+    session.cancel();
+  });
 });

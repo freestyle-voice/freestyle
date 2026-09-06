@@ -352,9 +352,9 @@ export async function transcribeWithFreestyleCloud(opts: {
   token: string;
   audio: Uint8Array;
   /**
-   * Per-request language override (ISO codes). Only sent when a
-   * `beforeTranscribe` plugin overrode the language for this dictation;
-   * otherwise omitted so the cloud uses the user's synced language list.
+   * Live language selection (ISO codes). Sent for every new desktop request so
+   * this dictation does not wait for preference sync; an empty array explicitly
+   * requests auto-detect.
    */
   languages?: string[];
   appContext?: string | null;
@@ -370,18 +370,15 @@ export async function transcribeWithFreestyleCloud(opts: {
 }): Promise<CloudTranscribeResult> {
   const audio = opts.audio as Uint8Array<ArrayBuffer>;
 
-  // The cloud reads the user's synced cleanup preferences (intensity, custom
-  // prompt, tones, app assignments, languages, vocabulary) from the
-  // member_preferences row, so this payload no longer carries those saved
-  // defaults. We forward only request-scoped values: the audio, per-request
-  // language / vocabulary overrides, `appContext`, plugin `systemFragments`,
-  // and `skipPostProcess` for the raw ("skip cleanup") mode.
+  // The cloud reads cleanup defaults from member_preferences. Languages are an
+  // exception because they affect this dictation's recognizer immediately.
   const form = new FormData();
   form.append("audio", new Blob([audio], { type: "audio/wav" }), "audio.wav");
   // The multipart transcribe endpoint expects `languages` as a JSON-encoded
-  // string array (form fields are strings). Omit it entirely to defer to the
-  // cloud's synced language list.
-  if (opts.languages?.length) {
+  // string array (form fields are strings). Preserve [] so the Cloud can
+  // distinguish an explicit auto-detect request from an older client omitting
+  // the field entirely.
+  if (opts.languages !== undefined) {
     form.append("languages", JSON.stringify(opts.languages));
   }
   if (opts.appContext) form.append("appContext", opts.appContext);

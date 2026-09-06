@@ -125,6 +125,7 @@ describe("POST /api/transcribe — combined cloud + beforeCleanup", () => {
   });
 
   it("keeps combined mode and forwards system fragments", async () => {
+    writeSetting("languages", JSON.stringify(["en", "hi"]));
     registry.current = new PluginRegistry([
       {
         name: "fragment",
@@ -139,13 +140,13 @@ describe("POST /api/transcribe — combined cloud + beforeCleanup", () => {
     const opts = lastCallOpts();
     expect(opts.mode).toBe("combined");
     expect(opts.systemFragments).toEqual(["Add emoji."]);
-    // The cloud reads the user's synced cleanup preferences (tones, intensity,
-    // app assignments, languages, vocabulary) from member_preferences, so the
-    // combined request must NOT carry those saved defaults.
+    // Cleanup preferences remain cloud defaults, but the live language choice
+    // must travel with this request so a stale preference cache cannot change
+    // the recognizer or cleanup language constraint.
     expect(opts.intensity).toBeUndefined();
     expect(opts.personalTone).toBeUndefined();
     expect(opts.appAssignments).toBeUndefined();
-    expect(opts.languages).toBeUndefined();
+    expect(opts.languages).toEqual(["en", "hi"]);
     expect(opts.vocabulary).toBeUndefined();
     // Combined mode does its cleanup remotely — never touches local postProcess.
     expect(postProcessSpy).not.toHaveBeenCalled();

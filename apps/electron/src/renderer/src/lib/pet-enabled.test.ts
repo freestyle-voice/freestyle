@@ -21,4 +21,18 @@ describe("pet-enabled state synchronization", () => {
 
     expect(values).toEqual([true, false]);
   });
+
+  it("ignores a cleaned-up Settings page's pending initial read", () => {
+    const values: boolean[] = [];
+    const stale = createPetEnabledStateSync((enabled) => values.push(enabled));
+    const current = createPetEnabledStateSync((enabled) =>
+      values.push(enabled),
+    );
+
+    stale.dispose();
+    current.onChanged(false);
+    stale.onInitial(true);
+
+    expect(values).toEqual([false]);
+  });
 });

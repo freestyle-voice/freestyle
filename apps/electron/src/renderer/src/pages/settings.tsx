@@ -561,6 +561,7 @@ export default function SettingsPage(): React.JSX.Element {
       .catch(() => {});
     const offForm = window.api.onCompanionForm(setCompanionForm);
     return () => {
+      petEnabledSync.dispose();
       offForm();
       offPetEnabled();
     };

@@ -387,4 +387,13 @@ describe("preload contract", () => {
     );
     expect(settings).toContain("createPetEnabledStateSync");
   });
+
+  it("cancels an unmounted Settings page's initial companion read", async () => {
+    const settings = await readFile(
+      join(rendererRoot, "pages/settings.tsx"),
+      "utf8",
+    );
+
+    expect(settings).toContain("petEnabledSync.dispose()");
+  });
 });

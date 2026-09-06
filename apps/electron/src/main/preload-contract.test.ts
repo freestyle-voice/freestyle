@@ -371,6 +371,20 @@ describe("preload contract", () => {
 
     expect(main).toContain('webContents.send("pet:enabled", enabled)');
     expect(preload).toContain('ipcRenderer.on("pet:enabled"');
-    expect(settings).toContain("window.api.onPetEnabled(setPetEnabled)");
+    expect(settings).toContain(
+      "window.api.onPetEnabled(petEnabledSync.onChanged)",
+    );
+  });
+
+  it("subscribes before reading companion availability so a close event wins", async () => {
+    const settings = await readFile(
+      join(rendererRoot, "pages/settings.tsx"),
+      "utf8",
+    );
+
+    expect(settings.indexOf("window.api.onPetEnabled")).toBeLessThan(
+      settings.indexOf(".petEnabled()"),
+    );
+    expect(settings).toContain("createPetEnabledStateSync");
   });
 });

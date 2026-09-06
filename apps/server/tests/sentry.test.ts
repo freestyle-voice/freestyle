@@ -29,6 +29,7 @@ vi.mock("../src/lib/db.js", () => ({
 import {
   capture,
   captureException,
+  captureModelSelection,
   identifyCloudUser,
   invalidateTelemetrySetting,
   registerSuperProperties,
@@ -76,6 +77,28 @@ describe("Sentry telemetry adapter", () => {
       {
         unit: "millisecond",
         attributes: { "event.name": "transcription completed" },
+      },
+    );
+  });
+
+  it("records the selected model as a queryable metric", () => {
+    captureModelSelection({
+      provider: "freestyle-cloud",
+      modelId: "freestyle-cloud/stt",
+      type: "voice",
+      action: "selected",
+    });
+
+    expect(sentry.metrics.count).toHaveBeenCalledWith(
+      "freestyle.model_selection",
+      1,
+      {
+        attributes: {
+          provider: "freestyle-cloud",
+          model_id: "freestyle-cloud/stt",
+          type: "voice",
+          action: "selected",
+        },
       },
     );
   });

@@ -844,6 +844,19 @@ function openPanelSettings(): void {
   });
 }
 
+function openPanelModels(): void {
+  openPanel({ trigger: "other" });
+  const win = panelWindow;
+  if (win && !win.isDestroyed()) {
+    win.show();
+    win.focus();
+  }
+  panelRendererMessages.send({
+    channel: "dashboard:navigate",
+    payload: "/settings/models",
+  });
+}
+
 /**
  * Resolves once a freshly-created pill window has finished loading and is
  * visible.  `null` when no deferred show is in progress.
@@ -2047,8 +2060,26 @@ app.whenReady().then(async () => {
       cancelId: 1,
     });
     if (response !== 0) return false;
-    openPanel({ focusComposer: true });
+    openPanelModels();
     return true;
+  });
+
+  ipcMain.handle("local-whisper:prompt-recovery", async () => {
+    const { response } = await dialog.showMessageBox({
+      type: "warning",
+      message: "Local Whisper needs setup",
+      detail:
+        "CMake is required to finish setting up Local Whisper. Use Freestyle Cloud instead, or choose another model in Settings > Models.",
+      buttons: ["Use Freestyle Cloud", "Choose another model", "Not now"],
+      defaultId: 0,
+      cancelId: 2,
+    });
+    if (response === 0) return "cloud";
+    if (response === 1) {
+      openPanelModels();
+      return "models";
+    }
+    return "dismissed";
   });
 
   // Shown when Freestyle Cloud reports the free-tier usage limit is exhausted.

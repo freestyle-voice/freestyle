@@ -394,6 +394,24 @@ async function buildFromSource(): Promise<void> {
   const binDir = getBinDir();
   if (!existsSync(binDir)) mkdirSync(binDir, { recursive: true });
 
+  // Check the one required build tool before downloading and unpacking source.
+  // This lets the caller offer an actionable fallback without leaving a partial
+  // source tree behind on machines that do not have CMake installed.
+  try {
+    await execFile("cmake", ["--version"], { timeout: 10_000 });
+  } catch (err) {
+    const code =
+      err && typeof err === "object" && "code" in err
+        ? (err as { code?: unknown }).code
+        : undefined;
+    if (code === "ENOENT") {
+      throw new Error(
+        "CMake is required to build Local Whisper. Install CMake and try again.",
+      );
+    }
+    throw err;
+  }
+
   const srcDir = join(binDir, "whisper.cpp-src");
   const buildDir = join(srcDir, "build");
 

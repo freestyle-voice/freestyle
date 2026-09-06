@@ -23,7 +23,10 @@ import {
   updateCloudProfile,
   updateCloudUserName,
 } from "../lib/freestyle-cloud.js";
-import { applyFreestyleCloudDefaults } from "../lib/freestyle-cloud-defaults.js";
+import {
+  applyFreestyleCloudDefaults,
+  recordFreestyleCloudDefaultSelection,
+} from "../lib/freestyle-cloud-defaults.js";
 import {
   pullCloudPreferences,
   pullCloudPreferencesWithRetry,
@@ -84,6 +87,7 @@ const auth = new Hono()
         host: freestyleCloudUrl(),
       });
       applyFreestyleCloudDefaults();
+      recordFreestyleCloudDefaultSelection();
       identifyCloudUser(user);
       // If a DIFFERENT account previously synced on this device, scrub its
       // synced preferences + vocabulary first so this account seeds cleanly and

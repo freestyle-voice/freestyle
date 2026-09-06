@@ -8,6 +8,10 @@ import {
   FREESTYLE_CLOUD_TRANSCRIBE_MODEL_ID,
 } from "../lib/freestyle-cloud.js";
 import {
+  applyFreestyleCloudDefaults,
+  recordFreestyleCloudDefaultSelection,
+} from "../lib/freestyle-cloud-defaults.js";
+import {
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
   MLX_ASR_PROVIDER_ID,
@@ -16,7 +20,8 @@ import {
 import { getMlxModelStatus } from "../lib/mlx-asr/models.js";
 import { reconcileUnsupportedMlxVoiceDefault } from "../lib/mlx-asr/reconcile.js";
 import { canRunMlxAsr } from "../lib/mlx-asr/server.js";
-import { capture } from "../lib/sentry.js";
+import { capture, captureModelSelection } from "../lib/sentry.js";
+import { getSessionToken } from "../lib/sessions.js";
 import {
   LEGACY_WHISPER_MODELS,
   WHISPER_MODELS,
@@ -491,6 +496,16 @@ const models = new Hono()
     }[];
     return c.json(rows);
   })
+  .post("/defaults/freestyle-cloud", (c) => {
+    if (!getSessionToken()) {
+      return c.json({ error: "cloud_auth_required" }, 401);
+    }
+
+    applyFreestyleCloudDefaults();
+    recordFreestyleCloudDefaultSelection();
+
+    return c.json({ ok: true });
+  })
   .post("/configured", zValidator("json", configureModelSchema), (c) => {
     const db = getDb();
     const body = c.req.valid("json");
@@ -525,6 +540,14 @@ const models = new Hono()
       type: body.type,
       is_default: body.is_default ?? false,
     });
+    if (body.is_default) {
+      captureModelSelection({
+        provider: body.provider,
+        modelId: body.model_id,
+        type: body.type,
+        action: "selected",
+      });
+    }
 
     return c.json({ id: result.lastInsertRowid, ...body }, 201);
   })
@@ -553,6 +576,12 @@ const models = new Hono()
       type: row.type,
       provider: row.provider,
       model_id: row.model_id,
+    });
+    captureModelSelection({
+      provider: row.provider,
+      modelId: row.model_id,
+      type: row.type,
+      action: "selected",
     });
 
     return c.json({ ok: true });

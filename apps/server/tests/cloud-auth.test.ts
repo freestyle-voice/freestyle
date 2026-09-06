@@ -4,6 +4,15 @@ import { getDb, readSetting } from "../src/lib/db.js";
 import { getDefaultModels } from "../src/lib/providers.js";
 import { clearSession, getSession, setSession } from "../src/lib/sessions.js";
 
+const telemetry = vi.hoisted(() => ({
+  captureModelSelection: vi.fn(),
+}));
+
+vi.mock("../src/lib/sentry.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/lib/sentry.js")>();
+  return { ...actual, captureModelSelection: telemetry.captureModelSelection };
+});
+
 const app = createApp();
 
 vi.mock("../src/lib/freestyle-cloud.js", async (importOriginal) => {
@@ -182,6 +191,24 @@ describe("Freestyle Transcribe default on sign-in", () => {
     expect(readSetting("llm_cleanup")).toBe("true");
   });
 
+  it("records the defaults selected when sign-in applies Freestyle Cloud", async () => {
+    const res = await signIn();
+
+    expect(res.status).toBe(200);
+    expect(telemetry.captureModelSelection).toHaveBeenNthCalledWith(1, {
+      provider: "freestyle-cloud",
+      modelId: "freestyle-cloud/stt",
+      type: "voice",
+      action: "selected",
+    });
+    expect(telemetry.captureModelSelection).toHaveBeenNthCalledWith(2, {
+      provider: "freestyle-cloud",
+      modelId: "freestyle-cloud/post-process",
+      type: "llm",
+      action: "selected",
+    });
+  });
+
   it("overrides an existing non-cloud voice default and turns cleanup on", async () => {
     insertNonCloudVoiceDefault();
     getDb()
@@ -215,6 +242,51 @@ describe("Freestyle Transcribe default on sign-in", () => {
     expect(res.status).toBe(201);
 
     expect(getDefaultModels().voice?.provider).toBe("openai");
+  });
+
+  it("records a user-selected default model for the metrics dashboard", async () => {
+    const res = await app.request("/api/models/configured", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        provider: "openai",
+        model_id: "openai/whisper-1",
+        model_name: "OpenAI Whisper",
+        type: "voice",
+        is_default: true,
+      }),
+    });
+
+    expect(res.status).toBe(201);
+    expect(telemetry.captureModelSelection).toHaveBeenCalledWith({
+      provider: "openai",
+      modelId: "openai/whisper-1",
+      type: "voice",
+      action: "selected",
+    });
+  });
+
+  it("requires sign-in before switching the defaults back to Freestyle Cloud", async () => {
+    const res = await app.request("/api/models/defaults/freestyle-cloud", {
+      method: "POST",
+    });
+
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ error: "cloud_auth_required" });
+  });
+
+  it("re-applies the Freestyle defaults after an authenticated recovery choice", async () => {
+    await signIn();
+    insertNonCloudVoiceDefault();
+
+    const res = await app.request("/api/models/defaults/freestyle-cloud", {
+      method: "POST",
+    });
+
+    expect(res.status).toBe(200);
+    expect(getDefaultModels().voice?.provider).toBe("freestyle-cloud");
+    expect(getDefaultModels().llm?.provider).toBe("freestyle-cloud");
+    expect(readSetting("llm_cleanup")).toBe("true");
   });
 
   it("keeps the Freestyle voice default and disables cleanup on sign-out", async () => {

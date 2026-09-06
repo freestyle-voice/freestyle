@@ -48,6 +48,9 @@ declare global {
       onServerChanged: (callback: () => void) => () => void;
       openLogsFolder: () => Promise<boolean>;
       openExternal: (url: string) => Promise<boolean>;
+      localWhisperPromptRecovery: () => Promise<
+        "cloud" | "models" | "dismissed"
+      >;
       onHotkeyDown: (callback: () => void) => () => void;
       onHotkeyUp: (callback: () => void) => () => void;
       onDictationCancel: (callback: () => void) => () => void;
@@ -113,7 +116,7 @@ declare global {
       panelPointerEntered: () => void;
       onPanelFocusComposer: (callback: () => void) => () => void;
       onDashboardNavigate: (
-        callback: (route: "/settings" | "/remix") => void,
+        callback: (route: "/settings" | "/settings/models" | "/remix") => void,
       ) => () => void;
       notificationPresent: (payload: {
         messageId: string;

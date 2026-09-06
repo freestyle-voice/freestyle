@@ -221,6 +221,12 @@ const api = {
   petEnabled: (): Promise<boolean> => ipcRenderer.invoke("pet:enabled"),
   setPetEnabled: (enabled: boolean): void =>
     ipcRenderer.send("pet:set-enabled", enabled),
+  onPetEnabled: (callback: (enabled: boolean) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, enabled: unknown) =>
+      callback(enabled === true);
+    ipcRenderer.on("pet:enabled", listener);
+    return () => ipcRenderer.removeListener("pet:enabled", listener);
+  },
   wakeCompanion: (): void => ipcRenderer.send("companion:wake"),
   openCompanionWorkspace: (): void =>
     ipcRenderer.send("companion:open-workspace"),

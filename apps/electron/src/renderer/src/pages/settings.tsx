@@ -556,7 +556,12 @@ export default function SettingsPage(): React.JSX.Element {
       .petEnabled()
       .then(setPetEnabled)
       .catch(() => {});
-    return window.api.onCompanionForm(setCompanionForm);
+    const offForm = window.api.onCompanionForm(setCompanionForm);
+    const offPetEnabled = window.api.onPetEnabled(setPetEnabled);
+    return () => {
+      offForm();
+      offPetEnabled();
+    };
   }, []);
 
   const handleDeviceChange = useCallback((deviceId: string) => {

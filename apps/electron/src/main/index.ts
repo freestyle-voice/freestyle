@@ -3636,12 +3636,16 @@ ipcMain.handle("companion:status", () => companionStatus);
 
 ipcMain.handle("pet:enabled", () => petEnabled());
 
+function setPetEnabled(enabled: boolean): void {
+  writeSettings({ petEnabled: enabled });
+  panelWindow?.webContents.send("pet:enabled", enabled);
+  if (enabled) createCompanionWindow();
+  else destroyCompanionWindow();
+}
+
 ipcMain.on("pet:set-enabled", (event, enabled: unknown) => {
   if (event.sender !== panelWindow?.webContents) return;
-  const next = enabled === true;
-  writeSettings({ petEnabled: next });
-  if (next) createCompanionWindow();
-  else destroyCompanionWindow();
+  setPetEnabled(enabled === true);
 });
 
 ipcMain.on("companion:wake", (event) => {
@@ -3715,7 +3719,7 @@ ipcMain.on("companion:context-menu", (event) => {
       label: "Close companion",
       click: () => {
         hideNotifications();
-        destroyCompanionWindow();
+        setPetEnabled(false);
       },
     },
   ]).popup({ window: win });

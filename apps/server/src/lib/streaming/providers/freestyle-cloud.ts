@@ -55,13 +55,17 @@ export class FreestyleCloudTranscriptionProvider
     if (!opts.apiKey) throw new FreestyleCloudAuthError();
 
     // The cloud reads the user's synced vocabulary from the member_preferences
-    // row, so we no longer send the saved bias here. `opts.language` is
-    // forwarded as-is: it carries a per-request plugin language override when
-    // present, and is otherwise redundant with the synced language list.
+    // row, so we no longer send the saved bias here. Prefer the complete live
+    // selection, including `[]` for auto-detect; retain the singular language
+    // fallback for older internal callers.
     const data = await transcribeWithFreestyleCloud({
       token: opts.apiKey,
       audio: opts.audio,
-      ...(opts.language ? { languages: [opts.language] } : {}),
+      ...(opts.languages !== undefined
+        ? { languages: opts.languages }
+        : opts.language
+          ? { languages: [opts.language] }
+          : {}),
       mode: "raw",
     });
     return {
@@ -77,7 +81,15 @@ export class FreestyleCloudTranscriptionProvider
   }
 
   openStreamingSession(opts: StreamingSessionOptions): StreamSession {
-    const { apiKey, model, translate, cleanup, callbacks, appContext } = opts;
+    const {
+      apiKey,
+      model,
+      languages,
+      translate,
+      cleanup,
+      callbacks,
+      appContext,
+    } = opts;
 
     if (!apiKey) {
       throw new FreestyleCloudAuthError();
@@ -90,19 +102,13 @@ export class FreestyleCloudTranscriptionProvider
       },
     });
 
-    // The cloud DO reads the user's synced preferences (languages, vocabulary,
-    // intensity, custom prompt, tones, app assignments) from the
-    // member_preferences row at handshake time and applies them to both the
-    // Soniox recognizer and the cleanup prompt. So the `start` message no
-    // longer carries those saved defaults — it sends only request-scoped
-    // control values: `translate` (a local setting, not synced), the
-    // per-session `skipPostProcess` flag, plugin `systemFragments` (never
-    // synced), and the live `appContext`. `translate` is guarded server-side
-    // against the resolved (synced) language list, so it's safe to send
-    // whenever the local translate setting is on even though we omit
-    // `languages` here.
+    // Languages are a live dictation control: including the local selection
+    // makes the next session correct even while cross-device preference sync or
+    // a region-local Cloud cache is catching up. Other cleanup defaults remain
+    // server-side; only request-scoped values travel here.
     const buildStartMessage = () => ({
       type: "start" as const,
+      languages: languages ?? [],
       ...(translate ? { translate: true } : {}),
       skipPostProcess: cleanup?.skipPostProcess ?? false,
       ...(currentContext ? { context: currentContext } : {}),

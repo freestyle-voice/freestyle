@@ -14,6 +14,7 @@ import {
 } from "../lib/freestyle-cloud.js";
 import { saveProcessedHistory, saveRawHistory } from "../lib/history-store.js";
 import { getLanguagesSetting } from "../lib/language.js";
+import { MLX_ASR_PROVIDER_ID } from "../lib/mlx-asr/constants.js";
 import {
   FreestyleEventType,
   PipelineStage,
@@ -257,20 +258,9 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     }
 
     try {
-      // The cloud reads the user's synced cleanup preferences (intensity,
-      // custom prompt, tones, app assignments, languages, vocabulary) from the
-      // member_preferences row — kept in step via preferences-sync. So we no
-      // longer forward those saved defaults here; the cloud resolves them
-      // server-side (`payload ?? stored ?? default`). We only forward values
-      // that are per-request and therefore never synced:
-      //   - `languages` when a `beforeTranscribe` plugin overrode it for this
-      //     one dictation (else omit → cloud uses the synced language list),
-      //   - `vocabulary` when a `beforeTranscribe` plugin overrode the ASR bias
-      //     for this one dictation (else omit → cloud uses the synced terms),
-      //   - `appContext` and `systemFragments`, which are request-scoped.
-      const languageOverrideForCloud = languageOverride
-        ? [languageOverride]
-        : undefined;
+      // Languages are sent for every Cloud request so the live local selection
+      // wins even before the asynchronous preference sync reaches Cloud.
+      const languagesForCloud = effectiveLanguages;
       const vocabularyOverride = beforeTranscribeOutput.bias
         ? { terms: beforeTranscribeOutput.bias }
         : undefined;
@@ -279,9 +269,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         audio: audioData,
         appContext,
         mode: useCombined ? "combined" : "raw",
-        ...(languageOverrideForCloud
-          ? { languages: languageOverrideForCloud }
-          : {}),
+        languages: languagesForCloud,
         ...(vocabularyOverride ? { vocabulary: vocabularyOverride } : {}),
         ...(useCombined && systemFragments.length > 0
           ? { systemFragments }
@@ -411,13 +399,19 @@ const transcribeRoute = new Hono().post("/", async (c) => {
             beforeTranscribeOutput.bias,
           )
         : resolveAsrVocabularyBias(voiceProvider, voiceModel);
+      const providerLanguage =
+        voiceProvider === MLX_ASR_PROVIDER_ID ? undefined : primaryLanguage;
       log.debug(`bias=${JSON.stringify(bias)}`);
       const t0 = Date.now();
       const result = await provider.transcribe({
         audio: audioData,
         model: voiceModel,
         apiKey,
-        ...(primaryLanguage ? { language: primaryLanguage } : {}),
+        ...(voiceProvider === FREESTYLE_CLOUD_PROVIDER_ID ||
+        voiceProvider === MLX_ASR_PROVIDER_ID
+          ? { languages: effectiveLanguages }
+          : {}),
+        ...(providerLanguage ? { language: providerLanguage } : {}),
         bias,
         appContext,
       });

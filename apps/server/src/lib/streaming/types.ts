@@ -32,6 +32,8 @@ export interface TranscribeOptions {
   apiKey: string;
   /** ISO-639-1 language hint; omitted lets the model auto-detect. */
   language?: string;
+  /** Live language selection for providers that accept multiple languages. */
+  languages?: string[];
   /** ASR-only vocabulary bias for the first recognition pass. */
   bias?: AsrVocabularyBias | null;
   appContext?: string | null;

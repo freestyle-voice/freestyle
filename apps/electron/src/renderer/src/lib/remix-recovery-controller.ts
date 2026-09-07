@@ -160,20 +160,18 @@ export class RemixRecoveryController {
     body?: unknown,
     method = body === undefined ? "GET" : "POST",
   ): Promise<T> {
-    const response = await this.options.fetch(
-      path,
-      body === undefined && method === "GET"
-        ? undefined
-        : {
-            method,
-            headers: {
-              "Content-Type": "application/json",
-              "X-Remix-User": this.ownerId,
-              "X-Remix-Host": encodeURIComponent(this.ownerHost),
-            },
-            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-          },
-    );
+    const response = await this.options.fetch(path, {
+      method,
+      // Reads are account-scoped too. A mounted observer can outlive a
+      // sign-out, so every request after identity discovery must carry the
+      // identity it was initialized under.
+      headers: {
+        "X-Remix-User": this.ownerId,
+        "X-Remix-Host": encodeURIComponent(this.ownerHost),
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
     if (!response.ok)
       throw Object.assign(
         new Error(

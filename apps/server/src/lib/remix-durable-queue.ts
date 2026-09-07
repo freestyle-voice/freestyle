@@ -26,6 +26,8 @@ type QueueState = {
   activeRequest?: Record<string, unknown>;
   retryAttempts?: number;
   retryAt?: number;
+  transportRetryAttempts?: number;
+  transportRetryAt?: number;
   recoveryPaused?: boolean;
 };
 type Registry = Record<string, QueueState>;
@@ -75,6 +77,8 @@ export function registerRemixTurn(
     activeRequest: request,
     retryAttempts: 0,
     retryAt: undefined,
+    transportRetryAttempts: undefined,
+    transportRetryAt: undefined,
     recoveryPaused: false,
   });
 }
@@ -158,6 +162,8 @@ export function steerRemixQueuedMessage(threadId: string, id: string) {
   state.recoveryPaused = false;
   state.retryAttempts = 0;
   state.retryAt = undefined;
+  state.transportRetryAttempts = undefined;
+  state.transportRetryAt = undefined;
   if (state.activeTurnId) {
     deferRemixCancel(state.activeTurnId);
     void flushRemixCancels();
@@ -168,6 +174,48 @@ export function steerRemixQueuedMessage(threadId: string, id: string) {
 }
 const draining = new Set<string>();
 const RETRY_DELAYS = [3_000, 6_000, 12_000, 24_000, 30_000];
+
+function resetTransportRetry(threadId: string) {
+  const state = read(threadId);
+  if (
+    state.transportRetryAttempts === undefined &&
+    state.transportRetryAt === undefined
+  )
+    return;
+  state.transportRetryAttempts = undefined;
+  state.transportRetryAt = undefined;
+  write(threadId, state);
+}
+
+function deferTransportRetry(threadId: string, key: string, error: unknown) {
+  if (scope() !== key) return;
+  const state = read(threadId);
+  if (state.paused || state.recoveryPaused) return;
+  const status = (error as { status?: number })?.status;
+  // Authorization and malformed requests will not recover through a retry;
+  // retain the queue for the visible Resume affordance instead of polling.
+  if (
+    status &&
+    status >= 400 &&
+    status < 500 &&
+    status !== 408 &&
+    status !== 429
+  ) {
+    state.recoveryPaused = true;
+    state.transportRetryAt = undefined;
+    write(threadId, state);
+    return;
+  }
+  const attempts = (state.transportRetryAttempts ?? 0) + 1;
+  state.transportRetryAttempts = attempts;
+  if (attempts >= RETRY_DELAYS.length) {
+    state.recoveryPaused = true;
+    state.transportRetryAt = undefined;
+  } else {
+    state.transportRetryAt = Date.now() + RETRY_DELAYS[attempts - 1];
+  }
+  write(threadId, state);
+}
 onRemixCancellationSettled(({ turnId, clientRequestId }) => {
   for (const [threadId, state] of Object.entries(registry())) {
     let changed = false;
@@ -207,13 +255,22 @@ async function drainThread(threadId: string) {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         signal: AbortSignal.timeout(15_000),
       });
-      if (!response.ok) throw new Error("remix_queue_unavailable");
+      if (!response.ok)
+        throw Object.assign(new Error("remix_queue_unavailable"), {
+          status: response.status,
+        });
       const payload = await response.json();
       if (scope() !== key) throw new Error("remix_queue_account_changed");
+      resetTransportRetry(threadId);
       return payload;
     };
     let state = read(threadId);
     if (state.paused || state.recoveryPaused) return;
+    if (state.transportRetryAt) {
+      if (Date.now() < state.transportRetryAt) return;
+      state.transportRetryAt = undefined;
+      write(threadId, state);
+    }
     if (state.activeTurnId) {
       const observedTurn = state.activeTurnId;
       const receipt = (await cloud(`remix/turns/${observedTurn}`)) as {
@@ -323,9 +380,10 @@ async function drainThread(threadId: string) {
       deferRemixCancel(receipt.turn.id);
       void flushRemixCancels();
     }
-  } catch {
+  } catch (error) {
     // Retain the original request and queue item until an idempotent admission
     // succeeds. This worker runs independently of every renderer lifecycle.
+    deferTransportRetry(threadId, key, error);
   } finally {
     draining.delete(lock);
   }

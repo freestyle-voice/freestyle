@@ -18,6 +18,10 @@ const signIn = (id = "user-a") =>
     user: { id, email: "test@example.test" },
     host: freestyleCloudUrl(),
   });
+const ownerHeaders = (id = "user-a", host = freestyleCloudUrl()) => ({
+  "X-Remix-User": id,
+  "X-Remix-Host": encodeURIComponent(host),
+});
 beforeEach(() => signIn());
 afterEach(async () => {
   vi.stubGlobal(
@@ -85,14 +89,18 @@ describe("additive durable Remix proxy", () => {
     );
     const response = await app.request(
       `/api/remix/turns/${turnId}/actions/${actionId}`,
+      { headers: ownerHeaders() },
     );
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
       action: { id: actionId, status: "expired" },
     });
     expect(
-      (await app.request(`/api/remix/turns/${turnId}/actions/not-a-uuid`))
-        .status,
+      (
+        await app.request(`/api/remix/turns/${turnId}/actions/not-a-uuid`, {
+          headers: ownerHeaders(),
+        })
+      ).status,
     ).toBe(400);
   });
   it("rejects an old owner's mutation after identity lookup but before the POST", async () => {
@@ -157,6 +165,23 @@ describe("additive durable Remix proxy", () => {
         })
       ).status,
     ).toBe(401);
+  });
+  it("rejects an old owner's durable reads after the account changes", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json({ turn: { id: turnId, status: "running" } }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const oldOwner = ownerHeaders();
+    expect(
+      (await app.request(`/api/remix/turns/${turnId}`, { headers: oldOwner }))
+        .status,
+    ).toBe(200);
+    signIn("user-b");
+    expect(
+      (await app.request(`/api/remix/turns/${turnId}`, { headers: oldOwner }))
+        .status,
+    ).toBe(401);
+    expect(fetch).toHaveBeenCalledOnce();
   });
   it("discards an admission response if the signed-in account changed", async () => {
     vi.stubGlobal(
@@ -235,11 +260,19 @@ describe("additive durable Remix proxy", () => {
         }),
       ),
     );
-    const response = await app.request(`/api/remix/turns/${turnId}`);
+    const response = await app.request(`/api/remix/turns/${turnId}`, {
+      headers: ownerHeaders(),
+    });
     expect(await response.json()).toMatchObject({
       receipt: { terminal: true, retryable: false },
     });
-    expect((await app.request("/api/remix/turns/not-a-uuid")).status).toBe(400);
+    expect(
+      (
+        await app.request("/api/remix/turns/not-a-uuid", {
+          headers: ownerHeaders(),
+        })
+      ).status,
+    ).toBe(400);
   });
   it("persists offline cancellation and flushes it after connectivity returns", async () => {
     vi.stubGlobal(

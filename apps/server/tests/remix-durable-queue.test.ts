@@ -72,6 +72,35 @@ describe("server-owned durable Remix follow-ups", () => {
     expect(posts).toHaveLength(5);
     expect(remixQueueSnapshot("thread-a").items[0].text).toBe("Next");
   });
+  it("backs off ordinary transport failures and pauses after five attempts", async () => {
+    registerRemixTurn("thread-a", "turn-a", {
+      threadId: "thread-a",
+      clientRequestId: "request-a",
+      messages: [],
+      context: {},
+    });
+    const fetch = vi.fn(async () => {
+      throw new TypeError("offline");
+    });
+    vi.stubGlobal("fetch", fetch);
+    await drainRemixQueues();
+    await drainRemixQueues();
+    expect(fetch).toHaveBeenCalledOnce();
+    for (const delay of [3_000, 6_000, 12_000, 24_000]) {
+      vi.setSystemTime(Date.now() + delay);
+      await drainRemixQueues();
+    }
+    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(remixQueueSnapshot("thread-a").recoveryPaused).toBe(true);
+    vi.setSystemTime(Date.now() + 30_000);
+    await drainRemixQueues();
+    expect(fetch).toHaveBeenCalledTimes(5);
+    // A fresh visible Resume/new turn receives its own retry budget.
+    registerRemixTurn("thread-a", "turn-b");
+    await drainRemixQueues();
+    expect(fetch).toHaveBeenCalledTimes(6);
+    expect(remixQueueSnapshot("thread-a").recoveryPaused).toBe(false);
+  });
   it("continues the next follow-up after headless retryable recovery succeeds", async () => {
     const request = {
       threadId: "thread-a",
@@ -231,6 +260,7 @@ describe("server-owned durable Remix follow-ups", () => {
     await drainRemixQueues();
     expect(remixQueueSnapshot("thread-a").items).toHaveLength(1);
     closeDb();
+    vi.setSystemTime(Date.now() + 3_000);
     await drainRemixQueues();
     expect(bodies).toHaveLength(2);
     expect(bodies[1]).toBe(bodies[0]);

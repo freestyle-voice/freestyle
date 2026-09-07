@@ -118,7 +118,7 @@ export const remixDurableRoute = new Hono()
     const session = getSession()!;
     return c.json({ userId: session.user.id, host: session.host });
   })
-  .get("/:threadId/queue", zValidator("param", threadParam), (c) =>
+  .get("/:threadId/queue", zValidator("param", threadParam), boundOwner, (c) =>
     c.json(remixQueueSnapshot(c.req.valid("param").threadId)),
   )
   .post(
@@ -187,22 +187,33 @@ export const remixDurableRoute = new Hono()
     }
     return response;
   })
-  .get("/turns/:turnId", zValidator("param", turnParam), async (c) => {
-    const response = await proxy(`remix/turns/${c.req.valid("param").turnId}`);
-    if (response.ok) {
-      const receipt = (await response.clone().json()) as {
-        turn: { id: string; status: string };
-      };
-      settleRemixTurn(receipt.turn.id, receipt.turn.status);
-    }
-    return response;
-  })
-  .get("/turns/:turnId/events", zValidator("param", turnParam), (c) =>
-    proxy(`remix/turns/${c.req.valid("param").turnId}/events`),
+  .get(
+    "/turns/:turnId",
+    zValidator("param", turnParam),
+    boundOwner,
+    async (c) => {
+      const response = await proxy(
+        `remix/turns/${c.req.valid("param").turnId}`,
+      );
+      if (response.ok) {
+        const receipt = (await response.clone().json()) as {
+          turn: { id: string; status: string };
+        };
+        settleRemixTurn(receipt.turn.id, receipt.turn.status);
+      }
+      return response;
+    },
+  )
+  .get(
+    "/turns/:turnId/events",
+    zValidator("param", turnParam),
+    boundOwner,
+    (c) => proxy(`remix/turns/${c.req.valid("param").turnId}/events`),
   )
   .get(
     "/turns/:turnId/actions/:actionId",
     zValidator("param", turnParam.extend({ actionId: z.string().uuid() })),
+    boundOwner,
     (c) => {
       const { turnId, actionId } = c.req.valid("param");
       return proxy(`remix/turns/${turnId}/actions/${actionId}`);
@@ -244,6 +255,7 @@ export const remixDurableRoute = new Hono()
   .get(
     "/thread/:threadId",
     zValidator("param", z.object({ threadId: z.string().min(1).max(100) })),
+    boundOwner,
     (c) => {
       void flushRemixCancels();
       return proxy(

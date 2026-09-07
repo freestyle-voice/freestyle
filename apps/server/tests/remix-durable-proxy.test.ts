@@ -1,0 +1,185 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import createApp from "../src/index.js";
+import { freestyleCloudUrl } from "../src/lib/freestyle-cloud.js";
+import {
+  deferRemixCancel,
+  flushRemixCancels,
+  pendingRemixCancels,
+} from "../src/lib/remix-cancel-outbox.js";
+import { remixQueueSnapshot } from "../src/lib/remix-durable-queue.js";
+import { clearSession, setSession } from "../src/lib/sessions.js";
+
+const app = createApp();
+const turnId = "00000000-0000-4000-8000-000000000001";
+const signIn = (id = "user-a") =>
+  setSession({
+    token: "cloud-token",
+    user: { id, email: "test@example.test" },
+    host: freestyleCloudUrl(),
+  });
+beforeEach(() => signIn());
+afterEach(async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({})),
+  );
+  await flushRemixCancels();
+  clearSession();
+  vi.unstubAllGlobals();
+});
+
+describe("additive durable Remix proxy", () => {
+  it("discards an admission response if the signed-in account changed", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        signIn("user-b");
+        return Response.json({ turn: { id: turnId } }, { status: 202 });
+      }),
+    );
+    const response = await app.request("/api/remix/turns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        threadId: "switched-thread",
+        clientRequestId: "request-a",
+        messages: [{ role: "user", parts: [{ type: "text", text: "Hello" }] }],
+        context: {
+          selection: null,
+          appName: null,
+          windowTitle: null,
+          capturedAt: 1,
+        },
+      }),
+    });
+    expect(response.status).toBe(401);
+    expect(remixQueueSnapshot("switched-thread").activeTurnId).toBeNull();
+  });
+  it("passes immutable admission through the server-owned capability boundary", async () => {
+    const fetch = vi.fn(async () =>
+      Response.json(
+        { turn: { id: turnId }, receipt: { duplicate: false } },
+        { status: 202 },
+      ),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const response = await app.request("/api/remix/turns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        threadId: "thread-a",
+        clientRequestId: "request-a",
+        messages: [{ role: "user", parts: [{ type: "text", text: "Hello" }] }],
+        context: {
+          selection: null,
+          appName: null,
+          windowTitle: null,
+          capturedAt: 1,
+        },
+        client: { platform: "android", localTools: [] },
+      }),
+    });
+    expect(response.status).toBe(202);
+    const [url, init] = fetch.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe(`${freestyleCloudUrl()}/v2/remix/turns`);
+    const payload = JSON.parse(String(init.body));
+    expect(payload.clientRequestId).toBe("request-a");
+    expect(payload.client.platform).toBe(process.platform);
+    expect(payload.client.localTools).toContain("Bash");
+    expect(init.headers).toMatchObject({ Authorization: "Bearer cloud-token" });
+  });
+  it("preserves terminal receipt responses and validates IDs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          turn: { id: turnId, status: "canceled" },
+          receipt: { terminal: true, retryable: false },
+        }),
+      ),
+    );
+    const response = await app.request(`/api/remix/turns/${turnId}`);
+    expect(await response.json()).toMatchObject({
+      receipt: { terminal: true, retryable: false },
+    });
+    expect((await app.request("/api/remix/turns/not-a-uuid")).status).toBe(400);
+  });
+  it("persists offline cancellation and flushes it after connectivity returns", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new TypeError("offline");
+      }),
+    );
+    const response = await app.request(`/api/remix/turns/${turnId}/commands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "cancel" }),
+    });
+    expect(response.status).toBe(202);
+    await flushRemixCancels();
+    expect(pendingRemixCancels()).toEqual([turnId]);
+    const fetch = vi.fn(async () =>
+      Response.json({ receipt: { canceled: true } }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    await flushRemixCancels();
+    expect(pendingRemixCancels()).toEqual([]);
+    expect(fetch).toHaveBeenCalledWith(
+      `${freestyleCloudUrl()}/v2/remix/turns/${turnId}/commands`,
+      expect.objectContaining({ body: JSON.stringify({ type: "cancel" }) }),
+    );
+  });
+  it("does not send another account's cancellation outbox", async () => {
+    deferRemixCancel(turnId);
+    signIn("user-b");
+    const fetch = vi.fn(async () => Response.json({}));
+    vi.stubGlobal("fetch", fetch);
+    await flushRemixCancels();
+    expect(fetch).not.toHaveBeenCalled();
+    signIn();
+    await flushRemixCancels();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("recovers and cancels an unknown receipt after the submitting renderer closes", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("offline");
+      }),
+    );
+    const request = {
+      threadId: "thread-a",
+      clientRequestId: "lost-request-a",
+      messages: [{ role: "user", parts: [{ type: "text", text: "Hello" }] }],
+      context: {
+        selection: null,
+        appName: null,
+        windowTitle: null,
+        capturedAt: 1,
+      },
+    };
+    const response = await app.request("/api/remix/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request }),
+    });
+    expect(response.status).toBe(202);
+    await flushRemixCancels();
+    const fetch = vi.fn(async (url: string) =>
+      url.endsWith("/turns")
+        ? Response.json({ turn: { id: turnId } })
+        : Response.json({ receipt: { canceled: true } }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    await flushRemixCancels();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[0][0]).toBe(
+      `${freestyleCloudUrl()}/v2/remix/turns`,
+    );
+    expect(fetch.mock.calls[1][0]).toBe(
+      `${freestyleCloudUrl()}/v2/remix/turns/${turnId}/commands`,
+    );
+  });
+});

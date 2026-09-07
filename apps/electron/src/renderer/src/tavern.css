@@ -1656,6 +1656,16 @@
   color: var(--tavern-rust);
 }
 
+button.tavern-notice {
+  display: block;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+}
+
 .tavern-head-btn {
   font: inherit;
   font-size: 11px;

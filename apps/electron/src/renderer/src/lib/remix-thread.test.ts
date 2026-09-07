@@ -12,9 +12,9 @@ describe("Remix pill agent contract", () => {
       "utf8",
     );
 
-    expect(chat).toContain('api: "/api/agent"');
-    expect(chat).toContain('apiFetch("/api/agent"');
-    expect(chat).toContain("threadId: thread.id");
+    expect(chat).toContain("} = useRemixRecovery({");
+    expect(chat).not.toContain('apiFetch("/api/agent"');
+    expect(chat).toContain("id: thread.id");
     expect(chat).toContain("onOpenWorkspace(thread.id)");
     expect(chat).toContain("executeRemixTool(call");
     expect(chat).not.toContain('"/api/remix/thread');

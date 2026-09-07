@@ -92,6 +92,7 @@ describe("agent approval details", () => {
       summary: `${"x".repeat(120)}…`,
       scope: "Only this action is approved.",
       technical: `Run in your shell:\n$ ${command}`,
+      requiresCommandReview: true,
     });
   });
 });

@@ -1258,6 +1258,9 @@ function RemixApprovalCard({
   onResolve: (approval: PendingApproval, allowed: boolean) => void;
 }): React.JSX.Element {
   const details = describeAgentApproval(approval.call);
+  const [commandReviewed, setCommandReviewed] = useState(
+    !details.requiresCommandReview,
+  );
 
   return (
     <section className="remix-chat-approval" aria-live="polite">
@@ -1272,15 +1275,28 @@ function RemixApprovalCard({
         <span>{details.summary}</span>
       </div>
       <p className="remix-chat-approval-scope">{details.scope}</p>
-      <details className="remix-chat-approval-technical">
+      <details
+        className="remix-chat-approval-technical"
+        open={details.requiresCommandReview}
+      >
         <summary>Technical details</summary>
         <pre>{details.technical}</pre>
       </details>
+      {details.requiresCommandReview ? (
+        <label className="remix-chat-approval-review">
+          <input
+            type="checkbox"
+            checked={commandReviewed}
+            onChange={(event) => setCommandReviewed(event.target.checked)}
+          />
+          I reviewed the complete command above.
+        </label>
+      ) : null}
       <div className="remix-chat-approval-actions">
         <button
           type="button"
           className="remix-chat-approval-allow"
-          disabled={resolving}
+          disabled={resolving || !commandReviewed}
           onClick={() => onResolve(approval, true)}
         >
           {resolving ? "Working…" : "Allow"}
@@ -2028,6 +2044,15 @@ const REMIX_CHAT_CSS = `
     white-space: pre-wrap;
     word-break: break-word;
   }
+  .remix-chat-approval-review {
+    display: flex;
+    gap: 7px;
+    align-items: flex-start;
+    color: ${INK_DIM};
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .remix-chat-approval-review input { margin: 1px 0 0; }
   .remix-chat-approval-actions {
     display: flex;
     align-items: center;

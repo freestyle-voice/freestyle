@@ -1206,9 +1206,15 @@ function DurableRunHistory({
   );
 }
 
-function ApprovalDetails({ call }: { call: AgentToolCall }): React.JSX.Element {
-  const approval = describeAgentApproval(call);
-
+function ApprovalDetails({
+  approval,
+  commandReviewed,
+  onCommandReviewChange,
+}: {
+  approval: ReturnType<typeof describeAgentApproval>;
+  commandReviewed: boolean;
+  onCommandReviewChange: (reviewed: boolean) => void;
+}): React.JSX.Element {
   return (
     <>
       <span className="tavern-approve-title">{approval.title}</span>
@@ -1217,10 +1223,23 @@ function ApprovalDetails({ call }: { call: AgentToolCall }): React.JSX.Element {
         <span>{approval.summary}</span>
       </div>
       <p className="tavern-approve-scope">{approval.scope}</p>
-      <details className="tavern-approve-technical">
+      <details
+        className="tavern-approve-technical"
+        open={approval.requiresCommandReview}
+      >
         <summary>Technical details</summary>
         <pre>{approval.technical}</pre>
       </details>
+      {approval.requiresCommandReview ? (
+        <label className="tavern-approve-review">
+          <input
+            type="checkbox"
+            checked={commandReviewed}
+            onChange={(event) => onCommandReviewChange(event.target.checked)}
+          />
+          I reviewed the complete command above.
+        </label>
+      ) : null}
     </>
   );
 }
@@ -1319,6 +1338,9 @@ function PanelInner({
       durable?: { turnId: string; actionId: string };
     }>
   >([]);
+  const [reviewedCommands, setReviewedCommands] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -1442,6 +1464,7 @@ function PanelInner({
     setDraft("");
     setNotice(null);
     setApprovals([]);
+    setReviewedCommands(new Set());
     setCopiedMessageId(null);
     setEditingMessageId(null);
     setEditDraft("");
@@ -2215,30 +2238,52 @@ function PanelInner({
                     threadId={thread.id}
                     activeTurnId={durableRuntime.data?.activeTurn?.id}
                   />
-                  {approvals.map((approval) => (
-                    <div
-                      key={approval.call.toolCallId}
-                      className="tavern-approve"
-                    >
-                      <ApprovalDetails call={approval.call} />
-                      <div className="tavern-approve-actions">
-                        <button
-                          type="button"
-                          className="tavern-approve-btn tavern-approve-allow"
-                          onClick={() => resolveApproval(approval, true)}
-                        >
-                          Allow
-                        </button>
-                        <button
-                          type="button"
-                          className="tavern-approve-btn"
-                          onClick={() => resolveApproval(approval, false)}
-                        >
-                          Don't allow
-                        </button>
+                  {approvals.map((approval) => {
+                    const details = describeAgentApproval(approval.call);
+                    const commandReviewed = reviewedCommands.has(
+                      approval.call.toolCallId,
+                    );
+                    const setCommandReviewed = (reviewed: boolean): void => {
+                      setReviewedCommands((current) => {
+                        const next = new Set(current);
+                        if (reviewed) next.add(approval.call.toolCallId);
+                        else next.delete(approval.call.toolCallId);
+                        return next;
+                      });
+                    };
+
+                    return (
+                      <div
+                        key={approval.call.toolCallId}
+                        className="tavern-approve"
+                      >
+                        <ApprovalDetails
+                          approval={details}
+                          commandReviewed={commandReviewed}
+                          onCommandReviewChange={setCommandReviewed}
+                        />
+                        <div className="tavern-approve-actions">
+                          <button
+                            type="button"
+                            className="tavern-approve-btn tavern-approve-allow"
+                            disabled={
+                              details.requiresCommandReview && !commandReviewed
+                            }
+                            onClick={() => resolveApproval(approval, true)}
+                          >
+                            Allow
+                          </button>
+                          <button
+                            type="button"
+                            className="tavern-approve-btn"
+                            onClick={() => resolveApproval(approval, false)}
+                          >
+                            Don't allow
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {durableRuntime.data?.pendingAction?.kind === "connector" &&
                   durableRuntime.data.pendingAction.status === "pending" ? (
                     <div className="tavern-approve">

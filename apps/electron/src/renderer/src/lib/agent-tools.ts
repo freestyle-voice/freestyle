@@ -104,6 +104,8 @@ export type AgentApprovalDetails = {
   summary: string;
   scope: string;
   technical: string;
+  /** A truncated shell preview needs an explicit user acknowledgement. */
+  requiresCommandReview?: true;
 };
 
 /** A small, user-facing summary of the exact local action being approved. */
@@ -123,6 +125,7 @@ export function describeAgentApproval(
         summary: commandPreview(command),
         scope: oneAction,
         technical: `Run in your shell:\n$ ${command}`,
+        ...(command.length > 120 ? { requiresCommandReview: true } : {}),
       };
     }
     case "Read":

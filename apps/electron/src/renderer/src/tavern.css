@@ -1427,6 +1427,19 @@
   font: 10px/1.45 var(--tavern-mono);
 }
 
+.tavern-approve-review {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  color: var(--tavern-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.tavern-approve-review input {
+  margin: 1px 0 0;
+}
+
 .tavern-approve-actions {
   display: flex;
   gap: 8px;

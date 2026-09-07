@@ -1046,7 +1046,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           {recovery.desktop ? (
             <button
               type="button"
-              className="remix-chat-notice"
+              className="remix-chat-notice remix-chat-recovery-notice"
               onClick={() =>
                 void recovery
                   .retryDesktop()
@@ -1062,7 +1062,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             (reconnectNotice ? (
               <button
                 type="button"
-                className="remix-chat-notice"
+                className="remix-chat-notice remix-chat-recovery-notice"
                 onClick={
                   recovery.state.phase === "reconnecting"
                     ? recovery.attempt
@@ -1927,6 +1927,30 @@ const REMIX_CHAT_CSS = `
      text-align: left;
      cursor: pointer;
    }
+  .remix-chat-recovery-notice {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    min-height: 28px;
+    margin: 6px 18px 0;
+    padding: 5px 10px;
+    border: 1px solid rgba(224, 128, 95, 0.42);
+    border-radius: 999px;
+    background: rgba(224, 128, 95, 0.10);
+    box-shadow: inset 0 1px 0 rgba(245, 241, 228, 0.06);
+    color: rgba(246, 180, 148, 0.98);
+    font-weight: 600;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+  }
+  .remix-chat-recovery-notice:hover {
+    border-color: rgba(246, 180, 148, 0.76);
+    background: rgba(224, 128, 95, 0.18);
+    color: ${INK};
+  }
+  .remix-chat-recovery-notice:focus-visible {
+    outline: 2px solid rgba(246, 180, 148, 0.88);
+    outline-offset: 2px;
+  }
 
   .remix-chat-approval {
     display: flex;

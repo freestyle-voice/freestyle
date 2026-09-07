@@ -2291,7 +2291,7 @@ function PanelInner({
               {recovery.desktop ? (
                 <button
                   type="button"
-                  className="tavern-notice"
+                  className="tavern-notice tavern-recovery-notice"
                   onClick={() =>
                     void recovery
                       .retryDesktop()
@@ -2305,7 +2305,7 @@ function PanelInner({
               ) : recovery.state.phase !== "idle" ? (
                 <button
                   type="button"
-                  className="tavern-notice"
+                  className="tavern-notice tavern-recovery-notice"
                   onClick={
                     recovery.state.phase === "reconnecting"
                       ? recovery.attempt

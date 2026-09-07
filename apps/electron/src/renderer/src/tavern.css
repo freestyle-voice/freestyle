@@ -1666,6 +1666,33 @@ button.tavern-notice {
   cursor: pointer;
 }
 
+button.tavern-recovery-notice {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  min-height: 30px;
+  margin: 8px 0 0;
+  padding: 5px 10px;
+  border: 1px solid color-mix(in srgb, var(--tavern-rust) 44%, var(--tavern-rule));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tavern-rust) 9%, transparent);
+  color: var(--tavern-rust);
+  font-weight: 650;
+  line-height: 1.25;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+button.tavern-recovery-notice:hover {
+  border-color: var(--tavern-rust);
+  background: color-mix(in srgb, var(--tavern-rust) 16%, transparent);
+  color: var(--tavern-ink);
+}
+
+button.tavern-recovery-notice:focus-visible {
+  outline: 2px solid var(--tavern-rust);
+  outline-offset: 2px;
+}
+
 .tavern-head-btn {
   font: inherit;
   font-size: 11px;

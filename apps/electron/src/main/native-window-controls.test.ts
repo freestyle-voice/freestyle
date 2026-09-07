@@ -44,6 +44,21 @@ describe("native desktop window controls", () => {
     expect(shell).not.toContain("window.api?.windowControl");
   });
 
+  it("moves native traffic lights clear of a hidden-sidebar restore control", async () => {
+    const [source, shell] = await Promise.all([
+      readFile(mainPath, "utf8"),
+      readFile(shellPath, "utf8"),
+    ]);
+
+    expect(source).toContain('ipcMain.on("panel:set-sidebar-hidden"');
+    expect(source).toContain("setPanelTrafficLightPosition");
+    expect(source).toContain("win.setWindowButtonPosition(");
+    expect(source).toContain("DASHBOARD_TRAFFIC_LIGHT_POSITION.sidebarHidden");
+    expect(shell).toContain(
+      "window.api.setPanelSidebarHidden(isSidebarHidden)",
+    );
+  });
+
   it("publishes native fullscreen changes for the sidebar layout", async () => {
     const source = await readFile(mainPath, "utf8");
 

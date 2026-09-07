@@ -3925,6 +3925,14 @@ ipcMain.on("panel:commit-width", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
 });
 
+ipcMain.on("panel:set-sidebar-hidden", (event, hidden: unknown) => {
+  if (event.sender !== panelWindow?.webContents) return;
+  if (typeof hidden !== "boolean") return;
+  const win = panelWindow;
+  if (!win || win.isDestroyed()) return;
+  setPanelTrafficLightPosition(win, hidden);
+});
+
 // Hover auto-dismiss belonged to the former corner companion. The restored
 // desktop workspace remains open, but accepting these channels preserves a
 // safe preload contract for any renderer still sending them.
@@ -4043,6 +4051,22 @@ const DASHBOARD_DEFAULT_WIDTH = 1080;
 const DASHBOARD_DEFAULT_HEIGHT = 760;
 const DASHBOARD_MIN_WIDTH = 760;
 const DASHBOARD_MIN_HEIGHT = 680;
+const DASHBOARD_TRAFFIC_LIGHT_POSITION = {
+  default: { x: 20, y: 16 },
+  sidebarHidden: { x: 62, y: 16 },
+};
+
+function setPanelTrafficLightPosition(
+  win: BrowserWindow,
+  sidebarHidden: boolean,
+): void {
+  if (process.platform !== "darwin") return;
+  win.setWindowButtonPosition(
+    sidebarHidden
+      ? DASHBOARD_TRAFFIC_LIGHT_POSITION.sidebarHidden
+      : DASHBOARD_TRAFFIC_LIGHT_POSITION.default,
+  );
+}
 
 function panelPosition(display: Display): {
   x: number;
@@ -4128,7 +4152,9 @@ function createPanelWindow(): void {
     title: "Freestyle",
     titleBarStyle: process.platform === "darwin" ? "hidden" : "default",
     trafficLightPosition:
-      process.platform === "darwin" ? { x: 20, y: 16 } : undefined,
+      process.platform === "darwin"
+        ? DASHBOARD_TRAFFIC_LIGHT_POSITION.default
+        : undefined,
     transparent: false,
     resizable: true,
     minWidth: DASHBOARD_MIN_WIDTH,

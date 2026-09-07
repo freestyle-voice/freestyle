@@ -702,6 +702,10 @@ export default function AppShell(): React.JSX.Element {
     setSidebarVisibility("visible");
   }, [setSidebarVisibility]);
 
+  useEffect(() => {
+    window.api.setPanelSidebarHidden(isSidebarHidden);
+  }, [isSidebarHidden]);
+
   const changeWorkspace = useCallback(
     (workspace: Workspace) => {
       setSidebarWorkspace(workspace);

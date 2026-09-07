@@ -280,6 +280,8 @@ const api = {
   panelResizeWidth: (width: number): void =>
     ipcRenderer.send("panel:resize-width", width),
   panelCommitWidth: (): void => ipcRenderer.send("panel:commit-width"),
+  setPanelSidebarHidden: (hidden: boolean): void =>
+    ipcRenderer.send("panel:set-sidebar-hidden", hidden),
   openSettings: (): void => ipcRenderer.send("settings:open"),
   settingsClose: (): void => ipcRenderer.send("settings:close"),
   panelSetBusy: (busy: boolean): void =>

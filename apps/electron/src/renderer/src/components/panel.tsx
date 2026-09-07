@@ -42,7 +42,7 @@ import {
   type AgentToolCall,
   agentToolTier,
   DECLINED_OUTPUT,
-  describeAgentAction,
+  describeAgentApproval,
   executeAgentTool,
   reportAgentToolResult,
   requestAgentFileSaveGrant,
@@ -61,6 +61,7 @@ import {
   prependThreadToHistory,
   queryKeys,
 } from "@renderer/lib/query";
+import { describeRemixRun } from "@renderer/lib/remix-run-state";
 import { executeRemixTool } from "@renderer/lib/remix-tool-executor";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
@@ -84,7 +85,6 @@ import { compactActivitySummary } from "@renderer/lib/workspace-navigation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH } from "@shared/panel";
-import { SPRITES_INFO } from "@shared/sprites";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DefaultChatTransport,
@@ -1206,6 +1206,44 @@ function DurableRunHistory({
   );
 }
 
+function ApprovalDetails({
+  approval,
+  commandReviewed,
+  onCommandReviewChange,
+}: {
+  approval: ReturnType<typeof describeAgentApproval>;
+  commandReviewed: boolean;
+  onCommandReviewChange: (reviewed: boolean) => void;
+}): React.JSX.Element {
+  return (
+    <>
+      <span className="tavern-approve-title">{approval.title}</span>
+      <div className="tavern-approve-summary">
+        <strong>{approval.target}</strong>
+        <span>{approval.summary}</span>
+      </div>
+      <p className="tavern-approve-scope">{approval.scope}</p>
+      <details
+        className="tavern-approve-technical"
+        open={approval.requiresCommandReview}
+      >
+        <summary>Technical details</summary>
+        <pre>{approval.technical}</pre>
+      </details>
+      {approval.requiresCommandReview ? (
+        <label className="tavern-approve-review">
+          <input
+            type="checkbox"
+            checked={commandReviewed}
+            onChange={(event) => onCommandReviewChange(event.target.checked)}
+          />
+          I reviewed the complete command above.
+        </label>
+      ) : null}
+    </>
+  );
+}
+
 function PanelInner({
   thread,
   onSwitchThread,
@@ -1300,6 +1338,9 @@ function PanelInner({
       durable?: { turnId: string; actionId: string };
     }>
   >([]);
+  const [reviewedCommands, setReviewedCommands] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
@@ -1423,6 +1464,7 @@ function PanelInner({
     setDraft("");
     setNotice(null);
     setApprovals([]);
+    setReviewedCommands(new Set());
     setCopiedMessageId(null);
     setEditingMessageId(null);
     setEditDraft("");
@@ -1875,6 +1917,10 @@ function PanelInner({
     desktop &&
     desktopSurface === "chat" &&
     (narrowRemix ? narrowContextOpen : contextRailOpen);
+  const remixRun = describeRemixRun(
+    durableRuntime.data ?? null,
+    approvals.length > 0,
+  );
   const toggleContextRail = (): void => {
     if (narrowRemix) setNarrowContextOpen((open) => !open);
     else setContextRailOpen(!contextRailOpen);
@@ -2192,36 +2238,52 @@ function PanelInner({
                     threadId={thread.id}
                     activeTurnId={durableRuntime.data?.activeTurn?.id}
                   />
-                  {approvals.map((approval) => (
-                    <div
-                      key={approval.call.toolCallId}
-                      className="tavern-approve"
-                    >
-                      <span className="tavern-approve-title">
-                        {SPRITES_INFO[spriteForm].label.toLowerCase()} wants to
-                        act
-                      </span>
-                      <div className="tavern-approve-text">
-                        {describeAgentAction(approval.call)}
+                  {approvals.map((approval) => {
+                    const details = describeAgentApproval(approval.call);
+                    const commandReviewed = reviewedCommands.has(
+                      approval.call.toolCallId,
+                    );
+                    const setCommandReviewed = (reviewed: boolean): void => {
+                      setReviewedCommands((current) => {
+                        const next = new Set(current);
+                        if (reviewed) next.add(approval.call.toolCallId);
+                        else next.delete(approval.call.toolCallId);
+                        return next;
+                      });
+                    };
+
+                    return (
+                      <div
+                        key={approval.call.toolCallId}
+                        className="tavern-approve"
+                      >
+                        <ApprovalDetails
+                          approval={details}
+                          commandReviewed={commandReviewed}
+                          onCommandReviewChange={setCommandReviewed}
+                        />
+                        <div className="tavern-approve-actions">
+                          <button
+                            type="button"
+                            className="tavern-approve-btn tavern-approve-allow"
+                            disabled={
+                              details.requiresCommandReview && !commandReviewed
+                            }
+                            onClick={() => resolveApproval(approval, true)}
+                          >
+                            Allow
+                          </button>
+                          <button
+                            type="button"
+                            className="tavern-approve-btn"
+                            onClick={() => resolveApproval(approval, false)}
+                          >
+                            Don't allow
+                          </button>
+                        </div>
                       </div>
-                      <div className="tavern-approve-actions">
-                        <button
-                          type="button"
-                          className="tavern-approve-btn tavern-approve-allow"
-                          onClick={() => resolveApproval(approval, true)}
-                        >
-                          Allow
-                        </button>
-                        <button
-                          type="button"
-                          className="tavern-approve-btn"
-                          onClick={() => resolveApproval(approval, false)}
-                        >
-                          Don't allow
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {durableRuntime.data?.pendingAction?.kind === "connector" &&
                   durableRuntime.data.pendingAction.status === "pending" ? (
                     <div className="tavern-approve">
@@ -2402,11 +2464,12 @@ function PanelInner({
             <RemixContextRail
               attention={contextAttention}
               open={contextRailVisible}
+              run={remixRun}
               onOpenInspector={openInspector}
             />
           ) : null}
           {desktop && inspectorTarget ? (
-            <RemixInspector target={inspectorTarget} />
+            <RemixInspector target={inspectorTarget} run={remixRun} />
           ) : null}
         </div>
       </div>

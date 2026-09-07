@@ -7,6 +7,7 @@ vi.mock("@shared/sprite-events", () => ({
 import {
   agentToolResultTelemetry,
   agentToolTier,
+  describeAgentApproval,
   executeAgentTool,
   requestAgentFileSaveGrant,
 } from "./agent-tools";
@@ -40,6 +41,59 @@ describe("agent tool approval tiers", () => {
     await expect(
       agentToolTier(call("connector__gmail__474d41494c5f53454")),
     ).resolves.toBeNull();
+  });
+});
+
+describe("agent approval details", () => {
+  it("names the affected file and preserves one-action scope for a local write", () => {
+    expect(
+      describeAgentApproval({
+        toolName: "Write",
+        toolCallId: "call-1",
+        input: { path: "/tmp/plan.md", text: "# Today\n\nShip it" },
+      }),
+    ).toEqual({
+      title: "Write a file",
+      target: "/tmp/plan.md",
+      summary: "Write 16 characters",
+      scope: "Only this action is approved.",
+      technical: "Write 16 characters to /tmp/plan.md",
+    });
+  });
+
+  it("keeps a command readable without granting a broader shell session", () => {
+    expect(
+      describeAgentApproval({
+        toolName: "Bash",
+        toolCallId: "call-1",
+        input: { command: "pnpm test" },
+      }),
+    ).toEqual({
+      title: "Run a command",
+      target: "This desktop",
+      summary: "pnpm test",
+      scope: "Only this action is approved.",
+      technical: "Run in your shell:\n$ pnpm test",
+    });
+  });
+
+  it("bounds a long command in the summary while retaining it in technical details", () => {
+    const command = "x".repeat(200);
+
+    expect(
+      describeAgentApproval({
+        toolName: "Bash",
+        toolCallId: "call-1",
+        input: { command },
+      }),
+    ).toEqual({
+      title: "Run a command",
+      target: "This desktop",
+      summary: `${"x".repeat(120)}…`,
+      scope: "Only this action is approved.",
+      technical: `Run in your shell:\n$ ${command}`,
+      requiresCommandReview: true,
+    });
   });
 });
 

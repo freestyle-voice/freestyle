@@ -1390,6 +1390,56 @@
   overflow-wrap: anywhere;
 }
 
+.tavern-approve-summary {
+  display: grid;
+  gap: 2px;
+}
+
+.tavern-approve-summary strong {
+  color: var(--tavern-ink);
+  font-size: 12px;
+}
+
+.tavern-approve-summary span,
+.tavern-approve-scope {
+  margin: 0;
+  color: var(--tavern-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.tavern-approve-technical {
+  color: var(--tavern-muted);
+  font-size: 11px;
+}
+
+.tavern-approve-technical summary {
+  cursor: pointer;
+}
+
+.tavern-approve-technical pre {
+  max-height: 98px;
+  overflow: auto;
+  margin: 7px 0 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--tavern-ink);
+  font: 10px/1.45 var(--tavern-mono);
+}
+
+.tavern-approve-review {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  color: var(--tavern-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.tavern-approve-review input {
+  margin: 1px 0 0;
+}
+
 .tavern-approve-actions {
   display: flex;
   gap: 8px;

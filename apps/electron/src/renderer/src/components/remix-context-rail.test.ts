@@ -22,6 +22,8 @@ describe("Remix context rail", () => {
     expect(rail).toContain("onOpenInspector={onOpenInspector}");
     expect(rail).toContain('onOpenInspector({ kind: "tasks" })');
     expect(rail).toContain('onOpenInspector({ kind: "notes" })');
+    expect(rail).toContain("RemixRunCard");
+    expect(rail).toContain('onOpenInspector({ kind: "run", run })');
     expect(rail).toContain('kind: "file"');
     expect(rail).toContain("View all");
     expect(rail).not.toContain("remix-context-preview");
@@ -32,6 +34,9 @@ describe("Remix context rail", () => {
     expect(rail).toContain("aria-hidden={!open}");
     expect(rail).toContain("inert={!open}");
     expect(panel).toContain("const contextRailVisible =");
+    expect(panel).toContain("const remixRun = describeRemixRun(");
+    expect(panel).toContain("approvals.length > 0");
+    expect(panel).toContain("run={remixRun}");
     expect(panel).toContain(
       "narrowRemix ? narrowContextOpen : contextRailOpen",
     );
@@ -67,6 +72,7 @@ describe("Remix context rail", () => {
     expect(styles).toContain("padding: 12px 12px 14px;");
     expect(styles).not.toContain("--remix-chat-header-height");
     expect(styles).toContain(".remix-context-card-icon");
+    expect(styles).toContain(".remix-context-run-state");
     const railStyles = styles.slice(
       styles.indexOf(".remix-context-rail"),
       styles.indexOf(".remix-context-card {"),

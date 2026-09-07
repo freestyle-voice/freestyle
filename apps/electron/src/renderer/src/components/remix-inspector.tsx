@@ -10,9 +10,11 @@ import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { listBrainFiles, writeBrainFile } from "@renderer/lib/brain-fs";
 import {
   brainFileQueryOptions,
+  durableTurnTimelineQueryOptions,
   notesQueryOptions,
   queryKeys,
 } from "@renderer/lib/query";
+import type { RemixRunState } from "@renderer/lib/remix-run-state";
 import {
   appendRemixTodo,
   parseRemixTodos,
@@ -39,6 +41,7 @@ export type RemixInspectorTarget =
   | { kind: "tasks" }
   | { kind: "notes" }
   | { kind: "brain" }
+  | { kind: "run"; run: RemixRunState }
   | { kind: "file"; path: string; title?: string };
 
 type InspectorTab = RemixInspectorTarget & { id: string; title: string };
@@ -54,6 +57,7 @@ function tabFor(target: RemixInspectorTarget): InspectorTab {
     return { ...target, id: "notes", title: "Notes" };
   if (target.kind === "brain")
     return { ...target, id: "brain", title: "Brain" };
+  if (target.kind === "run") return { ...target, id: "run", title: "Run" };
   return {
     ...target,
     id: `file:${target.path}`,
@@ -368,23 +372,60 @@ function InspectorCollection({
   );
 }
 
+function InspectorRun({ run }: { run: RemixRunState }): React.JSX.Element {
+  const timeline = useQuery({
+    ...durableTurnTimelineQueryOptions(run.turnId ?? ""),
+    enabled: Boolean(run.turnId),
+  });
+
+  return (
+    <section className="remix-inspector-run" aria-label="Run activity">
+      <span className="remix-inspector-run-state" data-state={run.state}>
+        {run.title}
+      </span>
+      <p>{run.detail}</p>
+      {timeline.isLoading ? (
+        <DataSkeleton label="Loading run activity" rows={2} />
+      ) : timeline.data?.length ? (
+        <ol>
+          {timeline.data.map((event) => (
+            <li key={event.id} data-status={event.status}>
+              <strong>{event.status.replace(/_/g, " ")}</strong>
+              {event.summary ? <span>{event.summary}</span> : null}
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <p className="remix-inspector-run-empty">
+          Activity will appear here as Remix works.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function InspectorContent({
   tab,
+  run,
   onOpenFile,
 }: {
   tab: InspectorTab;
+  run: RemixRunState;
   onOpenFile: (target: RemixInspectorTarget) => void;
 }): React.JSX.Element {
   if (tab.kind === "file") return <InspectorFile path={tab.path} />;
   if (tab.kind === "tasks") return <InspectorTasks />;
+  if (tab.kind === "run") return <InspectorRun run={run} />;
 
   return <InspectorCollection kind={tab.kind} onOpenFile={onOpenFile} />;
 }
 
 export function RemixInspector({
   target,
+  run,
 }: {
   target: RemixInspectorTarget | null;
+  run: RemixRunState;
 }): React.JSX.Element | null {
   const [widthRaw, setWidthRaw] = usePersistentState<string>(
     "remix.inspectorWidth",
@@ -403,7 +444,9 @@ export function RemixInspector({
     const tab = tabFor(next);
     setTabs((current) =>
       current.some((candidate) => candidate.id === tab.id)
-        ? current
+        ? current.map((candidate) =>
+            candidate.id === tab.id ? tab : candidate,
+          )
         : [...current, tab],
     );
     setActiveId(tab.id);
@@ -486,7 +529,7 @@ export function RemixInspector({
       <div className="remix-inspector-body" role="tabpanel">
         {tabs.map((tab) => (
           <div key={tab.id} hidden={tab.id !== active.id}>
-            <InspectorContent tab={tab} onOpenFile={openTab} />
+            <InspectorContent tab={tab} run={run} onOpenFile={openTab} />
           </div>
         ))}
       </div>

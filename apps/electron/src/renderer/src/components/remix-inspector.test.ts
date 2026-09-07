@@ -16,6 +16,10 @@ describe("Remix inspector", () => {
     expect(inspector).toContain('role="separator"');
     expect(inspector).toContain('aria-label="Resize inspector"');
     expect(inspector).toContain("onOpenFile");
+    expect(inspector).toContain('kind: "run"');
+    expect(inspector).toContain("InspectorRun");
+    expect(inspector).toContain("run: RemixRunState");
+    expect(inspector).toContain("<InspectorRun run={run} />");
     expect(inspector).toContain("data-remix-inspector-tab");
     expect(inspector).toContain('className="remix-inspector-editor"');
     expect(inspector).toContain("BreadcrumbPage");

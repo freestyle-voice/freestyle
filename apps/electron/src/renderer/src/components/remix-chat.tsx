@@ -11,7 +11,7 @@ import {
   type AgentToolCall,
   agentToolTier,
   DECLINED_OUTPUT,
-  describeAgentAction,
+  describeAgentApproval,
   executeAgentTool,
   reportAgentToolResult,
   requestAgentFileSaveGrant,
@@ -1257,7 +1257,10 @@ function RemixApprovalCard({
   resolving: boolean;
   onResolve: (approval: PendingApproval, allowed: boolean) => void;
 }): React.JSX.Element {
-  const description = describeAgentAction(approval.call);
+  const details = describeAgentApproval(approval.call);
+  const [commandReviewed, setCommandReviewed] = useState(
+    !details.requiresCommandReview,
+  );
 
   return (
     <section className="remix-chat-approval" aria-live="polite">
@@ -1265,12 +1268,35 @@ function RemixApprovalCard({
       <div className="remix-chat-approval-title">
         Remix wants to act locally
       </div>
-      <pre className="remix-chat-approval-detail">{description}</pre>
+      <div className="remix-chat-approval-summary">
+        <strong>
+          {details.title} · {details.target}
+        </strong>
+        <span>{details.summary}</span>
+      </div>
+      <p className="remix-chat-approval-scope">{details.scope}</p>
+      <details
+        className="remix-chat-approval-technical"
+        open={details.requiresCommandReview}
+      >
+        <summary>Technical details</summary>
+        <pre>{details.technical}</pre>
+      </details>
+      {details.requiresCommandReview ? (
+        <label className="remix-chat-approval-review">
+          <input
+            type="checkbox"
+            checked={commandReviewed}
+            onChange={(event) => setCommandReviewed(event.target.checked)}
+          />
+          I reviewed the complete command above.
+        </label>
+      ) : null}
       <div className="remix-chat-approval-actions">
         <button
           type="button"
           className="remix-chat-approval-allow"
-          disabled={resolving}
+          disabled={resolving || !commandReviewed}
           onClick={() => onResolve(approval, true)}
         >
           {resolving ? "Working…" : "Allow"}
@@ -1984,10 +2010,29 @@ const REMIX_CHAT_CSS = `
     font-size: 12.5px;
     font-weight: 650;
   }
-  .remix-chat-approval-detail {
+  .remix-chat-approval-summary {
+    display: grid;
+    gap: 2px;
+    color: ${INK_DIM};
+    font-size: 11px;
+    line-height: 1.4;
+  }
+  .remix-chat-approval-summary strong { color: ${INK}; }
+  .remix-chat-approval-scope {
+    margin: 0;
+    color: ${INK_FAINT};
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .remix-chat-approval-technical {
+    color: ${INK_FAINT};
+    font-size: 10px;
+  }
+  .remix-chat-approval-technical summary { cursor: pointer; }
+  .remix-chat-approval-technical pre {
     max-height: 98px;
     overflow: auto;
-    margin: 0;
+    margin: 7px 0 0;
     padding: 7px 8px;
     border: 1px solid rgba(245, 241, 228, 0.09);
     border-radius: 8px;
@@ -1999,6 +2044,15 @@ const REMIX_CHAT_CSS = `
     white-space: pre-wrap;
     word-break: break-word;
   }
+  .remix-chat-approval-review {
+    display: flex;
+    gap: 7px;
+    align-items: flex-start;
+    color: ${INK_DIM};
+    font-size: 10px;
+    line-height: 1.35;
+  }
+  .remix-chat-approval-review input { margin: 1px 0 0; }
   .remix-chat-approval-actions {
     display: flex;
     align-items: center;

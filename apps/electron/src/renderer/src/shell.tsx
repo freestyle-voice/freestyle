@@ -25,7 +25,6 @@ import { listPlugins } from "@renderer/lib/plugins-api";
 import { queryKeys } from "@renderer/lib/query";
 import {
   isSidebarVisibility,
-  nextSidebarVisibility,
   SIDEBAR_VISIBILITY_STORAGE_KEY,
   type SidebarVisibility,
 } from "@renderer/lib/sidebar-visibility";
@@ -677,6 +676,7 @@ export default function AppShell(): React.JSX.Element {
   const [isSessionSearchOpen, setIsSessionSearchOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const sessionSearchRef = useRef<HTMLInputElement>(null);
+  const sidebarRevealRef = useRef<HTMLButtonElement>(null);
   const [sidebarWidthRaw, setSidebarWidthRaw] = usePersistentState<string>(
     "shell.sidebarWidth",
     "220",
@@ -694,9 +694,13 @@ export default function AppShell(): React.JSX.Element {
       isSidebarVisibility,
     );
   const isSidebarHidden = sidebarVisibility === "hidden";
-  const toggleSidebarVisibility = useCallback(() => {
-    setSidebarVisibility(nextSidebarVisibility(sidebarVisibility));
-  }, [setSidebarVisibility, sidebarVisibility]);
+  const hideSidebar = useCallback(() => {
+    setSidebarVisibility("hidden");
+    requestAnimationFrame(() => sidebarRevealRef.current?.focus());
+  }, [setSidebarVisibility]);
+  const showSidebar = useCallback(() => {
+    setSidebarVisibility("visible");
+  }, [setSidebarVisibility]);
 
   const changeWorkspace = useCallback(
     (workspace: Workspace) => {
@@ -814,7 +818,7 @@ export default function AppShell(): React.JSX.Element {
               <SettingsSidebar
                 workspace={sidebarWorkspace}
                 onBack={() => navigate(workspaceHomeRoute(sidebarWorkspace))}
-                onHideSidebar={toggleSidebarVisibility}
+                onHideSidebar={hideSidebar}
               />
             ) : (
               <>
@@ -842,7 +846,7 @@ export default function AppShell(): React.JSX.Element {
                       <Search aria-hidden="true" />
                     </button>
                   ) : null}
-                  <SidebarVisibilityToggle onClick={toggleSidebarVisibility} />
+                  <SidebarVisibilityToggle onClick={hideSidebar} />
                 </div>
 
                 <div
@@ -902,7 +906,8 @@ export default function AppShell(): React.JSX.Element {
       <div className="glass-content relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
         <ContentTitlebar
           sidebarHidden={isSidebarHidden}
-          onShowSidebar={toggleSidebarVisibility}
+          onShowSidebar={showSidebar}
+          sidebarRevealRef={sidebarRevealRef}
         />
         <UpdateBanner className="relative z-50 mt-4 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
@@ -946,9 +951,11 @@ function SignedOutShell(): React.JSX.Element {
 function ContentTitlebar({
   sidebarHidden = false,
   onShowSidebar,
+  sidebarRevealRef,
 }: {
   sidebarHidden?: boolean;
   onShowSidebar?: () => void;
+  sidebarRevealRef?: React.RefObject<HTMLButtonElement | null>;
 }): React.JSX.Element {
   return (
     <>
@@ -961,6 +968,7 @@ function ContentTitlebar({
         <button
           type="button"
           className="sidebar-reveal-trigger"
+          ref={sidebarRevealRef}
           aria-label="Show sidebar"
           title="Show sidebar"
           onClick={onShowSidebar}

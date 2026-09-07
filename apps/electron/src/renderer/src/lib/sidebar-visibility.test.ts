@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   isSidebarVisibility,
-  nextSidebarVisibility,
   SIDEBAR_VISIBILITY_STORAGE_KEY,
 } from "./sidebar-visibility";
 
@@ -13,10 +12,5 @@ describe("sidebar visibility preference", () => {
     expect(isSidebarVisibility("hidden")).toBe(true);
     expect(isSidebarVisibility("")).toBe(false);
     expect(isSidebarVisibility("collapsed")).toBe(false);
-  });
-
-  it("switches between the two supported sidebar states", () => {
-    expect(nextSidebarVisibility("visible")).toBe("hidden");
-    expect(nextSidebarVisibility("hidden")).toBe("visible");
   });
 });

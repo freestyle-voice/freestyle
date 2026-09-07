@@ -7,6 +7,7 @@ import {
   writeBrainFile,
 } from "@renderer/lib/brain-fs";
 import { notesQueryOptions, queryKeys } from "@renderer/lib/query";
+import type { RemixRunState } from "@renderer/lib/remix-run-state";
 import {
   appendRemixTodo,
   parseRemixTodos,
@@ -14,11 +15,18 @@ import {
   toggleRemixTodo,
 } from "@renderer/lib/remix-tasks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Brain, ChevronDown, FileText, ListTodo, Plus } from "lucide-react";
+import {
+  Activity,
+  Brain,
+  ChevronDown,
+  FileText,
+  ListTodo,
+  Plus,
+} from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
 
-export type RemixContextKind = "tasks" | "notes" | "brain";
+export type RemixContextKind = "tasks" | "notes" | "brain" | "run";
 
 const PREVIEW_LIMIT = 3;
 
@@ -64,7 +72,13 @@ function ContextCard({
   children: React.ReactNode;
 }): React.JSX.Element {
   const Icon =
-    kind === "tasks" ? ListTodo : kind === "notes" ? FileText : Brain;
+    kind === "tasks"
+      ? ListTodo
+      : kind === "notes"
+        ? FileText
+        : kind === "brain"
+          ? Brain
+          : Activity;
 
   return (
     <section
@@ -349,13 +363,46 @@ function ContextBrain({
   );
 }
 
+function RemixRunCard({
+  run,
+  onOpenInspector,
+}: {
+  run: RemixRunState;
+  onOpenInspector?: (target: RemixInspectorTarget) => void;
+}): React.JSX.Element {
+  const needsAttention =
+    run.state === "approval" ||
+    run.state === "desktop" ||
+    run.state === "attention";
+
+  return (
+    <ContextCard
+      kind="run"
+      title="Run"
+      attention={needsAttention}
+      onOpen={
+        onOpenInspector
+          ? () => onOpenInspector({ kind: "run", run })
+          : undefined
+      }
+    >
+      <div className="remix-context-run-state" data-state={run.state}>
+        <strong>{run.title}</strong>
+        <span>{run.detail}</span>
+      </div>
+    </ContextCard>
+  );
+}
+
 export function RemixContextRail({
   attention,
   open,
+  run,
   onOpenInspector,
 }: {
   attention: RemixContextKind | null;
   open: boolean;
+  run: RemixRunState;
   onOpenInspector?: (target: RemixInspectorTarget) => void;
 }): React.JSX.Element {
   return (
@@ -365,6 +412,7 @@ export function RemixContextRail({
       aria-label="Conversation context"
       inert={!open}
     >
+      <RemixRunCard run={run} onOpenInspector={onOpenInspector} />
       <ContextTasks
         attention={attention === "tasks"}
         onOpenInspector={onOpenInspector}

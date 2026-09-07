@@ -39,6 +39,10 @@ const SAFE_RESULT_CATEGORIES = new Set([
 const str = (input: Record<string, unknown>, key: string): string =>
   typeof input[key] === "string" ? (input[key] as string) : "";
 
+function commandPreview(command: string): string {
+  return command.length > 120 ? `${command.slice(0, 120)}…` : command;
+}
+
 export async function agentToolTier(
   call: AgentToolCall,
 ): Promise<AgentToolTier | null> {
@@ -91,6 +95,94 @@ export function describeAgentAction(call: AgentToolCall): string {
       return `Save ${str(input, "filename")} to your Downloads folder`;
     default:
       return `Run ${call.toolName.replace(/_/g, " ")}.`;
+  }
+}
+
+export type AgentApprovalDetails = {
+  title: string;
+  target: string;
+  summary: string;
+  scope: string;
+  technical: string;
+};
+
+/** A small, user-facing summary of the exact local action being approved. */
+export function describeAgentApproval(
+  call: AgentToolCall,
+): AgentApprovalDetails {
+  const input = (call.input ?? {}) as Record<string, unknown>;
+  const oneAction = "Only this action is approved.";
+  const path = str(input, "path") || "This desktop";
+
+  switch (call.toolName) {
+    case "Bash": {
+      const command = str(input, "command") || "Run a command";
+      return {
+        title: "Run a command",
+        target: "This desktop",
+        summary: commandPreview(command),
+        scope: oneAction,
+        technical: `Run in your shell:\n$ ${command}`,
+      };
+    }
+    case "Read":
+      return {
+        title: "Read a file",
+        target: path,
+        summary: "Read its contents",
+        scope: oneAction,
+        technical: describeAgentAction(call),
+      };
+    case "Write": {
+      const text = str(input, "text");
+      return {
+        title: "Write a file",
+        target: path,
+        summary: `Write ${text.length} characters`,
+        scope: oneAction,
+        technical: describeAgentAction(call),
+      };
+    }
+    case "Edit":
+      return {
+        title: "Edit a file",
+        target: path,
+        summary: "Apply the requested edit",
+        scope: oneAction,
+        technical: describeAgentAction(call),
+      };
+    case "Glob":
+      return {
+        title: "List files",
+        target: path,
+        summary: str(input, "pattern") || "List matching files",
+        scope: oneAction,
+        technical: describeAgentAction(call),
+      };
+    case "Grep":
+      return {
+        title: "Search files",
+        target: path,
+        summary: str(input, "query") || "Search file contents",
+        scope: oneAction,
+        technical: describeAgentAction(call),
+      };
+    case "save_file":
+      return {
+        title: "Save a download",
+        target: "Downloads",
+        summary: str(input, "filename") || "Save a file",
+        scope: oneAction,
+        technical: describeAgentAction(call),
+      };
+    default:
+      return {
+        title: "Run a local action",
+        target: "This desktop",
+        summary: call.toolName.replace(/_/g, " "),
+        scope: oneAction,
+        technical: describeAgentAction(call),
+      };
   }
 }
 

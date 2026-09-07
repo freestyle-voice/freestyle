@@ -985,6 +985,30 @@
   margin: 0 10px 8px;
 }
 
+.remix-context-run-state {
+  display: grid;
+  gap: 3px;
+  padding: 0 10px 10px;
+}
+
+.remix-context-run-state strong {
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.remix-context-run-state span {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.remix-context-run-state[data-state="approval"] strong,
+.remix-context-run-state[data-state="desktop"] strong,
+.remix-context-run-state[data-state="attention"] strong {
+  color: var(--remix-context-accent);
+}
+
 /* The overview remains scannable. Detailed work lives beside the conversation,
    so it reads as a real workspace instead of a temporary overlay. */
 .remix-inspector {
@@ -1406,6 +1430,64 @@
   color: var(--foreground);
   font: inherit;
   font-size: 11px;
+}
+
+.remix-inspector-run {
+  display: grid;
+  gap: 10px;
+}
+
+.remix-inspector-run-state {
+  color: var(--foreground);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.remix-inspector-run-state[data-state="approval"],
+.remix-inspector-run-state[data-state="desktop"],
+.remix-inspector-run-state[data-state="attention"] {
+  color: var(--remix-context-accent);
+}
+
+.remix-inspector-run p {
+  margin: 0;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.remix-inspector-run ol {
+  display: grid;
+  gap: 8px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.remix-inspector-run li {
+  display: grid;
+  gap: 2px;
+  border-left: 2px solid var(--border);
+  padding-left: 9px;
+}
+
+.remix-inspector-run li[data-status="running"],
+.remix-inspector-run li[data-status="pending"] {
+  border-left-color: var(--remix-context-accent);
+}
+
+.remix-inspector-run li strong {
+  color: var(--foreground);
+  font-size: 11px;
+  font-weight: 620;
+  text-transform: capitalize;
+}
+
+.remix-inspector-run li span,
+.remix-inspector-run-empty {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.4;
 }
 
 @media (max-width: 1080px) {

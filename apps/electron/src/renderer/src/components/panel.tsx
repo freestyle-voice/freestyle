@@ -42,7 +42,7 @@ import {
   type AgentToolCall,
   agentToolTier,
   DECLINED_OUTPUT,
-  describeAgentAction,
+  describeAgentApproval,
   executeAgentTool,
   reportAgentToolResult,
   requestAgentFileSaveGrant,
@@ -61,6 +61,7 @@ import {
   prependThreadToHistory,
   queryKeys,
 } from "@renderer/lib/query";
+import { describeRemixRun } from "@renderer/lib/remix-run-state";
 import { executeRemixTool } from "@renderer/lib/remix-tool-executor";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
@@ -84,7 +85,6 @@ import { compactActivitySummary } from "@renderer/lib/workspace-navigation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH } from "@shared/panel";
-import { SPRITES_INFO } from "@shared/sprites";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DefaultChatTransport,
@@ -1206,6 +1206,25 @@ function DurableRunHistory({
   );
 }
 
+function ApprovalDetails({ call }: { call: AgentToolCall }): React.JSX.Element {
+  const approval = describeAgentApproval(call);
+
+  return (
+    <>
+      <span className="tavern-approve-title">{approval.title}</span>
+      <div className="tavern-approve-summary">
+        <strong>{approval.target}</strong>
+        <span>{approval.summary}</span>
+      </div>
+      <p className="tavern-approve-scope">{approval.scope}</p>
+      <details className="tavern-approve-technical">
+        <summary>Technical details</summary>
+        <pre>{approval.technical}</pre>
+      </details>
+    </>
+  );
+}
+
 function PanelInner({
   thread,
   onSwitchThread,
@@ -1875,6 +1894,10 @@ function PanelInner({
     desktop &&
     desktopSurface === "chat" &&
     (narrowRemix ? narrowContextOpen : contextRailOpen);
+  const remixRun = describeRemixRun(
+    durableRuntime.data ?? null,
+    approvals.length > 0,
+  );
   const toggleContextRail = (): void => {
     if (narrowRemix) setNarrowContextOpen((open) => !open);
     else setContextRailOpen(!contextRailOpen);
@@ -2197,13 +2220,7 @@ function PanelInner({
                       key={approval.call.toolCallId}
                       className="tavern-approve"
                     >
-                      <span className="tavern-approve-title">
-                        {SPRITES_INFO[spriteForm].label.toLowerCase()} wants to
-                        act
-                      </span>
-                      <div className="tavern-approve-text">
-                        {describeAgentAction(approval.call)}
-                      </div>
+                      <ApprovalDetails call={approval.call} />
                       <div className="tavern-approve-actions">
                         <button
                           type="button"
@@ -2402,11 +2419,12 @@ function PanelInner({
             <RemixContextRail
               attention={contextAttention}
               open={contextRailVisible}
+              run={remixRun}
               onOpenInspector={openInspector}
             />
           ) : null}
           {desktop && inspectorTarget ? (
-            <RemixInspector target={inspectorTarget} />
+            <RemixInspector target={inspectorTarget} run={remixRun} />
           ) : null}
         </div>
       </div>

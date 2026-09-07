@@ -351,6 +351,43 @@ test("captures every main dashboard page while loading and after data resolves",
   }
 });
 
+test("captures the desktop sidebar hidden and restored", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(`${DASHBOARD_URL}?visual=sidebar-toggle#/today`);
+  await dashboard
+    .locator("html")
+    .evaluate((html) => html.classList.add("dark"));
+  await expect(dashboard.getByRole("status")).toHaveCount(0, {
+    timeout: 5_000,
+  });
+
+  const hideSidebar = dashboard.getByRole("button", { name: "Hide sidebar" });
+  await expect(hideSidebar).toBeVisible();
+  await hideSidebar.click();
+
+  await expect(dashboard.locator(".glass-sidebar")).toHaveCount(0);
+  const showSidebar = dashboard.getByRole("button", { name: "Show sidebar" });
+  await expect(showSidebar).toBeFocused();
+  const hidden = testInfo.outputPath("sidebar-hidden.png");
+  await dashboard.screenshot({ path: hidden });
+  await testInfo.attach("sidebar-hidden", {
+    path: hidden,
+    contentType: "image/png",
+  });
+
+  await showSidebar.click();
+  await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
+  await expect(hideSidebar).toBeVisible();
+  const restored = testInfo.outputPath("sidebar-restored.png");
+  await dashboard.screenshot({ path: restored });
+  await testInfo.attach("sidebar-restored", {
+    path: restored,
+    contentType: "image/png",
+  });
+});
+
 test("shows full-window sign-in after a protected request returns 401", async () => {
   await dashboard.goto(`${DASHBOARD_URL}?visual=protected-401#/today`);
 

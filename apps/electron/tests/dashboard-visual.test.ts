@@ -44,6 +44,26 @@ let app: ElectronApplication | undefined;
 let pill: Page;
 let dashboard: Page;
 
+async function dashboardWindowButtonPosition(): Promise<{
+  x: number;
+  y: number;
+} | null> {
+  return app!.evaluate(({ BrowserWindow }) => {
+    const panel = BrowserWindow.getAllWindows().find((window) =>
+      window.webContents.getURL().includes("index.html"),
+    );
+    return panel?.getWindowButtonPosition() ?? null;
+  });
+}
+
+async function expectDashboardWindowButtonPosition(position: {
+  x: number;
+  y: number;
+}): Promise<void> {
+  if (process.platform !== "darwin") return;
+  await expect.poll(dashboardWindowButtonPosition).toEqual(position);
+}
+
 async function installDashboardFixtures(page: Page): Promise<void> {
   await page.addInitScript(
     ({ authStatusDelayMs, pageDataDelayMs }) => {
@@ -370,6 +390,7 @@ test("captures the desktop sidebar hidden and restored", async ({
   await expect(dashboard.locator(".glass-sidebar")).toHaveCount(0);
   const showSidebar = dashboard.getByRole("button", { name: "Show sidebar" });
   await expect(showSidebar).toBeFocused();
+  await expectDashboardWindowButtonPosition({ x: 62, y: 16 });
   const revealBounds = await showSidebar.boundingBox();
   expect(revealBounds).not.toBeNull();
   expect(revealBounds?.x).toBeLessThanOrEqual(16);
@@ -383,6 +404,7 @@ test("captures the desktop sidebar hidden and restored", async ({
   await showSidebar.click();
   await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
   await expect(hideSidebar).toBeVisible();
+  await expectDashboardWindowButtonPosition({ x: 20, y: 16 });
   const restored = testInfo.outputPath("sidebar-restored.png");
   await dashboard.screenshot({ path: restored });
   await testInfo.attach("sidebar-restored", {
@@ -392,12 +414,16 @@ test("captures the desktop sidebar hidden and restored", async ({
 });
 
 test("shows full-window sign-in after a protected request returns 401", async () => {
+  await dashboard.evaluate(() => {
+    localStorage.setItem("shell.sidebarVisibility", "hidden");
+  });
   await dashboard.goto(`${DASHBOARD_URL}?visual=protected-401#/today`);
 
   await expect(
     dashboard.getByRole("button", { name: "Sign in via browser" }),
   ).toBeVisible();
   await expect(dashboard.locator(".glass-sidebar")).toHaveCount(0);
+  await expectDashboardWindowButtonPosition({ x: 20, y: 16 });
 
   const requestedEndpoints = await dashboard.evaluate(() => {
     const visualReviewWindow = window as typeof window & {

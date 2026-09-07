@@ -8,7 +8,10 @@ import {
   pauseRemixQueue,
   registerRemixTurn,
   remixQueueSnapshot,
+  removeRemixQueuedMessage,
   settleRemixTurn,
+  steerRemixQueuedMessage,
+  updateRemixQueuedMessage,
 } from "../src/lib/remix-durable-queue.js";
 import { clearSession, setSession } from "../src/lib/sessions.js";
 
@@ -24,6 +27,116 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("server-owned durable Remix follow-ups", () => {
+  it("deduplicates local enqueue receipts, including after the item left the queue", () => {
+    const requestId = crypto.randomUUID();
+    enqueueRemixMessage("thread-a", { requestId, text: "Once" });
+    closeDb();
+    enqueueRemixMessage("thread-a", { requestId, text: "Once" });
+    expect(remixQueueSnapshot("thread-a").items).toHaveLength(1);
+    removeRemixQueuedMessage("thread-a", requestId);
+    enqueueRemixMessage("thread-a", { requestId, text: "Once" });
+    expect(remixQueueSnapshot("thread-a").items).toHaveLength(0);
+    enqueueRemixMessage("thread-a", {
+      requestId: crypto.randomUUID(),
+      text: "Once",
+    });
+    expect(remixQueueSnapshot("thread-a").items).toHaveLength(1);
+  });
+  it("replays headless retryable admissions with a bounded persisted budget", async () => {
+    const request = {
+      threadId: "thread-a",
+      clientRequestId: "request-a",
+      messages: [],
+      context: {},
+    };
+    registerRemixTurn("thread-a", "turn-a", request);
+    enqueueRemixMessage("thread-a", { text: "Next" });
+    const posts: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.body) posts.push(String(init.body));
+        return Response.json({ turn: { id: "turn-a", status: "retryable" } });
+      }),
+    );
+    await drainRemixQueues();
+    for (const delay of [3_000, 6_000, 12_000, 24_000, 30_000]) {
+      closeDb();
+      vi.setSystemTime(Date.now() + delay);
+      await drainRemixQueues();
+      await drainRemixQueues();
+    }
+    expect(posts).toEqual(Array(5).fill(JSON.stringify(request)));
+    expect(remixQueueSnapshot("thread-a").recoveryPaused).toBe(true);
+    await drainRemixQueues();
+    expect(posts).toHaveLength(5);
+    expect(remixQueueSnapshot("thread-a").items[0].text).toBe("Next");
+  });
+  it("continues the next follow-up after headless retryable recovery succeeds", async () => {
+    const request = {
+      threadId: "thread-a",
+      clientRequestId: "request-a",
+      messages: [],
+      context: {},
+    };
+    registerRemixTurn("thread-a", "turn-a", request);
+    enqueueRemixMessage("thread-a", { text: "Next" });
+    let status = "retryable";
+    const posts: Record<string, unknown>[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (init?.body) {
+          const body = JSON.parse(String(init.body));
+          posts.push(body);
+          if (body.clientRequestId === "request-a") status = "completed";
+          return Response.json({
+            turn: {
+              id: body.clientRequestId === "request-a" ? "turn-a" : "turn-b",
+            },
+          });
+        }
+        return url.includes("/threads/")
+          ? Response.json({ thread: { messages: [] } })
+          : Response.json({ turn: { status } });
+      }),
+    );
+    await drainRemixQueues();
+    vi.setSystemTime(Date.now() + 3_000);
+    await drainRemixQueues();
+    closeDb();
+    await drainRemixQueues();
+    expect(posts[0]).toEqual(request);
+    expect(posts).toHaveLength(2);
+    expect(remixQueueSnapshot("thread-a")).toMatchObject({
+      items: [],
+      activeTurnId: "turn-b",
+    });
+  });
+  it("does not replay a retryable receipt when Stop pauses during observation", async () => {
+    registerRemixTurn("thread-a", "turn-a", {
+      threadId: "thread-a",
+      clientRequestId: "request-a",
+      messages: [],
+      context: {},
+    });
+    let stopDuringRead = false;
+    const posts: unknown[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init?: RequestInit) => {
+        if (init?.body) posts.push(init.body);
+        else if (stopDuringRead) pauseRemixQueue("thread-a");
+        return Response.json({ turn: { id: "turn-a", status: "retryable" } });
+      }),
+    );
+    await drainRemixQueues();
+    vi.setSystemTime(Date.now() + 3_000);
+    stopDuringRead = true;
+    await drainRemixQueues();
+    expect(posts).toEqual([]);
+    expect(remixQueueSnapshot("thread-a").active).toBe(false);
+  });
   it("recovers a lost queued receipt to honor Stop after both renderers close", async () => {
     registerRemixTurn("thread-a", "turn-a");
     enqueueRemixMessage("thread-a", { text: "Follow up" });
@@ -52,6 +165,12 @@ describe("server-owned durable Remix follow-ups", () => {
       `${freestyleCloudUrl()}/v2/remix/turns/turn-b/commands`,
     ]);
     expect(remixQueueSnapshot("thread-a").items[0].text).toBe("Follow up");
+    const draft = remixQueueSnapshot("thread-a").items[0];
+    expect(
+      updateRemixQueuedMessage("thread-a", draft.id, "Edited follow-up"),
+    ).toBe(true);
+    expect(steerRemixQueuedMessage("thread-a", draft.id)).toBe(true);
+    expect(removeRemixQueuedMessage("thread-a", draft.id)).toBe(true);
   });
   it("drains a follow-up after both renderers close and after a database reopen", async () => {
     registerRemixTurn("thread-a", "turn-a");

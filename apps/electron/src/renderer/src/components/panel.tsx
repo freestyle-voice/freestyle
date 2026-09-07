@@ -445,8 +445,8 @@ function MessageActions({
           className="tavern-msg-action"
           disabled={disabled}
           onClick={onEdit}
-          aria-label="Edit and resend message"
-          title="Edit and resend"
+          aria-label="Edit in new chat"
+          title="Edit in new chat (keeps this conversation)"
         >
           <Pencil aria-hidden="true" />
         </button>
@@ -457,8 +457,8 @@ function MessageActions({
           className="tavern-msg-action"
           disabled={disabled}
           onClick={onRegenerate}
-          aria-label="Regenerate response"
-          title="Regenerate response"
+          aria-label="Regenerate in new chat"
+          title="Regenerate in new chat (keeps this conversation)"
         >
           <RotateCcw aria-hidden="true" />
         </button>
@@ -508,6 +508,10 @@ function ChatMessage({
       <div className="tavern-msg tavern-msg-user-wrap">
         {editing ? (
           <div className="tavern-msg-edit">
+            <p>
+              Continue this edit in a new chat. This conversation stays
+              unchanged.
+            </p>
             <textarea
               className="tavern-msg-edit-input"
               value={editDraft}
@@ -537,7 +541,7 @@ function ChatMessage({
                 disabled={!editDraft.trim() || disabled}
                 onClick={onResendEdit}
               >
-                Send again
+                Send in new chat
               </button>
             </div>
           </div>
@@ -1357,6 +1361,11 @@ function PanelInner({
   } = useRemixRecovery({
     id: thread.id,
     messages: thread.messages,
+    onFork: onSwitchThread,
+    onActionUnavailable: (actionId) =>
+      setApprovals((pending) =>
+        pending.filter((item) => item.call.toolCallId !== actionId),
+      ),
     onFinish: ({ messages: finished }) => {
       queryClient.setQueryData(queryKeys.threads.detail(thread.id), {
         id: thread.id,
@@ -1394,7 +1403,7 @@ function PanelInner({
         input: toolCall.input,
       };
       const tier = await agentToolTier(call);
-      if (tier === "confirmed") {
+      if (tier === "confirmed" || toolCall.requiresConfirmation) {
         setApprovals((prev) => [...prev, { call }]);
         return;
       }
@@ -2288,7 +2297,21 @@ function PanelInner({
                   />
                 </>
               ) : null}
-              {recovery.state.phase !== "idle" ? (
+              {recovery.desktop ? (
+                <button
+                  type="button"
+                  className="tavern-notice"
+                  onClick={() =>
+                    void recovery
+                      .retryDesktop()
+                      .catch(() =>
+                        setNotice("This desktop action is not ready to retry."),
+                      )
+                  }
+                >
+                  Desktop action interrupted — Review before retrying
+                </button>
+              ) : recovery.state.phase !== "idle" ? (
                 <button
                   type="button"
                   className="tavern-notice"

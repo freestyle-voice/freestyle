@@ -29,6 +29,69 @@ afterEach(async () => {
 });
 
 describe("additive durable Remix proxy", () => {
+  it("rejects an old owner's mutation after identity lookup but before the POST", async () => {
+    const identity = (await (
+      await app.request("/api/remix/identity")
+    ).json()) as { userId: string; host: string };
+    signIn("user-b");
+    const fetch = vi.fn();
+    vi.stubGlobal("fetch", fetch);
+    const headers = {
+      "Content-Type": "application/json",
+      "X-Remix-User": identity.userId,
+      "X-Remix-Host": encodeURIComponent(identity.host),
+    };
+    for (const [path, body] of [
+      [
+        "/api/remix/turns",
+        {
+          threadId: "private-a",
+          clientRequestId: "private-request-a",
+          messages: [
+            { role: "user", parts: [{ type: "text", text: "Private A" }] },
+          ],
+          context: {
+            selection: null,
+            appName: null,
+            windowTitle: null,
+            capturedAt: 1,
+          },
+        },
+      ],
+      [
+        "/api/remix/private-a/queue",
+        { requestId: crypto.randomUUID(), text: "Private A queue" },
+      ],
+    ] as const) {
+      expect(
+        (
+          await app.request(path, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(body),
+          })
+        ).status,
+      ).toBe(401);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+    expect(remixQueueSnapshot("private-a").items).toEqual([]);
+    expect(
+      (
+        await app.request("/api/remix/private-a/queue", {
+          method: "POST",
+          headers: {
+            ...headers,
+            "X-Remix-User": "user-b",
+            "X-Remix-Host": encodeURIComponent("https://different-host.test"),
+          },
+          body: JSON.stringify({
+            requestId: crypto.randomUUID(),
+            text: "Private host A",
+          }),
+        })
+      ).status,
+    ).toBe(401);
+  });
   it("discards an admission response if the signed-in account changed", async () => {
     vi.stubGlobal(
       "fetch",
@@ -39,7 +102,11 @@ describe("additive durable Remix proxy", () => {
     );
     const response = await app.request("/api/remix/turns", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Remix-User": "user-a",
+        "X-Remix-Host": encodeURIComponent(freestyleCloudUrl()),
+      },
       body: JSON.stringify({
         threadId: "switched-thread",
         clientRequestId: "request-a",
@@ -65,7 +132,11 @@ describe("additive durable Remix proxy", () => {
     vi.stubGlobal("fetch", fetch);
     const response = await app.request("/api/remix/turns", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Remix-User": "user-a",
+        "X-Remix-Host": encodeURIComponent(freestyleCloudUrl()),
+      },
       body: JSON.stringify({
         threadId: "thread-a",
         clientRequestId: "request-a",
@@ -113,7 +184,11 @@ describe("additive durable Remix proxy", () => {
     );
     const response = await app.request(`/api/remix/turns/${turnId}/commands`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Remix-User": "user-a",
+        "X-Remix-Host": encodeURIComponent(freestyleCloudUrl()),
+      },
       body: JSON.stringify({ type: "cancel" }),
     });
     expect(response.status).toBe(202);
@@ -162,7 +237,11 @@ describe("additive durable Remix proxy", () => {
     };
     const response = await app.request("/api/remix/cancel", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Remix-User": "user-a",
+        "X-Remix-Host": encodeURIComponent(freestyleCloudUrl()),
+      },
       body: JSON.stringify({ request }),
     });
     expect(response.status).toBe(202);

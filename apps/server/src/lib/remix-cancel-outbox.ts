@@ -22,6 +22,15 @@ type CancelEntry = {
   turnId?: string;
   request?: Record<string, unknown> & { clientRequestId: string };
 };
+const settledListeners = new Set<
+  (receipt: { turnId: string; clientRequestId?: string }) => void
+>();
+export function onRemixCancellationSettled(
+  listener: (receipt: { turnId: string; clientRequestId?: string }) => void,
+) {
+  settledListeners.add(listener);
+  return () => settledListeners.delete(listener);
+}
 function pendingEntries(): CancelEntry[] {
   const scopedKey = key();
   if (!scopedKey) return [];
@@ -97,6 +106,8 @@ export function flushRemixCancels(): Promise<void> {
         );
         if (key() !== scopedKey) return;
         if (!response.ok && response.status !== 404) continue;
+        for (const listener of settledListeners)
+          listener({ turnId, clientRequestId: entry.request?.clientRequestId });
         const remaining = pendingEntries().filter(
           (saved) => entryId(saved) !== entryId(entry),
         );

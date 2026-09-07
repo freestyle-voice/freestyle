@@ -1,6 +1,6 @@
 import { remixAgentRequestSchema } from "@freestyle-voice/validations";
 import { zValidator } from "@hono/zod-validator";
-import { Hono } from "hono";
+import { type Context, Hono, type MiddlewareHandler } from "hono";
 import { z } from "zod/v3";
 import { trustedDesktopAgentFields } from "../lib/agent-request.js";
 import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
@@ -32,9 +32,24 @@ const submitSchema = remixAgentRequestSchema.extend({
 const turnParam = z.object({ turnId: z.string().uuid() });
 const threadParam = z.object({ threadId: z.string().min(1).max(100) });
 const queueInput = z.object({
+  requestId: z.string().uuid(),
   text: z.string().trim().min(1).max(10_000),
   context: remixAgentRequestSchema.shape.context.optional(),
 });
+// Run after body validation, immediately before the synchronous queue write or
+// proxy session capture. A separate auth preflight cannot bind this mutation.
+function matchesOwner(c: Context) {
+  const session = getSession();
+  return Boolean(
+    session &&
+      c.req.header("X-Remix-User") === session.user.id &&
+      c.req.header("X-Remix-Host") === encodeURIComponent(session.host),
+  );
+}
+const boundOwner: MiddlewareHandler = async (c, next) => {
+  if (!matchesOwner(c)) return c.json({ error: "remix_account_changed" }, 401);
+  await next();
+};
 const commandSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("cancel"),
@@ -97,6 +112,10 @@ export const remixDurableRoute = new Hono()
       return c.json({ error: "cloud_auth_required" }, 401);
     await next();
   })
+  .get("/identity", (c) => {
+    const session = getSession()!;
+    return c.json({ userId: session.user.id, host: session.host });
+  })
   .get("/:threadId/queue", zValidator("param", threadParam), (c) =>
     c.json(remixQueueSnapshot(c.req.valid("param").threadId)),
   )
@@ -104,6 +123,7 @@ export const remixDurableRoute = new Hono()
     "/:threadId/queue",
     zValidator("param", threadParam),
     zValidator("json", queueInput),
+    boundOwner,
     (c) =>
       c.json(
         enqueueRemixMessage(c.req.valid("param").threadId, c.req.valid("json")),
@@ -113,6 +133,7 @@ export const remixDurableRoute = new Hono()
   .patch(
     "/:threadId/queue/:id",
     zValidator("json", queueInput.pick({ text: true })),
+    boundOwner,
     (c) =>
       updateRemixQueuedMessage(
         c.req.param("threadId"),
@@ -122,12 +143,12 @@ export const remixDurableRoute = new Hono()
         ? c.json(remixQueueSnapshot(c.req.param("threadId")))
         : c.json({ error: "queue_item_unavailable" }, 409),
   )
-  .delete("/:threadId/queue/:id", (c) =>
+  .delete("/:threadId/queue/:id", boundOwner, (c) =>
     removeRemixQueuedMessage(c.req.param("threadId"), c.req.param("id"))
       ? c.json(remixQueueSnapshot(c.req.param("threadId")))
       : c.json({ error: "queue_item_unavailable" }, 409),
   )
-  .post("/:threadId/queue/:id/steer", (c) =>
+  .post("/:threadId/queue/:id/steer", boundOwner, (c) =>
     steerRemixQueuedMessage(c.req.param("threadId"), c.req.param("id"))
       ? c.json(remixQueueSnapshot(c.req.param("threadId")))
       : c.json({ error: "queue_item_unavailable" }, 409),
@@ -135,6 +156,7 @@ export const remixDurableRoute = new Hono()
   .post(
     "/cancel",
     zValidator("json", z.object({ request: submitSchema })),
+    boundOwner,
     (c) => {
       if (!getSessionToken())
         return c.json({ error: "cloud_auth_required" }, 401);
@@ -147,16 +169,19 @@ export const remixDurableRoute = new Hono()
       return c.json({ receipt: { cancelQueued: true } }, 202);
     },
   )
-  .post("/turns", zValidator("json", submitSchema), async (c) => {
-    const response = await proxy("remix/turns", {
+  .post("/turns", zValidator("json", submitSchema), boundOwner, async (c) => {
+    const request = {
       ...c.req.valid("json"),
       ...trustedDesktopAgentFields(),
-    });
+    };
+    const response = await proxy("remix/turns", request);
     if (response.ok) {
       const receipt = (await response.clone().json()) as {
         turn: { id: string };
       };
-      registerRemixTurn(c.req.valid("json").threadId, receipt.turn.id);
+      if (!matchesOwner(c))
+        return c.json({ error: "remix_account_changed" }, 401);
+      registerRemixTurn(c.req.valid("json").threadId, receipt.turn.id, request);
     }
     return response;
   })
@@ -177,6 +202,7 @@ export const remixDurableRoute = new Hono()
     "/turns/:turnId/commands",
     zValidator("param", turnParam),
     zValidator("json", commandSchema),
+    boundOwner,
     (c) => {
       const command = c.req.valid("json");
       const { turnId } = c.req.valid("param");

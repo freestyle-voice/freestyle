@@ -14,10 +14,17 @@ type Options = {
   messages: UIMessage[];
   context?: () => unknown;
   onToolCall: (event: {
-    toolCall: { toolName: string; toolCallId: string; input: unknown };
+    toolCall: {
+      toolName: string;
+      toolCallId: string;
+      input: unknown;
+      requiresConfirmation?: boolean;
+    };
   }) => Promise<void>;
   onFinish?: (event: { messages: UIMessage[] }) => void;
   onError?: (error: Error) => void;
+  onFork?: (thread: { id: string; messages: UIMessage[] }) => void;
+  onActionUnavailable?: (actionId: string) => void;
 };
 const defaultContext = () => ({
   selection: null,
@@ -53,6 +60,9 @@ export function useRemixRecovery(options: Options) {
           ].includes(name),
         onFinish: (messages) => ref.current.onFinish?.({ messages }),
         onError: (error) => ref.current.onError?.(error),
+        onFork: (thread) => ref.current.onFork?.(thread),
+        onActionUnavailable: (actionId) =>
+          ref.current.onActionUnavailable?.(actionId),
       }),
     [options.id],
   );
@@ -136,6 +146,8 @@ export function useRemixRecovery(options: Options) {
         attempt: controller.retry,
         resume: () =>
           controller.resume((ref.current.context ?? defaultContext)()),
+        desktop: snapshot.desktopRecovery,
+        retryDesktop: controller.retryDesktop,
       },
       queue: {
         items: snapshot.queue,

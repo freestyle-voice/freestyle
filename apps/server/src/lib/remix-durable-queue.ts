@@ -6,6 +6,7 @@ import {
   deferRemixCancel,
   deferRemixRequestCancel,
   flushRemixCancels,
+  onRemixCancellationSettled,
 } from "./remix-cancel-outbox.js";
 import { getSession } from "./sessions.js";
 
@@ -18,9 +19,14 @@ export type RemixQueuedMessage = {
 };
 type QueueState = {
   items: RemixQueuedMessage[];
+  enqueueIds?: string[];
   activeTurnId?: string;
   steer?: boolean;
   paused?: boolean;
+  activeRequest?: Record<string, unknown>;
+  retryAttempts?: number;
+  retryAt?: number;
+  recoveryPaused?: boolean;
 };
 type Registry = Record<string, QueueState>;
 function scope() {
@@ -40,7 +46,8 @@ function write(threadId: string, state: QueueState) {
   const key = scope();
   if (!key) throw new Error("cloud_auth_required");
   const all = registry();
-  if (!state.activeTurnId && !state.items.length) delete all[threadId];
+  if (!state.activeTurnId && !state.items.length && !state.enqueueIds?.length)
+    delete all[threadId];
   else all[threadId] = state;
   writeSetting(key, JSON.stringify(all));
   agentActivityEvents.publish(threadId);
@@ -49,16 +56,26 @@ export function remixQueueSnapshot(threadId: string) {
   const state = read(threadId);
   return {
     items: state.items.map(({ request: _request, ...item }) => item),
-    active: Boolean(state.activeTurnId) && !state.paused,
+    active:
+      Boolean(state.activeTurnId) && !state.paused && !state.recoveryPaused,
     activeTurnId: state.activeTurnId ?? null,
+    recoveryPaused: Boolean(state.recoveryPaused),
   };
 }
-export function registerRemixTurn(threadId: string, turnId: string) {
+export function registerRemixTurn(
+  threadId: string,
+  turnId: string,
+  request?: Record<string, unknown>,
+) {
   write(threadId, {
     ...read(threadId),
     activeTurnId: turnId,
     steer: false,
     paused: false,
+    activeRequest: request,
+    retryAttempts: 0,
+    retryAt: undefined,
+    recoveryPaused: false,
   });
 }
 export function pauseRemixQueue(threadId: string) {
@@ -75,8 +92,10 @@ export function pauseRemixQueue(threadId: string) {
 export function remixQueueActivity() {
   return Object.entries(registry()).map(([threadId, state]) => ({
     threadId,
-    active: Boolean(state.activeTurnId) && !state.paused,
+    active:
+      Boolean(state.activeTurnId) && !state.paused && !state.recoveryPaused,
     queuedCount: state.items.length,
+    recoveryPaused: Boolean(state.recoveryPaused),
   }));
 }
 export function settleRemixTurn(turnId: string, status: string) {
@@ -84,18 +103,24 @@ export function settleRemixTurn(turnId: string, status: string) {
   for (const [threadId, state] of Object.entries(registry())) {
     if (state.activeTurnId !== turnId) continue;
     state.activeTurnId = undefined;
+    state.activeRequest = undefined;
+    state.recoveryPaused = false;
     state.steer = Boolean(state.steer || status === "completed");
     write(threadId, state);
   }
 }
 export function enqueueRemixMessage(
   threadId: string,
-  input: { text: string; context?: unknown },
+  input: { requestId?: string; text: string; context?: unknown },
 ) {
   const state = read(threadId);
+  const { requestId = crypto.randomUUID(), ...message } = input;
+  if (state.enqueueIds?.includes(requestId))
+    return remixQueueSnapshot(threadId);
+  state.enqueueIds = [...(state.enqueueIds ?? []), requestId];
   state.items.push({
-    ...input,
-    id: crypto.randomUUID(),
+    ...message,
+    id: requestId,
     createdAt: Date.now(),
   });
   write(threadId, state);
@@ -130,6 +155,9 @@ export function steerRemixQueuedMessage(threadId: string, id: string) {
   state.items = [item, ...state.items.filter((item) => item.id !== id)];
   state.steer = true;
   state.paused = false;
+  state.recoveryPaused = false;
+  state.retryAttempts = 0;
+  state.retryAt = undefined;
   if (state.activeTurnId) {
     deferRemixCancel(state.activeTurnId);
     void flushRemixCancels();
@@ -139,6 +167,28 @@ export function steerRemixQueuedMessage(threadId: string, id: string) {
   return true;
 }
 const draining = new Set<string>();
+const RETRY_DELAYS = [3_000, 6_000, 12_000, 24_000, 30_000];
+onRemixCancellationSettled(({ turnId, clientRequestId }) => {
+  for (const [threadId, state] of Object.entries(registry())) {
+    let changed = false;
+    for (const item of state.items) {
+      if (!clientRequestId || item.request?.clientRequestId !== clientRequestId)
+        continue;
+      // The old admission is definitively canceled. Preserve the draft, but
+      // detach it from that immutable receipt so edit/remove/steer work again.
+      item.id = crypto.randomUUID();
+      item.request = undefined;
+      changed = true;
+    }
+    if (state.activeTurnId === turnId) {
+      state.activeTurnId = undefined;
+      state.activeRequest = undefined;
+      state.recoveryPaused = false;
+      changed = true;
+    }
+    if (changed) write(threadId, state);
+  }
+});
 async function drainThread(threadId: string) {
   const session = getSession();
   const key = scope();
@@ -163,17 +213,60 @@ async function drainThread(threadId: string) {
       return payload;
     };
     let state = read(threadId);
-    if (state.paused) return;
+    if (state.paused || state.recoveryPaused) return;
     if (state.activeTurnId) {
       const observedTurn = state.activeTurnId;
       const receipt = (await cloud(`remix/turns/${observedTurn}`)) as {
-        turn: { status: string };
+        turn: { status: string; clientRequestId?: string };
+        checkpoint?: { messages: unknown[]; context: unknown };
       };
       state = read(threadId);
-      if (state.activeTurnId !== observedTurn) return;
+      if (
+        state.activeTurnId !== observedTurn ||
+        state.paused ||
+        state.recoveryPaused
+      )
+        return;
+      if (["retryable", "queued"].includes(receipt.turn.status)) {
+        const attempts = state.retryAttempts ?? 0;
+        if (attempts >= RETRY_DELAYS.length) {
+          state.recoveryPaused = true;
+          write(threadId, state);
+          return;
+        }
+        state.activeRequest ??=
+          receipt.checkpoint && receipt.turn.clientRequestId
+            ? {
+                threadId,
+                clientRequestId: receipt.turn.clientRequestId,
+                messages: receipt.checkpoint.messages,
+                context: receipt.checkpoint.context,
+                ...trustedDesktopAgentFields(),
+              }
+            : undefined;
+        if (!state.activeRequest) {
+          state.recoveryPaused = true;
+          write(threadId, state);
+          return;
+        }
+        if (!state.retryAt) {
+          state.retryAt = Date.now() + RETRY_DELAYS[attempts];
+          write(threadId, state);
+          return;
+        }
+        if (Date.now() < state.retryAt) return;
+        state.retryAttempts = attempts + 1;
+        state.retryAt = undefined;
+        write(threadId, state);
+        await cloud("remix/turns", state.activeRequest);
+        return;
+      }
+      state.retryAttempts = 0;
+      state.retryAt = undefined;
       if (!["completed", "failed", "canceled"].includes(receipt.turn.status))
         return;
       state.activeTurnId = undefined;
+      state.activeRequest = undefined;
       // Failure/Stop preserve the queue until the user sends or steers again.
       if (receipt.turn.status !== "completed" && !state.steer) {
         write(threadId, state);
@@ -216,9 +309,15 @@ async function drainThread(threadId: string) {
       turn: { id: string };
     };
     state = read(threadId);
+    if (!state.items.some((entry) => entry.id === item.id)) return;
+    state.activeRequest = state.items.find(
+      (entry) => entry.id === item.id,
+    )!.request;
     state.items = state.items.filter((entry) => entry.id !== item.id);
     state.activeTurnId = receipt.turn.id;
     state.steer = false;
+    state.retryAttempts = 0;
+    state.retryAt = undefined;
     write(threadId, state);
     if (state.paused) {
       deferRemixCancel(receipt.turn.id);
@@ -237,6 +336,7 @@ export async function drainRemixQueues() {
       .filter(
         ([, state]) =>
           !state.paused &&
+          !state.recoveryPaused &&
           (state.activeTurnId || (state.items.length > 0 && state.steer)),
       )
       .map(([threadId]) => drainThread(threadId)),

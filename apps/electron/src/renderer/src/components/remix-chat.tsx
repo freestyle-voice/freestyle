@@ -239,6 +239,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   } = useRemixRecovery({
     id: thread.id,
     messages: thread.messages,
+    onActionUnavailable: (actionId) =>
+      setApprovals((pending) =>
+        pending.filter((item) => item.call.toolCallId !== actionId),
+      ),
     context: () => ({
       selection: contextRef.current.text,
       appName: contextRef.current.appName,
@@ -255,7 +259,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       };
       const startedAt = Date.now();
       const tier = await agentToolTier(call);
-      if (tier === "confirmed") {
+      if (tier === "confirmed" || toolCall.requiresConfirmation) {
         props.onExpand();
         setApprovals((pending) =>
           pending.some((item) => item.call.toolCallId === call.toolCallId)
@@ -1043,7 +1047,22 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             ) : null}
           </MessageScroller>
 
-          {displayNotice &&
+          {recovery.desktop ? (
+            <button
+              type="button"
+              className="remix-chat-notice"
+              onClick={() =>
+                void recovery
+                  .retryDesktop()
+                  .catch(() =>
+                    setNotice("This desktop action is not ready to retry."),
+                  )
+              }
+            >
+              Desktop action interrupted — Review before retrying
+            </button>
+          ) : (
+            displayNotice &&
             (reconnectNotice ? (
               <button
                 type="button"
@@ -1062,7 +1081,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
               <div className="remix-chat-notice" role="alert">
                 {displayNotice}
               </div>
-            ))}
+            ))
+          )}
 
           {!busy &&
           props.voiceStatus === null &&

@@ -22,6 +22,10 @@ type Receipt = {
     messages?: UIMessage[];
     context?: unknown;
     assistant?: UIMessage | null;
+    toolState?:
+      | { actionId?: string; status?: string }[]
+      | { actionId?: string; status?: string }
+      | null;
   } | null;
 };
 export type RemixQueueItem = {
@@ -36,12 +40,24 @@ type Completion = {
   clientId: string;
   result: unknown;
 };
+type ClaimIntent = {
+  turnId: string;
+  clientId: string;
+  toolName: string;
+  input: unknown;
+  phase: "claiming" | "executing";
+};
 type Saved = {
   request?: Admission;
   turn?: Turn;
   cancels: Array<{ turn?: Turn; request?: Admission }>;
   queue: RemixQueueItem[];
   completions: Completion[];
+  enqueues: Array<{ requestId: string; text: string; context?: unknown }>;
+  claimIntents: Record<string, ClaimIntent>;
+  desktopRetries: Record<string, string>;
+  retrySources: Record<string, string>;
+  confirmActions: string[];
 };
 export type RemixRecoverySnapshot = {
   messages: UIMessage[];
@@ -50,6 +66,7 @@ export type RemixRecoverySnapshot = {
   queue: RemixQueueItem[];
   canonical: boolean;
   runtime: DurableThreadRuntime | null;
+  desktopRecovery: { turnId: string; actionId: string } | null;
 };
 type Options = {
   threadId: string;
@@ -60,13 +77,25 @@ type Options = {
     toolName: string;
     toolCallId: string;
     input: unknown;
+    requiresConfirmation?: boolean;
   }) => Promise<void>;
   requiresApproval?: (toolName: string) => boolean;
   onFinish?: (messages: UIMessage[]) => void;
   onError?: (error: Error) => void;
+  onFork?: (thread: { id: string; messages: UIMessage[] }) => void;
+  onActionUnavailable?: (actionId: string) => void;
 };
 const terminal = new Set(["completed", "failed", "canceled"]);
-const emptySaved = (): Saved => ({ cancels: [], queue: [], completions: [] });
+const emptySaved = (): Saved => ({
+  cancels: [],
+  queue: [],
+  completions: [],
+  enqueues: [],
+  claimIntents: {},
+  desktopRetries: {},
+  retrySources: {},
+  confirmActions: [],
+});
 
 /** Shared durable observer. Requests retain their admission ID across network
  * retries; only explicit Send or Resume creates a new user turn. */
@@ -74,6 +103,7 @@ export class RemixRecoveryController {
   private saved = emptySaved();
   private key = "";
   private ownerId = "";
+  private ownerHost = "";
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | null = null;
   private attempts = 0;
@@ -86,7 +116,6 @@ export class RemixRecoveryController {
     string,
     { turnId: string; toolName: string; input: unknown }
   >();
-  private readonly clientId = crypto.randomUUID();
   private initialized: Promise<void> | null = null;
   private snapshot: RemixRecoverySnapshot;
   constructor(private readonly options: Options) {
@@ -97,6 +126,7 @@ export class RemixRecoveryController {
       queue: [],
       canonical: false,
       runtime: null,
+      desktopRecovery: null,
     };
   }
   getSnapshot = () => this.snapshot;
@@ -120,24 +150,17 @@ export class RemixRecoveryController {
     body?: unknown,
     method = body === undefined ? "GET" : "POST",
   ): Promise<T> {
-    if (method !== "GET" && this.ownerId) {
-      const auth = await this.options.fetch("/api/auth/status");
-      const identity = auth.ok
-        ? ((await auth.json()) as { user?: { id: string } })
-        : null;
-      if (identity?.user?.id !== this.ownerId)
-        throw Object.assign(
-          new Error("Sign in with the account that started this conversation."),
-          { status: 401 },
-        );
-    }
     const response = await this.options.fetch(
       path,
       body === undefined && method === "GET"
         ? undefined
         : {
             method,
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "X-Remix-User": this.ownerId,
+              "X-Remix-Host": encodeURIComponent(this.ownerHost),
+            },
             ...(body === undefined ? {} : { body: JSON.stringify(body) }),
           },
     );
@@ -156,16 +179,17 @@ export class RemixRecoveryController {
   }
   initialize = (): Promise<void> => {
     this.initialized ??= (async () => {
-      const auth = await this.json<{ user?: { id: string } }>(
-        "/api/auth/status",
+      const auth = await this.json<{ userId: string; host: string }>(
+        "/api/remix/identity",
       );
-      if (!auth.user?.id)
+      if (!auth.userId || !auth.host)
         throw Object.assign(
           new Error("Sign in to Freestyle Cloud to use Remix."),
           { status: 401 },
         );
-      this.key = `remix.recovery.${auth.user.id}.${this.options.threadId}`;
-      this.ownerId = auth.user.id;
+      this.key = `remix.recovery.${encodeURIComponent(auth.host)}.${auth.userId}.${this.options.threadId}`;
+      this.ownerId = auth.userId;
+      this.ownerHost = auth.host;
       const stored = this.options.storage?.getItem(this.key);
       if (stored)
         this.saved = { ...emptySaved(), ...(JSON.parse(stored) as Saved) };
@@ -259,12 +283,66 @@ export class RemixRecoveryController {
       this.persist();
     }
     for (const completion of [...this.saved.completions]) {
-      await this.command(completion.turnId, {
-        type: "desktop_complete",
-        ...completion,
-      });
+      try {
+        await this.command(completion.turnId, {
+          type: "desktop_complete",
+          ...completion,
+        });
+      } catch (error) {
+        const status = (error as { status?: number }).status;
+        if (status !== 409 && status !== 404) throw error;
+        // A canceled/settled turn can no longer accept first completion.
+        // Retire that output only after authoritative reconciliation; network
+        // uncertainty remains replayable and never causes local reexecution.
+        const receipt = await this.json<Receipt>(
+          `/api/remix/turns/${completion.turnId}`,
+        );
+        const tools = Array.isArray(receipt.checkpoint?.toolState)
+          ? receipt.checkpoint.toolState
+          : [receipt.checkpoint?.toolState];
+        const settledAction = tools.some(
+          (action) =>
+            action?.actionId === completion.actionId &&
+            ["expired", "declined", "completed", "failed"].includes(
+              action.status ?? "",
+            ),
+        );
+        if (!terminal.has(receipt.turn.status) && !settledAction) {
+          const runtime = await this.json<DurableThreadRuntime>(
+            `/api/remix/thread/${encodeURIComponent(this.options.threadId)}`,
+          );
+          if (
+            runtime.pendingAction?.id !== completion.actionId ||
+            !["expired", "declined", "completed", "failed"].includes(
+              runtime.pendingAction.status,
+            )
+          )
+            throw error;
+        }
+      }
       this.saved.completions = this.saved.completions.filter(
         (entry) => entry !== completion,
+      );
+      const retired = new Set<string>();
+      let actionId: string | undefined = completion.actionId;
+      while (actionId && !retired.has(actionId)) {
+        retired.add(actionId);
+        delete this.saved.claimIntents[actionId];
+        const predecessor: string | undefined =
+          this.saved.retrySources[actionId];
+        if (predecessor) delete this.saved.desktopRetries[predecessor];
+        delete this.saved.retrySources[actionId];
+        actionId = predecessor;
+      }
+      this.saved.confirmActions = this.saved.confirmActions.filter(
+        (id) => !retired.has(id),
+      );
+      this.persist();
+    }
+    for (const pending of [...this.saved.enqueues]) {
+      await this.queueRequest(this.queuePath(), pending);
+      this.saved.enqueues = this.saved.enqueues.filter(
+        (item) => item.requestId !== pending.requestId,
       );
       this.persist();
     }
@@ -276,6 +354,20 @@ export class RemixRecoveryController {
       await this.initialize();
       await this.flush();
       if (generation !== this.generation || this.disposed) return;
+      if (this.saved.turn?.status === "retryable") {
+        const queue = await this.json<{
+          items: RemixQueueItem[];
+          recoveryPaused?: boolean;
+        }>(this.queuePath());
+        if (queue.recoveryPaused) {
+          this.update({
+            queue: queue.items,
+            status: "error",
+            recovery: { phase: "paused", attempts: 5 },
+          });
+          return;
+        }
+      }
       if (
         this.saved.request &&
         (!this.saved.turn ||
@@ -334,17 +426,20 @@ export class RemixRecoveryController {
         : messages;
       const turn = this.saved.turn;
       const done = !turn || terminal.has(turn.status);
-      if (turn?.status === "retryable")
-        throw new Error("The saved turn needs to reconnect.");
       const queue = await this.json<{
         items: RemixQueueItem[];
         active: boolean;
+        recoveryPaused?: boolean;
       }>(this.queuePath());
+      if (turn?.status === "retryable" && !queue.recoveryPaused)
+        throw new Error("The saved turn needs to reconnect.");
       this.saved.queue = queue.items;
       this.update({
         messages: hydrated,
         status: done ? "ready" : "streaming",
-        recovery: { phase: "idle" },
+        recovery: queue.recoveryPaused
+          ? { phase: "paused", attempts: 5 }
+          : { phase: "idle" },
         canonical: Boolean(receipt?.checkpoint),
         runtime,
         queue: queue.items,
@@ -361,25 +456,68 @@ export class RemixRecoveryController {
           );
       }
       const action = runtime?.pendingAction;
+      for (const actionId of this.pendingApprovals.keys()) {
+        if (action?.id === actionId && !done) continue;
+        this.pendingApprovals.delete(actionId);
+        this.options.onActionUnavailable?.(actionId);
+      }
+      const checkpointActions = (assistant?.parts ?? []).flatMap((part) => {
+        const id = (
+          part as { output?: { desktopAction?: { actionId?: string } } }
+        ).output?.desktopAction?.actionId;
+        return id ? [id] : [];
+      });
+      const tools = Array.isArray(receipt?.checkpoint?.toolState)
+        ? receipt.checkpoint.toolState
+        : [receipt?.checkpoint?.toolState];
+      const interruptedActionId =
+        tools.find((tool) => tool?.status === "expired")?.actionId ??
+        checkpointActions.at(-1);
+      this.update({
+        desktopRecovery:
+          turn?.status === "needs_desktop" && interruptedActionId
+            ? { turnId: turn.id, actionId: interruptedActionId }
+            : null,
+      });
       if (
         !done &&
         receipt?.checkpoint &&
         action?.kind === "desktop" &&
-        action.status === "pending" &&
+        (action.status === "pending" ||
+          this.saved.claimIntents[action.id]?.phase === "claiming") &&
         !this.seenActions.has(action.id)
       ) {
         this.seenActions.add(action.id);
         // Show the checkpointed input first. Claim only after the user makes
         // a decision, so an unexecuted approval can move between windows.
-        if (this.options.requiresApproval?.(action.toolName)) {
-          const part = hydrated
-            .flatMap((message) => message.parts)
-            .find((part) => {
-              const output = (
-                part as { output?: { desktopAction?: { actionId?: string } } }
-              ).output;
-              return output?.desktopAction?.actionId === action.id;
-            }) as { input?: unknown } | undefined;
+        const retrySource =
+          this.saved.retrySources[action.id] ??
+          Object.keys(this.saved.desktopRetries)
+            .reverse()
+            .find(
+              (id) =>
+                this.saved.claimIntents[id]?.turnId === action.turnId ||
+                checkpointActions.includes(id),
+            );
+        const explicitRetry =
+          this.saved.confirmActions.includes(action.id) || Boolean(retrySource);
+        if (retrySource) {
+          // Recover the replacement relationship even if retry_desktop committed
+          // but its response was lost, so completion retires the retry intent.
+          this.saved.retrySources[action.id] = retrySource;
+          this.persist();
+        }
+        if (this.options.requiresApproval?.(action.toolName) || explicitRetry) {
+          const part = (assistant?.parts ?? []).find((part) => {
+            const output = (
+              part as { output?: { desktopAction?: { actionId?: string } } }
+            ).output;
+            const id = output?.desktopAction?.actionId;
+            return (
+              id === action.id ||
+              (explicitRetry && Boolean(id && this.saved.desktopRetries[id]))
+            );
+          }) as { input?: unknown } | undefined;
           if (part) {
             this.pendingApprovals.set(action.id, {
               turnId: action.turnId,
@@ -390,6 +528,7 @@ export class RemixRecoveryController {
               toolName: action.toolName,
               toolCallId: action.id,
               input: part.input,
+              requiresConfirmation: explicitRetry,
             });
           } else {
             this.seenActions.delete(action.id);
@@ -400,13 +539,12 @@ export class RemixRecoveryController {
           this.attempts = 0;
           return;
         }
-        let claim: { action: { toolName: string; input: unknown } };
+        let claim: { toolName: string; input: unknown };
         try {
-          claim = (await this.command(action.turnId, {
-            type: "desktop_claim",
-            actionId: action.id,
-            clientId: this.clientId,
-          })) as typeof claim;
+          claim = await this.claimAction(action.id, {
+            turnId: action.turnId,
+            toolName: action.toolName,
+          });
         } catch (error) {
           this.seenActions.delete(action.id);
           if ((error as { status?: number }).status !== 409) throw error;
@@ -416,23 +554,18 @@ export class RemixRecoveryController {
           return;
         }
         if (generation !== this.generation || this.disposed) return;
-        this.claims.set(action.id, {
-          turnId: action.turnId,
-          actionId: action.id,
-          clientId: this.clientId,
-          result: null,
-        });
         await this.options.onToolCall({
-          toolName: claim.action.toolName,
+          toolName: claim.toolName,
           toolCallId: action.id,
-          input: claim.action.input,
+          input: claim.input,
         });
       }
       if (
-        !done ||
-        this.saved.cancels.length ||
-        queue.items.length ||
-        queue.active
+        !queue.recoveryPaused &&
+        (!done ||
+          this.saved.cancels.length ||
+          queue.items.length ||
+          queue.active)
       )
         this.schedule(1_000, () => {
           void this.observe();
@@ -449,6 +582,39 @@ export class RemixRecoveryController {
   };
   send = async (text: string, context: unknown, messageId?: string) => {
     await this.initialize();
+    if (messageId) {
+      if (!this.options.onFork) throw new Error("Editing requires a new chat.");
+      const index = this.snapshot.messages.findIndex(
+        (message) => message.id === messageId && message.role === "user",
+      );
+      if (index < 0)
+        throw new Error("The original message is no longer available.");
+      const id = crypto.randomUUID();
+      const messages: UIMessage[] = [
+        ...this.snapshot.messages.slice(0, index),
+        {
+          id: crypto.randomUUID(),
+          role: "user" as const,
+          parts: [{ type: "text" as const, text }],
+        },
+      ].map((message) => ({ ...message, id: crypto.randomUUID() }));
+      const saved: Saved = {
+        ...emptySaved(),
+        request: {
+          threadId: id,
+          clientRequestId: crypto.randomUUID(),
+          messages,
+          context,
+          firstTurn: true,
+        },
+      };
+      this.options.storage?.setItem(
+        `remix.recovery.${encodeURIComponent(this.ownerHost)}.${this.ownerId}.${id}`,
+        JSON.stringify(saved),
+      );
+      this.options.onFork({ id, messages });
+      return;
+    }
     if (this.saved.turn || this.saved.request) {
       await this.enqueue(text, context);
       return;
@@ -456,17 +622,10 @@ export class RemixRecoveryController {
     this.generation++;
     clearTimeout(this.timer);
     if (this.inFlight) await this.inFlight;
-    const index = messageId
-      ? this.snapshot.messages.findIndex((message) => message.id === messageId)
-      : -1;
-    const prior =
-      index >= 0
-        ? this.snapshot.messages.slice(0, index)
-        : this.snapshot.messages;
     const messages: UIMessage[] = [
-      ...prior,
+      ...this.snapshot.messages,
       {
-        id: messageId ?? crypto.randomUUID(),
+        id: crypto.randomUUID(),
         role: "user",
         parts: [{ type: "text", text }],
       },
@@ -528,23 +687,65 @@ export class RemixRecoveryController {
   authorizeTool = async (toolCallId: string) => {
     const pending = this.pendingApprovals.get(toolCallId);
     if (!pending) throw new Error("This approval is no longer available.");
+    await this.claimAction(toolCallId, pending);
+    this.pendingApprovals.delete(toolCallId);
+  };
+  private async claimAction(
+    toolCallId: string,
+    pending: { turnId: string; toolName: string; input?: unknown },
+  ) {
+    let intent = this.saved.claimIntents[toolCallId];
+    if (intent?.phase === "executing")
+      throw new Error(
+        "This action may already have run. Wait for recovery before retrying.",
+      );
+    intent ??= {
+      ...pending,
+      input: pending.input,
+      clientId: crypto.randomUUID(),
+      phase: "claiming",
+    };
+    this.saved.claimIntents[toolCallId] = intent;
+    this.persist();
+    // Cloud must replay the SAME live claim for this claimant, without a new
+    // lease, when the original successful claim response was lost.
     const claim = (await this.command(pending.turnId, {
       type: "desktop_claim",
       actionId: toolCallId,
-      clientId: this.clientId,
+      clientId: intent.clientId,
     })) as { action: { toolName: string; input: unknown } };
     if (
       claim.action.toolName !== pending.toolName ||
-      JSON.stringify(claim.action.input) !== JSON.stringify(pending.input)
+      (pending.input !== undefined &&
+        JSON.stringify(claim.action.input) !== JSON.stringify(pending.input))
     )
       throw new Error("The action changed. Review it again before continuing.");
-    this.pendingApprovals.delete(toolCallId);
+    intent.phase = "executing";
+    intent.input = claim.action.input;
+    this.persist();
     this.claims.set(toolCallId, {
       turnId: pending.turnId,
       actionId: toolCallId,
-      clientId: this.clientId,
+      clientId: intent.clientId,
       result: null,
     });
+    return claim.action;
+  }
+  retryDesktop = async () => {
+    const action = this.snapshot.desktopRecovery;
+    if (!action) return;
+    this.saved.desktopRetries[action.actionId] ??= crypto.randomUUID();
+    this.persist();
+    const result = (await this.command(action.turnId, {
+      type: "retry_desktop",
+      actionId: action.actionId,
+      clientRequestId: this.saved.desktopRetries[action.actionId],
+    })) as { action: { id: string } };
+    this.saved.confirmActions.push(result.action.id);
+    this.saved.retrySources[result.action.id] = action.actionId;
+    this.persist();
+    this.update({ desktopRecovery: null });
+    await this.observe();
   };
   private queuePath() {
     return `/api/remix/${encodeURIComponent(this.options.threadId)}/queue`;
@@ -560,8 +761,42 @@ export class RemixRecoveryController {
     this.persist();
     this.update({ queue: queue.items });
   }
-  enqueue = async (text: string, context?: unknown) =>
-    this.queueRequest(this.queuePath(), { text, context });
+  enqueue = async (text: string, context?: unknown) => {
+    await this.initialize();
+    const pending = { requestId: crypto.randomUUID(), text, context };
+    this.saved.enqueues.push(pending);
+    this.persist();
+    this.update({
+      queue: [
+        ...this.snapshot.queue,
+        { id: pending.requestId, text, context, createdAt: Date.now() },
+      ],
+    });
+    try {
+      await this.queueRequest(this.queuePath(), pending);
+      this.saved.enqueues = this.saved.enqueues.filter(
+        (item) => item.requestId !== pending.requestId,
+      );
+      this.persist();
+    } catch (error) {
+      const status = (error as { status?: number }).status;
+      if (status && status >= 400 && status < 500 && status !== 408) {
+        this.saved.enqueues = this.saved.enqueues.filter(
+          (item) => item.requestId !== pending.requestId,
+        );
+        this.persist();
+        this.update({
+          queue: this.snapshot.queue.filter(
+            (item) => item.id !== pending.requestId,
+          ),
+        });
+        throw error;
+      }
+      // The local enqueue receipt may already exist. Retain the intent, don't
+      // restore a draft that would become a second independent user send.
+      this.failed(error);
+    }
+  };
   updateQueued = async (id: string, text: string) =>
     this.queueRequest(
       `${this.queuePath()}/${encodeURIComponent(id)}`,

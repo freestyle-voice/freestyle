@@ -238,7 +238,9 @@ describe("Remix chat polish", () => {
       readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),
     ]);
 
-    expect(chat).toContain('if (tier === "confirmed")');
+    expect(chat).toContain(
+      'if (tier === "confirmed" || toolCall.requiresConfirmation)',
+    );
     expect(chat).toContain('className="remix-chat-approval"');
     expect(chat).toContain("Remix wants to act locally");
     expect(chat).toContain("requestAgentFileSaveGrant(call)");

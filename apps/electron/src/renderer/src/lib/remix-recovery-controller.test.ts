@@ -36,12 +36,12 @@ function fixture() {
       ? (JSON.parse(String(init.body)) as Record<string, unknown>)
       : undefined;
     requests.push({ path, body, at: Date.now() });
-    if (path === "/api/auth/status")
-      return Response.json({ user: { id: "user-a" } });
+    if (path === "/api/remix/identity")
+      return Response.json({ userId: "user-a", host: "https://cloud.test" });
     if (path === "/api/remix/thread-a/queue") {
       if (body?.text)
         queue.push({
-          id: crypto.randomUUID(),
+          id: String(body.requestId),
           text: String(body.text),
           createdAt: Date.now(),
         });

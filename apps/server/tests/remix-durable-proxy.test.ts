@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import createApp from "../src/index.js";
+import { closeDb } from "../src/lib/db.js";
 import { freestyleCloudUrl } from "../src/lib/freestyle-cloud.js";
 import {
   deferRemixCancel,
@@ -29,6 +30,71 @@ afterEach(async () => {
 });
 
 describe("additive durable Remix proxy", () => {
+  it("grants a replayed Cloud claim to only one local execution observer", async () => {
+    const actionId = crypto.randomUUID();
+    const observers = [crypto.randomUUID(), crypto.randomUUID()];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          action: { id: actionId, toolName: "paste", input: {} },
+        }),
+      ),
+    );
+    const claim = (observerId: string) =>
+      app.request(`/api/remix/turns/${turnId}/commands`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Remix-User": "user-a",
+          "X-Remix-Host": encodeURIComponent(freestyleCloudUrl()),
+        },
+        body: JSON.stringify({
+          type: "desktop_claim",
+          actionId,
+          clientId: "same-cloud-claimant",
+          observerId,
+        }),
+      });
+    const responses = await Promise.all(observers.map(claim));
+    expect(responses.map((response) => response.status).sort()).toEqual([
+      200, 409,
+    ]);
+    const winner = responses.findIndex((response) => response.ok);
+    closeDb();
+    expect((await claim(observers[1 - winner])).status).toBe(409);
+    // Only the same still-live observer may recover a lost local response.
+    expect((await claim(observers[winner])).status).toBe(200);
+  });
+  it("proxies an owned predecessor receipt after the checkpoint advances", async () => {
+    const actionId = crypto.randomUUID();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          action: {
+            id: actionId,
+            turnId,
+            status: "expired",
+            toolName: "paste",
+            invocationId: "invocation",
+            retryOfActionId: null,
+          },
+        }),
+      ),
+    );
+    const response = await app.request(
+      `/api/remix/turns/${turnId}/actions/${actionId}`,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      action: { id: actionId, status: "expired" },
+    });
+    expect(
+      (await app.request(`/api/remix/turns/${turnId}/actions/not-a-uuid`))
+        .status,
+    ).toBe(400);
+  });
   it("rejects an old owner's mutation after identity lookup but before the POST", async () => {
     const identity = (await (
       await app.request("/api/remix/identity")

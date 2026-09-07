@@ -243,7 +243,6 @@ describe("Remix chat polish", () => {
     );
     expect(chat).toContain('className="remix-chat-approval"');
     expect(chat).toContain("Remix wants to act locally");
-    expect(chat).toContain("requestAgentFileSaveGrant(call)");
     expect(chat).toContain("DECLINED_OUTPUT");
     expect(chat).toContain('"Waiting for your approval"');
     expect(chat).toContain(

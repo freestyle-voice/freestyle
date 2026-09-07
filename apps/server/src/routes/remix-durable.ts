@@ -19,6 +19,7 @@ import {
   steerRemixQueuedMessage,
   updateRemixQueuedMessage,
 } from "../lib/remix-durable-queue.js";
+import { reserveRemixExecution } from "../lib/remix-execution-reservations.js";
 import {
   getSession,
   getSessionToken,
@@ -59,6 +60,7 @@ const commandSchema = z.discriminatedUnion("type", [
     type: z.literal("desktop_claim"),
     actionId: z.string().uuid(),
     clientId: z.string().min(8).max(160),
+    observerId: z.string().uuid(),
   }),
   z.object({
     type: z.literal("desktop_complete"),
@@ -198,14 +200,34 @@ export const remixDurableRoute = new Hono()
   .get("/turns/:turnId/events", zValidator("param", turnParam), (c) =>
     proxy(`remix/turns/${c.req.valid("param").turnId}/events`),
   )
+  .get(
+    "/turns/:turnId/actions/:actionId",
+    zValidator("param", turnParam.extend({ actionId: z.string().uuid() })),
+    (c) => {
+      const { turnId, actionId } = c.req.valid("param");
+      return proxy(`remix/turns/${turnId}/actions/${actionId}`);
+    },
+  )
   .post(
     "/turns/:turnId/commands",
     zValidator("param", turnParam),
     zValidator("json", commandSchema),
     boundOwner,
-    (c) => {
+    async (c) => {
       const command = c.req.valid("json");
       const { turnId } = c.req.valid("param");
+      if (command.type === "desktop_claim") {
+        const { observerId, ...claim } = command;
+        const response = await proxy(`remix/turns/${turnId}/commands`, claim);
+        if (!response.ok) return response;
+        if (!matchesOwner(c))
+          return c.json({ error: "remix_account_changed" }, 401);
+        if (
+          !reserveRemixExecution(command.actionId, command.clientId, observerId)
+        )
+          return c.json({ error: "remix_execution_reserved" }, 409);
+        return response;
+      }
       if (command.type !== "cancel")
         return proxy(`remix/turns/${turnId}/commands`, command);
       if (!getSessionToken())

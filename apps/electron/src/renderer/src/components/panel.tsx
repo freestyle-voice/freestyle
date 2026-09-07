@@ -43,7 +43,6 @@ import {
   describeAgentApproval,
   executeAgentTool,
   reportAgentToolResult,
-  requestAgentFileSaveGrant,
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
 import { useCloudAuth } from "@renderer/lib/auth-context";
@@ -59,7 +58,10 @@ import {
 } from "@renderer/lib/query";
 import { describeRemixRun } from "@renderer/lib/remix-run-state";
 import { remixReconnectLabel } from "@renderer/lib/remix-recovery";
-import { executeRemixTool } from "@renderer/lib/remix-tool-executor";
+import {
+  executeApprovedRemixTool,
+  executeRemixTool,
+} from "@renderer/lib/remix-tool-executor";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
   type DurableThreadAction,
@@ -1634,20 +1636,9 @@ function PanelInner({
         );
         return;
       }
-      const grant =
-        allowed && call.toolName === "save_file"
-          ? await requestAgentFileSaveGrant(call)
-          : null;
       const output = !allowed
         ? DECLINED_OUTPUT
-        : grant && grant.ok !== true
-          ? grant
-          : await executeAgentTool(call, {
-              saveFileGrant:
-                grant && typeof grant.grant === "string"
-                  ? grant.grant
-                  : undefined,
-            });
+        : await executeApprovedRemixTool(call);
       reportAgentToolResult(call, output, startedAt);
       if (approval.durable) {
         await sendDurableTurnCommand(approval.durable.turnId, {

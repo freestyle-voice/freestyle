@@ -53,6 +53,7 @@ function fixture() {
       });
     }
     if (offline) throw new TypeError("Network unavailable");
+    if (path.includes("/actions/")) return Response.json({ action });
     if (path === "/api/remix/turns") {
       requestId = String(body!.clientRequestId);
       messages = body!.messages as UIMessage[];

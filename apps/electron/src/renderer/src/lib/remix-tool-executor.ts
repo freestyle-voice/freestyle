@@ -1,10 +1,34 @@
 import type { RemixSelectionPayload } from "@shared/remix";
-import type { AgentToolCall } from "./agent-tools";
+import {
+  type AgentToolCall,
+  agentToolTier,
+  executeAgentTool,
+  requestAgentFileSaveGrant,
+} from "./agent-tools";
 import { executeMcpToolCall } from "./mcp";
 
 export interface RemixToolExecutionOptions {
   /** Keep the pill's next request grounded in a fresh live capture. */
   onContext?: (context: RemixSelectionPayload) => void;
+}
+
+/** Approval changes permission, not dispatch. Recovered cursor/MCP actions
+ * still use the same executor and context callback as their ordinary calls. */
+export async function executeApprovedRemixTool(
+  call: AgentToolCall,
+  options: RemixToolExecutionOptions = {},
+): Promise<Record<string, unknown>> {
+  if ((await agentToolTier(call)) === null)
+    return executeRemixTool(call, options);
+  const grant =
+    call.toolName === "save_file"
+      ? await requestAgentFileSaveGrant(call)
+      : null;
+  if (grant && grant.ok !== true) return grant;
+  return executeAgentTool(call, {
+    saveFileGrant:
+      grant && typeof grant.grant === "string" ? grant.grant : undefined,
+  });
 }
 
 const str = (input: Record<string, unknown>, key: string): string =>
@@ -27,8 +51,8 @@ const badArgs = (
 });
 
 /**
- * The canonical `/api/agent` thread can be rendered by either the compact
- * pill or the full workspace. Keep non-approved local tool dispatch here so
+ * The canonical `/api/remix` thread can be rendered by either the compact
+ * pill or the full workspace. Keep cursor/MCP local tool dispatch here so
  * the two surfaces cannot drift in MCP or cursor behavior.
  */
 export async function executeRemixTool(

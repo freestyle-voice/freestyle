@@ -39,15 +39,39 @@ function harness() {
   let loseRetry = false;
   let checkpointActionId = "";
   let replacements = 0;
-  let action: {
+  type Action = {
     id: string;
     turnId: string;
     kind: "desktop";
     toolName: string;
     status: string;
     claimedBy?: string;
-  } | null = null;
-  const onToolCall = vi.fn(async () => {});
+    retryOfActionId?: string;
+  };
+  let action: Action | null = null;
+  const predecessors = new Map<string, Action>();
+  const executionOwners = new Map<string, string>();
+  const replace = () => {
+    const original = action!;
+    predecessors.set(original.id, original);
+    replacements++;
+    action = {
+      ...original,
+      id: replacements === 1 ? "replacement" : `replacement-${replacements}`,
+      status: "pending",
+      claimedBy: undefined,
+      retryOfActionId: original.id,
+    };
+    turns.get(action.turnId)!.status = "waiting_desktop";
+  };
+  const onToolCall = vi.fn(
+    async (_call: {
+      toolName: string;
+      toolCallId: string;
+      input: unknown;
+      requiresConfirmation?: boolean;
+    }) => {},
+  );
   const onFork = vi.fn();
   const fetch = async (path: string, init?: RequestInit) => {
     const body = init?.body ? JSON.parse(String(init.body)) : undefined;
@@ -107,13 +131,22 @@ function harness() {
     }
     const turnId = path.split("/")[4];
     const turn = turns.get(turnId);
+    if (path.includes("/actions/")) {
+      const id = path.split("/").at(-1)!;
+      return Response.json({
+        action: action?.id === id ? action : predecessors.get(id),
+      });
+    }
     if (path.endsWith("/commands")) {
       if (body.type === "cancel") {
         turn!.status = "canceled";
         return Response.json({ receipt: { canceled: true } });
       }
       if (body.type === "desktop_complete") {
-        if (["canceled", "completed", "failed"].includes(turn!.status))
+        if (
+          predecessors.has(body.actionId) ||
+          ["canceled", "completed", "failed"].includes(turn!.status)
+        )
           return Response.json({}, { status: 409 });
         action = null;
         return Response.json({ receipt: { accepted: true } });
@@ -131,31 +164,28 @@ function harness() {
           loseClaim = false;
           throw new Error("claim committed, response lost");
         }
+        if (body.observerId) {
+          const owner = executionOwners.get(action.id);
+          if (owner && owner !== body.observerId)
+            return Response.json({}, { status: 409 });
+          executionOwners.set(action.id, body.observerId);
+        }
         return Response.json({
           action: {
             id: action.id,
-            toolName: "Bash",
+            toolName: action.toolName,
             input: { command: "pwd" },
           },
           receipt: { claimed: true },
         });
       }
       if (body.type === "retry_desktop") {
-        replacements++;
-        action = {
-          id:
-            replacements === 1 ? "replacement" : `replacement-${replacements}`,
-          turnId,
-          kind: "desktop",
-          status: "pending",
-          toolName: "Bash",
-        };
-        turn!.status = "waiting_desktop";
+        replace();
         if (loseRetry) {
           loseRetry = false;
           throw new Error("replacement committed, response lost");
         }
-        return Response.json({ action: { id: action.id } });
+        return Response.json({ action: { id: action!.id } });
       }
     }
     if (path.startsWith("/api/remix/thread/")) {
@@ -200,7 +230,11 @@ function harness() {
       });
     return Response.json({}, { status: 404 });
   };
-  const create = (threadId = "thread-a", messages: UIMessage[] = []) =>
+  const create = (
+    threadId = "thread-a",
+    messages: UIMessage[] = [],
+    requiresApproval = true,
+  ) =>
     new RemixRecoveryController({
       threadId,
       messages,
@@ -212,7 +246,7 @@ function harness() {
         },
       },
       onToolCall,
-      requiresApproval: () => true,
+      requiresApproval: () => requiresApproval,
       onFork,
     });
   return {
@@ -239,14 +273,15 @@ function harness() {
     loseRetry: () => {
       loseRetry = true;
     },
-    approval: () => {
+    replace,
+    approval: (toolName = "Bash") => {
       const turn = [...turns.values()][0];
       action = {
         id: "action-a",
         turnId: turn.id,
         kind: "desktop",
         status: "pending",
-        toolName: "Bash",
+        toolName,
       };
       checkpointActionId = action.id;
     },
@@ -266,6 +301,99 @@ afterEach(() => {
 });
 
 describe("durable persistence-boundary regressions", () => {
+  it("serializes simultaneous confirmations within the same observer", async () => {
+    const h = harness();
+    const controller = h.create();
+    await controller.send("Run", context);
+    h.approval();
+    await controller.start();
+    const confirmations = await Promise.allSettled([
+      controller.authorizeTool("action-a"),
+      controller.authorizeTool("action-a"),
+    ]);
+    expect(confirmations.map((result) => result.status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(
+      h.calls.filter((call) => call.body?.type === "desktop_claim"),
+    ).toHaveLength(1);
+  });
+  it.each([
+    false,
+    true,
+  ])("allows only one reattached observer to execute a shared uncertain claim (concurrent: %s)", async (concurrent) => {
+    const h = harness();
+    const first = h.create();
+    await first.send("Run", context);
+    h.approval();
+    await first.start();
+    h.loseClaim();
+    await expect(first.authorizeTool("action-a")).rejects.toThrow();
+    first.dispose();
+    const compact = h.create();
+    const workspace = h.create();
+    await Promise.all([compact.start(), workspace.start()]);
+    const executed: string[] = [];
+    const allow = (controller: RemixRecoveryController, label: string) =>
+      controller.authorizeTool("action-a").then(() => executed.push(label));
+    if (concurrent)
+      await Promise.allSettled([
+        allow(compact, "compact"),
+        allow(workspace, "workspace"),
+      ]);
+    else {
+      await allow(compact, "compact");
+      await expect(allow(workspace, "workspace")).rejects.toThrow();
+    }
+    expect(executed).toHaveLength(1);
+  });
+  it("does not let a stale second observer execute a reviewed replacement before confirmation", async () => {
+    const h = harness();
+    const compact = h.create("thread-a", [], false);
+    await compact.send("Run", context);
+    h.approval("paste");
+    h.expire();
+    await compact.start();
+    const workspace = h.create("thread-a", [], false);
+    await workspace.start();
+    await compact.retryDesktop();
+    await workspace.start();
+    expect(
+      h.calls.filter((call) => call.body?.type === "desktop_claim"),
+    ).toHaveLength(0);
+    expect(h.onToolCall.mock.calls).toHaveLength(2);
+    for (const [call] of h.onToolCall.mock.calls)
+      expect(call).toMatchObject({
+        toolCallId: "replacement",
+        requiresConfirmation: true,
+      });
+  });
+  it("retires an offline expired completion and presents a replacement created by another observer", async () => {
+    const h = harness();
+    const first = h.create();
+    await first.send("Run", context);
+    h.approval();
+    await first.start();
+    await first.authorizeTool("action-a");
+    h.offline(true);
+    await first.complete("action-a", { ok: true });
+    first.dispose();
+    h.expire();
+    h.replace();
+    h.offline(false);
+    h.onToolCall.mockClear();
+    const reopened = h.create();
+    await reopened.start();
+    expect(reopened.getSnapshot().status).toBe("streaming");
+    expect(h.onToolCall).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolCallId: "replacement",
+        requiresConfirmation: true,
+      }),
+    );
+    expect(JSON.parse([...h.storage.values()][0]).completions).toEqual([]);
+  });
   it("binds the initialized owner to the admission even when the backing account changes", async () => {
     const h = harness();
     h.switchOwner();

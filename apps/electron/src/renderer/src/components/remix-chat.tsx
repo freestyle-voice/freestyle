@@ -12,12 +12,14 @@ import {
   describeAgentApproval,
   executeAgentTool,
   reportAgentToolResult,
-  requestAgentFileSaveGrant,
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
 import { remixReconnectLabel } from "@renderer/lib/remix-recovery";
-import { executeRemixTool } from "@renderer/lib/remix-tool-executor";
+import {
+  executeApprovedRemixTool,
+  executeRemixTool,
+} from "@renderer/lib/remix-tool-executor";
 import { useRemixRecovery } from "@renderer/lib/use-remix-recovery";
 import {
   type DynamicToolUIPart,
@@ -322,20 +324,14 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         }
         let output: Record<string, unknown>;
         try {
-          const grant =
-            allowed && call.toolName === "save_file"
-              ? await requestAgentFileSaveGrant(call)
-              : null;
           output = !allowed
             ? DECLINED_OUTPUT
-            : grant && grant.ok !== true
-              ? grant
-              : await executeAgentTool(call, {
-                  saveFileGrant:
-                    grant && typeof grant.grant === "string"
-                      ? grant.grant
-                      : undefined,
-                });
+            : await executeApprovedRemixTool(call, {
+                onContext: (context) => {
+                  contextRef.current = context;
+                  setLiveContext(context);
+                },
+              });
         } catch (error) {
           output = {
             ok: false,

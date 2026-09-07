@@ -40,6 +40,14 @@ type Completion = {
   clientId: string;
   result: unknown;
 };
+type ActionReceipt = {
+  id: string;
+  turnId: string;
+  status: string;
+  toolName: string;
+  invocationId?: string | null;
+  retryOfActionId?: string | null;
+};
 type ClaimIntent = {
   turnId: string;
   clientId: string;
@@ -116,6 +124,8 @@ export class RemixRecoveryController {
     string,
     { turnId: string; toolName: string; input: unknown }
   >();
+  private readonly observerId = crypto.randomUUID();
+  private readonly authorizing = new Set<string>();
   private initialized: Promise<void> | null = null;
   private snapshot: RemixRecoverySnapshot;
   constructor(private readonly options: Options) {
@@ -268,6 +278,18 @@ export class RemixRecoveryController {
       body,
     );
   }
+  private async actionReceipt(turnId: string, actionId: string) {
+    const { action } = await this.json<{ action: ActionReceipt }>(
+      `/api/remix/turns/${encodeURIComponent(turnId)}/actions/${encodeURIComponent(actionId)}`,
+    );
+    if (
+      action?.id !== actionId ||
+      action.turnId !== turnId ||
+      typeof action.status !== "string"
+    )
+      throw new Error("Could not verify this desktop action.");
+    return action;
+  }
   private async flush() {
     for (const cancel of [...this.saved.cancels]) {
       if (cancel.turn)
@@ -308,14 +330,20 @@ export class RemixRecoveryController {
             ),
         );
         if (!terminal.has(receipt.turn.status) && !settledAction) {
-          const runtime = await this.json<DurableThreadRuntime>(
-            `/api/remix/thread/${encodeURIComponent(this.options.threadId)}`,
+          // Check the predecessor itself: the checkpoint intentionally replaces
+          // its ID with the retry successor for the same invocation.
+          const action = await this.actionReceipt(
+            completion.turnId,
+            completion.actionId,
           );
           if (
-            runtime.pendingAction?.id !== completion.actionId ||
-            !["expired", "declined", "completed", "failed"].includes(
-              runtime.pendingAction.status,
-            )
+            ![
+              "expired",
+              "declined",
+              "completed",
+              "failed",
+              "canceled",
+            ].includes(action.status)
           )
             throw error;
         }
@@ -487,6 +515,20 @@ export class RemixRecoveryController {
           this.saved.claimIntents[action.id]?.phase === "claiming") &&
         !this.seenActions.has(action.id)
       ) {
+        const ownedAction = await this.actionReceipt(action.turnId, action.id);
+        const lineage = new Set([action.id]);
+        let ancestor = ownedAction;
+        while (
+          ancestor.retryOfActionId &&
+          !lineage.has(ancestor.retryOfActionId)
+        ) {
+          const predecessor = ancestor.retryOfActionId;
+          lineage.add(predecessor);
+          this.saved.retrySources[ancestor.id] = predecessor;
+          if (checkpointActions.includes(predecessor)) break;
+          ancestor = await this.actionReceipt(action.turnId, predecessor);
+        }
+        if (generation !== this.generation || this.disposed) return;
         this.seenActions.add(action.id);
         // Show the checkpointed input first. Claim only after the user makes
         // a decision, so an unexecuted approval can move between windows.
@@ -500,7 +542,9 @@ export class RemixRecoveryController {
                 checkpointActions.includes(id),
             );
         const explicitRetry =
-          this.saved.confirmActions.includes(action.id) || Boolean(retrySource);
+          Boolean(ownedAction.retryOfActionId) ||
+          this.saved.confirmActions.includes(action.id) ||
+          Boolean(retrySource);
         if (retrySource) {
           // Recover the replacement relationship even if retry_desktop committed
           // but its response was lost, so completion retires the retry intent.
@@ -515,6 +559,7 @@ export class RemixRecoveryController {
             const id = output?.desktopAction?.actionId;
             return (
               id === action.id ||
+              (explicitRetry && Boolean(id && lineage.has(id))) ||
               (explicitRetry && Boolean(id && this.saved.desktopRetries[id]))
             );
           }) as { input?: unknown } | undefined;
@@ -694,6 +739,19 @@ export class RemixRecoveryController {
     toolCallId: string,
     pending: { turnId: string; toolName: string; input?: unknown },
   ) {
+    if (this.authorizing.has(toolCallId))
+      throw new Error("This action is already being confirmed.");
+    this.authorizing.add(toolCallId);
+    try {
+      return await this.claimActionOnce(toolCallId, pending);
+    } finally {
+      this.authorizing.delete(toolCallId);
+    }
+  }
+  private async claimActionOnce(
+    toolCallId: string,
+    pending: { turnId: string; toolName: string; input?: unknown },
+  ) {
     let intent = this.saved.claimIntents[toolCallId];
     if (intent?.phase === "executing")
       throw new Error(
@@ -713,6 +771,7 @@ export class RemixRecoveryController {
       type: "desktop_claim",
       actionId: toolCallId,
       clientId: intent.clientId,
+      observerId: this.observerId,
     })) as { action: { toolName: string; input: unknown } };
     if (
       claim.action.toolName !== pending.toolName ||

@@ -94,6 +94,11 @@ async function installFixtures(page: Page) {
         turnId = backend.turnId;
       }
       const json = (body: unknown) => Response.json(body);
+      if (path === "/api/mcp/calls")
+        return json({
+          ok: true,
+          content: [{ type: "text", text: "Safe MCP test result" }],
+        });
       if (path === "/api/remix/identity")
         return json({ userId: "e2e", host: "https://cloud.test" });
       if (/\/api\/remix\/[^/]+\/queue$/.test(path)) {
@@ -268,18 +273,28 @@ type MainFixture = {
   claims: string[];
   completions: number;
   checkpointActionId?: string;
-  action: {
-    id: string;
-    turnId: string;
-    kind: string;
-    toolName: string;
-    status: string;
-    claimedBy?: string;
-  } | null;
+  toolName: string;
+  startExpired: boolean;
+  loseCompletion: boolean;
+  actions: Record<string, CloudAction>;
+  outputs: unknown[];
+  holdExecution: boolean;
+  action: CloudAction | null;
+};
+type CloudAction = {
+  id: string;
+  turnId: string;
+  kind: string;
+  toolName: string;
+  status: string;
+  claimedBy?: string;
+  retryOfActionId?: string;
 };
 type MainFixtureGlobal = {
   __recoveryCloud: MainFixture;
   __originalRecoveryFetch?: typeof fetch;
+  __safeExecutions?: string[];
+  __releaseSafeExecution?: () => void;
 };
 function readPersisted(owner: string, kind: "queue" | "cancel") {
   const db = new DatabaseSync(join(userData, "freestyle.db"));
@@ -316,6 +331,9 @@ async function mainState() {
       admissionCount: state.admissionCount,
       claims: state.claims,
       completions: state.completions,
+      outputs: state.outputs,
+      executions:
+        (globalThis as unknown as MainFixtureGlobal).__safeExecutions ?? [],
     };
   });
 }
@@ -333,7 +351,7 @@ async function installMainCloudFixture(owner: string) {
     Date.now(),
   );
   db.close();
-  await app.evaluate((_, owner) => {
+  await app.evaluate(({ ipcMain }, owner) => {
     const g = globalThis as unknown as MainFixtureGlobal;
     g.__originalRecoveryFetch ??= globalThis.fetch;
     const state: MainFixture = {
@@ -348,8 +366,25 @@ async function installMainCloudFixture(owner: string) {
       claims: [],
       completions: 0,
       action: null,
+      actions: {},
+      outputs: [],
+      toolName: "Bash",
+      startExpired: false,
+      loseCompletion: false,
+      holdExecution: false,
     };
     g.__recoveryCloud = state;
+    g.__safeExecutions = [];
+    // Exercise real renderer dispatch/IPC without touching the actual clipboard.
+    ipcMain.removeHandler("remix:paste-clipboard");
+    ipcMain.handle("remix:paste-clipboard", async () => {
+      g.__safeExecutions!.push("paste");
+      if (state.holdExecution)
+        await new Promise<void>((resolve) => {
+          g.__releaseSafeExecution = resolve;
+        });
+      return { ok: true };
+    });
     globalThis.fetch = async (input, init) => {
       const url = new URL(
         typeof input === "string"
@@ -386,7 +421,9 @@ async function installMainCloudFixture(owner: string) {
                 ? "retryable"
                 : "completed"
               : state.approval
-                ? "waiting_desktop"
+                ? state.startExpired
+                  ? "needs_desktop"
+                  : "waiting_desktop"
                 : "running",
           };
           state.turns.push(turn!);
@@ -400,10 +437,11 @@ async function installMainCloudFixture(owner: string) {
               id: crypto.randomUUID(),
               turnId: turn!.id,
               kind: "desktop",
-              toolName: "Bash",
-              status: "pending",
+              toolName: state.toolName,
+              status: state.startExpired ? "expired" : "pending",
             };
             state.checkpointActionId = state.action.id;
+            state.actions[state.action.id] = state.action;
           }
           if (state.loseAdmission) {
             state.loseAdmission = false;
@@ -422,6 +460,23 @@ async function installMainCloudFixture(owner: string) {
       }
       const turnId = path.split("/")[4];
       const turn = state.turns.find((turn) => turn.id === turnId);
+      if (path.includes("/actions/")) {
+        const action = state.actions[path.split("/").at(-1)!];
+        if (!action || action.turnId !== turnId)
+          return Response.json({}, { status: 404 });
+        return Response.json({
+          action: {
+            id: action.id,
+            turnId,
+            status: action.status,
+            toolName: action.toolName,
+            invocationId: "invocation",
+            ...(action.retryOfActionId
+              ? { retryOfActionId: action.retryOfActionId }
+              : {}),
+          },
+        });
+      }
       if (path.endsWith("/commands")) {
         if (body.type === "cancel") {
           turn!.status = "canceled";
@@ -447,26 +502,43 @@ async function installMainCloudFixture(owner: string) {
             action: {
               id: action.id,
               toolName: action.toolName,
-              input: { command: "pwd" },
+              input:
+                action.toolName === "Bash"
+                  ? { command: "pwd" }
+                  : action.toolName.startsWith("mcp_")
+                    ? { query: "roadmap" }
+                    : {},
             },
           });
         }
         if (body.type === "desktop_complete") {
-          if (turn!.status === "canceled")
+          if (state.loseCompletion) {
+            state.loseCompletion = false;
+            throw new Error("Completion offline");
+          }
+          if (
+            turn!.status === "canceled" ||
+            state.actions[body.actionId]?.status === "expired"
+          )
             return Response.json({}, { status: 409 });
           state.completions++;
+          state.outputs.push(body.result);
+          state.actions[body.actionId].status = "completed";
           state.action = null;
           turn!.status = "completed";
           return Response.json({ receipt: { accepted: true } });
         }
         if (body.type === "retry_desktop") {
+          const previous = state.action!;
           state.action = {
             id: crypto.randomUUID(),
             turnId: turn!.id,
             kind: "desktop",
-            toolName: "Bash",
+            toolName: previous.toolName,
             status: "pending",
+            retryOfActionId: previous.id,
           };
+          state.actions[state.action.id] = state.action;
           turn!.status = "waiting_desktop";
           return Response.json({ action: { id: state.action.id } });
         }
@@ -487,10 +559,15 @@ async function installMainCloudFixture(owner: string) {
                   parts: [
                     {
                       type: "dynamic-tool",
-                      toolName: "Bash",
+                      toolName: state.action.toolName,
                       toolCallId: "invocation",
                       state: "output-available",
-                      input: { command: "pwd" },
+                      input:
+                        state.action.toolName === "Bash"
+                          ? { command: "pwd" }
+                          : state.action.toolName.startsWith("mcp_")
+                            ? { query: "roadmap" }
+                            : {},
                       output: {
                         desktopAction: { actionId: state.checkpointActionId },
                       },
@@ -527,13 +604,46 @@ async function installMainCloudFixture(owner: string) {
   }, owner);
 }
 
+async function reattachSurface(surface: "compact" | "workspace") {
+  const page = surface === "compact" ? pill : workspace;
+  await page.goto(
+    `app://renderer/${surface === "compact" ? "pill.html" : "index.html"}?real-remix=1&recovery-resume=observer${surface === "workspace" ? "#/remix" : ""}`,
+  );
+  if (surface === "compact") {
+    await app.evaluate(({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find((window) =>
+        window.webContents.getURL().includes("pill.html"),
+      )!;
+      window.show();
+      window.setIgnoreMouseEvents(false);
+      window.webContents.send("remix:open-chat");
+    });
+  }
+  return page;
+}
+const reviewAction = (page: Page) =>
+  page.getByRole("button", {
+    name: "Desktop action interrupted — Review before retrying",
+    exact: true,
+  });
+const allowAction = (page: Page) =>
+  page.getByRole("button", { name: "Allow", exact: true });
+const savedCompletions = (page: Page) =>
+  page.evaluate(() =>
+    Object.keys(localStorage)
+      .filter((key) => key.startsWith("remix.recovery."))
+      .flatMap(
+        (key) => JSON.parse(localStorage.getItem(key)!).completions ?? [],
+      ),
+  );
+
 for (const surface of ["compact", "workspace"] as const) {
-  async function openSurface(real = false) {
-    const page = surface === "compact" ? pill : workspace;
+  async function openSurface(real = false, targetSurface = surface) {
+    const page = targetSurface === "compact" ? pill : workspace;
     await page.goto(
-      `app://renderer/${surface === "compact" ? "pill.html" : "index.html"}?${real ? "real-remix=1&" : ""}recovery=${Date.now()}${surface === "workspace" ? "#/remix" : ""}`,
+      `app://renderer/${targetSurface === "compact" ? "pill.html" : "index.html"}?${real ? "real-remix=1&" : ""}recovery=${Date.now()}${targetSurface === "workspace" ? "#/remix" : ""}`,
     );
-    if (surface === "compact") {
+    if (targetSurface === "compact") {
       await page.evaluate(() => window.api.getServerPort());
       await app.evaluate(({ BrowserWindow }) => {
         const window = BrowserWindow.getAllWindows().find((window) =>
@@ -545,7 +655,7 @@ for (const surface of ["compact", "workspace"] as const) {
       });
     }
     const input =
-      surface === "compact"
+      targetSurface === "compact"
         ? page.getByLabel("Message Remix")
         : page.locator("#panel-composer");
     await expect(input).toBeVisible();
@@ -554,7 +664,7 @@ for (const surface of ["compact", "workspace"] as const) {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     await expect(
       page.getByRole("button", {
-        name: surface === "compact" ? "Stop" : "Stop generating",
+        name: targetSurface === "compact" ? "Stop" : "Stop generating",
         exact: true,
       }),
     ).toBeVisible();
@@ -569,6 +679,139 @@ for (const surface of ["compact", "workspace"] as const) {
         )
         .toBe(true);
     return { page, input };
+  }
+
+  for (const toolName of ["paste", "mcp_1_search"]) {
+    test(`${surface}: Allow executes a reviewed ${toolName} replacement once while another observer is attached`, async () => {
+      await closeObservers();
+      await installMainCloudFixture(`allow-${surface}-${toolName}`);
+      await app.evaluate((_, toolName) => {
+        const state = (globalThis as unknown as MainFixtureGlobal)
+          .__recoveryCloud;
+        state.approval = true;
+        state.startExpired = true;
+        state.toolName = toolName;
+      }, toolName);
+      await openSurface(true, "compact");
+      await expect(reviewAction(pill)).toBeVisible();
+      await reattachSurface("workspace");
+      await expect(reviewAction(workspace)).toBeVisible();
+      const page = surface === "compact" ? pill : workspace;
+      const other = surface === "compact" ? workspace : pill;
+      await reviewAction(page).click();
+      await expect(allowAction(page)).toBeVisible();
+      await expect(allowAction(other)).toBeVisible();
+      expect((await mainState()).claims).toHaveLength(0);
+      expect((await mainState()).executions).toHaveLength(0);
+      await allowAction(page).dispatchEvent("click");
+      await expect.poll(mainState).toMatchObject({ completions: 1 });
+      expect((await mainState()).outputs).toEqual([
+        expect.objectContaining({ ok: true }),
+      ]);
+      if (toolName === "paste")
+        expect((await mainState()).executions).toEqual(["paste"]);
+      else {
+        const mcpCalls = await page.evaluate(() =>
+          (window as unknown as FixtureWindow).__remixRecovery.calls.filter(
+            (call) => call.path === "/api/mcp/calls",
+          ),
+        );
+        expect(mcpCalls).toEqual([
+          {
+            path: "/api/mcp/calls",
+            body: { toolName: "mcp_1_search", input: { query: "roadmap" } },
+          },
+        ]);
+      }
+      await closeObservers();
+    });
+  }
+
+  if (surface === "workspace") {
+    test("attached compact and reattached workspace cannot both execute the same uncertain claim", async () => {
+      await closeObservers();
+      await installMainCloudFixture("two-observers");
+      await app.evaluate(() => {
+        const state = (globalThis as unknown as MainFixtureGlobal)
+          .__recoveryCloud;
+        Object.assign(state, {
+          approval: true,
+          startExpired: true,
+          toolName: "paste",
+          loseClaim: true,
+          holdExecution: true,
+        });
+      });
+      const { page } = await openSurface(true, "compact");
+      await reviewAction(page).click();
+      await expect(allowAction(page)).toBeVisible();
+      // Exercise confirmation, not the transparent pill's native hitbox.
+      await allowAction(page).dispatchEvent("click");
+      await expect.poll(async () => (await mainState()).claims.length).toBe(1);
+      expect((await mainState()).executions).toEqual([]);
+      await reattachSurface("workspace");
+      await expect(allowAction(pill)).toBeVisible();
+      await expect(allowAction(workspace)).toBeVisible();
+      await Promise.all([
+        allowAction(pill).dispatchEvent("click"),
+        allowAction(workspace).dispatchEvent("click"),
+      ]);
+      await expect.poll(async () => (await mainState()).claims.length).toBe(3);
+      expect(new Set((await mainState()).claims).size).toBe(1);
+      expect((await mainState()).executions).toEqual(["paste"]);
+      await app.evaluate(() => {
+        (globalThis as unknown as MainFixtureGlobal).__releaseSafeExecution?.();
+      });
+      await expect.poll(mainState).toMatchObject({ completions: 1 });
+      await closeObservers();
+    });
+    test("offline completion expiry observes another device's replacement after reattachment", async () => {
+      await closeObservers();
+      await installMainCloudFixture("expired-output");
+      await app.evaluate(() => {
+        Object.assign(
+          (globalThis as unknown as MainFixtureGlobal).__recoveryCloud,
+          {
+            approval: true,
+            startExpired: true,
+            toolName: "paste",
+            loseCompletion: true,
+          },
+        );
+      });
+      const { page } = await openSurface(true);
+      await reviewAction(page).click();
+      await allowAction(page).click();
+      await expect.poll(() => savedCompletions(page)).toHaveLength(1);
+      expect((await mainState()).executions).toEqual(["paste"]);
+      await closeObservers();
+      await app.evaluate(() => {
+        const state = (globalThis as unknown as MainFixtureGlobal)
+          .__recoveryCloud;
+        const previous = state.action!;
+        previous.status = "expired";
+        state.action = {
+          ...previous,
+          id: crypto.randomUUID(),
+          status: "pending",
+          claimedBy: undefined,
+          retryOfActionId: previous.id,
+        };
+        state.actions[state.action.id] = state.action;
+        state.turns.find((turn) => turn.id === previous.turnId)!.status =
+          "waiting_desktop";
+      });
+      await reattachSurface("workspace");
+      await expect(allowAction(workspace)).toBeVisible();
+      await expect.poll(() => savedCompletions(workspace)).toHaveLength(0);
+      expect((await mainState()).executions).toEqual(["paste"]);
+      await workspace
+        .getByRole("button", { name: "Don't allow", exact: true })
+        .click();
+      await expect.poll(mainState).toMatchObject({ completions: 1 });
+      expect((await mainState()).executions).toEqual(["paste"]);
+      await closeObservers();
+    });
   }
 
   test(`${surface}: real Hono and SQLite drain and cancel after both observers close`, async () => {

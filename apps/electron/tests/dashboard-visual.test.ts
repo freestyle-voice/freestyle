@@ -370,6 +370,9 @@ test("captures the desktop sidebar hidden and restored", async ({
   await expect(dashboard.locator(".glass-sidebar")).toHaveCount(0);
   const showSidebar = dashboard.getByRole("button", { name: "Show sidebar" });
   await expect(showSidebar).toBeFocused();
+  const revealBounds = await showSidebar.boundingBox();
+  expect(revealBounds).not.toBeNull();
+  expect(revealBounds?.x).toBeLessThanOrEqual(16);
   const hidden = testInfo.outputPath("sidebar-hidden.png");
   await dashboard.screenshot({ path: hidden });
   await testInfo.attach("sidebar-hidden", {

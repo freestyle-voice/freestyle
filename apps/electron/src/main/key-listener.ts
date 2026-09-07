@@ -35,6 +35,8 @@ const BINARY_NAMES: Record<string, string> = {
 };
 
 const MAC_SOLO_FN_CHORD_GRACE_MS = 50;
+const KEY_LISTENER_READY_TIMEOUT_MS = 5_000;
+const KEY_LISTENER_STOP_TIMEOUT_MS = 1_000;
 
 /**
  * Convert an Electron accelerator to the format expected by the native binary.
@@ -131,6 +133,8 @@ export class NativeKeyListener {
   private process: ChildProcess | null = null;
   private options: KeyListenerOptions;
   private destroyed = false;
+  private termination: Promise<void> | null = null;
+  private startTimedOut = false;
   private restartTimer: ReturnType<typeof setTimeout> | null = null;
   private restartAttempts = 0;
   private static readonly MAX_RESTART_ATTEMPTS = 5;
@@ -149,11 +153,12 @@ export class NativeKeyListener {
 
   /**
    * Start the native key listener binary.
-   * Resolves true once the binary emits READY, false if it exits or
-   * fails before that.
+   * Resolves true once the binary emits READY, false if it exits, fails, or
+   * does not become ready in time.
    */
   start(): Promise<boolean> {
     if (this.destroyed) return Promise.resolve(false);
+    this.startTimedOut = false;
 
     const binaryName = BINARY_NAMES[process.platform];
     if (!binaryName) {
@@ -183,10 +188,12 @@ export class NativeKeyListener {
       args.push(formatHotkeyForBinary(this.options.hotkey));
     }
 
+    let child: ChildProcess;
     try {
-      this.process = spawn(binaryPath, args, {
+      child = spawn(binaryPath, args, {
         stdio: ["pipe", "pipe", "pipe"],
       });
+      this.process = child;
     } catch (err) {
       this.options.onError?.(
         `Failed to spawn key listener: ${err instanceof Error ? err.message : String(err)}`,
@@ -198,8 +205,29 @@ export class NativeKeyListener {
       let settled = false;
       let stderrOutput = "";
       let lineBuffer = "";
+      let readyTimeout: ReturnType<typeof setTimeout> | null = null;
 
-      this.process!.stdout?.on("data", (data: Buffer) => {
+      const settle = (started: boolean): void => {
+        if (settled) return;
+        settled = true;
+        if (readyTimeout) {
+          clearTimeout(readyTimeout);
+          readyTimeout = null;
+        }
+        resolve(started);
+      };
+
+      readyTimeout = setTimeout(() => {
+        if (settled) return;
+        const message = "Key listener timed out waiting for READY.";
+        log.warn(message);
+        this.options.onError?.(message);
+        this.startTimedOut = true;
+        void this.stop();
+        settle(false);
+      }, KEY_LISTENER_READY_TIMEOUT_MS);
+
+      child.stdout?.on("data", (data: Buffer) => {
         lineBuffer += data.toString();
         const lines = lineBuffer.split("\n");
         lineBuffer = lines.pop() ?? "";
@@ -207,42 +235,39 @@ export class NativeKeyListener {
         for (const line of lines) {
           const trimmed = line.trim();
           if (!settled && trimmed === "READY") {
-            settled = true;
-            resolve(true);
+            settle(true);
           }
           this.handleLine(trimmed);
         }
       });
 
-      this.process!.stderr?.on("data", (data: Buffer) => {
+      child.stderr?.on("data", (data: Buffer) => {
         const text = data.toString().trim();
         stderrOutput += `${text}\n`;
         log.debug(text);
       });
 
-      this.process!.on("close", (code) => {
-        this.process = null;
+      child.on("close", (code) => {
+        if (this.process === child) this.process = null;
         if (!settled) {
-          settled = true;
           log.warn(
             `Key listener exited before READY (code ${code})${stderrOutput.trim() ? `: ${stderrOutput.trim()}` : ""}`,
           );
           if (stderrOutput.trim()) {
             this.options.onError?.(stderrOutput.trim());
           }
-          resolve(false);
+          settle(false);
         }
         if (!this.destroyed && code !== 0) {
           this.scheduleRestart();
         }
       });
 
-      this.process!.on("error", (err) => {
+      child.on("error", (err) => {
         this.options.onError?.(`Key listener process error: ${err.message}`);
-        this.process = null;
+        if (this.process === child) this.process = null;
         if (!settled) {
-          settled = true;
-          resolve(false);
+          settle(false);
         }
         if (!this.destroyed) {
           this.scheduleRestart();
@@ -528,7 +553,7 @@ export class NativeKeyListener {
   /**
    * Stop the key listener and clean up.
    */
-  stop(): void {
+  stop(): Promise<void> {
     this.destroyed = true;
     this.cancelMacSoloFnDown();
 
@@ -537,18 +562,43 @@ export class NativeKeyListener {
       this.restartTimer = null;
     }
 
-    if (this.process) {
-      try {
-        // Send SIGTERM for graceful shutdown
-        this.process.kill("SIGTERM");
-      } catch {
-        // Process may already be dead
-      }
-      this.process = null;
+    const child = this.process;
+    if (!child) return this.termination ?? Promise.resolve();
+    this.process = null;
+
+    let finishTermination: (() => void) | undefined;
+    const termination = new Promise<void>((resolve) => {
+      let finished = false;
+      const finish = (): void => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timeout);
+        resolve();
+      };
+      finishTermination = finish;
+      child.once("close", finish);
+      child.once("error", finish);
+      const timeout = setTimeout(finish, KEY_LISTENER_STOP_TIMEOUT_MS);
+      timeout.unref();
+    });
+    this.termination = termination;
+
+    try {
+      // Send SIGTERM for graceful shutdown.
+      child.kill("SIGTERM");
+    } catch {
+      // Process may already be dead.
+      finishTermination?.();
     }
+
+    return termination;
   }
 
   get isRunning(): boolean {
     return this.process !== null;
+  }
+
+  get didStartTimeOut(): boolean {
+    return this.startTimedOut;
   }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@freestyle-voice/mobile",
   "main": "expo-router/entry",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "dependencies": {
     "@better-auth/expo": "^1.6.23",
     "@better-auth/stripe": "^1.6.23",

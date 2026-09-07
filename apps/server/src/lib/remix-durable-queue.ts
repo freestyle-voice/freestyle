@@ -206,13 +206,12 @@ function deferTransportRetry(threadId: string, key: string, error: unknown) {
     write(threadId, state);
     return;
   }
-  const attempts = (state.transportRetryAttempts ?? 0) + 1;
-  state.transportRetryAttempts = attempts;
+  const attempts = state.transportRetryAttempts ?? 0;
   if (attempts >= RETRY_DELAYS.length) {
     state.recoveryPaused = true;
     state.transportRetryAt = undefined;
   } else {
-    state.transportRetryAt = Date.now() + RETRY_DELAYS[attempts - 1];
+    state.transportRetryAt = Date.now() + RETRY_DELAYS[attempts];
   }
   write(threadId, state);
 }
@@ -269,6 +268,7 @@ async function drainThread(threadId: string) {
     if (state.transportRetryAt) {
       if (Date.now() < state.transportRetryAt) return;
       state.transportRetryAt = undefined;
+      state.transportRetryAttempts = (state.transportRetryAttempts ?? 0) + 1;
       write(threadId, state);
     }
     if (state.activeTurnId) {

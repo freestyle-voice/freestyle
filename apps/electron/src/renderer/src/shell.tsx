@@ -23,6 +23,12 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import { MOD_LABEL } from "@renderer/lib/platform";
 import { listPlugins } from "@renderer/lib/plugins-api";
 import { queryKeys } from "@renderer/lib/query";
+import {
+  isSidebarVisibility,
+  nextSidebarVisibility,
+  SIDEBAR_VISIBILITY_STORAGE_KEY,
+  type SidebarVisibility,
+} from "@renderer/lib/sidebar-visibility";
 import { cn } from "@renderer/lib/utils";
 import {
   DEFAULT_WORKSPACE,
@@ -54,6 +60,8 @@ import {
   Mic,
   Network,
   Paintbrush,
+  PanelLeftClose,
+  PanelLeftOpen,
   PawPrint,
   PlugZap,
   Plus,
@@ -225,9 +233,11 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
 function SettingsSidebar({
   workspace,
   onBack,
+  onHideSidebar,
 }: {
   workspace: Workspace;
   onBack: () => void;
+  onHideSidebar: () => void;
 }): React.JSX.Element {
   const [query, setQuery] = useState("");
   const normalizedQuery = query.trim().toLowerCase();
@@ -246,14 +256,17 @@ function SettingsSidebar({
         className="px-4 pt-2 pb-3"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
       >
-        <button
-          type="button"
-          onClick={onBack}
-          className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-[11px] transition-colors"
-        >
-          <ArrowLeft className="size-3.5" aria-hidden="true" />
-          Back to app
-        </button>
+        <div className="flex items-center justify-between">
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1.5 rounded-md px-1 py-1 text-[11px] transition-colors"
+          >
+            <ArrowLeft className="size-3.5" aria-hidden="true" />
+            Back to app
+          </button>
+          <SidebarVisibilityToggle onClick={onHideSidebar} />
+        </div>
         <p className="text-foreground mt-3 px-1 text-[17px] font-semibold tracking-[-0.02em]">
           Settings
         </p>
@@ -311,6 +324,24 @@ function SettingsSidebar({
         ) : null}
       </nav>
     </div>
+  );
+}
+
+function SidebarVisibilityToggle({
+  onClick,
+}: {
+  onClick: () => void;
+}): React.JSX.Element {
+  return (
+    <button
+      type="button"
+      className="sidebar-visibility-toggle"
+      aria-label="Hide sidebar"
+      title="Hide sidebar"
+      onClick={onClick}
+    >
+      <PanelLeftClose aria-hidden="true" />
+    </button>
   );
 }
 
@@ -656,6 +687,16 @@ export default function AppShell(): React.JSX.Element {
     (width: number) => setSidebarWidthRaw(String(clampSidebarWidth(width))),
     [setSidebarWidthRaw],
   );
+  const [sidebarVisibility, setSidebarVisibility] =
+    usePersistentState<SidebarVisibility>(
+      SIDEBAR_VISIBILITY_STORAGE_KEY,
+      "visible",
+      isSidebarVisibility,
+    );
+  const isSidebarHidden = sidebarVisibility === "hidden";
+  const toggleSidebarVisibility = useCallback(() => {
+    setSidebarVisibility(nextSidebarVisibility(sidebarVisibility));
+  }, [setSidebarVisibility, sidebarVisibility]);
 
   const changeWorkspace = useCallback(
     (workspace: Workspace) => {
@@ -751,96 +792,102 @@ export default function AppShell(): React.JSX.Element {
 
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
-      <aside
-        className="glass-sidebar flex min-h-0 shrink-0 flex-col border-r"
-        style={
-          {
-            WebkitAppRegion: "drag",
-            flexBasis: sidebarWidth,
-            width: sidebarWidth,
-          } as React.CSSProperties
-        }
-      >
-        <div
-          className={cn(
-            "shrink-0 transition-[height] duration-150",
-            isFullscreen ? "h-0" : "h-8",
-          )}
-        />
-        {isSettingsRoute ? (
-          <SettingsSidebar
-            workspace={sidebarWorkspace}
-            onBack={() => navigate(workspaceHomeRoute(sidebarWorkspace))}
-          />
-        ) : (
-          <>
+      {!isSidebarHidden ? (
+        <>
+          <aside
+            className="glass-sidebar flex min-h-0 shrink-0 flex-col border-r"
+            style={
+              {
+                WebkitAppRegion: "drag",
+                flexBasis: sidebarWidth,
+                width: sidebarWidth,
+              } as React.CSSProperties
+            }
+          >
             <div
-              className="remix-sidebar-titlebar"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              <WorkspaceSwitcher
-                workspace={activeWorkspace}
-                onWorkspaceChange={changeWorkspace}
+              className={cn(
+                "shrink-0 transition-[height] duration-150",
+                isFullscreen ? "h-0" : "h-8",
+              )}
+            />
+            {isSettingsRoute ? (
+              <SettingsSidebar
+                workspace={sidebarWorkspace}
+                onBack={() => navigate(workspaceHomeRoute(sidebarWorkspace))}
+                onHideSidebar={toggleSidebarVisibility}
               />
-              {import.meta.env.DEV && (
-                <span className="remix-dev-badge" title="Development build">
-                  DEV
-                </span>
-              )}
-              {isRemixSidebar && canRequestData ? (
-                <button
-                  type="button"
-                  aria-label="Search sessions"
-                  title="Search sessions"
-                  onClick={() => handleSessionSearchOpenChange(true)}
-                  className="remix-session-search-trigger"
-                >
-                  <Search aria-hidden="true" />
-                </button>
-              ) : null}
-            </div>
-
-            <div
-              className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              {isRemixSidebar && canRequestData ? (
-                <RemixSidebarSessions searchQuery="" />
-              ) : (
-                <>
-                  <NavList items={mainNav} />
-                  {pluginNav.length > 0 ? (
-                    <>
-                      <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-                      <NavList items={pluginNav} />
-                    </>
-                  ) : null}
-                </>
-              )}
-            </div>
-            {!isRemixSidebar && !user ? (
+            ) : (
               <>
-                {pluginNav.length > 0 ? (
-                  <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+                <div
+                  className="remix-sidebar-titlebar"
+                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                >
+                  <WorkspaceSwitcher
+                    workspace={activeWorkspace}
+                    onWorkspaceChange={changeWorkspace}
+                  />
+                  {import.meta.env.DEV && (
+                    <span className="remix-dev-badge" title="Development build">
+                      DEV
+                    </span>
+                  )}
+                  {isRemixSidebar && canRequestData ? (
+                    <button
+                      type="button"
+                      aria-label="Search sessions"
+                      title="Search sessions"
+                      onClick={() => handleSessionSearchOpenChange(true)}
+                      className="remix-session-search-trigger"
+                    >
+                      <Search aria-hidden="true" />
+                    </button>
+                  ) : null}
+                  <SidebarVisibilityToggle onClick={toggleSidebarVisibility} />
+                </div>
+
+                <div
+                  className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
+                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                >
+                  {isRemixSidebar && canRequestData ? (
+                    <RemixSidebarSessions searchQuery="" />
+                  ) : (
+                    <>
+                      <NavList items={mainNav} />
+                      {pluginNav.length > 0 ? (
+                        <>
+                          <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+                          <NavList items={pluginNav} />
+                        </>
+                      ) : null}
+                    </>
+                  )}
+                </div>
+                {!isRemixSidebar && !user ? (
+                  <>
+                    {pluginNav.length > 0 ? (
+                      <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+                    ) : null}
+                    <NavList items={footerNav} />
+                  </>
                 ) : null}
-                <NavList items={footerNav} />
+                <UpgradeCtaCard />
+                <div
+                  className="border-sidebar-border mx-3 mt-2 border-t pt-2"
+                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                >
+                  <CloudProfileButton />
+                </div>
+                <div className="h-3" />
               </>
-            ) : null}
-            <UpgradeCtaCard />
-            <div
-              className="border-sidebar-border mx-3 mt-2 border-t pt-2"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              <CloudProfileButton />
-            </div>
-            <div className="h-3" />
-          </>
-        )}
-      </aside>
-      <SidebarResizeHandle
-        width={sidebarWidth}
-        onWidthChange={setSidebarWidth}
-      />
+            )}
+          </aside>
+          <SidebarResizeHandle
+            width={sidebarWidth}
+            onWidthChange={setSidebarWidth}
+          />
+        </>
+      ) : null}
 
       {isRemixSidebar && canRequestData ? (
         <SessionSearchDialog
@@ -853,7 +900,10 @@ export default function AppShell(): React.JSX.Element {
       ) : null}
 
       <div className="glass-content relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
-        <ContentTitlebar />
+        <ContentTitlebar
+          sidebarHidden={isSidebarHidden}
+          onShowSidebar={toggleSidebarVisibility}
+        />
         <UpdateBanner className="relative z-50 mt-4 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
         <main
@@ -893,12 +943,32 @@ function SignedOutShell(): React.JSX.Element {
  * sibling of every route gives Remix and ordinary pages one reliable place to
  * drag the window, without putting a drag region over buttons inside a page.
  */
-function ContentTitlebar(): React.JSX.Element {
+function ContentTitlebar({
+  sidebarHidden = false,
+  onShowSidebar,
+}: {
+  sidebarHidden?: boolean;
+  onShowSidebar?: () => void;
+}): React.JSX.Element {
   return (
-    <div
-      className="glass-content-titlebar"
-      aria-hidden="true"
-      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-    />
+    <>
+      <div
+        className="glass-content-titlebar"
+        aria-hidden="true"
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      />
+      {sidebarHidden && onShowSidebar ? (
+        <button
+          type="button"
+          className="sidebar-reveal-trigger"
+          aria-label="Show sidebar"
+          title="Show sidebar"
+          onClick={onShowSidebar}
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <PanelLeftOpen aria-hidden="true" />
+        </button>
+      ) : null}
+    </>
   );
 }

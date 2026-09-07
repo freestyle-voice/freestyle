@@ -107,3 +107,54 @@
   height: 20px;
   stroke-width: 1.8;
 }
+
+/* The sidebar can leave the window entirely; both controls retain a compact,
+ * predictable target without making the app chrome feel like a toolbar. */
+.sidebar-visibility-toggle,
+.sidebar-reveal-trigger {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 7px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.sidebar-visibility-toggle {
+  margin-left: auto;
+}
+
+.sidebar-visibility-toggle:hover,
+.sidebar-reveal-trigger:hover {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.sidebar-visibility-toggle:focus-visible,
+.sidebar-reveal-trigger:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.sidebar-visibility-toggle svg,
+.sidebar-reveal-trigger svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 1.8;
+}
+
+.sidebar-reveal-trigger {
+  position: absolute;
+  z-index: 11;
+  top: 12px;
+  left: 12px;
+}
+
+/* The dashboard's custom titlebar puts macOS traffic lights at x=20. */
+html.glass .sidebar-reveal-trigger {
+  left: 86px;
+}

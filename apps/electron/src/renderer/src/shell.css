@@ -153,8 +153,3 @@
   top: 12px;
   left: 12px;
 }
-
-/* The dashboard's custom titlebar puts macOS traffic lights at x=20. */
-html.glass .sidebar-reveal-trigger {
-  left: 86px;
-}

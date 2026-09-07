@@ -108,6 +108,7 @@ declare global {
       panelClose: () => void;
       panelResizeWidth: (width: number) => void;
       panelCommitWidth: () => void;
+      setPanelSidebarHidden: (hidden: boolean) => void;
       openSettings: () => void;
       settingsClose: () => void;
       panelSetBusy: (busy: boolean) => void;

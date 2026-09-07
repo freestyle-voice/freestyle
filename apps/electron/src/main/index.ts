@@ -134,6 +134,10 @@ import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
 import { CourierNativeNotificationPresenter } from "./courier-native-notifications";
 import { HotkeyRecorder } from "./hotkey-recorder";
+import {
+  shouldRetryMacNativeListener,
+  shouldScheduleRemixRegistration,
+} from "./hotkey-startup";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
@@ -172,6 +176,7 @@ import {
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 import { isRemixTargetAllowed } from "./remix-target";
 import { rendererUrl } from "./renderer-url";
+import { SerializedRegistration } from "./serialized-registration";
 import {
   initSpriteTravel,
   performSyncAction,
@@ -527,13 +532,16 @@ let remixEscapeActive = false;
 let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let hotkeyRecorder: HotkeyRecorder | null = null;
+// The latest desired dictation accelerator. The coordinator below coalesces
+// settings updates and starts listeners only after the prior pair has stopped.
+let requestedHotkey: string | undefined;
 /** Own listener process — native binaries only take one accelerator each. */
 let remixKeyListener: NativeKeyListener | null = null;
 let remixPressed = false;
 /** User-configured accel (may differ from what's listening while parked/off). */
 let remixHotkeyPreference: string | undefined;
 let currentRemixAccel: string | null = null;
-/** False until server settings are read once (don't spawn on defaults). */
+/** True once Remix may register, initially with its default accelerator. */
 let remixInitialized = false;
 /** Onboarding practice: allow Remix to target Freestyle's own window. */
 const remixPracticeTarget = false;
@@ -2602,10 +2610,10 @@ app.whenReady().then(async () => {
   // server. Once the server answers, re-register with the configured
   // accelerator + activation mode (only if they differ, to avoid a needless
   // native-listener rebuild).
+  // Remix uses its default even when the server is unavailable, but its native
+  // helper is started only after this dictation registration has settled.
+  remixInitialized = true;
   scheduleHotkeyRegistration(DEFAULT_HOTKEY);
-  // Register the unobtrusive Remix hold control at startup too. Settings may
-  // refine it later, but a cold server must never leave this path inert.
-  scheduleRemixHotkeyRegistration(getDefaultRemixHotkey());
   void waitForServerReady().then(async () => {
     // One request for both keys, instead of a read per key. Skip if the server
     // never answered — the default registered above stands.
@@ -4361,10 +4369,19 @@ export function setCompanionState(state: CompanionState): void {
 
 function applyRemixSettings(settings: Record<string, string>): void {
   remixInitialized = true;
-  const configured = settings[SETTINGS_KEYS.remixHotkey];
-  scheduleRemixHotkeyRegistration(
-    configured && isValidAccelerator(configured) ? configured : undefined,
-  );
+  const stored = settings[SETTINGS_KEYS.remixHotkey];
+  const configured = stored && isValidAccelerator(stored) ? stored : undefined;
+  const changed = configured !== remixHotkeyPreference;
+  remixHotkeyPreference = configured;
+  if (
+    shouldScheduleRemixRegistration(
+      changed,
+      remixKeyListener !== null,
+      listenerRegistration.isActive,
+    )
+  ) {
+    scheduleRemixHotkeyRegistration();
+  }
 }
 
 const DEFAULT_HOTKEY = getDefaultHotkey();
@@ -4564,11 +4581,8 @@ function setRemixRouteKeys(open: boolean): void {
 }
 
 function scheduleRemixHotkeyRegistration(hotkey?: string): void {
-  void registerRemixHotkey(hotkey).catch((err) => {
-    hotkeyLog.error(
-      `Remix hotkey registration failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
+  if (hotkey !== undefined) remixHotkeyPreference = hotkey;
+  scheduleListenerRegistration();
 }
 
 /** False if the Remix chord includes C — injected Copy would collide with it. */
@@ -4649,10 +4663,12 @@ function handleRemixHotkeyUp(): void {
 
 /** Start the Remix native listener. No globalShortcut fallback (needs hold/tap). */
 async function registerRemixHotkey(hotkey?: string): Promise<void> {
+  if (isQuitting) return;
   if (remixKeyListener) {
-    remixKeyListener.stop();
+    await remixKeyListener.stop();
     remixKeyListener = null;
   }
+  if (isQuitting) return;
 
   remixHotkeyPreference = hotkey ?? remixHotkeyPreference;
   const configured = hotkey ?? remixHotkeyPreference;
@@ -4853,12 +4869,66 @@ function registerGlobalShortcutToggle(accel: string): string | null {
   return null;
 }
 
-function scheduleHotkeyRegistration(hotkey?: string): void {
-  void registerHotkey(hotkey).catch((err) => {
+const NATIVE_LISTENER_RETRY_DELAYS_MS = [500, 1_000] as const;
+
+const listenerRegistration = new SerializedRegistration(
+  registerConfiguredHotkeys,
+  (error) => {
     hotkeyLog.error(
-      `Hotkey registration failed: ${err instanceof Error ? err.message : String(err)}`,
+      `Hotkey registration failed: ${error instanceof Error ? error.message : String(error)}`,
     );
-  });
+  },
+);
+
+function scheduleListenerRegistration(): void {
+  if (isQuitting || !remixInitialized) return;
+  listenerRegistration.schedule();
+}
+
+function scheduleHotkeyRegistration(hotkey?: string): void {
+  requestedHotkey ??= currentHotkeyAccel ?? DEFAULT_HOTKEY;
+  if (hotkey !== undefined) requestedHotkey = hotkey;
+  scheduleListenerRegistration();
+}
+
+/** Stop both event-tap helpers before the next native listener is spawned. */
+async function stopNativeHotkeyListeners(): Promise<void> {
+  const listeners = [keyListener, remixKeyListener].filter(
+    (listener): listener is NativeKeyListener => listener !== null,
+  );
+  keyListener = null;
+  remixKeyListener = null;
+  currentRemixAccel = null;
+  await Promise.all(listeners.map((listener) => listener.stop()));
+}
+
+/** Register dictation and Remix in order, retrying a cold-start native timeout. */
+async function registerConfiguredHotkeys(): Promise<void> {
+  if (isQuitting) return;
+  await stopNativeHotkeyListeners();
+  if (isQuitting) return;
+
+  const hotkey = requestedHotkey ?? currentHotkeyAccel ?? DEFAULT_HOTKEY;
+  let result = await registerHotkey(hotkey, false);
+  for (const [attempt, delay] of NATIVE_LISTENER_RETRY_DELAYS_MS.entries()) {
+    if (result !== "retryable-startup-failure" || isQuitting) break;
+    hotkeyLog.warn(
+      `Native key listener timed out during startup; retrying (${attempt + 1}/${NATIVE_LISTENER_RETRY_DELAYS_MS.length}).`,
+    );
+    await wait(delay);
+    if (isQuitting) return;
+    result = await registerHotkey(hotkey, false);
+  }
+
+  if (isQuitting) return;
+  if (result === "retryable-startup-failure") {
+    result = await registerHotkey(hotkey, true);
+  }
+  if (result === "retryable-startup-failure") {
+    hotkeyLog.error("Native key listener timed out after all startup retries.");
+  }
+  if (isQuitting) return;
+  await registerRemixHotkey();
 }
 
 let accessibilityWatch: NodeJS.Timeout | null = null;
@@ -4872,16 +4942,19 @@ function watchForAccessibilityGrant(): void {
     accessibilityWatch = null;
     hotkeyLog.info("Accessibility granted; re-registering hotkeys.");
     scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
-    if (remixInitialized) scheduleRemixHotkeyRegistration();
   }, ACCESSIBILITY_WATCH_MS);
   accessibilityWatch.unref();
 }
 
-async function registerHotkey(hotkey?: string): Promise<void> {
+async function registerHotkey(
+  hotkey?: string,
+  allowTimeoutFallback = true,
+): Promise<"started" | "retryable-startup-failure" | "fallback"> {
   try {
+    if (isQuitting) return "fallback";
     // Tear down previous listener
     if (keyListener) {
-      keyListener.stop();
+      await keyListener.stop();
       keyListener = null;
     }
     hotkeyPressed = false;
@@ -4956,21 +5029,27 @@ async function registerHotkey(hotkey?: string): Promise<void> {
     // Another registerHotkey call may have replaced keyListener while we
     // were awaiting — if so, abandon this attempt.
     if (keyListener !== listener) {
-      listener.stop();
-      return;
+      await listener.stop();
+      return "fallback";
     }
 
     if (started) {
       accessibilityConfirmed = true;
       hotkeyDegradedNotified = false;
-      // Dictation hotkey moved — re-resolve remix (may free or steal a chord).
-      if (remixInitialized) scheduleRemixHotkeyRegistration();
+      return "started";
     } else {
+      const timedOut = listener.didStartTimeOut;
+      await listener.stop();
+      keyListener = null;
+      const retryableStartupFailure =
+        process.platform === "darwin" &&
+        shouldRetryMacNativeListener(timedOut, nativeError);
+      if (retryableStartupFailure && !allowTimeoutFallback) {
+        return "retryable-startup-failure";
+      }
       hotkeyLog.warn(
         "Native key listener unavailable, falling back to Electron globalShortcut (toggle mode).",
       );
-      listener.stop();
-      keyListener = null;
       if (nativeError.includes("accessibility-not-granted")) {
         watchForAccessibilityGrant();
       }
@@ -4997,11 +5076,13 @@ async function registerHotkey(hotkey?: string): Promise<void> {
         }
         reportHotkeyError(message);
       }
+      return "fallback";
     }
   } catch (err) {
     hotkeyLog.error(
       `registerHotkey failed: ${err instanceof Error ? err.message : String(err)}`,
     );
+    return "fallback";
   }
 }
 
@@ -5034,6 +5115,8 @@ let updateAvailableVersion: string | null = null;
 function cleanupBeforeQuit(): void {
   // No app-host plugin registry to dispose anymore — every hook (including
   // `dispose`) runs server-side, and the server has its own shutdown path.
+  remixInitialized = false;
+  listenerRegistration.shutdown();
   void disposeServerPlugins().catch(() => {});
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();

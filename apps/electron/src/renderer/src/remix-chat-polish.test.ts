@@ -94,31 +94,44 @@ describe("Remix chat polish", () => {
     expect(sessions).toContain("current?.id === threadId ? loaded : current");
   });
 
-  it("reconnects either Remix surface to the local server-owned stream", async () => {
+  it("reconnects either Remix surface through the shared durable observer", async () => {
     const [chat, panel] = await Promise.all([
       readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
       readFile(resolve(rendererRoot, "components/panel.tsx"), "utf8"),
     ]);
 
-    expect(chat).toContain("resume: true");
-    expect(panel).toContain("resume: true");
+    expect(chat).toContain("} = useRemixRecovery({");
+    expect(panel).toContain("} = useRemixRecovery({");
+  });
+
+  it("shows a shared retry countdown after a transient Remix stream failure", async () => {
+    const [chat, panel] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "components/panel.tsx"), "utf8"),
+    ]);
+
+    expect(chat).toContain("useRemixRecovery");
+    expect(panel).toContain("useRemixRecovery");
   });
 
   it("keeps queued follow-ups in the shared local queue across both Remix surfaces", async () => {
     const [chat, panel, queue] = await Promise.all([
       readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
       readFile(resolve(rendererRoot, "components/panel.tsx"), "utf8"),
-      readFile(resolve(rendererRoot, "lib/agent-message-queue.ts"), "utf8"),
+      readFile(
+        resolve(rendererRoot, "lib/remix-recovery-controller.ts"),
+        "utf8",
+      ),
     ]);
 
     expect(chat).toContain("AgentMessageQueueControls");
     expect(panel).toContain("AgentMessageQueueControls");
     expect(chat).toContain('capture("remix_message_queued"');
     expect(panel).toContain('capture("remix_message_queued"');
-    expect(chat).toContain("return resumeStream()");
-    expect(panel).toContain("return resumeStream()");
-    expect(queue).toContain('method: "POST"');
-    expect(queue).toContain("/steer");
+    expect(chat).toContain("queue,");
+    expect(panel).toContain("queue,");
+    expect(queue).toContain('method = body === undefined ? "GET" : "POST"');
+    expect(queue).toContain("steer = async");
   });
 
   it("uses the shared activity stream instead of periodic Remix polling", async () => {
@@ -225,10 +238,11 @@ describe("Remix chat polish", () => {
       readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),
     ]);
 
-    expect(chat).toContain('if (tier === "confirmed")');
+    expect(chat).toContain(
+      'if (tier === "confirmed" || toolCall.requiresConfirmation)',
+    );
     expect(chat).toContain('className="remix-chat-approval"');
     expect(chat).toContain("Remix wants to act locally");
-    expect(chat).toContain("requestAgentFileSaveGrant(call)");
     expect(chat).toContain("DECLINED_OUTPUT");
     expect(chat).toContain('"Waiting for your approval"');
     expect(chat).toContain(
@@ -391,8 +405,7 @@ describe("Remix chat polish", () => {
     );
 
     expect(chat).toContain("onCancelActive");
-    expect(chat).toContain("getThreadRuntime(thread.id)");
-    expect(chat).toContain("cancelDurableTurn(runtime.activeTurn.id)");
+    expect(chat).toContain("void cancel()");
     expect(chat).toContain("cancellationRequestedRef.current = false");
   });
 });

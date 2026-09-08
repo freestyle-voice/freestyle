@@ -1,4 +1,3 @@
-import { useChat } from "@ai-sdk/react";
 import { REMIX_PRESETS, type RemixPreset } from "@freestyle-voice/validations";
 import { AgentMessageQueueControls } from "@renderer/components/agent-message-queue";
 import { AgentActivity } from "@renderer/components/agents/agent-activity";
@@ -6,7 +5,6 @@ import type { AgentActivityItem } from "@renderer/components/agents/agent-activi
 import { AgentDisclosure } from "@renderer/components/agents/agent-disclosure";
 import { RotatingThinkingLabel } from "@renderer/components/agents/loading-states/rotating-thinking-label";
 import { MessageScroller } from "@renderer/components/agents/message-scroller";
-import { useAgentMessageQueue } from "@renderer/lib/agent-message-queue";
 import {
   type AgentToolCall,
   agentToolTier,
@@ -14,23 +12,20 @@ import {
   describeAgentApproval,
   executeAgentTool,
   reportAgentToolResult,
-  requestAgentFileSaveGrant,
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
-import { apiFetch, initApiBase } from "@renderer/lib/api";
-import { executeRemixTool } from "@renderer/lib/remix-tool-executor";
+import { apiFetch } from "@renderer/lib/api";
+import { remixReconnectLabel } from "@renderer/lib/remix-recovery";
 import {
-  cancelDurableTurn,
-  getThread,
-  getThreadRuntime,
-} from "@renderer/lib/threads";
+  executeApprovedRemixTool,
+  executeRemixTool,
+} from "@renderer/lib/remix-tool-executor";
+import { useRemixRecovery } from "@renderer/lib/use-remix-recovery";
 import {
-  DefaultChatTransport,
   type DynamicToolUIPart,
   getToolOrDynamicToolName,
   isTextUIPart,
   isToolOrDynamicToolUIPart,
-  lastAssistantMessageIsCompleteWithToolCalls,
   type ToolUIPart,
   type UIMessage,
 } from "ai";
@@ -232,51 +227,6 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport<UIMessage>({
-        api: "/api/agent",
-
-        fetch: (async (_input: unknown, init?: RequestInit) => {
-          // The pill is often the first renderer to contact the server after
-          // launch. Resolve the configured target before its first agent turn.
-          await initApiBase();
-          const res = await apiFetch("/api/agent", init ?? {});
-          if (res.status === 401) {
-            void window.api?.cloudPromptSignIn?.();
-            throw new Error("Sign in to Freestyle Cloud to use Remix.");
-          }
-          if (res.status === 429) {
-            void window.api?.cloudPromptUpgrade?.();
-            throw new Error("You've hit this week's free limit.");
-          }
-          if (!res.ok) {
-            const body = (await res.json().catch(() => null)) as {
-              detail?: string;
-            } | null;
-            throw new Error(body?.detail || `Remix failed (${res.status}).`);
-          }
-          return res;
-        }) as typeof fetch,
-        prepareSendMessagesRequest: ({ messages }) => ({
-          body: {
-            messages,
-            threadId: thread.id,
-            ...(messages.length <= 1 ? { firstTurn: true } : {}),
-            context: {
-              selection: contextRef.current.text,
-              appName: contextRef.current.appName,
-              windowTitle: contextRef.current.windowTitle,
-              clipboard: contextRef.current.clipboard ?? null,
-              clipboardLength: contextRef.current.clipboardLength ?? 0,
-              capturedAt: contextRef.current.capturedAt,
-            },
-          },
-        }),
-      }),
-    [thread.id],
-  );
-
   const {
     messages,
     sendMessage,
@@ -284,14 +234,25 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     status,
     stop,
     clearError,
-    setMessages,
-    resumeStream,
-  } = useChat<UIMessage>({
+    cancel,
+    authorizeTool,
+    recovery,
+    queue,
+  } = useRemixRecovery({
     id: thread.id,
     messages: thread.messages,
-    transport,
-    resume: true,
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    onActionUnavailable: (actionId) =>
+      setApprovals((pending) =>
+        pending.filter((item) => item.call.toolCallId !== actionId),
+      ),
+    context: () => ({
+      selection: contextRef.current.text,
+      appName: contextRef.current.appName,
+      windowTitle: contextRef.current.windowTitle,
+      clipboard: contextRef.current.clipboard ?? null,
+      clipboardLength: contextRef.current.clipboardLength ?? 0,
+      capturedAt: contextRef.current.capturedAt,
+    }),
     onToolCall: async ({ toolCall }) => {
       const call: AgentToolCall = {
         toolName: toolCall.toolName,
@@ -300,7 +261,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       };
       const startedAt = Date.now();
       const tier = await agentToolTier(call);
-      if (tier === "confirmed") {
+      if (tier === "confirmed" || toolCall.requiresConfirmation) {
         props.onExpand();
         setApprovals((pending) =>
           pending.some((item) => item.call.toolCallId === call.toolCallId)
@@ -320,7 +281,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             });
       if (tier !== null) reportAgentToolResult(call, output, startedAt);
       void addToolResult({
-        tool: getToolOrDynamicToolName(toolCall as never) as never,
+        tool: toolCall.toolName,
         toolCallId: (toolCall as { toolCallId: string }).toolCallId,
         output,
       });
@@ -333,6 +294,9 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       window.api?.remixThreadUpdated?.(thread.id);
     },
     onError: (err) => {
+      const status = (err as Error & { status?: number }).status;
+      if (status === 401) void window.api?.cloudPromptSignIn?.();
+      if (status === 429) void window.api?.cloudPromptUpgrade?.();
       setNotice(err.message || "Remix failed.");
     },
   });
@@ -346,22 +310,28 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       setResolvingApprovalId(call.toolCallId);
       void (async () => {
         const startedAt = Date.now();
+        try {
+          await authorizeTool(call.toolCallId);
+        } catch (error) {
+          setNotice(
+            error instanceof Error
+              ? error.message
+              : "Couldn't confirm this action.",
+          );
+          resolvingApprovalRef.current = null;
+          setResolvingApprovalId(null);
+          return;
+        }
         let output: Record<string, unknown>;
         try {
-          const grant =
-            allowed && call.toolName === "save_file"
-              ? await requestAgentFileSaveGrant(call)
-              : null;
           output = !allowed
             ? DECLINED_OUTPUT
-            : grant && grant.ok !== true
-              ? grant
-              : await executeAgentTool(call, {
-                  saveFileGrant:
-                    grant && typeof grant.grant === "string"
-                      ? grant.grant
-                      : undefined,
-                });
+            : await executeApprovedRemixTool(call, {
+                onContext: (context) => {
+                  contextRef.current = context;
+                  setLiveContext(context);
+                },
+              });
         } catch (error) {
           output = {
             ok: false,
@@ -382,62 +352,13 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
         });
       })();
     },
-    [addToolResult],
+    [addToolResult, authorizeTool],
   );
 
-  const busy = status === "submitted" || status === "streaming";
-  const queue = useAgentMessageQueue(thread.id);
-  const queueWasActiveRef = useRef(false);
-  const queueInitializedRef = useRef(false);
-  const queueHadItemsRef = useRef(false);
-  const queueNeedsRefreshRef = useRef(false);
-  const queueThreadRef = useRef(thread.id);
-  useEffect(() => {
-    if (queueThreadRef.current === thread.id) return;
-    queueThreadRef.current = thread.id;
-    queueWasActiveRef.current = false;
-    queueInitializedRef.current = false;
-    queueHadItemsRef.current = false;
-    queueNeedsRefreshRef.current = false;
-  }, [thread.id]);
-  useEffect(() => {
-    // The first observation is commonly the same stream that `resume: true`
-    // already attached to during a pill/workspace handoff. Only a later idle
-    // → active change belongs to a server-drained queued message.
-    if (!queueInitializedRef.current) {
-      queueInitializedRef.current = true;
-      queueWasActiveRef.current = queue.active;
-      return;
-    }
-    if (!queue.active) {
-      queueWasActiveRef.current = false;
-      return;
-    }
-    if (busy || queueWasActiveRef.current) return;
-    queueWasActiveRef.current = true;
-    void getThread(thread.id)
-      .then((next) => {
-        if (next) setMessages(next.messages);
-        return resumeStream();
-      })
-      .catch(() => setNotice("Couldn’t resume the queued message."));
-  }, [busy, queue.active, resumeStream, setMessages, thread.id]);
-  useEffect(() => {
-    const hasItems = queue.items.length > 0;
-    if (queueHadItemsRef.current && !hasItems)
-      queueNeedsRefreshRef.current = true;
-    queueHadItemsRef.current = hasItems;
-    // A very short server-owned follow-up may finish between queue polls, so
-    // there is no active stream for `resumeStream()` to attach to. Refresh the
-    // canonical thread once the entry leaves the queue in that case.
-    if (!queueNeedsRefreshRef.current || queue.active || busy) return;
-    queueNeedsRefreshRef.current = false;
-    void getThread(thread.id)
-      .then((next) => {
-        if (next) setMessages(next.messages);
-      })
-      .catch(() => {});
-  }, [busy, queue.active, queue.items.length, setMessages, thread.id]);
+  const busy =
+    status === "submitted" ||
+    status === "streaming" ||
+    recovery.state.phase !== "idle";
   const dispatchInFlightRef = useRef(false);
   const cancellationRequestedRef = useRef(false);
   const sawBusySinceDispatchRef = useRef(false);
@@ -465,6 +386,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
   useEffect(() => {
     if (busy) {
+      cancellationRequestedRef.current = false;
       sawBusySinceDispatchRef.current = true;
       return;
     }
@@ -561,18 +483,9 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
   const cancelActiveTurn = useCallback(() => {
     if (cancellationRequestedRef.current) return;
     cancellationRequestedRef.current = true;
-    void stop();
-    // Stream abort is immediate. If this request has a durable Cloud turn,
-    // cancel it too so it cannot keep invoking tools after the pill closes.
-    void getThreadRuntime(thread.id)
-      .then((runtime) => {
-        if (runtime?.activeTurn) {
-          return cancelDurableTurn(runtime.activeTurn.id);
-        }
-        return undefined;
-      })
-      .catch(() => {});
-  }, [stop, thread.id]);
+    setApprovals([]);
+    void cancel();
+  }, [cancel]);
   useEffect(() => {
     props.onCancelActive(cancelActiveTurn);
     return () => props.onCancelActive(null);
@@ -708,7 +621,8 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       : props.voiceStatus === "transcribing"
         ? "Transcribing…"
         : null;
-  const displayNotice = notice ?? props.voiceNotice;
+  const reconnectNotice = remixReconnectLabel(recovery.state, recovery.now);
+  const displayNotice = reconnectNotice ?? notice ?? props.voiceNotice;
   const miniProgress =
     voiceLabel ??
     (waitingForApproval ? "Approval needed" : null) ??
@@ -795,7 +709,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
 
   const submit = useCallback(() => {
     const text = input.trim();
-    if (!text || dispatchInFlightRef.current) return;
+    if (!text || (dispatchInFlightRef.current && !busy)) return;
     setInput("");
     const el = inputRef.current;
     if (el) el.style.height = "auto";
@@ -810,7 +724,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
           clipboardLength: context.clipboardLength ?? 0,
           capturedAt: context.capturedAt,
         })
-        .catch(() => setNotice("Couldn’t queue that message."));
+        .catch(() => {
+          setInput(text);
+          setNotice("Couldn’t queue that message.");
+        });
       capture("remix_message_queued", { source: "typed" });
       return;
     }
@@ -1126,10 +1043,41 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
             ) : null}
           </MessageScroller>
 
-          {displayNotice && (
-            <div className="remix-chat-notice" role="alert">
-              {displayNotice}
-            </div>
+          {recovery.desktop ? (
+            <button
+              type="button"
+              className="remix-chat-notice remix-chat-recovery-notice"
+              onClick={() =>
+                void recovery
+                  .retryDesktop()
+                  .catch(() =>
+                    setNotice("This desktop action is not ready to retry."),
+                  )
+              }
+            >
+              Desktop action interrupted — Review before retrying
+            </button>
+          ) : (
+            displayNotice &&
+            (reconnectNotice ? (
+              <button
+                type="button"
+                className="remix-chat-notice remix-chat-recovery-notice"
+                onClick={
+                  recovery.state.phase === "reconnecting"
+                    ? recovery.attempt
+                    : recovery.state.phase === "paused"
+                      ? recovery.resume
+                      : undefined
+                }
+              >
+                {displayNotice}
+              </button>
+            ) : (
+              <div className="remix-chat-notice" role="alert">
+                {displayNotice}
+              </div>
+            ))
           )}
 
           {!busy &&
@@ -1171,14 +1119,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                   rows={1}
                   value={input}
                   aria-label="Message Remix"
-                  placeholder={
-                    waitingForApproval
-                      ? "Resolve the approval above…"
-                      : busy
-                        ? "Add a follow-up…"
-                        : "Message Remix…"
-                  }
-                  disabled={waitingForApproval || resolvingApprovalId !== null}
+                  placeholder={busy ? "Add a follow-up…" : "Message Remix…"}
                   onChange={(e) => {
                     setInput(e.target.value);
                     const el = e.currentTarget;
@@ -1196,7 +1137,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                   <button
                     type="button"
                     className="remix-chat-send"
-                    onClick={() => stop()}
+                    onClick={cancelActiveTurn}
                     aria-label="Stop"
                     title="Stop"
                   >
@@ -1209,36 +1150,31 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                       <rect x="1.5" y="1.5" width="9" height="9" rx="2" />
                     </svg>
                   </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="remix-chat-send"
-                    disabled={
-                      !input.trim() ||
-                      waitingForApproval ||
-                      resolvingApprovalId !== null
-                    }
-                    onClick={submit}
-                    aria-label="Send"
-                    title="Send"
+                ) : null}
+                <button
+                  type="button"
+                  className="remix-chat-send"
+                  disabled={!input.trim()}
+                  onClick={submit}
+                  aria-label="Send"
+                  title="Send"
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    aria-hidden="true"
                   >
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 16 16"
-                      aria-hidden="true"
-                    >
-                      <path
-                        d="M8 12.8V3.6M4.1 7.4 8 3.5l3.9 3.9"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.8"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                    </svg>
-                  </button>
-                )}
+                    <path
+                      d="M8 12.8V3.6M4.1 7.4 8 3.5l3.9 3.9"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
               </div>
             </>
           )}
@@ -1979,11 +1915,41 @@ const REMIX_CHAT_CSS = `
     color: ${INK_FAINT};
   }
   .remix-chat-action[data-failed="true"] { color: rgba(224, 128, 95, 0.9); }
-  .remix-chat-notice {
-    font-size: 11px;
-    color: rgba(224, 128, 95, 0.95);
-    padding: 6px 18px 0;
-    line-height: 1.35;
+   .remix-chat-notice {
+     display: block;
+     width: 100%;
+     border: 0;
+     background: transparent;
+     font-size: 11px;
+     color: rgba(224, 128, 95, 0.95);
+     padding: 6px 18px 0;
+     line-height: 1.35;
+     text-align: left;
+     cursor: pointer;
+   }
+  .remix-chat-recovery-notice {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    min-height: 28px;
+    margin: 6px 18px 0;
+    padding: 5px 10px;
+    border: 1px solid rgba(224, 128, 95, 0.42);
+    border-radius: 999px;
+    background: rgba(224, 128, 95, 0.10);
+    box-shadow: inset 0 1px 0 rgba(245, 241, 228, 0.06);
+    color: rgba(246, 180, 148, 0.98);
+    font-weight: 600;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+  }
+  .remix-chat-recovery-notice:hover {
+    border-color: rgba(246, 180, 148, 0.76);
+    background: rgba(224, 128, 95, 0.18);
+    color: ${INK};
+  }
+  .remix-chat-recovery-notice:focus-visible {
+    outline: 2px solid rgba(246, 180, 148, 0.88);
+    outline-offset: 2px;
   }
 
   .remix-chat-approval {

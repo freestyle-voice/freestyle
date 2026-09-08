@@ -11,6 +11,7 @@ import {
 import { trustedDesktopAgentFields } from "../lib/agent-request.js";
 import { agentStreamStore } from "../lib/agent-stream-store.js";
 import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
+import { remixQueueActivity } from "../lib/remix-durable-queue.js";
 import { getSessionToken, invalidateSession } from "../lib/sessions.js";
 
 const log = createAppLogger("agent");
@@ -176,11 +177,14 @@ function activitySnapshot() {
     ...agentMessageQueue.threadIds(),
   ]);
   return {
-    threads: [...threadIds].map((threadId) => ({
-      threadId,
-      active: agentStreamStore.isActive(threadId),
-      queuedCount: agentMessageQueue.list(threadId).length,
-    })),
+    threads: [
+      ...remixQueueActivity(),
+      ...[...threadIds].map((threadId) => ({
+        threadId,
+        active: agentStreamStore.isActive(threadId),
+        queuedCount: agentMessageQueue.list(threadId).length,
+      })),
+    ],
   };
 }
 

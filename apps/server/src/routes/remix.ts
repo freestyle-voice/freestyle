@@ -10,6 +10,7 @@ import { Hono } from "hono";
 import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
 import { createMcpStore } from "../lib/mcp/store.js";
 import { getSessionToken, invalidateSession } from "../lib/sessions.js";
+import { remixDurableRoute } from "./remix-durable.js";
 
 const log = createAppLogger("remix");
 
@@ -18,10 +19,9 @@ const log = createAppLogger("remix");
  * local server, while preserving the captured desktop context and AI SDK
  * stream for the pill renderer.
  */
-const remixRoute = new Hono().post(
-  "/",
-  zValidator("json", remixAgentRequestSchema),
-  async (c) => {
+const remixRoute = new Hono()
+  .route("/", remixDurableRoute)
+  .post("/", zValidator("json", remixAgentRequestSchema), async (c) => {
     const token = getSessionToken();
     if (!token) return c.json({ error: "cloud_auth_required" }, 401);
 
@@ -87,7 +87,6 @@ const remixRoute = new Hono().post(
           : {}),
       },
     });
-  },
-);
+  });
 
 export default remixRoute;

@@ -1,7 +1,6 @@
 import "../overlay.css";
 import "../tavern.css";
 
-import { useChat } from "@ai-sdk/react";
 import { AgentMessageQueueControls } from "@renderer/components/agent-message-queue";
 import { RotatingThinkingLabel } from "@renderer/components/agents/loading-states/rotating-thinking-label";
 import { AttentionHome } from "@renderer/components/attention-home";
@@ -37,7 +36,6 @@ import {
   toolActivityParts,
 } from "@renderer/lib/agent-activity";
 import { readAgentBrief } from "@renderer/lib/agent-brief";
-import { useAgentMessageQueue } from "@renderer/lib/agent-message-queue";
 import {
   type AgentToolCall,
   agentToolTier,
@@ -45,13 +43,10 @@ import {
   describeAgentApproval,
   executeAgentTool,
   reportAgentToolResult,
-  requestAgentFileSaveGrant,
 } from "@renderer/lib/agent-tools";
 import { capture } from "@renderer/lib/analytics";
-import { apiFetch } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { resetBrainCache } from "@renderer/lib/brain-fs";
-import { composerAction } from "@renderer/lib/composer-action";
 import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
@@ -61,16 +56,17 @@ import {
   prependThreadToHistory,
   queryKeys,
 } from "@renderer/lib/query";
+import { remixReconnectLabel } from "@renderer/lib/remix-recovery";
 import { describeRemixRun } from "@renderer/lib/remix-run-state";
-import { executeRemixTool } from "@renderer/lib/remix-tool-executor";
+import {
+  executeApprovedRemixTool,
+  executeRemixTool,
+} from "@renderer/lib/remix-tool-executor";
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
-  cancelDurableTurn,
   type DurableThreadAction,
   type DurableThreadRun,
   displayThreadTitle,
-  getThread,
-  getThreadRuntime,
   sendDurableTurnCommand,
   type ThreadState,
   type ThreadSummary,
@@ -81,16 +77,13 @@ import {
   type ToolPhase,
   toolPresentation,
 } from "@renderer/lib/tool-presentation";
+import { useRemixRecovery } from "@renderer/lib/use-remix-recovery";
 import { compactActivitySummary } from "@renderer/lib/workspace-navigation";
 import { SpriteBadge } from "@renderer/sprites/badge";
 import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
 import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH } from "@shared/panel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  DefaultChatTransport,
-  lastAssistantMessageIsCompleteWithToolCalls,
-  type UIMessage,
-} from "ai";
+import type { UIMessage } from "ai";
 import {
   Check,
   Copy,
@@ -102,7 +95,7 @@ import {
   X,
 } from "lucide-react";
 import type React from "react";
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 type WorkspaceView = "chat" | "history";
 
@@ -454,8 +447,8 @@ function MessageActions({
           className="tavern-msg-action"
           disabled={disabled}
           onClick={onEdit}
-          aria-label="Edit and resend message"
-          title="Edit and resend"
+          aria-label="Edit in new chat"
+          title="Edit in new chat (keeps this conversation)"
         >
           <Pencil aria-hidden="true" />
         </button>
@@ -466,8 +459,8 @@ function MessageActions({
           className="tavern-msg-action"
           disabled={disabled}
           onClick={onRegenerate}
-          aria-label="Regenerate response"
-          title="Regenerate response"
+          aria-label="Regenerate in new chat"
+          title="Regenerate in new chat (keeps this conversation)"
         >
           <RotateCcw aria-hidden="true" />
         </button>
@@ -517,6 +510,10 @@ function ChatMessage({
       <div className="tavern-msg tavern-msg-user-wrap">
         {editing ? (
           <div className="tavern-msg-edit">
+            <p>
+              Continue this edit in a new chat. This conversation stays
+              unchanged.
+            </p>
             <textarea
               className="tavern-msg-edit-input"
               value={editDraft}
@@ -546,7 +543,7 @@ function ChatMessage({
                 disabled={!editDraft.trim() || disabled}
                 onClick={onResendEdit}
               >
-                Send again
+                Send in new chat
               </button>
             </div>
           </div>
@@ -1350,46 +1347,27 @@ function PanelInner({
   // Whether the current draft arrived by voice, so message_sent can say so.
   const dictatedRef = useRef(false);
 
-  const durableRuntime = useQuery({
-    queryKey: ["durable-thread-runtime", thread.id],
-    queryFn: () => getThreadRuntime(thread.id),
-    enabled: !isSessionLoading,
-    retry: false,
-    refetchInterval: (query) =>
-      query.state.data?.activeTurn || query.state.data?.pendingAction
-        ? 1_000
-        : false,
-  });
-
-  const transport = useMemo(
-    () =>
-      new DefaultChatTransport({
-        api: "/api/agent",
-        body: { threadId: thread.id },
-        fetch: ((input: string | URL | Request, init?: RequestInit) =>
-          apiFetch(
-            typeof input === "string" ? input : "/api/agent",
-            init ?? {},
-          )) as typeof fetch,
-      }),
-    [thread.id],
-  );
-
   const {
     messages,
     sendMessage,
     regenerate,
-    stop,
+    cancel,
+    authorizeTool,
+    recovery,
+    queue,
+    canonical,
+    durableRuntime,
     status,
     addToolOutput,
     setMessages,
-    resumeStream,
-  } = useChat({
+  } = useRemixRecovery({
     id: thread.id,
     messages: thread.messages,
-    transport,
-    resume: true,
-    sendAutomaticallyWhen: lastAssistantMessageIsCompleteWithToolCalls,
+    onFork: onSwitchThread,
+    onActionUnavailable: (actionId) =>
+      setApprovals((pending) =>
+        pending.filter((item) => item.call.toolCallId !== actionId),
+      ),
     onFinish: ({ messages: finished }) => {
       queryClient.setQueryData(queryKeys.threads.detail(thread.id), {
         id: thread.id,
@@ -1427,7 +1405,7 @@ function PanelInner({
         input: toolCall.input,
       };
       const tier = await agentToolTier(call);
-      if (tier === "confirmed") {
+      if (tier === "confirmed" || toolCall.requiresConfirmation) {
         setApprovals((prev) => [...prev, { call }]);
         return;
       }
@@ -1537,59 +1515,10 @@ function PanelInner({
     });
   }, [messages.length, queryClient, thread.id]);
 
-  const busy = status === "submitted" || status === "streaming";
-  const queue = useAgentMessageQueue(thread.id);
-  const queueWasActiveRef = useRef(false);
-  const queueInitializedRef = useRef(false);
-  const queueHadItemsRef = useRef(false);
-  const queueNeedsRefreshRef = useRef(false);
-  const queueThreadRef = useRef(thread.id);
-  useEffect(() => {
-    if (queueThreadRef.current === thread.id) return;
-    queueThreadRef.current = thread.id;
-    queueWasActiveRef.current = false;
-    queueInitializedRef.current = false;
-    queueHadItemsRef.current = false;
-    queueNeedsRefreshRef.current = false;
-  }, [thread.id]);
-  useEffect(() => {
-    // Initial `resume: true` already attaches a newly opened workspace to a
-    // pill-owned stream. Resume only when the local queue later starts its
-    // next server-owned turn.
-    if (!queueInitializedRef.current) {
-      queueInitializedRef.current = true;
-      queueWasActiveRef.current = queue.active;
-      return;
-    }
-    if (!queue.active) {
-      queueWasActiveRef.current = false;
-      return;
-    }
-    if (busy || queueWasActiveRef.current) return;
-    queueWasActiveRef.current = true;
-    void getThread(thread.id)
-      .then((next) => {
-        if (next) setMessages(next.messages);
-        return resumeStream();
-      })
-      .catch(() => setNotice("Couldn’t resume the queued message."));
-  }, [busy, queue.active, resumeStream, setMessages, thread.id]);
-  useEffect(() => {
-    const hasItems = queue.items.length > 0;
-    if (queueHadItemsRef.current && !hasItems)
-      queueNeedsRefreshRef.current = true;
-    queueHadItemsRef.current = hasItems;
-    // If the local server completed a short follow-up between queue polls,
-    // there is no live stream to resume. Reload the durable thread once.
-    if (!queueNeedsRefreshRef.current || queue.active || busy) return;
-    queueNeedsRefreshRef.current = false;
-    void getThread(thread.id)
-      .then((next) => {
-        if (next) setMessages(next.messages);
-      })
-      .catch(() => {});
-  }, [busy, queue.active, queue.items.length, setMessages, thread.id]);
-  const action = composerAction(status);
+  const busy =
+    status === "submitted" ||
+    status === "streaming" ||
+    recovery.state.phase !== "idle";
   // The spark loader holds the floor until the first response text streams in;
   // once text is flowing, the growing message itself is the indicator.
   const lastMessage = messages[messages.length - 1];
@@ -1614,9 +1543,10 @@ function PanelInner({
     setNotice(null);
     setDraft("");
     if (busy) {
-      void queue
-        .enqueue(text)
-        .catch(() => setNotice("Couldn’t queue that message."));
+      void queue.enqueue(text).catch(() => {
+        setDraft(text);
+        setNotice("Couldn’t queue that message.");
+      });
       capture("remix_message_queued", { source: "typed", chars: text.length });
       return;
     }
@@ -1626,34 +1556,8 @@ function PanelInner({
 
   const stopGeneration = (): void => {
     if (!busy) return;
-    stop();
-    const cancel = (turnId: string) =>
-      void cancelDurableTurn(turnId)
-        .then(async () => {
-          await durableRuntime.refetch();
-          await queryClient.invalidateQueries({
-            queryKey: queryKeys.durableThreadRuns(thread.id),
-          });
-        })
-        .catch(() =>
-          setNotice(
-            "Stopped locally, but couldn't cancel the server turn. Check this conversation when you're back online.",
-          ),
-        );
-    const activeTurnId = durableRuntime.data?.activeTurn?.id;
-    if (activeTurnId) {
-      cancel(activeTurnId);
-      return;
-    }
-    // The first runtime poll can trail the streamed response by a moment. A
-    // one-off refetch closes that race so Stop remains server-authoritative.
-    void durableRuntime
-      .refetch()
-      .then(({ data }) => {
-        const turnId = data?.activeTurn?.id;
-        if (turnId) cancel(turnId);
-      })
-      .catch(() => {});
+    setApprovals([]);
+    void cancel();
   };
 
   const copyMessage = (message: UIMessage): void => {
@@ -1721,20 +1625,20 @@ function PanelInner({
     );
     void (async () => {
       const startedAt = Date.now();
-      const grant =
-        allowed && call.toolName === "save_file"
-          ? await requestAgentFileSaveGrant(call)
-          : null;
+      try {
+        if (!approval.durable) await authorizeTool(call.toolCallId);
+      } catch (error) {
+        setApprovals((pending) => [...pending, approval]);
+        setNotice(
+          error instanceof Error
+            ? error.message
+            : "Couldn't confirm this action.",
+        );
+        return;
+      }
       const output = !allowed
         ? DECLINED_OUTPUT
-        : grant && grant.ok !== true
-          ? grant
-          : await executeAgentTool(call, {
-              saveFileGrant:
-                grant && typeof grant.grant === "string"
-                  ? grant.grant
-                  : undefined,
-            });
+        : await executeApprovedRemixTool(call);
       reportAgentToolResult(call, output, startedAt);
       if (approval.durable) {
         await sendDurableTurnCommand(approval.durable.turnId, {
@@ -2321,7 +2225,8 @@ function PanelInner({
                       </div>
                     </div>
                   ) : null}
-                  {durableRuntime.data?.pendingAction?.kind === "desktop" &&
+                  {!canonical &&
+                  durableRuntime.data?.pendingAction?.kind === "desktop" &&
                   durableRuntime.data.pendingAction.status === "pending" ? (
                     <div className="tavern-approve">
                       <span className="tavern-approve-title">
@@ -2383,7 +2288,37 @@ function PanelInner({
                   />
                 </>
               ) : null}
-              {notice ? <p className="tavern-notice">{notice}</p> : null}
+              {recovery.desktop ? (
+                <button
+                  type="button"
+                  className="tavern-notice tavern-recovery-notice"
+                  onClick={() =>
+                    void recovery
+                      .retryDesktop()
+                      .catch(() =>
+                        setNotice("This desktop action is not ready to retry."),
+                      )
+                  }
+                >
+                  Desktop action interrupted — Review before retrying
+                </button>
+              ) : recovery.state.phase !== "idle" ? (
+                <button
+                  type="button"
+                  className="tavern-notice tavern-recovery-notice"
+                  onClick={
+                    recovery.state.phase === "reconnecting"
+                      ? recovery.attempt
+                      : recovery.state.phase === "paused"
+                        ? recovery.resume
+                        : undefined
+                  }
+                >
+                  {remixReconnectLabel(recovery.state, recovery.now)}
+                </button>
+              ) : notice ? (
+                <p className="tavern-notice">{notice}</p>
+              ) : null}
             </div>
 
             {chatActive ? (
@@ -2424,37 +2359,30 @@ function PanelInner({
                       }
                     }}
                   />
+                  {busy ? (
+                    <button
+                      type="button"
+                      className="tavern-btn tavern-btn-send is-stop"
+                      aria-label="Stop generating"
+                      title="Stop generating"
+                      onClick={stopGeneration}
+                    >
+                      <WorkspaceIcon name="stop" />
+                    </button>
+                  ) : null}
                   <button
                     type="button"
-                    className={`tavern-btn tavern-btn-send${action === "stop" && !draft.trim() ? " is-stop" : ""}`}
-                    aria-label={
-                      action === "stop" && !draft.trim()
-                        ? "Stop generating"
-                        : busy
-                          ? "Queue message"
-                          : "Send"
-                    }
-                    title={
-                      action === "stop" && !draft.trim()
-                        ? "Stop generating"
-                        : busy
-                          ? "Queue message"
-                          : "Send"
-                    }
+                    className="tavern-btn tavern-btn-send"
+                    aria-label="Send"
+                    title={busy ? "Queue message" : "Send"}
                     disabled={
                       isSessionLoading ||
                       Boolean(sessionLoadError) ||
-                      (action !== "stop" && !draft.trim())
+                      !draft.trim()
                     }
-                    onClick={
-                      action === "stop" && !draft.trim() ? stopGeneration : send
-                    }
+                    onClick={send}
                   >
-                    <WorkspaceIcon
-                      name={
-                        action === "stop" && !draft.trim() ? "stop" : "send"
-                      }
-                    />
+                    <WorkspaceIcon name="send" />
                   </button>
                 </div>
               </>

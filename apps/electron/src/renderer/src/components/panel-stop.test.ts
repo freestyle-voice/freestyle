@@ -4,10 +4,9 @@ import { describe, expect, it } from "vitest";
 const panel = readFileSync(new URL("./panel.tsx", import.meta.url), "utf8");
 
 describe("desktop stop generation", () => {
-  it("cancels the durable turn as well as the local stream", () => {
-    expect(panel).toMatch(
-      /const stopGeneration[\s\S]*?stop\(\);[\s\S]*?cancelDurableTurn\(turnId\)/,
-    );
-    expect(panel).toContain("durableRuntime.refetch()");
+  it("uses the shared durable cancel controller independently of Send", () => {
+    expect(panel).toMatch(/const stopGeneration[\s\S]*?void cancel\(\)/);
+    expect(panel).toContain('aria-label="Stop generating"');
+    expect(panel).toContain('aria-label="Send"');
   });
 });

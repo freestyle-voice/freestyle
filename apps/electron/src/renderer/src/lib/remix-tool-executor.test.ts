@@ -5,7 +5,10 @@ const { executeMcpToolCall } = vi.hoisted(() => ({
 }));
 vi.mock("@renderer/lib/mcp", () => ({ executeMcpToolCall }));
 
-import { executeRemixTool } from "./remix-tool-executor";
+import {
+  executeApprovedRemixTool,
+  executeRemixTool,
+} from "./remix-tool-executor";
 
 describe("canonical Remix tool executor", () => {
   const remixGetContext = vi.fn();
@@ -33,6 +36,50 @@ describe("canonical Remix tool executor", () => {
       query: "roadmap",
     });
   });
+  it("allows a confirmed cursor replacement through the cursor executor", async () => {
+    const remixPasteClipboard = vi.fn(async () => ({ ok: true }));
+    vi.stubGlobal("window", { api: { remixPasteClipboard } });
+    expect(
+      await executeApprovedRemixTool({
+        toolName: "paste",
+        toolCallId: "replacement",
+        input: {},
+      }),
+    ).toEqual({ ok: true });
+    expect(remixPasteClipboard).toHaveBeenCalledTimes(1);
+  });
+  it("allows a confirmed MCP replacement through its local MCP executor", async () => {
+    executeMcpToolCall.mockResolvedValue({ ok: true, content: [] });
+    expect(
+      await executeApprovedRemixTool({
+        toolName: "mcp_1_search",
+        toolCallId: "replacement",
+        input: { query: "roadmap" },
+      }),
+    ).toEqual({ ok: true, content: [] });
+    expect(executeMcpToolCall).toHaveBeenCalledWith("mcp_1_search", {
+      query: "roadmap",
+    });
+  });
+  it("preserves a declined save-file grant without executing the approved action", async () => {
+    const requestAgentFileSaveGrant = vi.fn(async () => ({
+      ok: false,
+      reason: "canceled",
+    }));
+    vi.stubGlobal("window", { api: { requestAgentFileSaveGrant } });
+    expect(
+      await executeApprovedRemixTool({
+        toolName: "save_file",
+        toolCallId: "replacement",
+        input: { filename: "test.txt", content: "content" },
+      }),
+    ).toEqual({ ok: false, reason: "canceled" });
+    expect(requestAgentFileSaveGrant).toHaveBeenCalledWith({
+      toolCallId: "replacement",
+      filename: "test.txt",
+      content: "content",
+    });
+  });
 
   it("returns a live cursor capture to the active renderer surface", async () => {
     remixGetContext.mockResolvedValue({
@@ -47,7 +94,7 @@ describe("canonical Remix tool executor", () => {
     const onContext = vi.fn();
 
     await expect(
-      executeRemixTool(
+      executeApprovedRemixTool(
         { toolName: "get_context", toolCallId: "call-1", input: {} },
         { onContext },
       ),

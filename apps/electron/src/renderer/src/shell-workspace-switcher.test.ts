@@ -27,7 +27,7 @@ describe("workspace switcher", () => {
     expect(shell).toContain('className="remix-sidebar-titlebar"');
     expect(shell).toContain('aria-label="Switch workspace"');
     expect(shell).toContain("onFullscreenChanged(setIsFullscreen)");
-    expect(shell).toContain('isFullscreen ? "h-0" : "h-8"');
+    expect(shell).toContain('IS_MAC && !isFullscreen ? "h-8" : "h-0"');
     expect(shell).toContain("WORKSPACE_STORAGE_KEY");
     expect(shell).toContain('from "@renderer/lib/workspace"');
     expect(shell).toContain("const isSettingsRoute =");

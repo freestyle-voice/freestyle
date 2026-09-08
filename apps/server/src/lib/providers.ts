@@ -30,6 +30,7 @@ function getChatModelId(providerId: string, modelId: string): string {
 interface DefaultModels {
   voice: { provider: string; model_id: string; model_name: string } | null;
   llm: { provider: string; model_id: string; model_name: string } | null;
+  remix: { provider: string; model_id: string; model_name: string } | null;
 }
 
 export function getDefaultModels(): DefaultModels {
@@ -49,10 +50,18 @@ export function getDefaultModels(): DefaultModels {
     .get() as
     | { provider: string; model_id: string; model_name: string }
     | undefined;
+  const remix = db
+    .prepare(
+      "SELECT provider, model_id, model_name FROM model_configs WHERE type = 'remix' AND is_default = 1 LIMIT 1",
+    )
+    .get() as
+    | { provider: string; model_id: string; model_name: string }
+    | undefined;
 
   return {
     voice: voice ?? null,
     llm: llm ?? null,
+    remix: remix ?? null,
   };
 }
 

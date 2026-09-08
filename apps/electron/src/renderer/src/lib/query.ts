@@ -112,7 +112,8 @@ export const queryKeys = {
     latest: ["threads", "latest"] as const,
     lists: THREAD_LIST_QUERY_KEY,
     list: (origin: ThreadOrigin) => [...THREAD_LIST_QUERY_KEY, origin] as const,
-    detail: (id: string) => ["threads", "detail", id] as const,
+    detail: (id: string, type: "local" | "remote" = "remote") =>
+      ["threads", "detail", type, id] as const,
   },
   brain: {
     all: ["brain"] as const,
@@ -334,10 +335,13 @@ export function durableThreadRunsQueryOptions(threadId: string) {
   };
 }
 
-export function threadQueryOptions(id: string) {
+export function threadQueryOptions(
+  id: string,
+  type: "local" | "remote" = "remote",
+) {
   return {
-    queryKey: queryKeys.threads.detail(id),
-    queryFn: () => getThread(id),
+    queryKey: queryKeys.threads.detail(id, type),
+    queryFn: () => getThread(id, type),
     enabled: id.length > 0,
   };
 }

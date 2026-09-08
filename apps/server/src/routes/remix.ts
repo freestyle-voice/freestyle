@@ -11,6 +11,7 @@ import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
 import { createMcpStore } from "../lib/mcp/store.js";
 import { getSessionToken, invalidateSession } from "../lib/sessions.js";
 import { remixDurableRoute } from "./remix-durable.js";
+import remixSessionsRoute from "./remix-sessions.js";
 
 const log = createAppLogger("remix");
 
@@ -20,6 +21,7 @@ const log = createAppLogger("remix");
  * stream for the pill renderer.
  */
 const remixRoute = new Hono()
+  .route("/sessions", remixSessionsRoute)
   .route("/", remixDurableRoute)
   .post("/", zValidator("json", remixAgentRequestSchema), async (c) => {
     const token = getSessionToken();

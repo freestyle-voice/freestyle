@@ -41,7 +41,7 @@ describe("Remix session switching", () => {
     );
 
     expect(sessions).toContain("onPanelThreadUpdated");
-    expect(sessions).toContain("fetchQuery(threadQueryOptions(threadId))");
+    expect(sessions).toContain("threadQueryOptions(threadId, type)");
     expect(sessions).toContain("current?.id === threadId ? loaded : current");
   });
 

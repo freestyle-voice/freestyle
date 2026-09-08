@@ -21,6 +21,20 @@ let apiBaseResolution: Promise<void> | null = null;
 let initPromise: Promise<void> | null = null;
 const unauthorizedListeners = new Set<() => void>();
 
+async function isDefinitiveUnauthorized(response: Response): Promise<boolean> {
+  if (response.status !== 401) return false;
+
+  // A durable Remix observer can outlive an account change. Its ownership
+  // boundary deliberately returns 401 to reject that stale observer, but the
+  // device may still have a valid current session. Keep that request scoped to
+  // its own recovery error instead of clearing the whole renderer into sign-in.
+  const body = await response
+    .clone()
+    .json()
+    .catch(() => null);
+  return body?.error !== "remix_account_changed";
+}
+
 /**
  * Subscribe to definitive protected-request failures observed by either API
  * transport. A 401 is the server's authoritative signal that the locally
@@ -37,7 +51,7 @@ async function observedFetch(
   init?: RequestInit,
 ): Promise<Response> {
   const response = await fetch(input, init);
-  if (response.status === 401) {
+  if (await isDefinitiveUnauthorized(response)) {
     for (const listener of unauthorizedListeners) listener();
   }
   return response;

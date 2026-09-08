@@ -129,6 +129,15 @@ async function installFixtures(page: Page) {
         return json({ onboarding: JSON.stringify({ v: 2, done: true }) });
       if (path === "/api/health")
         return json({ name: "freestyle", status: "ok" });
+      if (path === "/api/remix/sessions" && init?.method === "POST")
+        return json({
+          thread: {
+            id: crypto.randomUUID(),
+            type: "remote",
+            title: null,
+            messages: [],
+          },
+        });
       if (path === "/api/remix/turns") {
         if (clientRequestId !== body!.clientRequestId) {
           f.status = "running";

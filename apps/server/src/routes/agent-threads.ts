@@ -3,7 +3,15 @@ import { Hono } from "hono";
 import { trustedDesktopAgentFields } from "../lib/agent-request.js";
 import { agentStreamStore } from "../lib/agent-stream-store.js";
 import { freestyleCloudUrl } from "../lib/freestyle-cloud.js";
-import { getSessionToken, invalidateSession } from "../lib/sessions.js";
+import {
+  listLocalRemixThreads,
+  upsertRemoteRemixThread,
+} from "../lib/remix-store.js";
+import {
+  getSession,
+  getSessionToken,
+  invalidateSession,
+} from "../lib/sessions.js";
 
 const log = createAppLogger("agent-threads");
 
@@ -108,7 +116,39 @@ const agentThreadsRoute = new Hono()
     }
     const query = params.size > 0 ? `?${params.toString()}` : "";
     const { status, payload } = await forward(query);
-    return c.json(payload as object, status as 200);
+    if (status !== 200 || !payload || typeof payload !== "object")
+      return c.json(payload as object, status as 200);
+    const envelope = payload as {
+      threads?: Array<{ id?: unknown; title?: unknown; updatedAt?: unknown }>;
+    };
+    const session = getSession();
+    const scope = session ? `${session.host}:${session.user.id}` : null;
+    const threads = (envelope.threads ?? []).map((thread) => {
+      if (scope && typeof thread.id === "string") {
+        upsertRemoteRemixThread({
+          id: thread.id,
+          title: typeof thread.title === "string" ? thread.title : null,
+          remoteScope: scope,
+          updatedAt:
+            typeof thread.updatedAt === "number" ? thread.updatedAt : undefined,
+        });
+      }
+      return { ...thread, type: "remote" as const };
+    });
+    // Local conversations never cross this boundary beyond their sidebar
+    // metadata. Keep pagination Cloud-owned so a local row cannot distort a
+    // Cloud cursor.
+    const includeLocal = !c.req.query("cursor") && origin !== "scheduled";
+    const localThreads = includeLocal
+      ? listLocalRemixThreads().map((thread) => ({
+          id: thread.id,
+          title: thread.title?.trim() || "New chat",
+          updatedAt: Date.parse(`${thread.lastActiveAt.replace(" ", "T")}Z`),
+          origin: "user" as const,
+          type: "local" as const,
+        }))
+      : [];
+    return c.json({ ...envelope, threads: [...localThreads, ...threads] }, 200);
   })
   .get("/latest", async (c) => {
     const { status, payload } = await forward("/latest");

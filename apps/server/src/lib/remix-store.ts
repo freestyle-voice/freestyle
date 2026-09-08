@@ -10,8 +10,20 @@ export const REMIX_THREAD_IDLE_MS = 15 * 60 * 1000;
 /** Thread payloads are capped so a long-lived thread can't grow unbounded. */
 export const MAX_THREAD_MESSAGES = 40;
 
+export type RemixSessionType = "local" | "remote";
+
+export interface LocalRemixModel {
+  provider: string;
+  modelId: string;
+  modelName: string;
+}
+
 export interface RemixThread {
-  id: number;
+  id: string;
+  type: RemixSessionType;
+  title: string | null;
+  remoteScope: string | null;
+  model: LocalRemixModel | null;
   createdAt: string;
   lastActiveAt: string;
 }
@@ -22,7 +34,13 @@ export interface StoredUiMessage {
 }
 
 interface ThreadRow {
-  id: number;
+  id: string;
+  type: RemixSessionType;
+  title: string | null;
+  remote_scope: string | null;
+  model_provider: string | null;
+  model_id: string | null;
+  model_name: string | null;
   created_at: string;
   last_active_at: string;
 }
@@ -30,15 +48,28 @@ interface ThreadRow {
 function rowToThread(row: ThreadRow): RemixThread {
   return {
     id: row.id,
+    type: row.type,
+    title: row.title,
+    remoteScope: row.remote_scope,
+    model:
+      row.model_provider && row.model_id && row.model_name
+        ? {
+            provider: row.model_provider,
+            modelId: row.model_id,
+            modelName: row.model_name,
+          }
+        : null,
     createdAt: row.created_at,
     lastActiveAt: row.last_active_at,
   };
 }
 
-function latestThread(): RemixThread | null {
+function latestThread(type: RemixSessionType): RemixThread | null {
   const row = getDb()
-    .prepare("SELECT * FROM remix_threads ORDER BY id DESC LIMIT 1")
-    .get() as ThreadRow | undefined;
+    .prepare(
+      "SELECT * FROM remix_threads WHERE type = ? ORDER BY last_active_at DESC LIMIT 1",
+    )
+    .get(type) as ThreadRow | undefined;
   return row ? rowToThread(row) : null;
 }
 
@@ -48,18 +79,35 @@ function isFresh(thread: RemixThread): boolean {
 }
 
 /** The latest thread while still fresh, else null. Never creates one — GET
- * must not mutate; thread creation belongs to startNewThread. */
-export function getActiveThread(): RemixThread | null {
-  const latest = latestThread();
+ * must not mutate; thread creation is explicit. */
+export function getActiveThread(type: RemixSessionType): RemixThread | null {
+  const latest = latestThread(type);
   return latest && isFresh(latest) ? latest : null;
 }
 
 /** Force a new thread (the card's explicit "new thread" affordance). */
-export function startNewThread(): RemixThread {
+export function createRemixThread(
+  type: RemixSessionType,
+  model: LocalRemixModel | null = null,
+  remoteScope: string | null = null,
+): RemixThread {
+  if (type === "local" && !model)
+    throw new Error("Local Remix sessions require a resolved model");
+  if (type === "remote" && !remoteScope)
+    throw new Error("Remote Remix sessions require an account scope");
   const db = getDb();
-  const id = Number(
-    db.prepare("INSERT INTO remix_threads DEFAULT VALUES").run()
-      .lastInsertRowid,
+  const id = crypto.randomUUID();
+  db.prepare(
+    `INSERT INTO remix_threads
+      (id, type, remote_scope, model_provider, model_id, model_name)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    type,
+    remoteScope,
+    model?.provider ?? null,
+    model?.modelId ?? null,
+    model?.modelName ?? null,
   );
   const row = db.prepare("SELECT * FROM remix_threads WHERE id = ?").get(id) as
     | ThreadRow
@@ -68,7 +116,73 @@ export function startNewThread(): RemixThread {
   return rowToThread(row);
 }
 
-export function getThreadMessages(threadId: number): StoredUiMessage[] {
+export function getRemixThread(threadId: string): RemixThread | null {
+  const row = getDb()
+    .prepare("SELECT * FROM remix_threads WHERE id = ?")
+    .get(threadId) as ThreadRow | undefined;
+  return row ? rowToThread(row) : null;
+}
+
+/** Local sessions are the only complete transcripts owned by this database. */
+export function listLocalRemixThreads(limit = 24): RemixThread[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM remix_threads
+       WHERE type = 'local'
+       ORDER BY last_active_at DESC
+       LIMIT ?`,
+    )
+    .all(limit)
+    .map((row) => rowToThread(row as unknown as ThreadRow));
+}
+
+export function updateRemixThreadTitle(
+  threadId: string,
+  title: string | null,
+): boolean {
+  const result = getDb()
+    .prepare(
+      `UPDATE remix_threads
+       SET title = ?, last_active_at = datetime('now')
+       WHERE id = ? AND type = 'local'`,
+    )
+    .run(title, threadId);
+  return result.changes > 0;
+}
+
+export function deleteLocalRemixThread(threadId: string): boolean {
+  const result = getDb()
+    .prepare("DELETE FROM remix_threads WHERE id = ? AND type = 'local'")
+    .run(threadId);
+  return result.changes > 0;
+}
+
+/** A remote row is sidebar cache metadata only: never a transcript snapshot. */
+export function upsertRemoteRemixThread(input: {
+  id: string;
+  title: string | null;
+  remoteScope: string;
+  updatedAt?: number;
+}): void {
+  getDb()
+    .prepare(
+      `INSERT INTO remix_threads (id, type, title, remote_scope, last_active_at)
+       VALUES (?, 'remote', ?, ?, datetime(? / 1000, 'unixepoch'))
+       ON CONFLICT(id) DO UPDATE SET
+         title = excluded.title,
+         remote_scope = excluded.remote_scope,
+         last_active_at = excluded.last_active_at
+       WHERE remix_threads.type = 'remote'`,
+    )
+    .run(
+      input.id,
+      input.title,
+      input.remoteScope,
+      input.updatedAt ?? Date.now(),
+    );
+}
+
+export function getThreadMessages(threadId: string): StoredUiMessage[] {
   const rows = getDb()
     .prepare(
       "SELECT ui_message FROM remix_messages WHERE thread_id = ? ORDER BY id DESC LIMIT ?",
@@ -94,12 +208,12 @@ export function getThreadMessages(threadId: number): StoredUiMessage[] {
  * not exist, so the route can 404 instead of hitting the FK.
  */
 export function saveThreadMessages(
-  threadId: number,
+  threadId: string,
   messages: StoredUiMessage[],
 ): boolean {
   const db = getDb();
   const exists = db
-    .prepare("SELECT id FROM remix_threads WHERE id = ?")
+    .prepare("SELECT id FROM remix_threads WHERE id = ? AND type = 'local'")
     .get(threadId);
   if (!exists) return false;
 
@@ -140,7 +254,7 @@ export function saveThreadMessages(
 }
 
 export interface RemixRunInput {
-  threadId?: number | null;
+  threadId?: string | null;
   lane: "transform" | "agent";
   instruction: string;
   beforeText?: string | null;
@@ -179,7 +293,7 @@ export function recordRemixRun(run: RemixRunInput): number {
 
 export interface RemixRunRow {
   id: number;
-  thread_id: number | null;
+  thread_id: string | null;
   lane: string;
   instruction: string;
   before_text: string | null;
@@ -216,7 +330,7 @@ export function purgeExpiredRemixData(retentionDays: number): number {
   const runs = db
     .prepare("DELETE FROM remix_runs WHERE created_at < datetime('now', ?)")
     .run(cutoff);
-  const activeThreadId = getActiveThread()?.id ?? -1;
+  const activeThreadId = getActiveThread("local")?.id ?? "";
   const threads = db
     .prepare(
       "DELETE FROM remix_threads WHERE last_active_at < datetime('now', ?) AND id != ?",

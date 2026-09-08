@@ -79,6 +79,7 @@ function anchoredLayerStyle(
 
 interface ThreadState {
   id: string;
+  type?: "local" | "remote";
   messages: UIMessage[];
 }
 
@@ -240,6 +241,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     queue,
   } = useRemixRecovery({
     id: thread.id,
+    type: thread.type,
     messages: thread.messages,
     onActionUnavailable: (actionId) =>
       setApprovals((pending) =>
@@ -605,8 +607,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       const message = messages[i];
       if (message.role !== "assistant") continue;
       const text = message.parts
-        .filter(isTextUIPart)
-        .map((part) => part.text)
+        .map((part) => (part.type === "text" ? part.text : ""))
         .join("")
         .trim();
       return text || null;

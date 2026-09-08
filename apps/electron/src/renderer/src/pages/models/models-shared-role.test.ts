@@ -26,16 +26,21 @@ describe("Models shared assistant role", () => {
   });
 
   it("uses the compact Settings frame instead of a standalone editorial page", async () => {
-    const [page, pairCard, modal] = await Promise.all([
+    const [page, pairCard, remixCard, modal, modelList] = await Promise.all([
       readFile(resolve(modelsRoot, "index.tsx"), "utf8"),
       readFile(resolve(modelsRoot, "pair-card.tsx"), "utf8"),
+      readFile(resolve(modelsRoot, "remix-model-card.tsx"), "utf8"),
       readFile(resolve(modelsRoot, "model-modal.tsx"), "utf8"),
+      readFile(resolve(modelsRoot, "model-list.tsx"), "utf8"),
     ]);
 
     expect(page).toContain('data-testid="models-settings-page"');
     expect(page).toContain('data-testid="models-api-keys"');
     expect(pairCard).toContain('data-testid="models-configuration"');
     expect(pairCard).not.toContain("fontSize: 34");
+    expect(page).toContain("<RemixModelCard");
+    expect(remixCard).toContain('data-testid="remix-model-configuration"');
+    expect(modelList).toContain('type: "voice" | "llm" | "remix"');
     expect(modal).toContain("max-h-[calc(100dvh-2rem)]");
   });
 });

@@ -1,5 +1,6 @@
+import { Chat, useChat } from "@ai-sdk/react";
 import { apiFetch, initApiBase } from "@renderer/lib/api";
-import type { UIMessage } from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   useEffect,
   useMemo,
@@ -11,6 +12,7 @@ import { RemixRecoveryController } from "./remix-recovery-controller";
 
 type Options = {
   id: string;
+  type?: "local" | "remote";
   messages: UIMessage[];
   context?: () => unknown;
   onToolCall: (event: {
@@ -66,21 +68,64 @@ export function useRemixRecovery(options: Options) {
       }),
     [options.id],
   );
+  // The chat owns streaming message state. Recreating it for every streamed
+  // token would discard that state, so only a session ID creates a new chat.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: explained above
+  const localChat = useMemo(
+    () =>
+      new Chat({
+        id: options.id,
+        messages: options.messages,
+        transport: new DefaultChatTransport({
+          api: `/api/remix/sessions/${encodeURIComponent(options.id)}/stream`,
+          fetch: async (input, init) => {
+            await initApiBase();
+            return apiFetch(input, init);
+          },
+          prepareSendMessagesRequest: ({ messages }) => ({
+            body: {
+              messages,
+              context: (ref.current.context ?? defaultContext)(),
+            },
+          }),
+        }),
+        onToolCall: ({ toolCall }) => ref.current.onToolCall({ toolCall }),
+        onFinish: async ({ messages }) => {
+          await initApiBase();
+          const response = await apiFetch(
+            `/api/remix/sessions/${encodeURIComponent(options.id)}/messages`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ messages }),
+            },
+          );
+          if (!response.ok) {
+            throw new Error("Could not save this local Remix session.");
+          }
+          ref.current.onFinish?.({ messages });
+        },
+        onError: (error) => ref.current.onError?.(error),
+      }),
+    [options.id],
+  );
+  const local = useChat({ chat: localChat });
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
   );
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
+    if (options.type === "local") return;
     void controller.start();
     return controller.dispose;
-  }, [controller]);
+  }, [controller, options.type]);
   useEffect(() => {
     if (snapshot.recovery.phase !== "reconnecting") return;
     const timer = setInterval(() => setNow(Date.now()), 250);
     return () => clearInterval(timer);
   }, [snapshot.recovery.phase]);
-  return useMemo(
+  const remote = useMemo(
     () => ({
       messages: snapshot.messages,
       status: snapshot.status,
@@ -161,4 +206,37 @@ export function useRemixRecovery(options: Options) {
     }),
     [controller, snapshot, now],
   );
+  if (options.type !== "local") return remote;
+  return {
+    messages: local.messages,
+    status: local.status,
+    canonical: true,
+    durableRuntime: { data: null, refetch: async () => ({ data: null }) },
+    setMessages: local.setMessages,
+    clearError: local.clearError,
+    sendMessage: local.sendMessage,
+    regenerate: local.regenerate,
+    addToolResult: local.addToolResult,
+    addToolOutput: local.addToolOutput,
+    stop: local.stop,
+    cancel: local.stop,
+    authorizeTool: async () => {},
+    resumeStream: async () => {},
+    recovery: {
+      state: { phase: "idle" as const },
+      now,
+      attempt: () => {},
+      resume: async () => {},
+      desktop: null,
+      retryDesktop: async () => {},
+    },
+    queue: {
+      items: [],
+      active: local.status === "streaming" || local.status === "submitted",
+      enqueue: async () => {},
+      update: async () => {},
+      remove: async () => {},
+      steer: async () => {},
+    },
+  };
 }

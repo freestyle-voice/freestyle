@@ -1682,6 +1682,13 @@ function UsageSummaryBalance({
 }: {
   balance: CloudUsageBalance;
 }): React.JSX.Element {
+  if (balance.unlimited) {
+    return (
+      <p className="text-muted-foreground mt-3 text-[12px]">
+        Unlimited dictation and Remix use.
+      </p>
+    );
+  }
   const dictation = balance.dictation;
   const remix = balance.remix ?? balance;
   const primary = dictation ?? remix;

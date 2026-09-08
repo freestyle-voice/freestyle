@@ -228,10 +228,11 @@ function ProtectedOutlet(): React.JSX.Element {
  * first-run wizard.
  */
 function OnboardingOutlet(): React.JSX.Element {
-  const { user } = useCloudAuth();
+  const { phase, user } = useCloudAuth();
   const onboarding = useOnboarding(Boolean(user));
   const { pathname } = useLocation();
 
+  if (!user && phase === "checking") return <Outlet />;
   if (onboarding.status === "loading") return <RouteFallback />;
   if (onboarding.status === "show") {
     return <Navigate to="/onboarding" replace state={{ from: pathname }} />;

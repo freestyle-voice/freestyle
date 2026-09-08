@@ -162,6 +162,8 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
 function buildLlmRows(
   m: UseModels,
   h: { onPickCloud: (model: AvailableModel) => void; onClose: () => void },
+  selectedModel: ConfiguredModel | undefined,
+  type: "llm" | "remix",
 ): Row[] {
   const rows: Row[] = [];
 
@@ -184,8 +186,8 @@ function buildLlmRows(
         curated: model.curated === true,
         gateway: model.gateway,
         selected:
-          m.defaultLlm?.model_id === model.model_id &&
-          m.defaultLlm?.provider === model.provider_id,
+          selectedModel?.model_id === model.model_id &&
+          selectedModel?.provider === model.provider_id,
         hasKey:
           providerId === FREESTYLE_CLOUD_CLEANUP.provider_id ||
           m.keyProviders.has(providerId),
@@ -195,8 +197,8 @@ function buildLlmRows(
   }
 
   const names = new Set(m.localLlm.models);
-  if (m.defaultLlm?.provider === "local-llm") {
-    names.add(m.defaultLlm.model_id.replace(/^local-llm\//, ""));
+  if (selectedModel?.provider === "local-llm") {
+    names.add(selectedModel.model_id.replace(/^local-llm\//, ""));
   }
   for (const name of names) {
     const modelId = `local-llm/${name}`;
@@ -208,11 +210,11 @@ function buildLlmRows(
       meta: "On-device",
       curated: true,
       selected:
-        m.defaultLlm?.provider === "local-llm" &&
-        m.defaultLlm?.model_id === modelId,
+        selectedModel?.provider === "local-llm" &&
+        selectedModel?.model_id === modelId,
       status: "ready",
       onSelect: () =>
-        void m.selectLocalLlmModel(name).then((selected) => {
+        void m.selectLocalLlmModel(name, type).then((selected) => {
           if (selected) h.onClose();
         }),
     });
@@ -237,7 +239,7 @@ export function ModelList({
   onPickLocalVoice,
   onRequestDeleteLocal,
 }: {
-  type: "voice" | "llm";
+  type: "voice" | "llm" | "remix";
   voiceView?: "tiers" | "all" | "local" | "cloud";
   llmView?: "tiers" | "all" | "local" | "cloud";
   m: UseModels;
@@ -271,6 +273,7 @@ export function ModelList({
       if (voiceView === "all") return "all";
       return voiceView ?? "tiers";
     }
+    if (type === "remix") return "all";
     if (llmView === "cloud") return "cloud";
     if (llmView === "local") return "local";
     if (llmView === "all") return "all";
@@ -315,7 +318,12 @@ export function ModelList({
           onPickLocalVoice,
           onRequestDeleteLocal,
         })
-      : buildLlmRows(m, { onPickCloud, onClose });
+      : buildLlmRows(
+          m,
+          { onPickCloud, onClose },
+          type === "remix" ? m.defaultRemix : m.defaultLlm,
+          type,
+        );
 
   const q = search.toLowerCase();
   // Curated-only for LLM until expanded; searching always searches everything.
@@ -355,7 +363,7 @@ export function ModelList({
     ? filteredRows.length - filteredRows.filter((r) => r.curated).length
     : 0;
 
-  const showLocalLlmForm = type === "llm" && localOnly;
+  const showLocalLlmForm = type !== "voice" && localOnly;
   const showOpenaiSttForm = type === "voice" && cloudOnly;
 
   const scopedTitle =
@@ -365,11 +373,17 @@ export function ModelList({
         : cloudOnly
           ? "Cloud models"
           : "All voice models"
-      : localOnly
-        ? "On-device cleanup"
-        : cloudOnly
-          ? "Cloud cleanup models"
-          : "All cleanup models";
+      : type === "remix"
+        ? localOnly
+          ? "On-device Remix models"
+          : cloudOnly
+            ? "Cloud Remix models"
+            : "All Remix models"
+        : localOnly
+          ? "On-device cleanup"
+          : cloudOnly
+            ? "Cloud cleanup models"
+            : "All cleanup models";
 
   return (
     <>
@@ -401,7 +415,7 @@ export function ModelList({
             <Laptop className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
           ) : type === "voice" ? (
             <Key className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
-          ) : type === "llm" && localOnly ? (
+          ) : localOnly ? (
             <Laptop className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
           ) : (
             <Key className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
@@ -716,7 +730,7 @@ function ListEmptyState({
   showLlmConnect,
   connected,
 }: {
-  type: "voice" | "llm";
+  type: "voice" | "llm" | "remix";
   localOnly: boolean;
   showLlmConnect: boolean;
   connected: boolean | null;

@@ -1,6 +1,6 @@
-import { useChat } from "@ai-sdk/react";
+import { Chat, useChat } from "@ai-sdk/react";
 import { apiFetch, initApiBase } from "@renderer/lib/api";
-import { Chat, DefaultChatTransport, type UIMessage } from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import {
   useEffect,
   useMemo,
@@ -92,7 +92,7 @@ export function useRemixRecovery(options: Options) {
         onToolCall: ({ toolCall }) => ref.current.onToolCall({ toolCall }),
         onFinish: async ({ messages }) => {
           await initApiBase();
-          await apiFetch(
+          const response = await apiFetch(
             `/api/remix/sessions/${encodeURIComponent(options.id)}/messages`,
             {
               method: "PUT",
@@ -100,6 +100,9 @@ export function useRemixRecovery(options: Options) {
               body: JSON.stringify({ messages }),
             },
           );
+          if (!response.ok) {
+            throw new Error("Could not save this local Remix session.");
+          }
           ref.current.onFinish?.({ messages });
         },
         onError: (error) => ref.current.onError?.(error),

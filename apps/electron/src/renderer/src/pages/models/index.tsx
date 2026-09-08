@@ -18,6 +18,7 @@ import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
 import { Eyebrow, PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
+import { RemixModelCard } from "./remix-model-card";
 import {
   FREESTYLE_CLOUD_CLEANUP,
   FREESTYLE_CLOUD_TIER,
@@ -31,6 +32,14 @@ import { displayName } from "./utils";
  * both, depending on which sides the user routes to it.
  */
 const FREESTYLE_CLOUD_PROVIDER = "freestyle-cloud";
+
+const FREESTYLE_CLOUD_REMIX: AvailableModel = {
+  provider_id: FREESTYLE_CLOUD_PROVIDER,
+  provider_name: "Freestyle Cloud",
+  model_id: "freestyle-cloud/remix",
+  model_name: "Freestyle Cloud",
+  type: "llm",
+};
 
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
@@ -178,6 +187,18 @@ export default function ModelsPage(): React.JSX.Element {
     setModal({ kind: "list", type: "llm", llmView: "tiers" });
   };
 
+  const openRemix = (): void => setModal({ kind: "list", type: "remix" });
+
+  const configureFreestyleRemix = async (): Promise<void> => {
+    setCloudBusy(true);
+    try {
+      if (!(await ensureCloudAuth())) return;
+      await m.configureModel(FREESTYLE_CLOUD_REMIX, "remix");
+    } finally {
+      setCloudBusy(false);
+    }
+  };
+
   const onToggleCleanup = (next: boolean): void => {
     if (freestyleVoiceActive) return;
     if (!next) {
@@ -199,9 +220,10 @@ export default function ModelsPage(): React.JSX.Element {
       return;
     }
 
-    if (freestyleVoiceActive) return;
+    if (type === "llm" && freestyleVoiceActive) return;
 
     if (
+      type === "llm" &&
       model.provider_id === FREESTYLE_CLOUD_PROVIDER &&
       model.model_id === FREESTYLE_CLOUD_CLEANUP.model_id
     ) {
@@ -266,6 +288,8 @@ export default function ModelsPage(): React.JSX.Element {
       setModal({ kind: "list", type: "voice", voiceView: "tiers" });
     } else if (modal.type === "llm") {
       setModal({ kind: "list", type: "llm", llmView: "tiers" });
+    } else if (modal.type === "remix") {
+      setModal({ kind: "list", type: "remix" });
     } else {
       closeModal();
     }
@@ -350,6 +374,13 @@ export default function ModelsPage(): React.JSX.Element {
             }
           />
 
+          <RemixModelCard
+            model={m.defaultRemix}
+            busy={cloudBusy}
+            onChooseModel={openRemix}
+            onUseCloud={() => void configureFreestyleRemix()}
+          />
+
           <KeysSection
             apiKeys={m.apiKeys}
             configured={m.configured}
@@ -430,7 +461,8 @@ export default function ModelsPage(): React.JSX.Element {
                   }}
                 />
                 {(m.defaultVoice?.provider === pendingProviderDelete ||
-                  m.defaultLlm?.provider === pendingProviderDelete) &&
+                  m.defaultLlm?.provider === pendingProviderDelete ||
+                  m.defaultRemix?.provider === pendingProviderDelete) &&
                   t("models.deleteProviderCurrentSuffix")}
                 .
               </>

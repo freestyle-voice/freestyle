@@ -57,7 +57,7 @@ export function ThreadHistory({
   /** Electron-local title overrides; canonical thread data remains unchanged. */
   titleOverrides?: Record<string, string>;
   /** Sidebar-only actions. Search results intentionally remain selection-only. */
-  onRename?: (threadId: string, title: string) => Promise<void>;
+  onRename?: (thread: ThreadSummary, title: string) => Promise<void>;
   onDelete?: (thread: ThreadSummary) => void;
   /** Keep desktop Remix rows clean while exposing their actions on right-click. */
   sessionActions?: "dropdown" | "context";
@@ -136,7 +136,7 @@ export function ThreadHistory({
       return;
     }
     setActionError(null);
-    void onRename(thread.id, title)
+    void onRename(thread, title)
       .then(() => setRenamingId(null))
       .catch(() => setActionError("Couldn’t rename that session."));
   };

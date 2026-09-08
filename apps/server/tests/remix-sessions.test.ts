@@ -104,4 +104,76 @@ describe("Remix local session boundary", () => {
         .get(remote.thread.id),
     ).toEqual({ type: "remote" });
   });
+
+  it("persists local titles and removes only local sessions", async () => {
+    getDb()
+      .prepare(
+        `INSERT INTO model_configs
+          (provider, model_id, model_name, type, is_default)
+         VALUES ('local-llm', 'local-llm/qwen', 'Qwen', 'remix', 1)`,
+      )
+      .run();
+    const created = (await (
+      await remixRoute.request("/sessions", { method: "POST" })
+    ).json()) as { thread: { id: string } };
+
+    const renamed = await remixRoute.request(`/sessions/${created.thread.id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: "Local draft" }),
+    });
+    expect(renamed.status).toBe(200);
+    await expect(
+      remixRoute.request(`/sessions/${created.thread.id}`),
+    ).resolves.toHaveProperty("status", 200);
+    expect(
+      getDb()
+        .prepare("SELECT title FROM remix_threads WHERE id = ?")
+        .get(created.thread.id),
+    ).toEqual({ title: "Local draft" });
+
+    const deleted = await remixRoute.request(`/sessions/${created.thread.id}`, {
+      method: "DELETE",
+    });
+    expect(deleted.status).toBe(200);
+    expect(
+      getDb()
+        .prepare("SELECT COUNT(*) AS n FROM remix_threads WHERE id = ?")
+        .get(created.thread.id),
+    ).toEqual({ n: 0 });
+  });
+
+  it("accepts a full active conversation and retains the newest local snapshot", async () => {
+    getDb()
+      .prepare(
+        `INSERT INTO model_configs
+          (provider, model_id, model_name, type, is_default)
+         VALUES ('local-llm', 'local-llm/qwen', 'Qwen', 'remix', 1)`,
+      )
+      .run();
+    const created = (await (
+      await remixRoute.request("/sessions", { method: "POST" })
+    ).json()) as { thread: { id: string } };
+    const messages = Array.from({ length: 41 }, (_, index) => ({
+      id: `message-${index}`,
+      role: "user",
+      parts: [],
+    }));
+
+    const saved = await remixRoute.request(
+      `/sessions/${created.thread.id}/messages`,
+      {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ messages }),
+      },
+    );
+
+    expect(saved.status).toBe(200);
+    expect(
+      getDb()
+        .prepare("SELECT COUNT(*) AS n FROM remix_messages WHERE thread_id = ?")
+        .get(created.thread.id),
+    ).toEqual({ n: 40 });
+  });
 });

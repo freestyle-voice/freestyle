@@ -19,6 +19,7 @@ import {
   createThread,
   deleteThread as deleteStoredThread,
   getThread,
+  renameLocalThread,
   type ThreadState,
   type ThreadSummary,
 } from "@renderer/lib/threads";
@@ -68,12 +69,21 @@ type RemixSessionContextValue = {
   completedSessionIds: ReadonlySet<string>;
   markSessionSeen: (threadId: string) => void;
   requestThreadTitleRefresh: (threadId: string) => void;
-  renameThread: (threadId: string, title: string) => Promise<void>;
-  requestDeleteThread: (threadId: string, title: string) => void;
+  renameThread: (
+    threadId: string,
+    title: string,
+    type?: "local" | "remote",
+  ) => Promise<void>;
+  requestDeleteThread: (
+    threadId: string,
+    title: string,
+    type?: "local" | "remote",
+  ) => void;
 };
 
 type ThreadDeletionVariables = {
   threadId: string;
+  type: "local" | "remote";
   selected: ThreadState | null;
   localTitles: Record<string, string>;
 };
@@ -114,6 +124,7 @@ export function RemixSessionProvider({
   const [pendingThreadDeletion, setPendingThreadDeletion] = useState<{
     threadId: string;
     title: string;
+    type: "local" | "remote";
   } | null>(null);
   const queryClient = useQueryClient();
   const { canRequestData, phase } = useCloudAuth();
@@ -279,13 +290,30 @@ export function RemixSessionProvider({
     });
   }, [canRequestData]);
 
-  const renameThread = useCallback(async (threadId: string, title: string) => {
-    const nextTitle = title.trim();
-    if (!nextTitle) return;
-    setLocalTitles((titles) => ({ ...titles, [threadId]: nextTitle }));
-    const saved = await window.api?.setRemixSessionTitle?.(threadId, nextTitle);
-    if (!saved) throw new Error("Could not save the session name.");
-  }, []);
+  const renameThread = useCallback(
+    async (threadId: string, title: string, type?: "local" | "remote") => {
+      const nextTitle = title.trim();
+      if (!nextTitle) return;
+      const resolvedType =
+        type ??
+        (thread?.id === threadId ? (thread.type ?? "remote") : "remote");
+      if (resolvedType === "local") {
+        await renameLocalThread(threadId, nextTitle);
+        setThread((current) =>
+          current?.id === threadId ? { ...current, title: nextTitle } : current,
+        );
+        await invalidateThreads(queryClient);
+        return;
+      }
+      setLocalTitles((titles) => ({ ...titles, [threadId]: nextTitle }));
+      const saved = await window.api?.setRemixSessionTitle?.(
+        threadId,
+        nextTitle,
+      );
+      if (!saved) throw new Error("Could not save the session name.");
+    },
+    [queryClient, thread?.id, thread?.type],
+  );
 
   const refreshThread = useCallback(
     async (threadId: string) => {
@@ -337,8 +365,8 @@ export function RemixSessionProvider({
     ThreadDeletionVariables,
     ThreadDeletionContext
   >({
-    mutationFn: ({ threadId }: ThreadDeletionVariables) =>
-      deleteStoredThread(threadId),
+    mutationFn: ({ threadId, type }: ThreadDeletionVariables) =>
+      deleteStoredThread(threadId, type),
     onMutate: async ({ threadId, selected, localTitles }) => {
       // A late session-list response was able to repaint the just-deleted row
       // because the old version changed cache data before cancellation had
@@ -418,10 +446,11 @@ export function RemixSessionProvider({
   });
 
   const deleteThreadNow = useCallback(
-    (threadId: string) => {
+    (threadId: string, type: "local" | "remote") => {
       const selected = thread?.id === threadId ? thread : null;
       return deleteThreadMutation.mutateAsync({
         threadId,
+        type,
         selected,
         localTitles,
       });
@@ -430,14 +459,17 @@ export function RemixSessionProvider({
   );
 
   const requestDeleteThread = useCallback(
-    (threadId: string, title: string) => {
+    (threadId: string, title: string, type?: "local" | "remote") => {
+      const resolvedType =
+        type ??
+        (thread?.id === threadId ? (thread.type ?? "remote") : "remote");
       if (shouldSkipDeletionConfirmation("session")) {
-        void deleteThreadNow(threadId).catch(() => {});
+        void deleteThreadNow(threadId, resolvedType).catch(() => {});
         return;
       }
-      setPendingThreadDeletion({ threadId, title });
+      setPendingThreadDeletion({ threadId, title, type: resolvedType });
     },
-    [deleteThreadNow],
+    [deleteThreadNow, thread?.id, thread?.type],
   );
 
   useEffect(() => {
@@ -480,9 +512,16 @@ export function RemixSessionProvider({
 
   useEffect(() => {
     if (latestQuery.isPending) return;
-    if (latestQuery.data) {
+    const latestThread = latestQuery.data;
+    if (latestThread?.id && latestThread.messages) {
       setThread(
-        (current) => current ?? { ...latestQuery.data, type: "remote" },
+        (current) =>
+          current ?? {
+            id: latestThread.id,
+            title: latestThread.title ?? null,
+            messages: latestThread.messages,
+            type: "remote",
+          },
       );
       return;
     }
@@ -568,7 +607,7 @@ export function RemixSessionProvider({
           setPendingThreadDeletion(null);
           if (!pending) return;
           if (skipConfirmation) setDeletionConfirmationSkipped("session", true);
-          void deleteThreadNow(pending.threadId).catch(() => {});
+          void deleteThreadNow(pending.threadId, pending.type).catch(() => {});
         }}
       />
     </RemixSessionContext.Provider>

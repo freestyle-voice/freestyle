@@ -79,7 +79,7 @@ function isFresh(thread: RemixThread): boolean {
 }
 
 /** The latest thread while still fresh, else null. Never creates one — GET
- * must not mutate; thread creation belongs to startNewThread. */
+ * must not mutate; thread creation is explicit. */
 export function getActiveThread(type: RemixSessionType): RemixThread | null {
   const latest = latestThread(type);
   return latest && isFresh(latest) ? latest : null;
@@ -115,8 +115,6 @@ export function createRemixThread(
   if (!row) throw new Error("Failed to create remix thread");
   return rowToThread(row);
 }
-
-export const startNewThread = createRemixThread;
 
 export function getRemixThread(threadId: string): RemixThread | null {
   const row = getDb()

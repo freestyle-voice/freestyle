@@ -400,8 +400,6 @@ function RemixSidebarSessions({
     };
   }, [updateMoreSessionsState]);
 
-  if (!thread) return null;
-
   return (
     <section className="remix-sidebar-sessions" aria-label="Remix chats">
       <div className="remix-sidebar-sessions-head">
@@ -433,17 +431,21 @@ function RemixSidebarSessions({
         data-has-more={hasMoreSessions || undefined}
       >
         <ThreadHistory
-          currentId={sidebarCurrentThreadId(workspaceSurface, thread.id)}
+          currentId={sidebarCurrentThreadId(workspaceSurface, thread?.id ?? "")}
           searchQuery={searchQuery}
           titleOverrides={localTitles}
-          onRename={renameThread}
-          onDelete={(picked) => requestDeleteThread(picked.id, picked.title)}
+          onRename={(picked, title) =>
+            renameThread(picked.id, title, picked.type)
+          }
+          onDelete={(picked) =>
+            requestDeleteThread(picked.id, picked.title, picked.type)
+          }
           sessionActions="context"
           sessionActivity={sessionActivity}
           completedSessionIds={completedSessionIds}
           onSessionSeen={markSessionSeen}
           onPick={(picked) => {
-            if (picked.id !== thread.id) selectThread(picked);
+            if (picked.id !== thread?.id) selectThread(picked);
           }}
         />
       </div>

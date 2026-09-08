@@ -94,9 +94,11 @@ describe("workspace switcher", () => {
     );
 
     expect(remixSidebar).toContain("titleOverrides={localTitles}");
-    expect(remixSidebar).toContain("onRename={renameThread}");
     expect(remixSidebar).toContain(
-      "onDelete={(picked) => requestDeleteThread(picked.id, picked.title)}",
+      "renameThread(picked.id, title, picked.type)",
+    );
+    expect(remixSidebar).toContain(
+      "requestDeleteThread(picked.id, picked.title, picked.type)",
     );
     expect(remixSidebar).toContain('sessionActions="context"');
     expect(remixSidebar).toContain("sessionActivity={sessionActivity}");

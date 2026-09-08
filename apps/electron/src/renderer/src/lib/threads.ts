@@ -161,6 +161,19 @@ export async function deleteThread(
   );
 }
 
+export async function renameLocalThread(
+  id: string,
+  title: string,
+): Promise<void> {
+  await responseJson<{ ok: true }>(
+    await apiFetch(`/api/remix/sessions/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }),
+  );
+}
+
 /** The ordinary thread remains D1 history; this optional envelope adds only
  * durable execution state and never contains server-side tool inputs. */
 export async function getThreadRuntime(

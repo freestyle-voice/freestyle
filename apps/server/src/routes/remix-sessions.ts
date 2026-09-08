@@ -141,7 +141,11 @@ const remixSessionsRoute = new Hono()
     zValidator("param", z.object({ id: threadIdSchema })),
     zValidator(
       "json",
-      z.object({ messages: z.array(storedMessageSchema).max(40) }),
+      // The local store retains only the newest 40 messages, but the renderer
+      // sends the full active conversation (the same 400-message cap used by
+      // Remix requests). Rejecting it at 41 would silently stop persistence
+      // for otherwise valid longer local conversations.
+      z.object({ messages: z.array(storedMessageSchema).max(400) }),
     ),
     (c) => {
       const { id } = c.req.valid("param");

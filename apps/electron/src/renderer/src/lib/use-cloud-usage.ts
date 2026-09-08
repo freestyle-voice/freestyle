@@ -3,15 +3,22 @@ import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { getClient } from "./api";
 import { ONE_HOUR, queryKeys } from "./query";
 
-export interface CloudUsageBalance {
+export interface CloudUsagePocket {
   remaining: number;
   limit: number;
   totalConsumed: number;
   resetsAt: string;
+  /** Present on the legacy/top-level response for Pro and trial accounts. */
+  unlimited?: boolean;
+}
+
+export interface CloudUsageBalance extends CloudUsagePocket {
+  /** The Remix/agent allowance. Absent on Cloud versions before usage pockets. */
+  remix?: CloudUsagePocket;
+  /** The dictation-word allowance. Absent on Cloud versions before usage pockets. */
+  dictation?: CloudUsagePocket;
   /** Subscription plan; absent on older cloud versions (treated as "free"). */
   plan?: "free" | "pro";
-  /** True when no run limit applies (Pro, or inside the first-week trial). */
-  unlimited?: boolean;
   /** True while the account is inside its first-week unlimited trial. */
   trialing?: boolean;
   /** Epoch ms the trial ends, or null when it can't be resolved. */
@@ -114,7 +121,7 @@ export interface UseCloudUsageResult {
 }
 
 /** Percentage of the weekly run allowance consumed (0–100), safe against limit=0. */
-export function usagePercent(balance: CloudUsageBalance): number {
+export function usagePercent(balance: CloudUsagePocket): number {
   if (balance.unlimited || balance.limit === 0) return 0;
   return Math.round(
     ((balance.limit - balance.remaining) / balance.limit) * 100,

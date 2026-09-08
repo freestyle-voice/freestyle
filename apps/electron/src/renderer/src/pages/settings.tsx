@@ -1667,35 +1667,56 @@ function UsageSummary({
       </div>
 
       {balance ? (
-        <>
-          <div className="mt-3 mb-3 flex items-baseline gap-1.5">
-            <span className="serif-italic text-foreground text-[34px] leading-none">
-              {formatNumber(balance.remaining)}
-            </span>
-            <span className="text-muted-foreground text-[11px] font-medium">
-              / {formatNumber(balance.limit)} words remaining
-            </span>
-          </div>
-          <Progress value={usagePercent(balance)} className="h-1.5" />
-          <div className="text-muted-foreground mt-2.5 flex items-center justify-between text-[10.5px]">
-            <span className="mono tracking-[0.08em]">
-              {usagePercent(balance)}% used
-            </span>
-            <span>
-              Resets{" "}
-              {new Date(balance.resetsAt).toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric",
-              })}
-            </span>
-          </div>
-        </>
+        <UsageSummaryBalance balance={balance} />
       ) : (
         <div className="text-muted-foreground mt-3 text-[12px]">
           Usage is unavailable right now.
         </div>
       )}
     </div>
+  );
+}
+
+function UsageSummaryBalance({
+  balance,
+}: {
+  balance: CloudUsageBalance;
+}): React.JSX.Element {
+  const dictation = balance.dictation;
+  const remix = balance.remix ?? balance;
+  const primary = dictation ?? remix;
+  const primaryLabel = dictation ? "dictation words" : "Remix turns";
+
+  return (
+    <>
+      <div className="mt-3 mb-3 flex items-baseline gap-1.5">
+        <span className="serif-italic text-foreground text-[34px] leading-none">
+          {formatNumber(primary.remaining)}
+        </span>
+        <span className="text-muted-foreground text-[11px] font-medium">
+          / {formatNumber(primary.limit)} {primaryLabel} remaining
+        </span>
+      </div>
+      <Progress value={usagePercent(primary)} className="h-1.5" />
+      <div className="text-muted-foreground mt-2.5 flex items-center justify-between text-[10.5px]">
+        <span className="mono tracking-[0.08em]">
+          {usagePercent(primary)}% used
+        </span>
+        <span>
+          Resets{" "}
+          {new Date(primary.resetsAt).toLocaleDateString(undefined, {
+            month: "short",
+            day: "numeric",
+          })}
+        </span>
+      </div>
+      {dictation && (
+        <p className="text-muted-foreground mt-3 text-[11px]">
+          {formatNumber(remix.remaining)} / {formatNumber(remix.limit)} Remix
+          turns remaining
+        </p>
+      )}
+    </>
   );
 }
 

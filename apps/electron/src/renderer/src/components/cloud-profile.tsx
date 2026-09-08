@@ -80,7 +80,11 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
 
   if (!user || isPro || !balance) return null;
 
-  const pct = usagePercent(balance);
+  const dictation = balance.dictation;
+  const remix = balance.remix ?? balance;
+  const primary = dictation ?? remix;
+  const primaryLabel = dictation ? "dictation words" : "Remix turns";
+  const pct = usagePercent(primary);
 
   return (
     <div
@@ -88,16 +92,19 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
       <div className="text-foreground text-[12px] font-medium">
-        {formatNumber(balance.remaining)}
+        {formatNumber(primary.remaining)}
         <span className="text-muted-foreground font-normal">
           {" "}
-          / {formatNumber(balance.limit)}
+          / {formatNumber(primary.limit)}
         </span>{" "}
-        words left
+        {primaryLabel} left
       </div>
       <Progress value={pct} className="mt-1.5 h-1.5" />
       <p className="text-muted-foreground mt-2.5 text-[11px] leading-snug">
-        Currently on a free plan, upgrade to Pro for unlimited dictation.
+        {dictation
+          ? `${formatNumber(remix.remaining)} / ${formatNumber(remix.limit)} Remix turns left. `
+          : ""}
+        Upgrade to Pro for unlimited dictation and Remix.
       </p>
       <Button
         size="sm"

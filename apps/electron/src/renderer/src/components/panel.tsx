@@ -8,7 +8,6 @@ import { Capabilities } from "@renderer/components/capabilities";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
 import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
-import { OnboardingGate, useOnboarding } from "@renderer/components/onboarding";
 import { OpenerCards } from "@renderer/components/opener-cards";
 import {
   type RemixContextKind,
@@ -47,7 +46,6 @@ import {
 import { capture } from "@renderer/lib/analytics";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { resetBrainCache } from "@renderer/lib/brain-fs";
-import { seedMessageFor } from "@renderer/lib/onboarding-core";
 import {
   connectorConnectionsQueryOptions,
   durableThreadRunsQueryOptions,
@@ -1287,7 +1285,6 @@ function PanelInner({
   const restoreContextRailOnInspectorCloseRef = useRef(false);
   const queryClient = useQueryClient();
   const auth = useCloudAuth();
-  const onboarding = useOnboarding(!!auth.user);
   const [spriteForm, setSpriteForm] = useState<CompanionForm>(
     DEFAULT_COMPANION_FORM,
   );
@@ -1870,41 +1867,6 @@ function PanelInner({
           ) : (
             <SignInGate />
           )}
-        </div>
-        {!desktop ? <PanelTail /> : null}
-        {!desktop ? <PanelResizeHandle /> : null}
-      </div>
-    );
-  }
-
-  // First meeting: Jeb runs his intro as a takeover, same contract as the
-  // sign-in gate. While the flag loads, show nothing rather than flashing
-  // the intro at users who've already been through it.
-  if (onboarding.status !== "done") {
-    return (
-      <div className={desktop ? "remix-agent" : "tavern-shell"}>
-        <div className="tavern tavern-panel">
-          {onboarding.status === "show" ? (
-            <OnboardingGate
-              user={auth.user}
-              spriteForm={spriteForm}
-              saved={onboarding.saved}
-              onDone={(task) => {
-                // The landing: the panel opens on a thread that is already
-                // about the task. Replays never seed a second thread.
-                const replayed = onboarding.saved?.replayed === true;
-                onboarding.markDone(task);
-                setTab("chat");
-                if (task && !replayed) {
-                  setNotice(null);
-                  void sendMessage(
-                    { text: seedMessageFor(task) },
-                    { body: { firstTurn: true } },
-                  );
-                }
-              }}
-            />
-          ) : null}
         </div>
         {!desktop ? <PanelTail /> : null}
         {!desktop ? <PanelResizeHandle /> : null}

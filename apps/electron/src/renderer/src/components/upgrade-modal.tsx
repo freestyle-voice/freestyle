@@ -89,8 +89,8 @@ export function UpgradeModalProvider({
 // ---------------------------------------------------------------------------
 
 const FREE_FEATURES = [
-  "100 Freestyle Remix runs / week",
-  "2,000 dictation words per week on desktop",
+  "50 Freestyle Remix turns / week",
+  "3,000 dictation words per week",
   "Transcribe + Polish — full dictation",
   "History, dictionary, vocabulary, tone & plugins",
   "All languages",

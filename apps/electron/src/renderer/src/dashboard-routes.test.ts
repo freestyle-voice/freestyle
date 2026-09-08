@@ -105,4 +105,17 @@ describe("dashboard routes", () => {
       'element={<Navigate to="/remix" replace />}',
     );
   });
+
+  it("keeps first-run onboarding at the app boundary instead of in Remix", async () => {
+    const dashboard = await readFile(dashboardPath, "utf8");
+
+    expect(dashboard).toContain(
+      'const OnboardingPage = lazy(() => import("@renderer/pages/onboarding"))',
+    );
+    expect(dashboard).toMatch(
+      /<Route\s+path="\/onboarding"\s+element=\{\s*<LazyRoute>\s*<OnboardingPage\s*\/>\s*<\/LazyRoute>\s*\}\s*\/>/s,
+    );
+    expect(dashboard).toContain("function OnboardingOutlet()");
+    expect(dashboard).toContain("<Route element={<OnboardingOutlet />}>");
+  });
 });

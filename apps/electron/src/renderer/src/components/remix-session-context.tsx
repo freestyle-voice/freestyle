@@ -16,6 +16,7 @@ import {
   threadQueryOptions,
 } from "@renderer/lib/query";
 import {
+  createThread,
   deleteThread as deleteStoredThread,
   getThread,
   type ThreadState,
@@ -86,10 +87,6 @@ type ThreadDeletionContext = {
 const RemixSessionContext = createContext<RemixSessionContextValue | null>(
   null,
 );
-
-function newThread(): ThreadState {
-  return { id: crypto.randomUUID(), messages: [] };
-}
 
 /**
  * One source of truth for the selected Remix thread. The app sidebar and the
@@ -181,23 +178,28 @@ export function RemixSessionProvider({
       markSessionSeen(summary.id);
 
       const cached = queryClient.getQueryData<ThreadState>(
-        queryKeys.threads.detail(summary.id),
+        queryKeys.threads.detail(summary.id, summary.type ?? "remote"),
       );
       if (cached) {
         setLoadingThreadId(null);
         setThread(cached);
       } else {
         setLoadingThreadId(summary.id);
-        setThread({ id: summary.id, title: summary.title, messages: [] });
+        setThread({
+          id: summary.id,
+          type: summary.type ?? "remote",
+          title: summary.title,
+          messages: [],
+        });
       }
 
       void queryClient
-        .fetchQuery(threadQueryOptions(summary.id))
+        .fetchQuery(threadQueryOptions(summary.id, summary.type ?? "remote"))
         .then((loaded) => {
           if (!loaded) throw new Error("Conversation not found.");
           if (selectionRef.current !== selection) return;
           queryClient.setQueryData(
-            queryKeys.threads.detail(summary.id),
+            queryKeys.threads.detail(summary.id, summary.type ?? "remote"),
             loaded,
           );
           setThread(loaded);
@@ -221,10 +223,14 @@ export function RemixSessionProvider({
     if (summary) selectThread(summary);
   }, [selectThread]);
 
-  const startNewThread = useCallback(
-    () => switchThread(newThread()),
-    [switchThread],
-  );
+  const startNewThread = useCallback(() => {
+    setThreadLoadError(null);
+    setLoadingThreadId("creating");
+    void createThread()
+      .then((next) => switchThread(next))
+      .catch(() => setThreadLoadError("Couldn’t start a new conversation."))
+      .finally(() => setLoadingThreadId(null));
+  }, [switchThread]);
 
   useEffect(() => {
     if (phase === "signed_out") {
@@ -283,13 +289,20 @@ export function RemixSessionProvider({
 
   const refreshThread = useCallback(
     async (threadId: string) => {
-      const loaded = await queryClient.fetchQuery(threadQueryOptions(threadId));
+      const type =
+        thread?.id === threadId ? (thread.type ?? "remote") : "remote";
+      const loaded = await queryClient.fetchQuery(
+        threadQueryOptions(threadId, type),
+      );
       if (!loaded) return;
-      queryClient.setQueryData(queryKeys.threads.detail(threadId), loaded);
+      queryClient.setQueryData(
+        queryKeys.threads.detail(threadId, type),
+        loaded,
+      );
       setThread((current) => (current?.id === threadId ? loaded : current));
       await invalidateThreads(queryClient);
     },
-    [queryClient],
+    [queryClient, thread?.id, thread?.type],
   );
 
   const requestThreadTitleRefresh = useCallback(
@@ -358,7 +371,7 @@ export function RemixSessionProvider({
 
       let replacementSelection: number | null = null;
       if (selected) {
-        switchThread(newThread());
+        startNewThread();
         replacementSelection = selectionRef.current;
       }
       deletionVersionRef.current += 1;
@@ -467,8 +480,20 @@ export function RemixSessionProvider({
 
   useEffect(() => {
     if (latestQuery.isPending) return;
-    setThread((current) => current ?? latestQuery.data ?? newThread());
-  }, [latestQuery.data, latestQuery.isPending]);
+    if (latestQuery.data) {
+      setThread(
+        (current) => current ?? { ...latestQuery.data, type: "remote" },
+      );
+      return;
+    }
+    if (canRequestData && !thread) startNewThread();
+  }, [
+    canRequestData,
+    latestQuery.data,
+    latestQuery.isPending,
+    startNewThread,
+    thread,
+  ]);
 
   const value = useMemo(
     () => ({

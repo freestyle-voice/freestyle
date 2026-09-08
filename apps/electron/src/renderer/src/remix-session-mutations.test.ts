@@ -23,7 +23,7 @@ describe("Remix session deletion", () => {
     expect(source).toContain(
       "context.mutationVersion === deletionVersionRef.current",
     );
-    expect(source).toContain("switchThread(newThread())");
+    expect(source).toContain("startNewThread()");
     expect(source).toContain("onError");
     expect(source).toContain("Couldn’t delete this session.");
     expect(source).toContain("onSettled");

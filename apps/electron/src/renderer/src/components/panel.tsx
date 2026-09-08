@@ -1362,6 +1362,7 @@ function PanelInner({
     setMessages,
   } = useRemixRecovery({
     id: thread.id,
+    type: thread.type,
     messages: thread.messages,
     onFork: onSwitchThread,
     onActionUnavailable: (actionId) =>
@@ -1369,10 +1370,14 @@ function PanelInner({
         pending.filter((item) => item.call.toolCallId !== actionId),
       ),
     onFinish: ({ messages: finished }) => {
-      queryClient.setQueryData(queryKeys.threads.detail(thread.id), {
-        id: thread.id,
-        messages: finished,
-      });
+      queryClient.setQueryData(
+        queryKeys.threads.detail(thread.id, thread.type ?? "remote"),
+        {
+          id: thread.id,
+          type: thread.type,
+          messages: finished,
+        },
+      );
       void invalidateThreads(queryClient);
       void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
       void queryClient.invalidateQueries({

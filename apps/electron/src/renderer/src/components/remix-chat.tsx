@@ -240,6 +240,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
     queue,
   } = useRemixRecovery({
     id: thread.id,
+    type: thread.type,
     messages: thread.messages,
     onActionUnavailable: (actionId) =>
       setApprovals((pending) =>

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../src/lib/sessions.js", () => ({
   getSessionToken: () => "token",
+  getSession: () => null,
   invalidateSession: vi.fn(),
 }));
 

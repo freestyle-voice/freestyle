@@ -7,7 +7,7 @@ import { countFixes } from "./fixes.js";
 // and would otherwise perturb test module-mock ordering.
 const DEFAULT_CLOUD_URL = "https://service.freestylevoice.com";
 
-const SCHEMA_VERSION = 29;
+const SCHEMA_VERSION = 31;
 
 // Legacy default format-rule patterns (used only by pre-v12 migrations below):
 // domain/phrase entries match as substrings of url+title+app; bare words match
@@ -770,6 +770,160 @@ function applyMigrations(db: DatabaseSync, currentVersion: number): void {
         PRIMARY KEY(connection_id, original_name)
       );
     `);
+  }
+
+  // Remix owns an independent model role. SQLite cannot alter the CHECK
+  // constraint in place, so rebuild this small configuration table while
+  // retaining the existing stable model IDs.
+  if (currentVersion < 30 && tableExists(db, "model_configs")) {
+    db.exec(`
+      ALTER TABLE model_configs RENAME TO model_configs_legacy;
+      CREATE TABLE model_configs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK(type IN ('voice', 'llm', 'remix')),
+        is_default INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(provider, model_id, type)
+      );
+      INSERT INTO model_configs (id, provider, model_id, model_name, type, is_default, created_at)
+        SELECT id, provider, model_id, model_name, type, is_default, created_at
+        FROM model_configs_legacy;
+      DROP TABLE model_configs_legacy;
+      CREATE INDEX IF NOT EXISTS idx_model_configs_type_default
+        ON model_configs(type, is_default);
+    `);
+  }
+
+  if (currentVersion < 31 && tableExists(db, "remix_threads")) {
+    db.exec(`
+        ALTER TABLE remix_messages RENAME TO remix_messages_legacy;
+        ALTER TABLE remix_runs RENAME TO remix_runs_legacy;
+        ALTER TABLE remix_threads RENAME TO remix_threads_legacy;
+        CREATE TABLE remix_threads (
+          id TEXT PRIMARY KEY,
+          type TEXT NOT NULL CHECK(type IN ('local', 'remote')),
+          title TEXT,
+          remote_scope TEXT,
+          model_provider TEXT,
+          model_id TEXT,
+          model_name TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          last_active_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE TABLE remix_messages (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          thread_id TEXT NOT NULL REFERENCES remix_threads(id) ON DELETE CASCADE,
+          message_id TEXT NOT NULL,
+          ui_message TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE(thread_id, message_id)
+        );
+        CREATE TABLE remix_runs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          thread_id TEXT REFERENCES remix_threads(id) ON DELETE SET NULL,
+          lane TEXT NOT NULL CHECK(lane IN ('transform','agent')),
+          instruction TEXT NOT NULL,
+          before_text TEXT,
+          after_text TEXT NOT NULL,
+          app_name TEXT,
+          llm_provider TEXT,
+          llm_model TEXT,
+          input_tokens INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0,
+          cost_usd REAL NOT NULL DEFAULT 0,
+          created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+      `);
+    const rows = db
+      .prepare(
+        "SELECT id, created_at, last_active_at FROM remix_threads_legacy",
+      )
+      .all() as Array<{
+      id: number;
+      created_at: string;
+      last_active_at: string;
+    }>;
+    const threadIds = new Map<number, string>();
+    const insertThread = db.prepare(
+      "INSERT INTO remix_threads (id, type, created_at, last_active_at) VALUES (?, 'local', ?, ?)",
+    );
+    for (const row of rows) {
+      const id = crypto.randomUUID();
+      threadIds.set(row.id, id);
+      insertThread.run(id, row.created_at, row.last_active_at);
+    }
+    const messageRows = db
+      .prepare(
+        "SELECT thread_id, message_id, ui_message, created_at FROM remix_messages_legacy",
+      )
+      .all() as Array<{
+      thread_id: number;
+      message_id: string;
+      ui_message: string;
+      created_at: string;
+    }>;
+    const insertMessage = db.prepare(
+      "INSERT INTO remix_messages (thread_id, message_id, ui_message, created_at) VALUES (?, ?, ?, ?)",
+    );
+    for (const row of messageRows) {
+      const threadId = threadIds.get(row.thread_id);
+      if (threadId)
+        insertMessage.run(
+          threadId,
+          row.message_id,
+          row.ui_message,
+          row.created_at,
+        );
+    }
+    const runRows = db
+      .prepare("SELECT * FROM remix_runs_legacy")
+      .all() as Array<{
+      id: number;
+      thread_id: number | null;
+      lane: string;
+      instruction: string;
+      before_text: string | null;
+      after_text: string;
+      app_name: string | null;
+      llm_provider: string | null;
+      llm_model: string | null;
+      input_tokens: number;
+      output_tokens: number;
+      cost_usd: number;
+      created_at: string;
+    }>;
+    const insertRun = db.prepare(
+      `INSERT INTO remix_runs (id, thread_id, lane, instruction, before_text, after_text, app_name,
+          llm_provider, llm_model, input_tokens, output_tokens, cost_usd, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    for (const row of runRows) {
+      insertRun.run(
+        row.id,
+        row.thread_id === null ? null : (threadIds.get(row.thread_id) ?? null),
+        row.lane,
+        row.instruction,
+        row.before_text,
+        row.after_text,
+        row.app_name,
+        row.llm_provider,
+        row.llm_model,
+        row.input_tokens,
+        row.output_tokens,
+        row.cost_usd,
+        row.created_at,
+      );
+    }
+    db.exec(`
+        DROP TABLE remix_messages_legacy;
+        DROP TABLE remix_runs_legacy;
+        DROP TABLE remix_threads_legacy;
+        CREATE INDEX IF NOT EXISTS idx_remix_threads_type_activity
+          ON remix_threads(type, last_active_at DESC);
+      `);
   }
 
   // Upsert schema version

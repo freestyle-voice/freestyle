@@ -4,6 +4,7 @@ import type { UIMessage } from "ai";
 /** The canonical title is generated and persisted by the Remix agent. */
 export type ThreadState = {
   id: string;
+  type?: "local" | "remote";
   title?: string | null;
   messages: UIMessage[];
 };
@@ -75,6 +76,7 @@ export const THREAD_ORIGIN_LABELS: Record<ThreadOrigin, string> = {
 
 export type ThreadSummary = {
   id: string;
+  type?: "local" | "remote";
   title: string;
   updatedAt: number;
   origin?: ThreadOrigin;
@@ -114,16 +116,44 @@ export async function getLatestThread(): Promise<ThreadState | null> {
   return data.thread;
 }
 
-export async function getThread(id: string): Promise<ThreadState | null> {
-  const data = await responseJson<{ thread: ThreadState | null }>(
-    await apiFetch(`/api/agent/thread/${encodeURIComponent(id)}`),
+/** Server-owned creation freezes local versus managed-Cloud ownership. */
+export async function createThread(): Promise<ThreadState> {
+  const data = await responseJson<{ thread: ThreadState }>(
+    await apiFetch("/api/remix/sessions", { method: "POST" }),
   );
   return data.thread;
 }
 
+export async function getThread(
+  id: string,
+  type: "local" | "remote" = "remote",
+): Promise<ThreadState | null> {
+  if (type === "local") {
+    const data = await responseJson<{ thread: ThreadState }>(
+      await apiFetch(`/api/remix/sessions/${encodeURIComponent(id)}`),
+    );
+    return { ...data.thread, type: "local" };
+  }
+  const data = await responseJson<{ thread: ThreadState | null }>(
+    await apiFetch(`/api/agent/thread/${encodeURIComponent(id)}`),
+  );
+  return data.thread ? { ...data.thread, type: "remote" } : null;
+}
+
 /** Remove a single server-owned thread. Display-name overrides live locally
  * in Electron and are cleaned up by the Remix session provider afterwards. */
-export async function deleteThread(id: string): Promise<void> {
+export async function deleteThread(
+  id: string,
+  type: "local" | "remote" = "remote",
+): Promise<void> {
+  if (type === "local") {
+    await responseJson<{ ok: true }>(
+      await apiFetch(`/api/remix/sessions/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
+    );
+    return;
+  }
   await responseJson<{ ok: true }>(
     await apiFetch(`/api/agent/thread/${encodeURIComponent(id)}`, {
       method: "DELETE",

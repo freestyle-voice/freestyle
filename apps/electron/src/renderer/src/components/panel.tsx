@@ -56,8 +56,8 @@ import {
   prependThreadToHistory,
   queryKeys,
 } from "@renderer/lib/query";
-import { describeRemixRun } from "@renderer/lib/remix-run-state";
 import { remixReconnectLabel } from "@renderer/lib/remix-recovery";
+import { describeRemixRun } from "@renderer/lib/remix-run-state";
 import {
   executeApprovedRemixTool,
   executeRemixTool,

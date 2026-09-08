@@ -1844,6 +1844,20 @@ app.whenReady().then(async () => {
   // showPill runs for every hotkey press.
   registerPillPositionIpc();
 
+  // Sprite travel samples `screen` on an interval. Electron exposes that API
+  // only after the ready event, and a slow E2E launch can otherwise let its
+  // first tick crash the main process before the window is created.
+  initSpriteTravel({
+    getWindow: () => companionWindow,
+    windowSize: () => SPRITES_INFO[companionFormSetting()].windowSize,
+    homePosition: () => companionPosition(),
+    theaterAvailable: () =>
+      SPRITES_INFO[companionFormSetting()].kind === "sheet",
+    travelEnabled: () => SPRITES_INFO[companionFormSetting()].travel === true,
+    sendEvent: (ev) =>
+      companionWindow?.webContents.send("companion:sprite-event", ev),
+  });
+
   void startLinuxPasteHelper();
   void recoverDuckedVolumeFromCrash();
 
@@ -3823,16 +3837,6 @@ ipcMain.on("notifications:auth-changed", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
   courierNativeNotifications.clearAll();
   notificationWindow()?.webContents.send("notifications:auth-changed");
-});
-
-initSpriteTravel({
-  getWindow: () => companionWindow,
-  windowSize: () => SPRITES_INFO[companionFormSetting()].windowSize,
-  homePosition: () => companionPosition(),
-  theaterAvailable: () => SPRITES_INFO[companionFormSetting()].kind === "sheet",
-  travelEnabled: () => SPRITES_INFO[companionFormSetting()].travel === true,
-  sendEvent: (ev) =>
-    companionWindow?.webContents.send("companion:sprite-event", ev),
 });
 
 ipcMain.handle("sprite:perform-sync", (event, payload: unknown) => {

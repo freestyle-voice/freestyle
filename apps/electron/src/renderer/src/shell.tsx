@@ -20,7 +20,7 @@ import {
 import { UpdateBanner } from "@renderer/components/update-banner";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { useCloudAuth } from "@renderer/lib/auth-context";
-import { MOD_LABEL } from "@renderer/lib/platform";
+import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform";
 import { listPlugins } from "@renderer/lib/plugins-api";
 import { queryKeys } from "@renderer/lib/query";
 import {
@@ -815,7 +815,7 @@ export default function AppShell(): React.JSX.Element {
             <div
               className={cn(
                 "shrink-0 transition-[height] duration-150",
-                isFullscreen ? "h-0" : "h-8",
+                IS_MAC && !isFullscreen ? "h-8" : "h-0",
               )}
             />
             {isSettingsRoute ? (
@@ -948,9 +948,10 @@ function SignedOutShell(): React.JSX.Element {
 }
 
 /**
- * A dedicated, transparent titlebar for the content pane. Keeping it as a
- * sibling of every route gives Remix and ordinary pages one reliable place to
- * drag the window, without putting a drag region over buttons inside a page.
+ * macOS needs a dedicated transparent titlebar for the content pane because
+ * its native controls share the renderer's top edge. Windows and Linux keep
+ * their system titlebars, while the sidebar restore control remains available
+ * on every platform.
  */
 function ContentTitlebar({
   sidebarHidden = false,
@@ -963,11 +964,13 @@ function ContentTitlebar({
 }): React.JSX.Element {
   return (
     <>
-      <div
-        className="glass-content-titlebar"
-        aria-hidden="true"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-      />
+      {IS_MAC ? (
+        <div
+          className="glass-content-titlebar"
+          aria-hidden="true"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+      ) : null}
       {sidebarHidden && onShowSidebar ? (
         <button
           type="button"

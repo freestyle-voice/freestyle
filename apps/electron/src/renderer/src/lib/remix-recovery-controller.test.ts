@@ -289,7 +289,7 @@ describe("durable Remix recovery", () => {
     ).toHaveLength(1);
   });
 
-  it("pauses observation while a local approval is awaiting a decision", async () => {
+  it("uses a bounded observation cadence while a local approval awaits a decision", async () => {
     const f = fixture();
     f.approval();
     const controller = f.create();
@@ -298,8 +298,16 @@ describe("durable Remix recovery", () => {
     expect(f.onToolCall).toHaveBeenCalledOnce();
 
     const requestsAtApproval = f.requests.length;
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(4_999);
     expect(f.requests).toHaveLength(requestsAtApproval);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.requests.length).toBeGreaterThan(requestsAtApproval);
+
+    const requestsAfterRefresh = f.requests.length;
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(f.requests).toHaveLength(requestsAfterRefresh);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.requests.length).toBeGreaterThan(requestsAfterRefresh);
   });
 
   it("does not mistake an infrastructure rate limit for a free-plan limit", async () => {

@@ -3,6 +3,7 @@ import { nextRemixReconnect, type RemixReconnectState } from "./remix-recovery";
 import type { DurableThreadRuntime } from "./threads";
 
 export const REMIX_CONTINUATION = "Continue from where you left off.";
+const APPROVAL_OBSERVATION_INTERVAL = 5_000;
 type Turn = {
   id: string;
   status: string;
@@ -591,8 +592,11 @@ export class RemixRecoveryController {
             this.seenActions.delete(action.id);
           }
           // An approval cannot make forward progress until the user decides.
-          // `complete()` restarts observation immediately after that decision;
-          // polling here only hammers the durable snapshot endpoints.
+          // Keep a low-frequency reconciliation path so an expired action from
+          // another observer can still become an explicit review request.
+          this.schedule(APPROVAL_OBSERVATION_INTERVAL, () => {
+            void this.observe();
+          });
           this.attempts = 0;
           return;
         }
@@ -617,16 +621,23 @@ export class RemixRecoveryController {
           input: claim.input,
         });
       }
+      const awaitingApproval = Boolean(
+        action && this.pendingApprovals.has(action.id),
+      );
       if (
         !queue.recoveryPaused &&
-        (!done ||
+        (awaitingApproval ||
+          !done ||
           this.saved.cancels.length ||
           queue.active ||
           shouldConfirmHandoff)
       )
-        this.schedule(1_000, () => {
-          void this.observe();
-        });
+        this.schedule(
+          awaitingApproval ? APPROVAL_OBSERVATION_INTERVAL : 1_000,
+          () => {
+            void this.observe();
+          },
+        );
       this.attempts = 0;
     })()
       .catch((error) => {

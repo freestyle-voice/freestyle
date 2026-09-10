@@ -151,7 +151,7 @@ describe("durable Remix recovery", () => {
     const controller = f.create();
     await controller.send("Hello", context);
     f.offline(true);
-    await vi.advanceTimersByTimeAsync(2_500);
+    await vi.advanceTimersByTimeAsync(1_000);
     for (const delay of [3_000, 6_000, 12_000, 24_000, 30_000]) {
       const before = f.requests.length;
       await vi.advanceTimersByTimeAsync(delay - 1);
@@ -204,7 +204,7 @@ describe("durable Remix recovery", () => {
     const controller = f.create();
     await controller.send("Hello", context);
     f.offline(true);
-    await vi.advanceTimersByTimeAsync(2_500);
+    await vi.advanceTimersByTimeAsync(1_000);
     f.offline(false);
     f.status(status);
     await controller.retry();
@@ -242,7 +242,7 @@ describe("durable Remix recovery", () => {
     const controller = f.create();
     await controller.send("Hello", context);
     f.offline(true);
-    await vi.advanceTimersByTimeAsync(78_000);
+    await vi.advanceTimersByTimeAsync(76_000);
     expect(controller.getSnapshot().recovery.phase).toBe("paused");
     f.offline(false);
     f.status("running");
@@ -330,7 +330,7 @@ describe("durable Remix recovery", () => {
     await controller.enqueue("Follow up", context);
     expect(controller.getSnapshot().queue).toHaveLength(1);
     f.status("completed");
-    await vi.advanceTimersByTimeAsync(2_501);
+    await vi.advanceTimersByTimeAsync(1_001);
     expect(controller.getSnapshot().queue).toHaveLength(1);
     const submissions = f.requests.filter(
       (request) => request.path === "/api/remix/turns",

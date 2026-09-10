@@ -3,7 +3,6 @@ import { nextRemixReconnect, type RemixReconnectState } from "./remix-recovery";
 import type { DurableThreadRuntime } from "./threads";
 
 export const REMIX_CONTINUATION = "Continue from where you left off.";
-const OBSERVATION_INTERVAL = 2_500;
 type Turn = {
   id: string;
   status: string;
@@ -625,7 +624,7 @@ export class RemixRecoveryController {
           queue.active ||
           shouldConfirmHandoff)
       )
-        this.schedule(OBSERVATION_INTERVAL, () => {
+        this.schedule(1_000, () => {
           void this.observe();
         });
       this.attempts = 0;

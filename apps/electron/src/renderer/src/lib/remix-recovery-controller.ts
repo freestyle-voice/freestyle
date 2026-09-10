@@ -3,6 +3,7 @@ import { nextRemixReconnect, type RemixReconnectState } from "./remix-recovery";
 import type { DurableThreadRuntime } from "./threads";
 
 export const REMIX_CONTINUATION = "Continue from where you left off.";
+const APPROVAL_OBSERVATION_INTERVAL = 5_000;
 type Turn = {
   id: string;
   status: string;
@@ -115,6 +116,7 @@ export class RemixRecoveryController {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private inFlight: Promise<void> | null = null;
   private attempts = 0;
+  private queueHandoffCheckPending = false;
   private disposed = false;
   private generation = 0;
   private readonly listeners = new Set<() => void>();
@@ -172,17 +174,25 @@ export class RemixRecoveryController {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
-    if (!response.ok)
+    if (!response.ok) {
+      const failure = (await response
+        .clone()
+        .json()
+        .catch(() => null)) as { code?: unknown } | null;
+      const rateLimited = failure?.code === "rate_limited";
       throw Object.assign(
         new Error(
           response.status === 401
             ? "Sign in to Freestyle Cloud to use Remix."
             : response.status === 429
-              ? "You've hit this week's free limit."
+              ? rateLimited
+                ? "Remix is receiving too many updates. Try again in a moment."
+                : "You've hit this week's free limit."
               : `Remix request failed (${response.status}).`,
         ),
         { status: response.status },
       );
+    }
     return (await response.json()) as T;
   }
   initialize = (): Promise<void> => {
@@ -460,6 +470,11 @@ export class RemixRecoveryController {
       if (turn?.status === "retryable" && !queue.recoveryPaused)
         throw new Error("The saved turn needs to reconnect.");
       this.saved.queue = queue.items;
+      const needsHandoffCheck =
+        queue.items.length > 0 && !queue.active && !queue.recoveryPaused;
+      const shouldConfirmHandoff =
+        needsHandoffCheck && !this.queueHandoffCheckPending;
+      this.queueHandoffCheckPending = needsHandoffCheck;
       this.update({
         messages: hydrated,
         status: done ? "ready" : "streaming",
@@ -576,7 +591,10 @@ export class RemixRecoveryController {
           } else {
             this.seenActions.delete(action.id);
           }
-          this.schedule(1_000, () => {
+          // An approval cannot make forward progress until the user decides.
+          // Keep a low-frequency reconciliation path so an expired action from
+          // another observer can still become an explicit review request.
+          this.schedule(APPROVAL_OBSERVATION_INTERVAL, () => {
             void this.observe();
           });
           this.attempts = 0;
@@ -603,16 +621,23 @@ export class RemixRecoveryController {
           input: claim.input,
         });
       }
+      const awaitingApproval = Boolean(
+        action && this.pendingApprovals.has(action.id),
+      );
       if (
         !queue.recoveryPaused &&
-        (!done ||
+        (awaitingApproval ||
+          !done ||
           this.saved.cancels.length ||
-          queue.items.length ||
-          queue.active)
+          queue.active ||
+          shouldConfirmHandoff)
       )
-        this.schedule(1_000, () => {
-          void this.observe();
-        });
+        this.schedule(
+          awaitingApproval ? APPROVAL_OBSERVATION_INTERVAL : 1_000,
+          () => {
+            void this.observe();
+          },
+        );
       this.attempts = 0;
     })()
       .catch((error) => {

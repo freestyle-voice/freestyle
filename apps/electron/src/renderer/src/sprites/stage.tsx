@@ -92,7 +92,7 @@ export function SpriteStage({
       <style>{`
         html, body, #root { margin: 0; height: 100%; background: transparent; overflow: hidden; }
         .sprite-stage { position: relative; width: ${def.windowSize}px; height: ${def.windowSize}px; -webkit-user-select: none; user-select: none; }
-        canvas { image-rendering: pixelated; }
+        canvas { image-rendering: auto; }
         /* Shout burst (paste lands): jagged flash. */
         .sprite-shout {
           position: absolute;
@@ -101,7 +101,7 @@ export function SpriteStage({
           background: #fbf5e4;
           border: 3px solid #2a2114;
           padding: 10px 18px;
-          font-family: "Pixelify Sans", monospace;
+          font-family: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
           font-size: 16px;
           color: #2a2114;
           box-shadow: 5px 5px 0 #d98e2b;

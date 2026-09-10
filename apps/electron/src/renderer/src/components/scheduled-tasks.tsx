@@ -503,7 +503,10 @@ export function ScheduledTasks({
             {task.enabled ? "Active" : "Paused"}
           </button>
         </div>
-        <p className="tavern-schedule-prompt">{task.instruction}</p>
+        <details className="tavern-schedule-instructions">
+          <summary>Task instructions</summary>
+          <p>{task.instruction}</p>
+        </details>
         <dl className="tavern-schedule-timing">
           <div>
             <dt>Next</dt>

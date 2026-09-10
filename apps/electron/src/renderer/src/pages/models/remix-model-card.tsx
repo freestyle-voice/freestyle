@@ -3,7 +3,6 @@ import { cn } from "@renderer/lib/utils";
 import { Cloud, Sparkles } from "lucide-react";
 import type React from "react";
 
-import { Eyebrow } from "./page-chrome";
 import type { ConfiguredModel } from "./types";
 import { displayName } from "./utils";
 
@@ -29,8 +28,7 @@ export function RemixModelCard({
       data-testid="remix-model-configuration"
     >
       <div className="min-w-0">
-        <Eyebrow text="Remix runtime" mono={false} />
-        <div className="mt-2 flex min-w-0 items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           {local ? (
             <Sparkles className="text-primary h-4 w-4 shrink-0" />
           ) : (

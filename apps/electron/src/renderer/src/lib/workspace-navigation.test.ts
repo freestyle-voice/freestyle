@@ -45,6 +45,20 @@ describe("compactActivitySummary", () => {
     ).toEqual({ label: "Searched the web", running: false });
   });
 
+  it("highlights repeated completed actions while retaining the full count", () => {
+    expect(
+      compactActivitySummary([
+        { title: "Fetched Gmail · inbox", phase: "done" },
+        { title: "Fetched Gmail · sent", phase: "done" },
+        { title: "Read memory", phase: "done" },
+        { title: "Fetched Gmail · drafts", phase: "done" },
+      ]),
+    ).toEqual({
+      label: "4 actions · Fetched Gmail ×3 · Read memory",
+      running: false,
+    });
+  });
+
   it("uses the persisted elapsed time as the collapsed work label", () => {
     expect(
       compactActivitySummary(

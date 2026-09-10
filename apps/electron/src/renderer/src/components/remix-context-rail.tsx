@@ -61,6 +61,7 @@ function ContextCard({
   title,
   count,
   attention,
+  empty = false,
   onOpen,
   children,
 }: {
@@ -68,6 +69,7 @@ function ContextCard({
   title: string;
   count?: number;
   attention: boolean;
+  empty?: boolean;
   onOpen?: () => void;
   children: React.ReactNode;
 }): React.JSX.Element {
@@ -84,6 +86,7 @@ function ContextCard({
     <section
       className={`remix-context-card${attention ? " is-attention" : ""}`}
       data-context-kind={kind}
+      data-empty={empty || undefined}
       aria-label={title}
     >
       <header className="remix-context-card-head">
@@ -149,6 +152,9 @@ function ContextTasks({
       title="Tasks"
       count={openItems.length}
       attention={attention}
+      empty={
+        !todosQuery.isLoading && !todosQuery.isError && openItems.length === 0
+      }
       onOpen={
         onOpenInspector ? () => onOpenInspector({ kind: "tasks" }) : undefined
       }
@@ -230,6 +236,7 @@ function ContextNotes({
       title="Notes"
       count={notes.length}
       attention={attention}
+      empty={!notesQuery.isLoading && !notesQuery.isError && notes.length === 0}
       onOpen={
         onOpenInspector ? () => onOpenInspector({ kind: "notes" }) : undefined
       }
@@ -308,6 +315,7 @@ function ContextBrain({
       title="Brain"
       count={files.length}
       attention={attention}
+      empty={!filesQuery.isLoading && !filesQuery.isError && files.length === 0}
       onOpen={
         onOpenInspector ? () => onOpenInspector({ kind: "brain" }) : undefined
       }
@@ -380,6 +388,7 @@ function RemixRunCard({
       kind="run"
       title="Run"
       attention={needsAttention}
+      empty={run.state === "idle"}
       onOpen={
         onOpenInspector
           ? () => onOpenInspector({ kind: "run", run })

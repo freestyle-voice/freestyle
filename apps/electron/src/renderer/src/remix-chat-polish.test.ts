@@ -6,6 +6,31 @@ import { describe, expect, it } from "vitest";
 const rendererRoot = dirname(fileURLToPath(import.meta.url));
 
 describe("Remix chat polish", () => {
+  it("renders queued messages as a compact command strip above the composer", async () => {
+    const queue = await readFile(
+      resolve(rendererRoot, "components/agent-message-queue.tsx"),
+      "utf8",
+    );
+
+    expect(queue).toContain("agent-message-queue-cue");
+    expect(queue).toContain("agent-message-queue-count");
+    expect(queue).not.toContain("agent-message-queue-avatar");
+    expect(queue).not.toContain("Ellipsis");
+    expect(queue).toContain(">\n              Steer\n            </button>");
+  });
+
+  it("summarizes repeated completed tool activity before the disclosure", async () => {
+    const chat = await readFile(
+      resolve(rendererRoot, "components/remix-chat.tsx"),
+      "utf8",
+    );
+
+    expect(chat).toContain("export function toolActivitySummary");
+    expect(chat).toContain('label.split(" · ")[0]');
+    expect(chat).toContain("toolActivitySummary(parts)");
+    expect(chat).toContain("summary={summary}");
+  });
+
   it("uses consistent action icons instead of text glyphs", async () => {
     const panel = await readFile(
       resolve(rendererRoot, "components/panel.tsx"),
@@ -18,6 +43,17 @@ describe("Remix chat polish", () => {
     expect(panel).not.toContain('>{copied ? "✓" : "⧉"}</span>');
     expect(panel).not.toContain(">✎</span>");
     expect(panel).not.toContain(">↻</span>");
+  });
+
+  it("keeps durable run internals out of the Remix conversation", async () => {
+    const panel = await readFile(
+      resolve(rendererRoot, "components/panel.tsx"),
+      "utf8",
+    );
+
+    expect(panel).not.toContain("DurableRunTimeline");
+    expect(panel).not.toContain("DurableRunHistory");
+    expect(panel).not.toContain("Recent run activity");
   });
 
   it("keeps the Remix composer to a single bordered surface", async () => {
@@ -91,7 +127,10 @@ describe("Remix chat polish", () => {
     expect(sessions).toContain(
       "titleRefreshTimersRef.current.delete(threadId)",
     );
-    expect(sessions).toContain("current?.id === threadId ? loaded : current");
+    expect(sessions).toContain("reconcileThreadSummaryTitle(loaded, summary)");
+    expect(sessions).toContain(
+      "current?.id === threadId ? reconciled : current",
+    );
   });
 
   it("reconnects either Remix surface through the shared durable observer", async () => {
@@ -388,6 +427,17 @@ describe("Remix chat polish", () => {
     expect(panel).toContain('aria-label="Remix is working"');
     expect(panel).toContain("tavern-stream-wait-signal");
     expect(panel).not.toContain('<Spark state="idle" size={11} />');
+  });
+
+  it("does not show generic thinking copy while an approval is actionable", async () => {
+    const [chat, panel] = await Promise.all([
+      readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "components/panel.tsx"), "utf8"),
+    ]);
+
+    expect(chat).toContain("busy &&\n              !waitingForApproval");
+    expect(panel).toContain("const waitingForApproval =");
+    expect(panel).toContain("!waitingForApproval &&");
   });
 
   it("uses the complete recorded audio for a spoken Remix request", async () => {

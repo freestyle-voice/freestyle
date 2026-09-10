@@ -154,14 +154,21 @@ export function describeAgentApproval(
         scope: oneAction,
         technical: describeAgentAction(call),
       };
-    case "Glob":
+    case "Glob": {
+      const pattern = str(input, "pattern");
       return {
         title: "List files",
         target: path,
-        summary: str(input, "pattern") || "List matching files",
+        summary:
+          pattern === "*"
+            ? "All items in this folder"
+            : pattern
+              ? `Items matching ${pattern}`
+              : "List matching files",
         scope: oneAction,
         technical: describeAgentAction(call),
       };
+    }
     case "Grep":
       return {
         title: "Search files",

@@ -94,6 +94,7 @@ describe("ScheduledTasks", () => {
     expect(html).toContain("Schedules");
     expect(html).toContain("New schedule");
     expect(html).toContain("Edit schedule");
+    expect(html).toContain("Task instructions");
     expect(html).toContain('aria-label="Delete Morning brief"');
     expect(html).not.toContain("REMIX ROUTINES");
     expect(html).toContain('class="tavern-schedule-page"');

@@ -699,31 +699,33 @@ export default function HistoryPage(): React.JSX.Element {
   );
 
   if (loading) {
-    // Keep navigation affordances available while the initial history request
-    // resolves. Only the sensitive rows are placeholders, so the first paint
-    // already reads as the usable Dictate history surface.
+    // Preserve the feed and stats-rail geometry from the populated page. The
+    // initial request should feel like the same transcription surface gaining
+    // content, not a temporary stack of unrelated cards.
     return (
       <div className="flex h-full min-h-0 flex-col">
         <DragSpacer />
         <div
-          className="responsive-page-scroll flex-1 overflow-auto pt-5"
-          style={{ scrollbarWidth: "none" } as React.CSSProperties}
+          className="grid min-h-0 flex-1"
+          style={{
+            gridTemplateColumns: statsOpen
+              ? `minmax(0,1fr) ${statsWidth}px`
+              : "minmax(0,1fr)",
+          }}
         >
-          {searchRow}
           <div
-            className="animate-pulse space-y-3"
-            aria-busy="true"
-            aria-label="Loading transcription history"
-            role="status"
+            className="responsive-page-scroll min-w-0 overflow-auto pt-5"
+            style={
+              {
+                scrollbarWidth: "none",
+                paddingRight: statsOpen ? "1.25rem" : undefined,
+              } as React.CSSProperties
+            }
           >
-            {["s1", "s2", "s3", "s4", "s5", "s6"].map((k) => (
-              <div
-                key={k}
-                className="border-border/50 bg-card/60 h-16 rounded-lg border"
-                aria-hidden="true"
-              />
-            ))}
+            {searchRow}
+            <HistoryFeedSkeleton />
           </div>
+          {statsOpen && <HistoryStatsSkeleton />}
         </div>
       </div>
     );
@@ -1376,6 +1378,74 @@ function FeedGroup({
         <div className="text-muted-foreground text-[10px]">{label}</div>
       </div>
       <div className="flex flex-col">{children}</div>
+    </div>
+  );
+}
+
+/** Mirrors the grouped metadata-and-copy rhythm of populated transcript rows. */
+function HistoryFeedSkeleton(): React.JSX.Element {
+  const groups = [
+    { id: "today", rows: ["long", "medium", "short"] },
+    { id: "earlier", rows: ["wide", "medium"] },
+  ];
+  const lineWidths: Record<string, string> = {
+    long: "w-[86%]",
+    medium: "w-[68%]",
+    short: "w-[48%]",
+    wide: "w-[94%]",
+  };
+
+  return (
+    <div
+      className="animate-pulse"
+      aria-busy="true"
+      aria-label="Loading transcription history"
+      role="status"
+    >
+      {groups.map((group) => (
+        <div className="mb-7" key={group.id} aria-hidden="true">
+          <div className="bg-muted mb-3 h-2 w-12 rounded-full" />
+          {group.rows.map((width, index) => (
+            <div className="px-1.5 py-3.5" key={`${group.id}-${index}`}>
+              <div className="mb-2 flex items-center gap-2.5">
+                <span className="bg-muted h-2.5 w-11 rounded-full" />
+                <span className="bg-muted h-[3px] w-[3px] rounded-full" />
+                <span className="bg-primary/20 h-2.5 w-28 rounded-full" />
+                <span className="flex-1" />
+                <span className="bg-muted h-2.5 w-7 rounded-full" />
+              </div>
+              <div
+                className={`bg-muted h-4 rounded-full ${lineWidths[width]}`}
+              />
+              {index === 0 && (
+                <div className="bg-muted mt-2 h-4 w-[56%] rounded-full" />
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** Keeps the fixed desktop rail from appearing only after history has loaded. */
+function HistoryStatsSkeleton(): React.JSX.Element {
+  return (
+    <div
+      className="border-border/70 relative min-h-0 border-l"
+      aria-hidden="true"
+    >
+      <aside className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)]">
+        <div className="animate-pulse pt-11">
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="bg-muted col-span-2 h-[76px] rounded-lg" />
+            <div className="bg-muted h-[76px] rounded-lg" />
+            <div className="bg-muted h-[76px] rounded-lg" />
+          </div>
+          <div className="bg-muted mt-7 h-2 w-24 rounded-full" />
+          <div className="border-border/60 bg-card/35 mt-3 h-[132px] rounded-lg border" />
+        </div>
+      </aside>
     </div>
   );
 }

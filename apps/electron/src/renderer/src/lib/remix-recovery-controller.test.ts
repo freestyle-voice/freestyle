@@ -289,6 +289,48 @@ describe("durable Remix recovery", () => {
     ).toHaveLength(1);
   });
 
+  it("uses a bounded observation cadence while a local approval awaits a decision", async () => {
+    const f = fixture();
+    f.approval();
+    const controller = f.create();
+
+    await controller.send("List my files", context);
+    expect(f.onToolCall).toHaveBeenCalledOnce();
+
+    const requestsAtApproval = f.requests.length;
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(f.requests).toHaveLength(requestsAtApproval);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.requests.length).toBeGreaterThan(requestsAtApproval);
+
+    const requestsAfterRefresh = f.requests.length;
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(f.requests).toHaveLength(requestsAfterRefresh);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(f.requests.length).toBeGreaterThan(requestsAfterRefresh);
+  });
+
+  it("does not mistake an infrastructure rate limit for a free-plan limit", async () => {
+    const onError = vi.fn();
+    const controller = new RemixRecoveryController({
+      threadId: "thread-a",
+      messages: [],
+      fetch: async (path) =>
+        path === "/api/remix/identity"
+          ? Response.json({ userId: "user-a", host: "https://cloud.test" })
+          : Response.json({ code: "rate_limited" }, { status: 429 }),
+      onToolCall: vi.fn(async () => {}),
+      onError,
+    });
+
+    await controller.start();
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Remix is receiving too many updates. Try again in a moment.",
+      }),
+    );
+  });
+
   it("hands queued follow-ups to the durable server owner", async () => {
     const f = fixture();
     const controller = f.create();
@@ -309,5 +351,22 @@ describe("durable Remix recovery", () => {
           request.body?.text === "Follow up",
       ),
     ).toBe(true);
+  });
+
+  it("confirms an orphaned queue handoff once instead of polling it continuously", async () => {
+    const f = fixture();
+    const controller = f.create();
+
+    await controller.enqueue("Follow up", context);
+    await controller.start();
+    const before = f.requests.length;
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(f.requests).toHaveLength(before + 2);
+    const afterHandoffCheck = f.requests.length;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(f.requests).toHaveLength(afterHandoffCheck);
+    expect(controller.getSnapshot().queue).toHaveLength(1);
   });
 });

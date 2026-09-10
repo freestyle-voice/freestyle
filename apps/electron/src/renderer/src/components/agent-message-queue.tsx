@@ -1,5 +1,11 @@
 import type { QueuedAgentMessage } from "@renderer/lib/agent-message-queue";
-import { Pencil, SendHorizontal, Trash2, X } from "lucide-react";
+import {
+  CornerDownRight,
+  Pencil,
+  SendHorizontal,
+  Trash2,
+  X,
+} from "lucide-react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -48,11 +54,14 @@ export function AgentMessageQueueControls({
   };
 
   return (
-    <section className="agent-message-queue" aria-label="Queued Remix message">
+    <section
+      className="agent-message-queue"
+      aria-label={`${items.length} queued Remix ${items.length === 1 ? "message" : "messages"}`}
+    >
+      <span className="agent-message-queue-cue" aria-hidden="true">
+        <CornerDownRight size={13} />
+      </span>
       <div className="agent-message-queue-copy">
-        <span className="agent-message-queue-label">
-          {items.length > 1 ? `${items.length} queued` : "Queued next"}
-        </span>
         {isEditing ? (
           <input
             ref={inputRef}
@@ -78,6 +87,9 @@ export function AgentMessageQueueControls({
             {item.text}
           </span>
         )}
+        {items.length > 1 ? (
+          <span className="agent-message-queue-count">+{items.length - 1}</span>
+        ) : null}
       </div>
       <div className="agent-message-queue-actions">
         {isEditing ? (
@@ -115,7 +127,7 @@ export function AgentMessageQueueControls({
                 void run(`steer:${item.id}`, () => onSteer(item.id))
               }
               disabled={pending !== null}
-              title="Interrupt the current response and send this next"
+              title="Interrupt the current response and send this message now"
             >
               <SendHorizontal size={12} />
               Steer

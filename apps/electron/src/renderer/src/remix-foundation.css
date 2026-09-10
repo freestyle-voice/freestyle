@@ -1,54 +1,35 @@
-@font-face {
-  font-family: "Schibsted Grotesk";
-  src: url(./assets/fonts/schibsted-grotesk.woff2) format("woff2");
-  font-weight: 400 800;
-  font-style: normal;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Schibsted Grotesk";
-  src: url(./assets/fonts/schibsted-grotesk-italic.woff2) format("woff2");
-  font-weight: 400 800;
-  font-style: italic;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "Pixelify Sans";
-  src: url(./assets/fonts/pixelify-sans.woff2) format("woff2");
-  font-weight: 400 700;
-  font-display: swap;
-}
-
-@font-face {
-  font-family: "IBM Plex Mono";
-  src: url(./assets/fonts/ibm-plex-mono.woff2) format("woff2");
-  font-weight: 400 700;
-  font-display: swap;
-}
-
+/* Shared component foundation for the full-window Remix workspace. */
 :root {
-  --tavern-px: "Pixelify Sans", monospace;
-  --tavern-mono: "IBM Plex Mono", monospace;
-  /* Keep the legacy Tavern component names, but source them from the current
-     application palette. Dialogs are portaled outside Remix, so literal legacy
-     tokens here leak through as unreadable dark text and orange actions. */
-  --tavern-parchment: var(--card);
-  --tavern-card: var(--background);
-  --tavern-ink: var(--foreground);
-  --tavern-lantern: var(--primary);
-  --tavern-robe: var(--primary);
-  --tavern-rust: var(--destructive);
-  --tavern-rule: var(--border);
-  --tavern-mute: var(--muted-foreground);
-  --tavern-wash: var(--secondary);
+  /* New semantic foundation. Legacy class names remain temporarily while
+     components are converted, but no legacy color or type system survives. */
+  --remix-surface: var(--background);
+  --remix-elevated-surface: var(--card);
+  --remix-text: var(--foreground);
+  --remix-subtle-text: var(--muted-foreground);
+  --remix-accent: var(--primary);
+  --remix-danger: var(--destructive);
+  --remix-rule: var(--border);
+  --remix-muted-surface: var(--secondary);
+  --remix-ui-font: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --remix-code-font: "JetBrains Mono", ui-monospace, monospace;
+
+  --tavern-parchment: var(--remix-elevated-surface);
+  --tavern-card: var(--remix-surface);
+  --tavern-ink: var(--remix-text);
+  --tavern-lantern: var(--remix-accent);
+  --tavern-robe: var(--remix-accent);
+  --tavern-rust: var(--remix-danger);
+  --tavern-rule: var(--remix-rule);
+  --tavern-mute: var(--remix-subtle-text);
+  --tavern-wash: var(--remix-muted-surface);
+  --tavern-px: var(--remix-ui-font);
+  --tavern-mono: var(--remix-code-font);
 }
 
 .tavern {
   background: var(--tavern-card);
   color: var(--tavern-ink);
-  font-family: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--remix-ui-font);
   font-size: 13px;
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
@@ -63,68 +44,17 @@
   font-variant-numeric: tabular-nums;
 }
 
-.tavern-shell {
-  position: relative;
-  height: 100%;
-}
-
 .tavern-panel {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  height: calc(100% - 38px);
-  margin: 0 7px 38px 0;
-  border: 3px solid var(--tavern-ink);
-  border-radius: 18px;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
-  box-shadow: 7px 7px 0 color-mix(in srgb, #000 58%, transparent);
-  background-image: radial-gradient(
-    color-mix(in srgb, var(--tavern-lantern) 7%, transparent) 1.2px,
-    transparent 1.2px
-  );
-  background-size: 7px 7px;
-}
-
-.tavern-resize-handle {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 38px;
-  width: 12px;
-  cursor: ew-resize;
-  z-index: 10;
-  touch-action: none;
-}
-
-.tavern-resize-handle::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  right: 8px;
-  transform: translateY(-50%);
-  width: 3px;
-  height: 44px;
-  border-radius: 2px;
-  background: var(--tavern-ink);
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.tavern-resize-handle:hover::after,
-.tavern-resize-handle:active::after {
-  opacity: 0.45;
-}
-
-/* The manga tail: an SVG swoosh growing out of the bubble's bottom border.
-   Its top overlaps the 3px border only; the composer's content is never
-   touched. */
-.tavern-tail {
-  position: absolute;
-  left: 30px;
-  bottom: 0;
-  width: 56px;
-  height: 46px;
-  pointer-events: none;
+  box-shadow: none;
+  background: var(--remix-surface);
 }
 
 .tavern-head {
@@ -232,7 +162,7 @@
 }
 
 .tavern-sprite-badge {
-  image-rendering: pixelated;
+  image-rendering: auto;
   display: block;
   flex-shrink: 0;
 }
@@ -1210,14 +1140,14 @@
 
 .tavern-approve {
   align-self: stretch;
-  border: 2px solid var(--tavern-ink);
-  border-radius: 10px;
-  padding: 10px 12px;
-  background: var(--tavern-parchment);
+  border: 1px solid color-mix(in srgb, var(--tavern-lantern) 42%, var(--tavern-rule));
+  border-radius: 12px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--tavern-parchment) 82%, var(--tavern-card));
   display: flex;
   flex-direction: column;
-  gap: 9px;
-  box-shadow: 3px 3px 0 var(--tavern-lantern);
+  gap: 8px;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--tavern-ink) 6%, transparent);
 }
 
 .tavern-run-timeline {
@@ -1380,9 +1310,10 @@
 }
 
 .tavern-approve-title {
-  font-family: var(--tavern-px);
-  font-size: 15px;
-  color: var(--tavern-rust);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--tavern-ink);
 }
 
 .tavern-approve-text {
@@ -1487,32 +1418,32 @@
 .tavern .agent-message-queue {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  box-sizing: border-box;
+  max-width: calc(100% - 28px);
   min-width: 0;
-  margin: 8px 14px -4px;
-  padding: 7px 8px 7px 10px;
-  border: 1px solid var(--tavern-rule);
-  border-radius: 9px;
-  background: var(--tavern-parchment);
+  min-height: 34px;
+  margin: 6px 14px -5px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--tavern-rule) 82%, transparent);
+  border-radius: 11px 11px 8px 8px;
+  background: color-mix(in srgb, var(--tavern-parchment) 74%, transparent);
+  color: var(--tavern-mute);
+}
+
+.tavern .agent-message-queue-cue {
+  display: inline-flex;
+  flex: none;
   color: var(--tavern-mute);
 }
 
 .tavern .agent-message-queue-copy {
   display: flex;
-  align-items: baseline;
-  gap: 7px;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  overflow: hidden;
   flex: 1;
-}
-
-.tavern .agent-message-queue-label {
-  flex: none;
-  color: var(--tavern-lantern);
-  font-family: var(--tavern-mono);
-  font-size: 8px;
-  font-weight: 700;
-  letter-spacing: .08em;
-  text-transform: uppercase;
 }
 
 .tavern .agent-message-queue-text {
@@ -1521,6 +1452,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
+}
+
+.tavern .agent-message-queue-count {
+  flex: none;
+  color: var(--tavern-lantern);
+  font-family: var(--tavern-mono);
+  font-size: 9px;
 }
 
 .tavern .agent-message-queue-input {
@@ -1537,7 +1475,7 @@
 .tavern .agent-message-queue-actions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
   flex: none;
 }
 
@@ -1545,20 +1483,25 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 22px;
+  min-height: 24px;
   padding: 0 6px;
   border: 0;
-  border-radius: 6px;
+  border-radius: 5px;
   background: transparent;
   color: var(--tavern-mute);
   font: inherit;
   font-size: 9px;
   cursor: pointer;
+  transition: transform 120ms ease-out, color 120ms ease;
 }
 
 .tavern .agent-message-queue-actions button:hover:not(:disabled) {
   background: var(--tavern-wash);
   color: var(--tavern-ink);
+}
+
+.tavern .agent-message-queue-actions button:active:not(:disabled) {
+  transform: scale(0.97);
 }
 
 .tavern .agent-message-queue-actions button:disabled {
@@ -1568,11 +1511,12 @@
 
 .tavern .agent-message-queue-steer {
   gap: 4px;
-  color: var(--tavern-lantern) !important;
+  padding-inline: 4px !important;
+  color: color-mix(in srgb, var(--tavern-lantern) 78%, var(--tavern-mute)) !important;
 }
 
 .tavern .agent-message-queue-icon {
-  width: 22px;
+  width: 24px;
   padding: 0 !important;
 }
 
@@ -2769,7 +2713,7 @@ button.tavern-recovery-notice:focus-visible {
   place-items: center;
   background: var(--tavern-wash);
   color: var(--tavern-ink);
-  font-family: "Pixelify Sans", monospace;
+  font-family: "Schibsted Grotesk", ui-sans-serif, system-ui, sans-serif;
   font-weight: 700;
   font-size: 17px;
   line-height: 1;
@@ -4387,114 +4331,6 @@ button.tavern-attention-item:focus-visible {
 
 .tavern-opener-more:hover {
   color: var(--tavern-ink);
-}
-
-.tavern-bub-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 4px 4px 22px;
-  background: transparent;
-}
-
-.tavern-bub {
-  position: relative;
-  background: var(--tavern-card);
-  border: 3px solid var(--tavern-ink);
-  border-radius: 16px;
-  padding: 10px 12px;
-  box-shadow: 4px 4px 0 rgba(42, 33, 20, 0.8);
-}
-
-.tavern-bub-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-}
-
-.tavern-bub-main {
-  font: inherit;
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  border: none;
-  background: none;
-  padding: 0;
-  cursor: pointer;
-  color: var(--tavern-ink);
-}
-
-.tavern-bub-title {
-  display: block;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.3;
-}
-
-.tavern-bub-body {
-  display: block;
-  font-size: 11px;
-  color: var(--tavern-mute);
-  line-height: 1.45;
-  margin-top: 3px;
-}
-
-.tavern-bub-x {
-  font: inherit;
-  border: none;
-  background: none;
-  color: var(--tavern-mute);
-  font-size: 14px;
-  line-height: 1;
-  padding: 0 2px;
-  cursor: pointer;
-}
-
-.tavern-bub-x:hover {
-  color: var(--tavern-ink);
-}
-
-.tavern-bub-badge {
-  font: inherit;
-  display: inline-block;
-  margin-top: 8px;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--tavern-mute);
-  background: rgba(217, 142, 43, 0.18);
-  border: 1px solid rgba(217, 142, 43, 0.5);
-  border-radius: 999px;
-  padding: 2px 8px;
-  cursor: pointer;
-}
-
-.tavern-bub-tail-o,
-.tavern-bub-tail-f {
-  position: absolute;
-  width: 0;
-  height: 0;
-  border-style: solid;
-  transform: rotate(14deg);
-  pointer-events: none;
-}
-
-.tavern-bub-tail-o {
-  bottom: -14px;
-  left: 22px;
-  border-width: 16px 14px 0 5px;
-  border-color: var(--tavern-ink) transparent transparent transparent;
-}
-
-.tavern-bub-tail-f {
-  bottom: -8px;
-  left: 25px;
-  border-width: 11px 10px 0 4px;
-  border-color: var(--tavern-card) transparent transparent transparent;
-}
-
-.tavern-bub-stack .tavern-bub:not(:last-child) .tavern-bub-tail-o,
-.tavern-bub-stack .tavern-bub:not(:last-child) .tavern-bub-tail-f {
-  display: none;
 }
 
 .tavern-notif {

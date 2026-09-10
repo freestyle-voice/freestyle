@@ -37,5 +37,22 @@ export function compactActivitySummary(
   }
   if (items.length === 1)
     return { label: items[0]?.title ?? "Activity", running };
-  return { label: `${items.length} actions`, running };
+  if (running) return { label: `${items.length} actions`, running };
+
+  const grouped = new Map<string, number>();
+  for (const item of items) {
+    // Tool presentation may add context after a middle dot; the action itself
+    // is what helps someone scan a completed run at a glance.
+    const label = item.title.split(" · ")[0]?.trim() || "Completed action";
+    grouped.set(label, (grouped.get(label) ?? 0) + 1);
+  }
+  const highlights = [...grouped.entries()]
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, 2)
+    .map(([label, count]) => (count > 1 ? `${label} ×${count}` : label));
+
+  return {
+    label: `${items.length} actions${highlights.length ? ` · ${highlights.join(" · ")}` : ""}`,
+    running,
+  };
 }

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 
 const componentDir = dirname(fileURLToPath(import.meta.url));
 const sourcePath = resolve(componentDir, "capabilities.tsx");
-const stylesPath = resolve(componentDir, "../tavern.css");
+const stylesPath = resolve(componentDir, "../remix-foundation.css");
 
 describe("Capabilities", () => {
   it("presents suggestions as a responsive action-card gallery", async () => {

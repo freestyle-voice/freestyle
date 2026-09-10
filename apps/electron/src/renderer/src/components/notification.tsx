@@ -1,5 +1,5 @@
 import "../overlay.css";
-import "../tavern.css";
+import "../notification.css";
 
 import { capture } from "@renderer/lib/analytics";
 import { refreshApiBase } from "@renderer/lib/api";
@@ -27,19 +27,19 @@ function NotificationCard({
   onExpand: () => void;
 }): React.JSX.Element {
   return (
-    <div className="tavern-bub">
-      <div className="tavern-bub-row">
+    <div className="remix-notification">
+      <div className="remix-notification-row">
         <button
           type="button"
-          className="tavern-bub-main"
+          className="remix-notification-main"
           onClick={() => onOpen(item.id)}
         >
-          <span className="tavern-bub-title">{item.title}</span>
-          <span className="tavern-bub-body">{item.body}</span>
+          <span className="remix-notification-title">{item.title}</span>
+          <span className="remix-notification-body">{item.body}</span>
         </button>
         <button
           type="button"
-          className="tavern-bub-x"
+          className="remix-notification-dismiss"
           aria-label="Dismiss"
           onClick={() => onDismiss(item.id)}
         >
@@ -47,12 +47,14 @@ function NotificationCard({
         </button>
       </div>
       {badge > 0 ? (
-        <button type="button" className="tavern-bub-badge" onClick={onExpand}>
+        <button
+          type="button"
+          className="remix-notification-more"
+          onClick={onExpand}
+        >
           +{badge} more
         </button>
       ) : null}
-      <span className="tavern-bub-tail-o" />
-      <span className="tavern-bub-tail-f" />
     </div>
   );
 }
@@ -120,7 +122,7 @@ function NotificationStack(): React.JSX.Element | null {
 
   return (
     <section
-      className="tavern tavern-bub-stack"
+      className="remix-notification-stack"
       ref={rootRef}
       aria-label="Notifications"
     >

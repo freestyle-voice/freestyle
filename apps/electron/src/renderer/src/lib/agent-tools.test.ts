@@ -77,6 +77,20 @@ describe("agent approval details", () => {
     });
   });
 
+  it("turns an all-files glob into a readable approval scope", () => {
+    expect(
+      describeAgentApproval({
+        toolName: "Glob",
+        toolCallId: "glob-all",
+        input: { path: "/Users/adityamathur/dev", pattern: "*" },
+      }),
+    ).toMatchObject({
+      title: "List files",
+      target: "/Users/adityamathur/dev",
+      summary: "All items in this folder",
+    });
+  });
+
   it("bounds a long command in the summary while retaining it in technical details", () => {
     const command = "x".repeat(200);
 

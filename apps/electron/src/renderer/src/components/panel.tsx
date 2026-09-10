@@ -86,6 +86,13 @@ import {
 import type React from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
+type WorkspaceView = "chat" | "history";
+const WORKSPACE_VIEW_LABELS: Record<WorkspaceView, string> = {
+  chat: "Chat",
+  history: "History",
+};
+const WORKSPACE_TOP_VIEWS: WorkspaceView[] = ["chat", "history"];
+
 type WorkspaceIconName =
   | "history"
   | "close"

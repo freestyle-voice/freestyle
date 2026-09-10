@@ -150,7 +150,7 @@ describe("displayThreadTitle", () => {
     expect(
       reconcileThreadSummaryTitle(
         { id: "thread-a", title: "Hi", messages: [] },
-        { id: "thread-a", title: "Simple friendly greeting", updatedAt: 1 },
+        { id: "thread-a", title: "Simple friendly greeting" },
       ).title,
     ).toBe("Simple friendly greeting");
   });

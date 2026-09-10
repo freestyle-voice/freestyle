@@ -22,6 +22,8 @@ type QueueState = {
   enqueueIds?: string[];
   activeTurnId?: string;
   steer?: boolean;
+  /** A stopped or failed turn needs an explicit user decision before dispatch. */
+  requiresUserAction?: boolean;
   paused?: boolean;
   activeRequest?: Record<string, unknown>;
   retryAttempts?: number;
@@ -73,6 +75,7 @@ export function registerRemixTurn(
     ...read(threadId),
     activeTurnId: turnId,
     steer: false,
+    requiresUserAction: false,
     paused: false,
     activeRequest: request,
     retryAttempts: 0,
@@ -86,6 +89,7 @@ export function pauseRemixQueue(threadId: string) {
   const state = read(threadId);
   state.paused = true;
   state.steer = false;
+  state.requiresUserAction = true;
   for (const item of state.items) {
     if (item.request)
       deferRemixRequestCancel({ ...item.request, clientRequestId: item.id });
@@ -109,6 +113,7 @@ export function settleRemixTurn(turnId: string, status: string) {
     state.activeTurnId = undefined;
     state.activeRequest = undefined;
     state.recoveryPaused = false;
+    state.requiresUserAction = status !== "completed" && !state.steer;
     state.steer = Boolean(state.steer || status === "completed");
     write(threadId, state);
   }
@@ -158,6 +163,7 @@ export function steerRemixQueuedMessage(threadId: string, id: string) {
   if (!item || item.request) return false;
   state.items = [item, ...state.items.filter((item) => item.id !== id)];
   state.steer = true;
+  state.requiresUserAction = false;
   state.paused = false;
   state.recoveryPaused = false;
   state.retryAttempts = 0;
@@ -326,13 +332,15 @@ async function drainThread(threadId: string) {
       state.activeRequest = undefined;
       // Failure/Stop preserve the queue until the user sends or steers again.
       if (receipt.turn.status !== "completed" && !state.steer) {
+        state.requiresUserAction = true;
         write(threadId, state);
         return;
       }
+      state.requiresUserAction = false;
       state.steer = true;
       write(threadId, state);
     }
-    if (state.paused || !state.steer || !state.items.length) return;
+    if (state.paused || state.requiresUserAction || !state.items.length) return;
     const item = state.items[0];
     if (!item.request) {
       const runtime = (await cloud(
@@ -395,7 +403,8 @@ export async function drainRemixQueues() {
         ([, state]) =>
           !state.paused &&
           !state.recoveryPaused &&
-          (state.activeTurnId || (state.items.length > 0 && state.steer)),
+          (state.activeTurnId ||
+            (state.items.length > 0 && !state.requiresUserAction)),
       )
       .map(([threadId]) => drainThread(threadId)),
   );

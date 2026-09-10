@@ -56,8 +56,10 @@ describe("Remix context rail", () => {
     expect(panel).not.toContain('tab === "brain"');
     expect(panel).not.toContain('tab === "apps"');
     expect(styles).toContain(".remix-context-rail");
-    expect(styles).not.toContain("flex: 0 0 0;");
-    expect(styles).not.toContain("flex-basis: var(--remix-context-width);");
+    expect(rail).toContain("data-empty={empty || undefined}");
+    expect(rail).toContain('empty={run.state === "idle"}');
+    expect(styles).toContain("flex: 0 0 0;");
+    expect(styles).toContain("flex-basis: var(--remix-context-width);");
     expect(styles).toContain("transform: translateX(20px);");
     expect(panel).toContain('className="remix-chat-header"');
     expect(panel).toContain("Session actions for $" + "{title}");
@@ -81,7 +83,7 @@ describe("Remix context rail", () => {
     expect(railStyles).not.toContain("background:");
     expect(styles).toContain("@media (max-width: 1080px)");
     expect(styles).toContain("inset: 0 0 0 auto;");
-    expect(railStyles).toContain("position: absolute;");
+    expect(railStyles).toContain("position: relative;");
   });
 
   it("places the app directory under Settings rather than the desktop Remix rail", async () => {

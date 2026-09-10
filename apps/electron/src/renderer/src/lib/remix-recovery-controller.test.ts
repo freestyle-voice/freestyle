@@ -151,7 +151,7 @@ describe("durable Remix recovery", () => {
     const controller = f.create();
     await controller.send("Hello", context);
     f.offline(true);
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_500);
     for (const delay of [3_000, 6_000, 12_000, 24_000, 30_000]) {
       const before = f.requests.length;
       await vi.advanceTimersByTimeAsync(delay - 1);
@@ -204,7 +204,7 @@ describe("durable Remix recovery", () => {
     const controller = f.create();
     await controller.send("Hello", context);
     f.offline(true);
-    await vi.advanceTimersByTimeAsync(1_000);
+    await vi.advanceTimersByTimeAsync(2_500);
     f.offline(false);
     f.status(status);
     await controller.retry();
@@ -242,7 +242,7 @@ describe("durable Remix recovery", () => {
     const controller = f.create();
     await controller.send("Hello", context);
     f.offline(true);
-    await vi.advanceTimersByTimeAsync(76_000);
+    await vi.advanceTimersByTimeAsync(78_000);
     expect(controller.getSnapshot().recovery.phase).toBe("paused");
     f.offline(false);
     f.status("running");
@@ -289,6 +289,40 @@ describe("durable Remix recovery", () => {
     ).toHaveLength(1);
   });
 
+  it("pauses observation while a local approval is awaiting a decision", async () => {
+    const f = fixture();
+    f.approval();
+    const controller = f.create();
+
+    await controller.send("List my files", context);
+    expect(f.onToolCall).toHaveBeenCalledOnce();
+
+    const requestsAtApproval = f.requests.length;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(f.requests).toHaveLength(requestsAtApproval);
+  });
+
+  it("does not mistake an infrastructure rate limit for a free-plan limit", async () => {
+    const onError = vi.fn();
+    const controller = new RemixRecoveryController({
+      threadId: "thread-a",
+      messages: [],
+      fetch: async (path) =>
+        path === "/api/remix/identity"
+          ? Response.json({ userId: "user-a", host: "https://cloud.test" })
+          : Response.json({ code: "rate_limited" }, { status: 429 }),
+      onToolCall: vi.fn(async () => {}),
+      onError,
+    });
+
+    await controller.start();
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: "Remix is receiving too many updates. Try again in a moment.",
+      }),
+    );
+  });
+
   it("hands queued follow-ups to the durable server owner", async () => {
     const f = fixture();
     const controller = f.create();
@@ -296,7 +330,7 @@ describe("durable Remix recovery", () => {
     await controller.enqueue("Follow up", context);
     expect(controller.getSnapshot().queue).toHaveLength(1);
     f.status("completed");
-    await vi.advanceTimersByTimeAsync(1_001);
+    await vi.advanceTimersByTimeAsync(2_501);
     expect(controller.getSnapshot().queue).toHaveLength(1);
     const submissions = f.requests.filter(
       (request) => request.path === "/api/remix/turns",
@@ -309,5 +343,22 @@ describe("durable Remix recovery", () => {
           request.body?.text === "Follow up",
       ),
     ).toBe(true);
+  });
+
+  it("confirms an orphaned queue handoff once instead of polling it continuously", async () => {
+    const f = fixture();
+    const controller = f.create();
+
+    await controller.enqueue("Follow up", context);
+    await controller.start();
+    const before = f.requests.length;
+
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    expect(f.requests).toHaveLength(before + 2);
+    const afterHandoffCheck = f.requests.length;
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(f.requests).toHaveLength(afterHandoffCheck);
+    expect(controller.getSnapshot().queue).toHaveLength(1);
   });
 });

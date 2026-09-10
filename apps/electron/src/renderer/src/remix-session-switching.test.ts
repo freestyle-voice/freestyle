@@ -34,15 +34,28 @@ describe("Remix session switching", () => {
     expect(styles).toContain(".remix-agent .remix-conversation-skeleton");
   });
 
-  it("refreshes an open pill session without navigating away from a newer selection", async () => {
+  it("keeps pill completion updates cache-backed instead of refetching the whole workspace", async () => {
     const sessions = await readFile(
       resolve(rendererRoot, "components/remix-session-context.tsx"),
       "utf8",
     );
+    const panel = await readFile(
+      resolve(rendererRoot, "components/panel.tsx"),
+      "utf8",
+    );
+    const panelOpen = sessions.slice(
+      sessions.indexOf("onPanelOpenThread"),
+      sessions.indexOf("onPanelThreadUpdated"),
+    );
+    const panelUpdate = sessions.slice(
+      sessions.indexOf("onPanelThreadUpdated"),
+    );
 
     expect(sessions).toContain("onPanelThreadUpdated");
-    expect(sessions).toContain("threadQueryOptions(threadId, type)");
-    expect(sessions).toContain("current?.id === threadId ? loaded : current");
+    expect(panelOpen).not.toContain("invalidateThreads(queryClient)");
+    expect(panelUpdate).not.toContain("refreshThread(threadId)");
+    expect(panelUpdate).toContain("requestThreadTitleRefresh(threadId)");
+    expect(panel).not.toContain("invalidateThreads(queryClient)");
   });
 
   it("returns from schedules to chat when the pill opens a session", async () => {

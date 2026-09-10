@@ -302,6 +302,10 @@ export function latestThreadQueryOptions() {
   return {
     queryKey: queryKeys.threads.latest,
     queryFn: getLatestThread,
+    // These are Cloud-backed navigation reads. A completed turn updates the
+    // active conversation cache directly, so remounts must not refetch them.
+    staleTime: 60_000,
+    retry: 0,
   };
 }
 
@@ -343,6 +347,10 @@ export function threadQueryOptions(
     queryKey: queryKeys.threads.detail(id, type),
     queryFn: () => getThread(id, type),
     enabled: id.length > 0,
+    staleTime: 60_000,
+    // A 429 is an account-wide Cloud budget signal, not a transient
+    // loopback failure. Retrying it immediately makes the burst worse.
+    retry: 0,
   };
 }
 
@@ -355,7 +363,10 @@ export function threadHistoryInfiniteQueryOptions(
     queryFn: ({ pageParam }: { pageParam: number | null }) =>
       listThreads({ cursor: pageParam ?? undefined, origin }),
     getNextPageParam: (page: ThreadPage) => page.nextCursor ?? undefined,
-    staleTime: 0,
+    // The sidebar is updated optimistically for the active conversation.
+    // Keep its two Cloud list reads quiet across normal remounts.
+    staleTime: 60_000,
+    retry: 0,
   };
 }
 

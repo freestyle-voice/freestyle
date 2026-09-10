@@ -1,3 +1,5 @@
+@import "./remix-foundation.css";
+
 /*
  * Remix uses the current agent runtime, but deliberately sits in the restored
  * dark desktop system instead of inheriting the old floating companion card.
@@ -595,12 +597,13 @@
 }
 
 .remix-context-rail {
-  position: absolute;
+  position: relative;
   z-index: 3;
-  inset: 0 0 0 auto;
+  inset: auto;
   display: flex;
   width: 0;
   min-width: 0;
+  flex: 0 0 0;
   flex-direction: column;
   gap: 10px;
   overflow: hidden;
@@ -618,6 +621,7 @@
 
 .remix-agent .is-context-open .remix-context-rail {
   width: var(--remix-context-width);
+  flex-basis: var(--remix-context-width);
   padding: 12px 12px 14px;
   overflow-y: auto;
   opacity: 1;
@@ -687,6 +691,24 @@
     color-mix(in srgb, var(--card) 86%, var(--remix-context-accent)) 0%,
     color-mix(in srgb, var(--card) 82%, var(--background)) 100%
   );
+}
+
+.remix-context-card[data-empty="true"] {
+  border-color: color-mix(in srgb, var(--border) 76%, transparent);
+  background: color-mix(in srgb, var(--card) 88%, var(--background));
+  box-shadow: none;
+}
+
+.remix-context-card[data-empty="true"]::before {
+  display: none;
+}
+
+.remix-context-card[data-empty="true"] .remix-context-card-head {
+  min-height: 38px;
+}
+
+.remix-context-card[data-empty="true"] .remix-context-empty {
+  padding-top: 8px;
 }
 
 .remix-context-card-head {
@@ -1491,6 +1513,15 @@
 }
 
 @media (max-width: 1080px) {
+  .remix-context-rail {
+    position: absolute;
+    inset: 0 0 0 auto;
+  }
+
+  .remix-agent .is-context-open .remix-context-rail {
+    flex-basis: 0;
+  }
+
   .remix-agent .tavern-workspace {
     --remix-context-width: min(304px, calc(100vw - 82px));
   }
@@ -1737,10 +1768,37 @@
   opacity: 0.6;
 }
 
-.remix-agent .tavern-schedule-prompt {
-  display: -webkit-box;
-  min-height: 42px;
+.remix-agent .tavern-schedule-instructions {
   margin: 17px 0 0;
+}
+
+.remix-agent .tavern-schedule-instructions summary {
+  cursor: pointer;
+  color: var(--secondary-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  list-style: none;
+}
+
+.remix-agent .tavern-schedule-instructions summary::-webkit-details-marker {
+  display: none;
+}
+
+.remix-agent .tavern-schedule-instructions summary::before {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--muted-foreground);
+  content: "+";
+  transition: transform 140ms ease;
+}
+
+.remix-agent .tavern-schedule-instructions[open] summary::before {
+  transform: rotate(45deg);
+}
+
+.remix-agent .tavern-schedule-instructions p {
+  display: -webkit-box;
+  margin: 8px 0 0;
   overflow: hidden;
   color: var(--secondary-foreground);
   font-size: 12px;
@@ -2068,6 +2126,147 @@
   color: var(--foreground);
   font-size: 13px;
   line-height: 1.45;
+}
+
+/* Approval is a bounded decision sheet. It sits within the reading column
+   instead of stretching into a warning banner across the workspace. */
+.remix-agent .tavern-approve {
+  position: relative;
+  width: min(100%, 560px);
+  align-self: flex-start;
+  gap: 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, var(--primary));
+  border-radius: 14px;
+  padding: 15px 16px 14px 18px;
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--card) 96%, var(--primary)) 0%,
+    color-mix(in srgb, var(--card) 92%, var(--background)) 100%
+  );
+  box-shadow: 0 16px 32px -28px color-mix(in srgb, #000 92%, transparent);
+}
+
+.remix-agent .tavern-approve::before {
+  position: absolute;
+  inset: 12px auto 12px 0;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: color-mix(in srgb, var(--primary) 72%, transparent);
+  content: "";
+}
+
+.remix-agent .tavern-approve-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.remix-agent .tavern-approve-title {
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+}
+
+.remix-agent .tavern-approve-status {
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border));
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: color-mix(in srgb, var(--primary) 9%, transparent);
+  color: color-mix(in srgb, var(--primary) 78%, var(--foreground));
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.remix-agent .tavern-approve-summary {
+  gap: 4px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 9px;
+  padding: 9px 10px;
+  background: color-mix(in srgb, var(--background) 62%, transparent);
+}
+
+.remix-agent .tavern-approve-summary-label {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  line-height: 1.2;
+}
+
+.remix-agent .tavern-approve-summary strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-agent .tavern-approve-summary span:not(.tavern-approve-summary-label),
+.remix-agent .tavern-approve-scope {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.remix-agent .tavern-approve-scope {
+  margin: -3px 0 0;
+}
+
+.remix-agent .tavern-approve-technical {
+  border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  padding-top: 9px;
+}
+
+.remix-agent .tavern-approve-technical summary {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.remix-agent .tavern-approve-actions {
+  justify-content: flex-end;
+  gap: 7px;
+  padding-top: 2px;
+}
+
+.remix-agent .tavern-approve-btn {
+  min-height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 11px;
+  background: transparent;
+  color: var(--foreground);
+  font-size: 11.5px;
+  font-weight: 620;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.remix-agent .tavern-approve-btn:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--foreground) 42%, var(--border));
+  background: var(--secondary);
+}
+
+.remix-agent .tavern-approve-allow {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.remix-agent .tavern-approve-allow:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 88%, #fff);
+  transform: translateY(-1px);
+}
+
+.remix-agent .tavern-approve-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 
 .remix-agent .tavern-msg-actions {

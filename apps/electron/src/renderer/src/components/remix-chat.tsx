@@ -1039,7 +1039,10 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
                 onResolve={resolveApproval}
               />
             ))}
-            {busy && !hasAssistantResponse && props.voiceStatus === null ? (
+            {busy &&
+            !waitingForApproval &&
+            !hasAssistantResponse &&
+            props.voiceStatus === null ? (
               <RemixThinkingState />
             ) : null}
           </MessageScroller>
@@ -1522,6 +1525,23 @@ function ToolStepLabel({
   );
 }
 
+export function toolActivitySummary(
+  parts: Array<ToolUIPart | DynamicToolUIPart>,
+): string {
+  const groups = new Map<string, number>();
+  for (const part of parts) {
+    const name = getToolOrDynamicToolName(part);
+    const label = TOOL_LABELS[name]?.done ?? `Ran ${name}`;
+    const group = label.split(" · ")[0] ?? label;
+    groups.set(group, (groups.get(group) ?? 0) + 1);
+  }
+  const detail = [...groups.entries()]
+    .sort(([, left], [, right]) => right - left)
+    .slice(0, 2)
+    .map(([label, count]) => (count > 1 ? `${label} ×${count}` : label));
+  return `${parts.length} ${parts.length === 1 ? "action" : "actions"}${detail.length ? ` · ${detail.join(" · ")}` : ""}`;
+}
+
 function ToolActivity({
   parts,
   busy,
@@ -1563,8 +1583,9 @@ function ToolActivity({
       part.state !== "output-available" && part.state !== "output-error",
   );
 
-  // Override step summary ("Thought for Ns") — these are document tools.
-  const summary = `Ran ${parts.length} ${parts.length === 1 ? "tool" : "tools"}`;
+  // Keep the audit trail in AgentActivity, but make a finished turn readable
+  // before someone chooses to expand every individual tool call.
+  const summary = toolActivitySummary(parts);
   const activeLabel = inFlight
     ? (TOOL_LABELS[getToolOrDynamicToolName(inFlight)]?.doing ??
       `Running ${getToolOrDynamicToolName(inFlight)}…`)
@@ -2097,25 +2118,30 @@ const REMIX_CHAT_CSS = `
   .agent-message-queue {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
+    box-sizing: border-box;
+    max-width: calc(100% - 28px);
     min-width: 0;
-    margin: 7px 14px -3px;
-    padding: 6px 7px 6px 10px;
-    border: 1px solid rgba(245, 241, 228, 0.16);
-    border-radius: 10px;
-    background: rgba(245, 241, 228, 0.045);
+    min-height: 34px;
+    margin: 6px 14px -5px;
+    padding: 0 8px;
+    border: 1px solid rgba(245, 241, 228, 0.15);
+    border-radius: 11px 11px 8px 8px;
+    background: rgba(245, 241, 228, 0.04);
     color: ${INK_DIM};
   }
-  .agent-message-queue-copy { min-width: 0; flex: 1; display: flex; align-items: baseline; gap: 7px; }
-  .agent-message-queue-label { flex: 0 0 auto; color: ${OLIVE}; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 8px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; }
-  .agent-message-queue-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10.5px; }
+  .agent-message-queue-cue { display: inline-flex; flex: 0 0 auto; color: ${INK_FAINT}; }
+  .agent-message-queue-copy { min-width: 0; overflow: hidden; flex: 1; display: flex; align-items: center; gap: 6px; }
+  .agent-message-queue-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+  .agent-message-queue-count { flex: 0 0 auto; color: ${OLIVE}; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 9px; }
   .agent-message-queue-input { min-width: 0; width: 100%; border: 0; outline: 0; background: transparent; color: ${INK}; font: inherit; font-size: 10.5px; }
-  .agent-message-queue-actions { display: inline-flex; align-items: center; gap: 2px; flex: 0 0 auto; }
-  .agent-message-queue-actions button { display: inline-flex; align-items: center; justify-content: center; min-height: 22px; border: 0; border-radius: 6px; padding: 0 6px; background: transparent; color: ${INK_FAINT}; font: inherit; font-size: 9px; cursor: pointer; }
+  .agent-message-queue-actions { display: inline-flex; align-items: center; gap: 1px; flex: 0 0 auto; }
+  .agent-message-queue-actions button { display: inline-flex; align-items: center; justify-content: center; min-height: 24px; border: 0; border-radius: 5px; padding: 0 6px; background: transparent; color: ${INK_FAINT}; font: inherit; font-size: 9px; cursor: pointer; transition: transform 120ms ease-out, color 120ms ease; }
   .agent-message-queue-actions button:hover:not(:disabled) { background: rgba(245, 241, 228, 0.10); color: ${INK}; }
+  .agent-message-queue-actions button:active:not(:disabled) { transform: scale(0.97); }
   .agent-message-queue-actions button:disabled { cursor: wait; opacity: 0.46; }
-  .agent-message-queue-steer { gap: 4px; color: ${OLIVE} !important; }
-  .agent-message-queue-icon { width: 22px; padding: 0 !important; }
+  .agent-message-queue-steer { gap: 4px; padding-inline: 4px !important; color: color-mix(in srgb, ${OLIVE} 78%, ${INK_FAINT}) !important; }
+  .agent-message-queue-icon { width: 24px; padding: 0 !important; }
   .remix-chat-voice-capture {
     display: flex;
     align-items: center;

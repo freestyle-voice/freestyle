@@ -49,7 +49,7 @@ describe("Remix visual symmetry", () => {
   it("does not reintroduce the light connector shimmer in dark Remix", async () => {
     const [styles, tavernStyles] = await Promise.all([
       readFile(resolve(rendererRoot, "remix-workspace.css"), "utf8"),
-      readFile(resolve(rendererRoot, "tavern.css"), "utf8"),
+      readFile(resolve(rendererRoot, "remix-foundation.css"), "utf8"),
     ]);
 
     expect(styles).toContain(".remix-agent .connector-skeleton-mark,");

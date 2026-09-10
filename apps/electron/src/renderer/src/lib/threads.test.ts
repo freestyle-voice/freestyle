@@ -19,6 +19,7 @@ import {
   getDurableThreadRuns,
   getDurableTurnEvents,
   listThreads,
+  reconcileThreadSummaryTitle,
 } from "./threads";
 
 describe("thread client", () => {
@@ -39,6 +40,8 @@ describe("thread client", () => {
   it("uses only the API next cursor for another history page", () => {
     const options = threadHistoryInfiniteQueryOptions();
     expect(options.initialPageParam).toBeNull();
+    expect(options.staleTime).toBe(60_000);
+    expect(options.retry).toBe(0);
     expect(options.getNextPageParam({ threads: [], nextCursor: 42 })).toBe(42);
     expect(
       options.getNextPageParam({ threads: [], nextCursor: null }),
@@ -141,6 +144,15 @@ describe("displayThreadTitle", () => {
 
   it("keeps a new chat neutral until the agent has named it", () => {
     expect(displayThreadTitle({ title: null })).toBe("New chat");
+  });
+
+  it("keeps an opened chat title aligned with its named sidebar summary", () => {
+    expect(
+      reconcileThreadSummaryTitle(
+        { id: "thread-a", title: "Hi", messages: [] },
+        { id: "thread-a", title: "Simple friendly greeting", updatedAt: 1 },
+      ).title,
+    ).toBe("Simple friendly greeting");
   });
 });
 

@@ -120,6 +120,9 @@ describe("dashboard startup rendering", () => {
     ]);
 
     expect(notification).not.toContain("initApiBase();");
+    expect(notification).toContain('import "../notification.css"');
+    expect(notification).not.toContain("tavern.css");
+    expect(notification).not.toContain("tavern-bub");
     expect(courierSession).toContain("await resolveApiBase();");
     expect(courierSession).not.toContain("await initApiBase();");
   });

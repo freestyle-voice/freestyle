@@ -18,7 +18,7 @@ import {
 import {
   createThread,
   deleteThread as deleteStoredThread,
-  getThread,
+  reconcileThreadSummaryTitle,
   renameLocalThread,
   type ThreadState,
   type ThreadSummary,
@@ -46,9 +46,8 @@ export function sidebarCurrentThreadId(
 }
 
 // Cloud first persists a deterministic title, then replaces it with a short
-// generated one. These are bounded observations of that background write, not
-// polling: they run only for an unnamed conversation after its first turn.
-const THREAD_TITLE_REFRESH_DELAYS = [1_200, 4_000] as const;
+// generated one. This is one deferred observation, never a retry loop.
+const THREAD_TITLE_REFRESH_DELAYS = [5_000] as const;
 
 type RemixSessionContextValue = {
   thread: ThreadState | null;
@@ -192,8 +191,13 @@ export function RemixSessionProvider({
         queryKeys.threads.detail(summary.id, summary.type ?? "remote"),
       );
       if (cached) {
+        const reconciled = reconcileThreadSummaryTitle(cached, summary);
+        queryClient.setQueryData(
+          queryKeys.threads.detail(summary.id, summary.type ?? "remote"),
+          reconciled,
+        );
         setLoadingThreadId(null);
-        setThread(cached);
+        setThread(reconciled);
       } else {
         setLoadingThreadId(summary.id);
         setThread({
@@ -209,11 +213,12 @@ export function RemixSessionProvider({
         .then((loaded) => {
           if (!loaded) throw new Error("Conversation not found.");
           if (selectionRef.current !== selection) return;
+          const reconciled = reconcileThreadSummaryTitle(loaded, summary);
           queryClient.setQueryData(
             queryKeys.threads.detail(summary.id, summary.type ?? "remote"),
-            loaded,
+            reconciled,
           );
-          setThread(loaded);
+          setThread(reconciled);
           setLoadingThreadId(null);
         })
         .catch(() => {
@@ -323,12 +328,16 @@ export function RemixSessionProvider({
         threadQueryOptions(threadId, type),
       );
       if (!loaded) return;
+      const summary =
+        selectedSummaryRef.current?.id === threadId
+          ? selectedSummaryRef.current
+          : undefined;
+      const reconciled = reconcileThreadSummaryTitle(loaded, summary);
       queryClient.setQueryData(
         queryKeys.threads.detail(threadId, type),
-        loaded,
+        reconciled,
       );
-      setThread((current) => (current?.id === threadId ? loaded : current));
-      await invalidateThreads(queryClient);
+      setThread((current) => (current?.id === threadId ? reconciled : current));
     },
     [queryClient, thread?.id, thread?.type],
   );
@@ -483,9 +492,9 @@ export function RemixSessionProvider({
     const off = window.api.onPanelOpenThread((threadId) => {
       openChat();
       const selection = ++selectionRef.current;
-      void invalidateThreads(queryClient);
       markSessionSeen(threadId);
-      void getThread(threadId)
+      void queryClient
+        .fetchQuery(threadQueryOptions(threadId, "remote"))
         .catch(() => null)
         .then((picked) => {
           if (!picked || selectionRef.current !== selection) return;
@@ -503,12 +512,14 @@ export function RemixSessionProvider({
     const off = window.api?.onPanelThreadUpdated?.((threadId) => {
       // This is an observation update, not a navigation command. If someone
       // opened the pill in the workspace and then selected another session,
-      // refresh the cache without pulling them back to the old thread.
-      void refreshThread(threadId).catch(() => {});
-      requestThreadTitleRefresh(threadId);
+      // only reconcile the selected title after the Cloud write settles. The
+      // durable observer already owns message updates, so fetching the full
+      // legacy thread here would duplicate its traffic.
+      if (selectedThreadIdRef.current === threadId)
+        requestThreadTitleRefresh(threadId);
     });
     return () => off?.();
-  }, [canRequestData, refreshThread, requestThreadTitleRefresh]);
+  }, [canRequestData, requestThreadTitleRefresh]);
 
   useEffect(() => {
     if (latestQuery.isPending) return;

@@ -42,6 +42,31 @@ describe("server-owned durable Remix follow-ups", () => {
     });
     expect(remixQueueSnapshot("thread-a").items).toHaveLength(1);
   });
+  it("admits an unblocked orphaned queued message without a renderer observer", async () => {
+    enqueueRemixMessage("thread-a", { text: "Follow up" });
+    const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+        requests.push({ url, body });
+        if (url.endsWith("threads/thread-a"))
+          return Response.json({ thread: { messages: [] } });
+        return Response.json({ turn: { id: "turn-b" } });
+      }),
+    );
+
+    await drainRemixQueues();
+
+    expect(remixQueueSnapshot("thread-a")).toMatchObject({
+      items: [],
+      activeTurnId: "turn-b",
+    });
+    expect(
+      requests.find((request) => request.url.endsWith("remix/turns"))?.body
+        ?.clientRequestId,
+    ).toBeTruthy();
+  });
   it("replays headless retryable admissions with a bounded persisted budget", async () => {
     const request = {
       threadId: "thread-a",

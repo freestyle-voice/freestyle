@@ -348,38 +348,44 @@ export default function ModelsPage(): React.JSX.Element {
           title={t("models.title")}
           subtitle={t("models.subtitle")}
         />
-        <div className="space-y-5">
-          <FreestyleCloudBundleCard
-            active={
-              freestyleVoiceActive &&
-              m.llmCleanup &&
-              m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER &&
-              m.defaultLlm?.model_id === FREESTYLE_CLOUD_CLEANUP.model_id
-            }
-            signedIn={!!cloudAuth.user}
-            busy={cloudBusy}
-            onUse={() => void configureFreestylePair()}
-          />
+        <div className="space-y-6">
+          <section aria-label="Dictation models" className="space-y-3">
+            <Eyebrow text="Dictation models" mono={false} />
+            <FreestyleCloudBundleCard
+              active={
+                freestyleVoiceActive &&
+                m.llmCleanup &&
+                m.defaultLlm?.provider === FREESTYLE_CLOUD_PROVIDER &&
+                m.defaultLlm?.model_id === FREESTYLE_CLOUD_CLEANUP.model_id
+              }
+              signedIn={!!cloudAuth.user}
+              busy={cloudBusy}
+              onUse={() => void configureFreestylePair()}
+            />
 
-          <PairCard
-            voice={m.defaultVoice}
-            llm={m.defaultLlm}
-            llmCleanup={m.llmCleanup}
-            cleanupLocked={freestyleVoiceActive}
-            onToggleCleanup={onToggleCleanup}
-            onChangeVoice={openVoice}
-            onChangeLlm={openLlm}
-            onConfigureWarming={
-              showMlxWarming ? () => setWarmingOpen(true) : undefined
-            }
-          />
+            <PairCard
+              voice={m.defaultVoice}
+              llm={m.defaultLlm}
+              llmCleanup={m.llmCleanup}
+              cleanupLocked={freestyleVoiceActive}
+              onToggleCleanup={onToggleCleanup}
+              onChangeVoice={openVoice}
+              onChangeLlm={openLlm}
+              onConfigureWarming={
+                showMlxWarming ? () => setWarmingOpen(true) : undefined
+              }
+            />
+          </section>
 
-          <RemixModelCard
-            model={m.defaultRemix}
-            busy={cloudBusy}
-            onChooseModel={openRemix}
-            onUseCloud={() => void configureFreestyleRemix()}
-          />
+          <section aria-label="Remix runtime" className="space-y-3">
+            <Eyebrow text="Remix runtime" mono={false} />
+            <RemixModelCard
+              model={m.defaultRemix}
+              busy={cloudBusy}
+              onChooseModel={openRemix}
+              onUseCloud={() => void configureFreestyleRemix()}
+            />
+          </section>
 
           <KeysSection
             apiKeys={m.apiKeys}

@@ -1,0 +1,117 @@
+/* The notification window is its own renderer entry point. Keep its visual
+ * contract local instead of pulling in the retired companion-panel stylesheet. */
+:root {
+  color-scheme: dark;
+  --notification-surface: #1c1b17;
+  --notification-surface-hover: #25231e;
+  --notification-border: rgba(238, 234, 221, 0.14);
+  --notification-text: #f0ede3;
+  --notification-muted: #aaa493;
+  --notification-accent: #a3d22c;
+}
+
+.remix-notification-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 4px;
+  background: transparent;
+  color: var(--notification-text);
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+}
+
+.remix-notification {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--notification-border);
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: color-mix(in srgb, var(--notification-surface) 94%, #000);
+  box-shadow: 0 12px 28px -18px rgba(0, 0, 0, 0.9);
+}
+
+.remix-notification-row {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.remix-notification-main {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.remix-notification-main:hover .remix-notification-title {
+  color: var(--notification-accent);
+}
+
+.remix-notification-title,
+.remix-notification-body {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.remix-notification-title {
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.35;
+  transition: color 120ms ease;
+}
+
+.remix-notification-body {
+  margin-top: 3px;
+  color: var(--notification-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.remix-notification-dismiss {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  padding: 0;
+  background: transparent;
+  color: var(--notification-muted);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.remix-notification-dismiss:hover {
+  background: var(--notification-surface-hover);
+  color: var(--notification-text);
+}
+
+.remix-notification-more {
+  width: fit-content;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--notification-accent);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.remix-notification-main:focus-visible,
+.remix-notification-dismiss:focus-visible,
+.remix-notification-more:focus-visible {
+  outline: 2px solid var(--notification-accent);
+  outline-offset: 2px;
+}

@@ -82,6 +82,21 @@ export type ThreadSummary = {
   origin?: ThreadOrigin;
 };
 
+/**
+ * The list receives the generated conversation name before a detail response
+ * can stop returning its initial-message fallback. Keep the selected session's
+ * chrome aligned with the visible sidebar row without mutating Cloud data.
+ */
+export function reconcileThreadSummaryTitle(
+  thread: ThreadState,
+  summary: Pick<ThreadSummary, "id" | "title"> | null | undefined,
+): ThreadState {
+  const title = summary?.id === thread.id ? summary.title.trim() : "";
+  if (!title || title === "New chat" || title === thread.title?.trim())
+    return thread;
+  return { ...thread, title };
+}
+
 export type ThreadPage = {
   threads: ThreadSummary[];
   nextCursor: number | null;

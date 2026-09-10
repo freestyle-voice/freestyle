@@ -1,12 +1,10 @@
 import "../overlay.css";
-import "../tavern.css";
 
 import { AgentMessageQueueControls } from "@renderer/components/agent-message-queue";
 import { RotatingThinkingLabel } from "@renderer/components/agents/loading-states/rotating-thinking-label";
 import { AttentionHome } from "@renderer/components/attention-home";
 import { Capabilities } from "@renderer/components/capabilities";
 import { ConnectSuggestions } from "@renderer/components/connect-suggestions";
-import { DataSkeleton } from "@renderer/components/data-skeleton";
 import { Markdown } from "@renderer/components/markdown";
 import { OpenerCards } from "@renderer/components/opener-cards";
 import {
@@ -48,9 +46,6 @@ import { useCloudAuth } from "@renderer/lib/auth-context";
 import { resetBrainCache } from "@renderer/lib/brain-fs";
 import {
   connectorConnectionsQueryOptions,
-  durableThreadRunsQueryOptions,
-  durableTurnTimelineQueryOptions,
-  invalidateThreads,
   prependThreadToHistory,
   queryKeys,
 } from "@renderer/lib/query";
@@ -63,7 +58,6 @@ import {
 import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
   type DurableThreadAction,
-  type DurableThreadRun,
   displayThreadTitle,
   sendDurableTurnCommand,
   type ThreadState,
@@ -77,9 +71,6 @@ import {
 } from "@renderer/lib/tool-presentation";
 import { useRemixRecovery } from "@renderer/lib/use-remix-recovery";
 import { compactActivitySummary } from "@renderer/lib/workspace-navigation";
-import { SpriteBadge } from "@renderer/sprites/badge";
-import { type CompanionForm, DEFAULT_COMPANION_FORM } from "@shared/companion";
-import { PANEL_MAX_WIDTH, PANEL_MIN_WIDTH } from "@shared/panel";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
 import {
@@ -95,8 +86,6 @@ import {
 import type React from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-type WorkspaceView = "chat" | "history";
-
 type WorkspaceIconName =
   | "history"
   | "close"
@@ -104,13 +93,6 @@ type WorkspaceIconName =
   | "plus"
   | "send"
   | "stop";
-const WORKSPACE_VIEW_LABELS: Record<WorkspaceView, string> = {
-  chat: "Chat",
-  history: "History",
-};
-
-const WORKSPACE_TOP_VIEWS: WorkspaceView[] = ["chat", "history"];
-
 /** A small, consistent icon set for the compact workspace controls. */
 function WorkspaceIcon({
   name,
@@ -655,84 +637,6 @@ function contextKindFor(message: UIMessage): RemixContextKind | null {
   return "brain";
 }
 
-function PanelTail(): React.JSX.Element {
-  // A manga balloon tail. The card fill reaches up through the panel's border
-  // and hard shadow so the bubble opens into the tail; the ink stroke draws
-  // only the two side curves, meeting the border's cut ends with round caps.
-  return (
-    <svg
-      className="tavern-tail"
-      viewBox="0 0 56 46"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <path
-        d="M12 3 L12 5.5 C15.5 15 17.5 28 17 41 C27 27 37 15 44 5.5 L44 3 Z"
-        fill="var(--tavern-card)"
-      />
-      <path
-        d="M12 5.5 C15.5 15 17.5 28 17 41 C27 27 37 15 44 5.5"
-        fill="none"
-        stroke="var(--tavern-ink)"
-        strokeWidth="3"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function PanelResizeHandle(): React.JSX.Element {
-  const drag = useRef<{ startX: number; startWidth: number } | null>(null);
-  const frame = useRef<number | null>(null);
-  const pending = useRef<number | null>(null);
-
-  const widthFor = (e: React.PointerEvent<HTMLDivElement>): number => {
-    const d = drag.current;
-    if (!d) return window.innerWidth;
-    const next = d.startWidth + (e.screenX - d.startX);
-    return Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, next));
-  };
-
-  const endDrag = (e: React.PointerEvent<HTMLDivElement>): void => {
-    if (!drag.current) return;
-    const width = widthFor(e);
-    drag.current = null;
-    pending.current = null;
-    if (frame.current !== null) {
-      cancelAnimationFrame(frame.current);
-      frame.current = null;
-    }
-    window.api.panelResizeWidth(width);
-    window.api.panelCommitWidth();
-  };
-
-  return (
-    <div
-      className="tavern-resize-handle"
-      onPointerDown={(e) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        e.currentTarget.setPointerCapture(e.pointerId);
-        drag.current = { startX: e.screenX, startWidth: window.innerWidth };
-      }}
-      onPointerMove={(e) => {
-        if (!drag.current) return;
-        pending.current = widthFor(e);
-        if (frame.current !== null) return;
-        frame.current = requestAnimationFrame(() => {
-          frame.current = null;
-          if (pending.current === null) return;
-          window.api.panelResizeWidth(pending.current);
-          pending.current = null;
-        });
-      }}
-      onPointerUp={endDrag}
-      onPointerCancel={endDrag}
-    />
-  );
-}
-
 function SignInGate(): React.JSX.Element {
   const auth = useCloudAuth();
   return (
@@ -1075,132 +979,6 @@ function ConversationSkeleton(): React.JSX.Element {
   );
 }
 
-function timelineLabel(event: {
-  eventType: "turn" | "action";
-  status: string;
-}): string {
-  if (event.eventType === "action") {
-    const actionLabels: Record<string, string> = {
-      pending: "Waiting for your approval",
-      claimed: "Action approved and started",
-      completed: "Action completed",
-      declined: "Action declined",
-      expired: "Action expired",
-      failed: "Action failed",
-    };
-    return actionLabels[event.status] ?? "Action updated";
-  }
-  const runLabels: Record<string, string> = {
-    queued: "Queued",
-    running: "Remix is working",
-    waiting_approval: "Waiting for approval",
-    waiting_desktop: "Waiting for this desktop",
-    needs_desktop: "A desktop is needed",
-    completed: "Completed",
-    canceled: "Canceled",
-    failed: "Needs attention",
-  };
-  return runLabels[event.status] ?? "Run updated";
-}
-
-function DurableRunTimeline({
-  turnId,
-}: {
-  turnId: string;
-}): React.JSX.Element | null {
-  const timeline = useQuery(durableTurnTimelineQueryOptions(turnId));
-  if (timeline.isPending) {
-    return (
-      <section className="tavern-run-timeline" aria-label="Run activity">
-        <span className="tavern-run-timeline-label">Run activity</span>
-        <DataSkeleton label="Loading run activity" rows={2} />
-      </section>
-    );
-  }
-  if (!timeline.data || timeline.data.length === 0) return null;
-
-  return (
-    <details className="tavern-run-timeline" open>
-      <summary>
-        <span className="tavern-run-timeline-label">Run activity</span>
-        <span>{timeline.data.length} events</span>
-      </summary>
-      <ol>
-        {timeline.data.map((event) => (
-          <li key={event.id} className={`is-${event.status}`}>
-            <span className="tavern-run-timeline-dot" aria-hidden="true" />
-            <span>
-              <strong>{timelineLabel(event)}</strong>
-              {event.summary ? <small>{event.summary}</small> : null}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </details>
-  );
-}
-
-function runStatusLabel(run: DurableThreadRun): string {
-  if (run.status === "completed") return "Completed";
-  if (run.status === "failed") return "Needs attention";
-  if (run.status === "canceled") return "Canceled";
-  if (run.status === "waiting_approval") return "Waiting for approval";
-  if (run.status === "waiting_desktop" || run.status === "needs_desktop") {
-    return "Waiting for a desktop";
-  }
-  return run.status === "running" ? "Remix is working" : "Queued";
-}
-
-/** Finished turns remain recoverable after the floating pill has gone away. */
-function DurableRunHistory({
-  threadId,
-  activeTurnId,
-}: {
-  threadId: string;
-  activeTurnId?: string;
-}): React.JSX.Element | null {
-  const history = useQuery(durableThreadRunsQueryOptions(threadId));
-  const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
-  const runs = (history.data ?? []).filter((run) => run.id !== activeTurnId);
-  const selected = runs.find((run) => run.id === selectedTurnId) ?? null;
-
-  if (runs.length === 0) return null;
-
-  return (
-    <details className="tavern-run-history">
-      <summary>
-        <span className="tavern-run-timeline-label">Recent run activity</span>
-        <span>{runs.length} runs</span>
-      </summary>
-      <div className="tavern-run-history-list">
-        {runs.map((run) => (
-          <button
-            key={run.id}
-            type="button"
-            className={
-              selectedTurnId === run.id
-                ? "tavern-run-history-item is-selected"
-                : "tavern-run-history-item"
-            }
-            onClick={() =>
-              setSelectedTurnId((current) =>
-                current === run.id ? null : run.id,
-              )
-            }
-          >
-            <span className={`tavern-run-timeline-dot is-${run.status}`} />
-            <span>
-              <strong>{runStatusLabel(run)}</strong>
-              {run.error ? <small>{run.error}</small> : null}
-            </span>
-          </button>
-        ))}
-      </div>
-      {selected ? <DurableRunTimeline turnId={selected.id} /> : null}
-    </details>
-  );
-}
-
 function ApprovalDetails({
   approval,
   commandReviewed,
@@ -1212,8 +990,14 @@ function ApprovalDetails({
 }): React.JSX.Element {
   return (
     <>
-      <span className="tavern-approve-title">{approval.title}</span>
+      <header className="tavern-approve-heading">
+        <span className="tavern-approve-title">{approval.title}</span>
+        <span className="tavern-approve-status">Approval required</span>
+      </header>
       <div className="tavern-approve-summary">
+        <span className="tavern-approve-summary-label">
+          This action can access
+        </span>
         <strong>{approval.target}</strong>
         <span>{approval.summary}</span>
       </div>
@@ -1253,7 +1037,7 @@ function PanelInner({
   desktopSurface = "chat",
   onOpenCapabilities,
   onOpenChat,
-  desktop = false,
+  desktop = true,
 }: {
   thread: ThreadState;
   onSwitchThread: (thread: ThreadState) => void;
@@ -1268,7 +1052,7 @@ function PanelInner({
   desktopSurface?: RemixWorkspaceSurface;
   onOpenCapabilities?: () => void;
   onOpenChat?: () => void;
-  /** Render inside the restored full-window Remix workspace rather than a popover. */
+  /** Legacy prop retained while callers converge on the full-window workspace. */
   desktop?: boolean;
 }): React.JSX.Element {
   const [tab, setTab] = useState<WorkspaceView>("chat");
@@ -1285,10 +1069,6 @@ function PanelInner({
   const restoreContextRailOnInspectorCloseRef = useRef(false);
   const queryClient = useQueryClient();
   const auth = useCloudAuth();
-  const [spriteForm, setSpriteForm] = useState<CompanionForm>(
-    DEFAULT_COMPANION_FORM,
-  );
-
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1080px)");
     const update = (): void => setNarrowRemix(media.matches);
@@ -1300,15 +1080,6 @@ function PanelInner({
   useEffect(() => {
     if (narrowRemix) setNarrowContextOpen(false);
   }, [narrowRemix]);
-
-  useEffect(() => {
-    void window.api
-      .companionForm()
-      .then(setSpriteForm)
-      .catch(() => {});
-    const offForm = window.api.onCompanionForm(setSpriteForm);
-    return () => offForm?.();
-  }, []);
 
   const [updateStatus, setUpdateStatus] = useState<{
     version: string | null;
@@ -1375,7 +1146,16 @@ function PanelInner({
           messages: finished,
         },
       );
-      void invalidateThreads(queryClient);
+      // A finished answer must not fan out into latest + both sidebar list
+      // reads. Move the known conversation in the local list cache instead;
+      // the canonical title is reconciled by the single deferred refresh.
+      prependThreadToHistory(queryClient, {
+        id: thread.id,
+        type: thread.type,
+        title: currentSessionTitle ?? displayThreadTitle(thread),
+        updatedAt: Date.now(),
+        origin: "user",
+      });
       void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
       void queryClient.invalidateQueries({
         queryKey: queryKeys.durableThreadRuns(thread.id),
@@ -1521,15 +1301,19 @@ function PanelInner({
     status === "submitted" ||
     status === "streaming" ||
     recovery.state.phase !== "idle";
+  const waitingForApproval =
+    approvals.length > 0 ||
+    durableRuntime.data?.pendingAction?.status === "pending";
   // The spark loader holds the floor until the first response text streams in;
   // once text is flowing, the growing message itself is the indicator.
   const lastMessage = messages[messages.length - 1];
   const awaitingText =
-    status === "submitted" ||
-    (status === "streaming" &&
-      (!lastMessage ||
-        lastMessage.role !== "assistant" ||
-        !messageText(lastMessage)));
+    !waitingForApproval &&
+    (status === "submitted" ||
+      (status === "streaming" &&
+        (!lastMessage ||
+          lastMessage.role !== "assistant" ||
+          !messageText(lastMessage))));
 
   useSpriteEmitter(messages, approvals.length, busy);
 
@@ -1873,8 +1657,6 @@ function PanelInner({
             <SignInGate />
           )}
         </div>
-        {!desktop ? <PanelTail /> : null}
-        {!desktop ? <PanelResizeHandle /> : null}
       </div>
     );
   }
@@ -1885,16 +1667,7 @@ function PanelInner({
         className={`tavern tavern-panel${desktop ? " remix-agent-panel" : ""}`}
       >
         <div className="tavern-head tavern-workspace-head">
-          <SpriteBadge form={spriteForm} working={busy} size={22} />
-          <span className="tavern-head-name">
-            {desktop ? (
-              "Remix"
-            ) : (
-              <>
-                freestyle<i>.</i>
-              </>
-            )}
-          </span>
+          <span className="tavern-head-name">Remix</span>
           <span className="tavern-head-spacer" />
           {updateStatus.version ? (
             <button
@@ -2100,15 +1873,6 @@ function PanelInner({
                       onRegenerate={() => regenerateMessage(m)}
                     />
                   ))}
-                  {durableRuntime.data?.activeTurn ? (
-                    <DurableRunTimeline
-                      turnId={durableRuntime.data.activeTurn.id}
-                    />
-                  ) : null}
-                  <DurableRunHistory
-                    threadId={thread.id}
-                    activeTurnId={durableRuntime.data?.activeTurn?.id}
-                  />
                   {approvals.map((approval) => {
                     const details = describeAgentApproval(approval.call);
                     const commandReviewed = reviewedCommands.has(
@@ -2368,8 +2132,6 @@ function PanelInner({
           ) : null}
         </div>
       </div>
-      {!desktop ? <PanelTail /> : null}
-      {!desktop ? <PanelResizeHandle /> : null}
     </div>
   );
 }

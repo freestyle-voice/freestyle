@@ -1,4 +1,47 @@
 # Changelog
+## 0.9.1
+
+### New Features ✨
+
+#### Electron
+
+- Move first-run onboarding out of Remix by @MathurAditya724 in [#682](https://github.com/freestyle-voice/freestyle/pull/682)
+- Surface Remix run activity by @MathurAditya724 in [#679](https://github.com/freestyle-voice/freestyle/pull/679)
+- Allow hiding the desktop sidebar by @MathurAditya724 in [#677](https://github.com/freestyle-voice/freestyle/pull/677)
+
+#### Remix
+
+- Support independent local models by @MathurAditya724 in [#673](https://github.com/freestyle-voice/freestyle/pull/673)
+- Recover durable chats across disconnects by @MathurAditya724 in [#680](https://github.com/freestyle-voice/freestyle/pull/680)
+
+### Bug Fixes 🐛
+
+#### Electron
+
+- Limit custom chrome to macOS by @MathurAditya724 in [#681](https://github.com/freestyle-voice/freestyle/pull/681)
+- Align sidebar reveal control by @MathurAditya724 in [#678](https://github.com/freestyle-voice/freestyle/pull/678)
+- Serialize macOS hotkey startup by @MathurAditya724 in [#675](https://github.com/freestyle-voice/freestyle/pull/675)
+- Persist companion close by @MathurAditya724 in [#671](https://github.com/freestyle-voice/freestyle/pull/671)
+
+#### Other
+
+- (dictation) Send live language selections by @MathurAditya724 in [#672](https://github.com/freestyle-voice/freestyle/pull/672)
+- (models) Recover from local Whisper setup failures by @MathurAditya724 in [#670](https://github.com/freestyle-voice/freestyle/pull/670)
+- (remix) Stabilize workspace recovery and UI by @MathurAditya724 in [#683](https://github.com/freestyle-voice/freestyle/pull/683)
+
+### Documentation 📚
+
+- Restore v0.7 README by @MathurAditya724 in [#674](https://github.com/freestyle-voice/freestyle/pull/674)
+
+### Internal Changes 🔧
+
+- (electron) Render shell during auth reconciliation by @MathurAditya724 in [#669](https://github.com/freestyle-voice/freestyle/pull/669)
+- (mobile) Bump app version to 0.0.3 by @MathurAditya724 in [#676](https://github.com/freestyle-voice/freestyle/pull/676)
+
+### Other
+
+- Fix Android CI setup by removing deprecated SDK `tools` install by @copilot-swe-agent in [#685](https://github.com/freestyle-voice/freestyle/pull/685)
+
 ## 0.9.0
 
 ### New Features ✨

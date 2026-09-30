@@ -327,6 +327,15 @@ function mount(): void {
                                     }
                                   />
                                   <Route
+                                    path="/settings/companion"
+                                    element={
+                                      <Navigate
+                                        to="/settings/transcription"
+                                        replace
+                                      />
+                                    }
+                                  />
+                                  <Route
                                     path="/settings/:section"
                                     element={
                                       <LazyRoute>

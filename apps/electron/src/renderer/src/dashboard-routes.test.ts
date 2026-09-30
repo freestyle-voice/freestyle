@@ -35,13 +35,14 @@ describe("dashboard routes", () => {
     }
   });
 
-  it("keeps Models in Settings and redirects the retired Dictate URL", async () => {
+  it("keeps Models in Settings and redirects retired settings URLs", async () => {
     const dashboard = await readFile(dashboardPath, "utf8");
 
     for (const [legacyPath, appPath] of [
       ["/settings/vocabulary", "/vocabulary"],
       ["/settings/dictionary", "/dictionary"],
       ["/settings/tone", "/tone"],
+      ["/settings/companion", "/settings/transcription"],
     ]) {
       expect(dashboard).toMatch(
         new RegExp(

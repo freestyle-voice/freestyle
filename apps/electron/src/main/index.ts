@@ -354,6 +354,12 @@ function setPillHotRect(rect: PillHotRect | null): void {
 
 let settingsCache: Record<string, unknown> | null = null;
 
+const LEGACY_COMPANION_SETTINGS = [
+  "companionForm",
+  "companionPositions",
+  "petEnabled",
+] as const;
+
 function readSettings(): Record<string, unknown> {
   if (settingsCache) return settingsCache;
   try {
@@ -371,7 +377,11 @@ function readSettings(): Record<string, unknown> {
 function writeSettings(patch: Record<string, unknown>): void {
   try {
     const settingsPath = join(app.getPath("userData"), "settings.json");
-    const data = { ...readSettings(), ...patch };
+    const data = Object.fromEntries(
+      Object.entries({ ...readSettings(), ...patch }).filter(
+        ([, value]) => value !== undefined,
+      ),
+    );
     require("node:fs").writeFileSync(
       settingsPath,
       JSON.stringify(data, null, 2),
@@ -380,6 +390,17 @@ function writeSettings(patch: Record<string, unknown>): void {
   } catch {
     // ignore
   }
+}
+
+/** Remove preferences for the retired desktop companion after an upgrade. */
+function removeLegacyCompanionSettings(): void {
+  const settings = readSettings();
+  if (!LEGACY_COMPANION_SETTINGS.some((key) => key in settings)) return;
+  writeSettings(
+    Object.fromEntries(
+      LEGACY_COMPANION_SETTINGS.map((key) => [key, undefined]),
+    ),
+  );
 }
 
 /**
@@ -1817,6 +1838,8 @@ app.on("second-instance", () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
+  removeLegacyCompanionSettings();
+
   // Register before creating the pill window so its preload bridge is ready
   // even during a fast renderer load. This is deliberately not in showPill:
   // showPill runs for every hotkey press.

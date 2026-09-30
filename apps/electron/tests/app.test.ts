@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import {
@@ -16,6 +16,7 @@ import { _electron as electron } from "playwright";
 let app: ElectronApplication | undefined;
 let pillPage: Page;
 let serverPort: number;
+let userDataDir: string;
 
 /** The pill is the default boot surface. */
 async function waitForPillWindow(
@@ -53,7 +54,16 @@ async function waitForWorkspaceWindow(
 }
 
 test.beforeAll(async () => {
-  const userDataDir = mkdtempSync(join(tmpdir(), "freestyle-e2e-"));
+  userDataDir = mkdtempSync(join(tmpdir(), "freestyle-e2e-"));
+  writeFileSync(
+    join(userDataDir, "settings.json"),
+    JSON.stringify({
+      companionForm: "jeb",
+      companionPositions: { "1": { x: 32, y: 48 } },
+      petEnabled: true,
+      showDashboardOnLaunch: false,
+    }),
+  );
 
   try {
     app = await electron.launch({
@@ -124,6 +134,17 @@ test("app version is defined", async () => {
   const version = await app?.evaluate(({ app }) => app.getVersion());
   expect(version).toBeTruthy();
   expect(version).toMatch(/^\d+\.\d+/);
+});
+
+test("removes legacy companion preferences on startup", () => {
+  const settings = JSON.parse(
+    readFileSync(join(userDataDir, "settings.json"), "utf8"),
+  ) as Record<string, unknown>;
+
+  expect(settings).not.toHaveProperty("companionForm");
+  expect(settings).not.toHaveProperty("companionPositions");
+  expect(settings).not.toHaveProperty("petEnabled");
+  expect(settings.showDashboardOnLaunch).toBe(false);
 });
 
 test("pill window boots", async () => {

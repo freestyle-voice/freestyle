@@ -17,16 +17,18 @@ async function exists(path: string): Promise<boolean> {
 
 describe("desktop companion removal", () => {
   it("ships no companion renderer, settings route, or preload bridge", async () => {
-    const [vite, preload, settings, shell, dashboard] = await Promise.all([
-      readFile(join(electronRoot, "electron.vite.config.ts"), "utf8"),
-      readFile(join(electronRoot, "src/preload/index.ts"), "utf8"),
-      readFile(
-        join(electronRoot, "src/renderer/src/pages/settings.tsx"),
-        "utf8",
-      ),
-      readFile(join(electronRoot, "src/renderer/src/shell.tsx"), "utf8"),
-      readFile(join(electronRoot, "src/renderer/src/dashboard.tsx"), "utf8"),
-    ]);
+    const [vite, preload, settings, shell, dashboard, notifications] =
+      await Promise.all([
+        readFile(join(electronRoot, "electron.vite.config.ts"), "utf8"),
+        readFile(join(electronRoot, "src/preload/index.ts"), "utf8"),
+        readFile(
+          join(electronRoot, "src/renderer/src/pages/settings.tsx"),
+          "utf8",
+        ),
+        readFile(join(electronRoot, "src/renderer/src/shell.tsx"), "utf8"),
+        readFile(join(electronRoot, "src/renderer/src/dashboard.tsx"), "utf8"),
+        readFile(join(electronRoot, "src/main/notification-window.ts"), "utf8"),
+      ]);
 
     expect(
       await exists(join(electronRoot, "src/renderer/companion.html")),
@@ -36,6 +38,9 @@ describe("desktop companion removal", () => {
         join(electronRoot, "src/renderer/src/components/companion.tsx"),
       ),
     ).toBe(false);
+    expect(await exists(join(electronRoot, "src/main/sprite-travel.ts"))).toBe(
+      false,
+    );
     expect(vite).not.toContain(
       'companion: resolve("src/renderer/companion.html")',
     );
@@ -44,5 +49,6 @@ describe("desktop companion removal", () => {
     expect(settings).not.toContain('activeSection === "companion"');
     expect(shell).not.toContain('to: "/settings/companion"');
     expect(dashboard).not.toContain("companion: {");
+    expect(notifications).not.toContain("setTravelling");
   });
 });

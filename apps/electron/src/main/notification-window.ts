@@ -10,8 +10,6 @@ const MAX_HEIGHT = 460;
 
 let win: BrowserWindow | null = null;
 let contentHeight = DEFAULT_HEIGHT;
-let hiddenForTravel = false;
-let wantsVisible = false;
 
 function anchorBounds(): {
   x: number;
@@ -84,8 +82,6 @@ export function reposition(): void {
 }
 
 export function showNotifications(): void {
-  wantsVisible = true;
-  if (hiddenForTravel) return;
   createNotificationWindow();
   const target = notificationWindow();
   if (!target) return;
@@ -94,15 +90,5 @@ export function showNotifications(): void {
 }
 
 export function hideNotifications(): void {
-  wantsVisible = false;
   notificationWindow()?.hide();
-}
-
-export function setTravelling(travelling: boolean): void {
-  hiddenForTravel = travelling;
-  if (travelling) {
-    notificationWindow()?.hide();
-    return;
-  }
-  if (wantsVisible) showNotifications();
 }

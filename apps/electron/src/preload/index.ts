@@ -1,15 +1,8 @@
 import { electronAPI } from "@electron-toolkit/preload";
 import { contextBridge, ipcRenderer } from "electron";
 import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
-import type {
-  CompanionFacing,
-  CompanionForm,
-  CompanionState,
-  CompanionStatus,
-} from "../shared/companion";
 import type { DictationPrefs } from "../shared/dictation-prefs";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
-import type { PetState } from "../shared/pet";
 import type {
   RemixContextResult,
   RemixCopyResult,
@@ -17,7 +10,6 @@ import type {
   RemixReadDocumentResult,
 } from "../shared/remix";
 import { getDefaultRemixHotkey } from "../shared/remix";
-import type { SpriteEvent } from "../shared/sprite-events";
 
 // Custom APIs for renderer
 const api = {
@@ -212,37 +204,6 @@ const api = {
     ipcRenderer.invoke("remix:paste-clipboard"),
   remixGetClipboard: (): Promise<RemixCopyResult> =>
     ipcRenderer.invoke("remix:get-clipboard"),
-  companionForm: (): Promise<CompanionForm> =>
-    ipcRenderer.invoke("companion:form"),
-  companionOrientation: (): Promise<CompanionFacing> =>
-    ipcRenderer.invoke("companion:orientation"),
-  companionStatus: (): Promise<CompanionStatus | null> =>
-    ipcRenderer.invoke("companion:status"),
-  petEnabled: (): Promise<boolean> => ipcRenderer.invoke("pet:enabled"),
-  setPetEnabled: (enabled: boolean): void =>
-    ipcRenderer.send("pet:set-enabled", enabled),
-  onPetEnabled: (callback: (enabled: boolean) => void): (() => void) => {
-    const listener = (_event: Electron.IpcRendererEvent, enabled: unknown) =>
-      callback(enabled === true);
-    ipcRenderer.on("pet:enabled", listener);
-    return () => ipcRenderer.removeListener("pet:enabled", listener);
-  },
-  wakeCompanion: (): void => ipcRenderer.send("companion:wake"),
-  openCompanionWorkspace: (): void =>
-    ipcRenderer.send("companion:open-workspace"),
-  beginCompanionPositionDrag: (): void =>
-    ipcRenderer.send("companion:position-drag-start"),
-  companionPointerLeft: (): void => ipcRenderer.send("companion:pointer-left"),
-  setPetState: (state: PetState): void =>
-    ipcRenderer.send("pet:set-state", state),
-  setCompanionStatus: (status: CompanionStatus | null): void =>
-    ipcRenderer.send("companion:set-status", status),
-  companionSetHotRect: (
-    rect: { x: number; y: number; width: number; height: number } | null,
-  ): void => ipcRenderer.send("companion:set-hot-rect", rect),
-  setCompanionForm: (form: CompanionForm): void =>
-    ipcRenderer.send("companion:set-form", form),
-  companionContextMenu: (): void => ipcRenderer.send("companion:context-menu"),
   panelOpenForDictation: (): void =>
     ipcRenderer.send("panel:open-for-dictation"),
   panelDictationPartial: (text: string): void =>
@@ -284,13 +245,9 @@ const api = {
     ipcRenderer.send("panel:set-sidebar-hidden", hidden),
   openSettings: (): void => ipcRenderer.send("settings:open"),
   settingsClose: (): void => ipcRenderer.send("settings:close"),
-  panelSetBusy: (busy: boolean): void =>
-    ipcRenderer.send("panel:set-busy", busy),
   panelSetComposerFocused: (focused: boolean): void =>
     ipcRenderer.send("panel:composer-focused", focused),
   panelRequestFocus: (): void => ipcRenderer.send("panel:request-focus"),
-  panelPointerLeft: (): void => ipcRenderer.send("panel:pointer-left"),
-  panelPointerEntered: (): void => ipcRenderer.send("panel:pointer-entered"),
   onPanelFocusComposer: (callback: () => void): (() => void) => {
     const handler = (): void => callback();
     ipcRenderer.on("panel:focus-composer", handler);
@@ -345,54 +302,6 @@ const api = {
     const handler = (_e: unknown, threadId: string): void => callback(threadId);
     ipcRenderer.on("panel:thread-updated", handler);
     return () => ipcRenderer.removeListener("panel:thread-updated", handler);
-  },
-  onCompanionForm: (callback: (form: CompanionForm) => void): (() => void) => {
-    const handler = (_e: unknown, form: CompanionForm): void => callback(form);
-    ipcRenderer.on("companion:form", handler);
-    return () => ipcRenderer.removeListener("companion:form", handler);
-  },
-  onCompanionState: (
-    callback: (state: CompanionState) => void,
-  ): (() => void) => {
-    const handler = (_e: unknown, state: CompanionState): void =>
-      callback(state);
-    ipcRenderer.on("companion:state", handler);
-    return () => ipcRenderer.removeListener("companion:state", handler);
-  },
-  onCompanionOrientation: (
-    callback: (facing: CompanionFacing) => void,
-  ): (() => void) => {
-    const handler = (_e: unknown, facing: CompanionFacing): void =>
-      callback(facing);
-    ipcRenderer.on("companion:orientation", handler);
-    return () => ipcRenderer.removeListener("companion:orientation", handler);
-  },
-  onCompanionStatus: (
-    callback: (status: CompanionStatus | null) => void,
-  ): (() => void) => {
-    const handler = (_e: unknown, status: CompanionStatus | null): void =>
-      callback(status);
-    ipcRenderer.on("companion:status", handler);
-    return () => ipcRenderer.removeListener("companion:status", handler);
-  },
-  onCompanionHotEnter: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
-    ipcRenderer.on("companion:hot-enter", handler);
-    return () => ipcRenderer.removeListener("companion:hot-enter", handler);
-  },
-  spriteEvent: (ev: SpriteEvent): void => ipcRenderer.send("sprite:event", ev),
-  spritePerformSync: (payload: {
-    name: string;
-    toolClass: string;
-  }): Promise<boolean> => ipcRenderer.invoke("sprite:perform-sync", payload),
-  spriteImpact: (nonce: string): void =>
-    ipcRenderer.send("sprite:impact", nonce),
-  spritePerformDone: (nonce: string): void =>
-    ipcRenderer.send("sprite:perform-done", nonce),
-  onSpriteEvent: (callback: (ev: SpriteEvent) => void): (() => void) => {
-    const handler = (_e: unknown, ev: SpriteEvent): void => callback(ev);
-    ipcRenderer.on("companion:sprite-event", handler);
-    return () => ipcRenderer.removeListener("companion:sprite-event", handler);
   },
 
   getOpenAppCandidates: (): Promise<unknown[]> =>

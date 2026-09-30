@@ -33,7 +33,7 @@ leaving the conversation.
 - **Shape your text** — AI cleanup, custom prompts, app-specific formats, vocabulary, and dictionary replacements turn raw speech into the text you meant to write.
 - **Notes, tasks, and Brain** — Keep context in plain-text notes and task lists, and give Freestyle a memory you can read, edit, and delete.
 - **Approval before action** — Sending an email, posting to Slack, changing a local file, or running a command always stops for an explicit approval.
-- **Companion and plugins** — Use the optional desktop companion for lightweight activity, or extend the transcription pipeline with plugins and the Freestyle SDK.
+- **Plugins** — Extend the transcription pipeline with plugins and the Freestyle SDK.
 
 For the detailed voice workflow, models, cleanup, dictionary, formats, MCP
 connections, and Remix hotkey, see the [documentation](https://docs.freestylevoice.com/user-guide).

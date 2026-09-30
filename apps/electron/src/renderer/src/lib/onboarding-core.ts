@@ -1,20 +1,12 @@
 import type { Industry } from "@freestyle-voice/validations";
 
 export const ONBOARDING_KEY = "onboarding";
-export const DEFAULT_QUEST = "Ask Jeb to do something for you";
+export const DEFAULT_QUEST = "Ask Remix to do something for you";
 export const PROFILE_PATH = "memories/profile.md";
 export const PROFILE_INDEX_LINE = `- ${PROFILE_PATH} — who the user is`;
 export const QUEST_MAX_CHARS = 120;
 
-export const SKIP_LINE = "Fine. I'll learn you the slow way.";
-
-export const EASTER_EGGS = [
-  "Something on my face?",
-  "The armor's ceremonial. Mostly.",
-  "Sixty-one duels. You'll ask eventually.",
-  "I lost two. I'm not saying which.",
-  "Keep poking and I'll start a ledger on that too.",
-] as const;
+export const SKIP_LINE = "No problem. You can finish setup later.";
 
 /** Last-resort starters when the suggestions request fails. Every one must be
  * something the current tool set can actually do. */
@@ -275,8 +267,8 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
     case "name":
       return {
         lines: [
-          "I'm Jeb. Retired samurai, currently I live in the corner of your screen. My job is simple, to make sure nothing important slips past you.",
-          "First, a name. I don't take work from strangers.",
+          "Welcome to Remix. It helps keep work moving so nothing important slips.",
+          "First, a name so it can personalize your workspace.",
         ],
         hint: "Whatever you'd actually answer to.",
       };
@@ -321,7 +313,7 @@ export function beatLines(beat: BeatId, ctx: BeatContext): BeatScene {
 }
 
 export function handoffCta(task: string): string {
-  return task.trim() ? "Get it done ▸" : "Ride with Jeb ▸";
+  return task.trim() ? "Get it done ▸" : "Get started ▸";
 }
 
 export function seedMessageFor(task: string): string {

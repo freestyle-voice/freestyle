@@ -112,7 +112,6 @@ export type RemixContext = z.infer<typeof remixContextSchema>;
  */
 export const REMIX_LOCAL_TOOL_NAMES = [
   "current_time",
-  "emote",
   "save_file",
   "Bash",
   "Read",

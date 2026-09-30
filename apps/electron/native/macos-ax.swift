@@ -25,7 +25,7 @@
  *   macos-ax bounds [excludePid]
  *     Prints JSON: {"x": n, "y": n, "width": n, "height": n} — the screen rect
  *     of the focused element's selection/caret (top-left origin). Lets the
- *     Jeb overlay land on the text cursor instead of a window edge. When the
+ *     floating dictation panel land on the text cursor instead of a window edge. When the
  *     focused element belongs to excludePid (the caller's own chat panel
  *     holding key focus), exits 3 — that caret is not the user's document.
  *   macos-ax window [excludePid]
@@ -88,7 +88,7 @@ func focusedElement() -> AXUIElement {
 
 /// The focused application's focused window. This deliberately starts from
 /// the system-wide focused application rather than the focused text element:
-/// apps without a text field still have a window we can anchor the companion to.
+/// apps without a text field still have a window we can anchor the pill to.
 func focusedWindow() -> AXUIElement {
     let systemWide = AXUIElementCreateSystemWide()
     var appRef: CFTypeRef?

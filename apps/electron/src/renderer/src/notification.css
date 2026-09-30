@@ -1,5 +1,4 @@
-/* The notification window is its own renderer entry point. Keep its visual
- * contract local instead of pulling in the retired companion-panel stylesheet. */
+/* The notification window is its own renderer entry point. */
 :root {
   color-scheme: dark;
   --notification-surface: #1c1b17;

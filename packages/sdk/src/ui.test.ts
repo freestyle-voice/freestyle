@@ -76,7 +76,7 @@ describe("parsePluginPillPanel", () => {
     expect(parsePluginPillPanelPublic).toBe(parsePluginPillPanel);
   });
 
-  it("parses a single bounded pill companion contribution", () => {
+  it("parses a single bounded pill panel contribution", () => {
     expect(
       parsePluginPillPanel({
         contributes: {
@@ -96,7 +96,7 @@ describe("parsePluginPillPanel", () => {
     });
   });
 
-  it("drops malformed, unsafe, and oversized pill companion contributions", () => {
+  it("drops malformed, unsafe, and oversized pill panel contributions", () => {
     expect(parsePluginPillPanel(undefined)).toBeUndefined();
     expect(
       parsePluginPillPanel({

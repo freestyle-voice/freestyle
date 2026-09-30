@@ -34,8 +34,6 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
-import type { CompanionStatus } from "../../../shared/companion";
-import { petStateFor } from "../../../shared/pet";
 import {
   normalizePillCancelMode,
   type PillCancelMode,
@@ -517,28 +515,6 @@ interface RemixSession {
   minimized?: boolean;
 }
 
-function companionStatusForRemix(
-  session: RemixSession | null,
-  activity: RemixChatActivity,
-): CompanionStatus | null {
-  if (!session || session.phase === "error") return null;
-  const voice = remixVoiceStatus(session.phase);
-  if (voice === "listening") return { source: "remix", label: "Listening…" };
-  if (voice === "transcribing") {
-    return { source: "remix", label: "Transcribing…" };
-  }
-  if (session.phase === "capturing" || session.phase === "listening") {
-    return { source: "remix", label: "Listening…" };
-  }
-  if (session.phase === "running") {
-    return { source: "remix", label: session.label ?? "Working…" };
-  }
-  if (activity.working) {
-    return { source: "remix", label: activity.label ?? "Thinking…" };
-  }
-  return null;
-}
-
 /** A promise that something else resolves. Used to await the selection. */
 interface Deferred<T> {
   promise: Promise<T>;
@@ -590,7 +566,6 @@ export default function AppPage(): React.JSX.Element {
   const [remix, setRemixState] = useState<RemixSession | null>(null);
   const [remixAgentActivity, setRemixAgentActivity] =
     useState<RemixChatActivity>({ working: false, label: null });
-  const lastPetStateRef = useRef<string | null>(null);
   const remixRef = useRef<RemixSession | null>(null);
   const setRemix = useCallback((next: RemixSession | null) => {
     remixRef.current = next;
@@ -629,34 +604,6 @@ export default function AppPage(): React.JSX.Element {
   const remixHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remixStreamerRef = useRef<Streamer | null>(null);
 
-  // The companion is an observer of the pill, including the independent Remix
-  // agent lane. Keep the signal derived from renderer-owned state so it cannot
-  // get stuck in "working" when a card closes or a request fails.
-  useEffect(() => {
-    const remixAgentWorking = remix !== null && remixAgentActivity.working;
-    const remixWorking =
-      remix !== null && remix.phase !== "chat" && remix.phase !== "error";
-    const next = petStateFor({
-      working:
-        state === "recording" ||
-        state === "transcribing" ||
-        remixWorking ||
-        remixAgentWorking,
-      approvalNeeded: false,
-      attention:
-        state === "error" ||
-        remix?.phase === "error" ||
-        Boolean(remix?.chatNotice),
-    });
-    if (lastPetStateRef.current === next) return;
-    lastPetStateRef.current = next;
-    window.api?.setPetState?.(next);
-  }, [remix, remixAgentActivity, state]);
-
-  const companionStatus = companionStatusForRemix(remix, remixAgentActivity);
-  useEffect(() => {
-    window.api.setCompanionStatus(companionStatus);
-  }, [companionStatus]);
   const remixEscapeActive = Boolean(
     remix &&
       (isRemixCapturePhase(remix.phase) ||

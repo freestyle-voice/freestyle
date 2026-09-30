@@ -28,7 +28,6 @@
         "src/preload/plugin-bridge.ts",
         "src/renderer/src/dashboard.tsx",
         "src/renderer/src/components/panel.tsx",
-        "src/renderer/src/components/companion.tsx",
         "src/renderer/src/components/notification.tsx",
         "src/renderer/src/components/pill.tsx",
         "src/**/*.test.{ts,tsx}",

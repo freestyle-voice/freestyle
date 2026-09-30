@@ -88,26 +88,14 @@ import icon from "../../resources/icon.png?asset";
 import trayIconPath from "../../resources/tray/logoTemplate.png?asset";
 import { isActiveAudioPlaybackMode } from "../shared/audio-playback";
 import {
-  COMPANION_DOCK_CLEARANCE,
-  type CompanionFacing,
-  type CompanionForm,
-  type CompanionState,
-  type CompanionStatus,
-  parseCompanionForm,
-  parseCompanionStatus,
-  parseDictationDestination,
-} from "../shared/companion";
-import {
-  type CompanionDisplayPositions,
-  clampCompanionPosition,
-  companionFacingForBounds,
-  companionHomePosition,
   createDictationDisplayRequestTracker,
   invalidateDictationDisplayRequest,
-  positionForCompanionDisplay,
   resolveDictationPanelDisplay,
-} from "../shared/companion-position";
-import type { DictationPrefs } from "../shared/dictation-prefs";
+} from "../shared/dictation-display";
+import {
+  type DictationPrefs,
+  parseDictationDestination,
+} from "../shared/dictation-prefs";
 import {
   findFocusedSwayNode,
   getSwayFocusedWindowBounds,
@@ -117,7 +105,6 @@ import {
 } from "../shared/focused-window";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
 import type { OpenAppCandidate } from "../shared/open-apps";
-import { type PetState, parsePetEnabled } from "../shared/pet";
 import {
   normalizePillExpansion,
   type PillExpansion,
@@ -128,7 +115,6 @@ import {
 } from "../shared/remix";
 import { bearerAuthHeaders } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
-import { SPRITES_INFO } from "../shared/sprites";
 import { registerAgentFileIpc } from "./agent-files";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
@@ -146,10 +132,8 @@ import { getNativeBinaryPath } from "./native-binary";
 import {
   createNotificationWindow,
   hideNotifications,
-  initNotificationWindow,
   notificationWindow,
   setNotificationHeight,
-  setTravelling,
   showNotifications,
 } from "./notification-window";
 import { PanelRendererMessageQueue } from "./panel-renderer-message-queue";
@@ -177,12 +161,6 @@ import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 import { isRemixTargetAllowed } from "./remix-target";
 import { rendererUrl } from "./renderer-url";
 import { SerializedRegistration } from "./serialized-registration";
-import {
-  initSpriteTravel,
-  performSyncAction,
-  resolveSpriteImpact,
-  resolveSpritePerformDone,
-} from "./sprite-travel";
 import { createTrayImage } from "./tray-image";
 
 process.env.FREESTYLE_ENV ??= is.dev ? "development" : "production";
@@ -376,6 +354,12 @@ function setPillHotRect(rect: PillHotRect | null): void {
 
 let settingsCache: Record<string, unknown> | null = null;
 
+const LEGACY_COMPANION_SETTINGS = [
+  "companionForm",
+  "companionPositions",
+  "petEnabled",
+] as const;
+
 function readSettings(): Record<string, unknown> {
   if (settingsCache) return settingsCache;
   try {
@@ -393,7 +377,11 @@ function readSettings(): Record<string, unknown> {
 function writeSettings(patch: Record<string, unknown>): void {
   try {
     const settingsPath = join(app.getPath("userData"), "settings.json");
-    const data = { ...readSettings(), ...patch };
+    const data = Object.fromEntries(
+      Object.entries({ ...readSettings(), ...patch }).filter(
+        ([, value]) => value !== undefined,
+      ),
+    );
     require("node:fs").writeFileSync(
       settingsPath,
       JSON.stringify(data, null, 2),
@@ -402,6 +390,17 @@ function writeSettings(patch: Record<string, unknown>): void {
   } catch {
     // ignore
   }
+}
+
+/** Remove preferences for the retired desktop companion after an upgrade. */
+function removeLegacyCompanionSettings(): void {
+  const settings = readSettings();
+  if (!LEGACY_COMPANION_SETTINGS.some((key) => key in settings)) return;
+  writeSettings(
+    Object.fromEntries(
+      LEGACY_COMPANION_SETTINGS.map((key) => [key, undefined]),
+    ),
+  );
 }
 
 /**
@@ -464,7 +463,7 @@ function captureMain(
   }).catch(() => {});
 }
 
-/** Durable traits on the person: the sprite in use, launch-at-login. */
+/** Durable traits on the person, such as launch-at-login. */
 function capturePerson(properties: Record<string, unknown>): void {
   void fetch(`${getServerBaseUrl()}/api/telemetry/person`, {
     method: "POST",
@@ -839,8 +838,8 @@ function showPill(options: { preserveRemixRoom?: boolean } = {}): void {
 function openPanelSettings(): void {
   openPanel({ trigger: "other" });
   // `openPanel()` intentionally uses showInactive for ordinary background
-  // summons. Settings is an explicit navigation request (including from the
-  // companion), so bring the existing workspace forward before routing it.
+  // summons. Settings is an explicit navigation request, so bring the existing
+  // workspace forward before routing it.
   const win = panelWindow;
   if (win && !win.isDestroyed()) {
     win.show();
@@ -1839,24 +1838,12 @@ app.on("second-instance", () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(async () => {
+  removeLegacyCompanionSettings();
+
   // Register before creating the pill window so its preload bridge is ready
   // even during a fast renderer load. This is deliberately not in showPill:
   // showPill runs for every hotkey press.
   registerPillPositionIpc();
-
-  // Sprite travel samples `screen` on an interval. Electron exposes that API
-  // only after the ready event, and a slow E2E launch can otherwise let its
-  // first tick crash the main process before the window is created.
-  initSpriteTravel({
-    getWindow: () => companionWindow,
-    windowSize: () => SPRITES_INFO[companionFormSetting()].windowSize,
-    homePosition: () => companionPosition(),
-    theaterAvailable: () =>
-      SPRITES_INFO[companionFormSetting()].kind === "sheet",
-    travelEnabled: () => SPRITES_INFO[companionFormSetting()].travel === true,
-    sendEvent: (ev) =>
-      companionWindow?.webContents.send("companion:sprite-event", ev),
-  });
 
   void startLinuxPasteHelper();
   void recoverDuckedVolumeFromCrash();
@@ -2323,19 +2310,9 @@ app.whenReady().then(async () => {
   }
 
   createPillWindow();
-  if (petEnabled()) createCompanionWindow();
   registerSummonShortcut();
   capturePerson({
-    companion_form: companionFormSetting(),
     launch_at_login: app.getLoginItemSettings().openAtLogin,
-  });
-  initNotificationWindow({
-    spriteForm: () => companionFormSetting(),
-    companionBounds: () => {
-      if (!companionWindow || companionWindow.isDestroyed()) return null;
-      const b = companionWindow.getBounds();
-      return { x: b.x, y: b.y, width: b.width };
-    },
   });
   // The hidden renderer owns Courier's real-time Inbox connection and asks
   // main to show the window only while unopened messages exist.
@@ -2368,9 +2345,6 @@ app.whenReady().then(async () => {
   }
 
   createTray();
-
-  // The pill owns the only dictation pipeline. The optional companion is a
-  // presentation-only pet and is never a dictation target.
 
   // -- Auto-update helpers --
   const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
@@ -3217,10 +3191,10 @@ async function runKeystrokeScript(lines: string[]): Promise<boolean> {
 
 /**
  * Injected keystrokes land in the KEY window, so any focusable Freestyle
- * window (the pill while typing, the companion panel's composer) must yield
+ * window (the pill while typing or the workspace composer) must yield
  * before a Copy/Paste or we read/write our own input field.
  *
- * Returns whether the companion panel was the window that yielded, so
+ * Returns whether the workspace was the window that yielded, so
  * capture handlers can hand focus back to its composer when they finish.
  * macOS panels can order themselves out on losing key status — if the blur
  * hid the panel, reshow it inactive so the user never sees it vanish.
@@ -3324,138 +3298,6 @@ async function activateAnchorApp(appName: string): Promise<void> {
   }
 }
 
-// Remix bar — bottom-edge sliver; hides while the pill is up.
-
-let companionWindow: BrowserWindow | null = null;
-let companionStatus: CompanionStatus | null = null;
-let companionHotRect: PillHotRect | null = null;
-let companionLastRect: PillHotRect | null = null;
-let companionHotPollTimer: NodeJS.Timeout | null = null;
-let companionPositionDragActive = false;
-let companionPositionSaveTimer: NodeJS.Timeout | null = null;
-
-function companionSavedPositions(): CompanionDisplayPositions {
-  const raw = readSettings().companionPositions;
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const positions: CompanionDisplayPositions = {};
-  for (const [displayId, value] of Object.entries(raw)) {
-    if (
-      value &&
-      typeof value === "object" &&
-      Number.isFinite((value as { x?: unknown }).x) &&
-      Number.isFinite((value as { y?: unknown }).y)
-    ) {
-      positions[displayId] = {
-        x: (value as { x: number }).x,
-        y: (value as { y: number }).y,
-      };
-    }
-  }
-  return positions;
-}
-
-function saveCompanionPosition(bounds: {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}): void {
-  const display = screen.getDisplayMatching(bounds);
-  const position = clampCompanionPosition(bounds, display, {
-    width: bounds.width,
-    height: bounds.height,
-  });
-  writeSettings({
-    companionPositions: {
-      ...companionSavedPositions(),
-      [String(display.id)]: position,
-    },
-  });
-}
-
-function armCompanionPositionSave(): void {
-  companionPositionDragActive = true;
-  if (companionPositionSaveTimer) clearTimeout(companionPositionSaveTimer);
-  // A click without a drag must not make a later programmatic wake look like
-  // a manual placement. Each real move refreshes this small debounce window.
-  companionPositionSaveTimer = setTimeout(() => {
-    companionPositionDragActive = false;
-    companionPositionSaveTimer = null;
-  }, 1_000);
-}
-
-function queueCompanionPositionSave(): void {
-  if (!companionPositionDragActive) return;
-  if (companionPositionSaveTimer) clearTimeout(companionPositionSaveTimer);
-  companionPositionSaveTimer = setTimeout(() => {
-    companionPositionSaveTimer = null;
-    companionPositionDragActive = false;
-    const win = companionWindow;
-    if (win && !win.isDestroyed()) saveCompanionPosition(win.getBounds());
-  }, 180);
-}
-
-function stopCompanionPositionSave(): void {
-  if (companionPositionSaveTimer) clearTimeout(companionPositionSaveTimer);
-  companionPositionSaveTimer = null;
-  companionPositionDragActive = false;
-}
-
-function companionPosition(display?: Display): { x: number; y: number } {
-  const targetDisplay =
-    display ?? screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
-  const info = SPRITES_INFO[companionFormSetting()];
-  // Sheet sprites have transparent margin around the drawn body. Reserve the
-  // dock beneath it as well, otherwise the position handle lands below the
-  // display work area and becomes invisible.
-  const fallback = companionHomePosition(
-    targetDisplay,
-    info,
-    info.anchor ? COMPANION_DOCK_CLEARANCE : 0,
-  );
-  return positionForCompanionDisplay(
-    targetDisplay,
-    { width: info.windowSize, height: info.windowSize },
-    companionSavedPositions(),
-    fallback,
-  );
-}
-
-function companionFacing(bounds?: {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}): CompanionFacing {
-  const target = bounds ?? companionWindow?.getBounds();
-  if (!target) return "right";
-  return companionFacingForBounds(target, screen.getDisplayMatching(target));
-}
-
-/** Keep the sheet sprite facing into the display without moving its overlay. */
-function publishCompanionFacing(bounds?: {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}): void {
-  companionWindow?.webContents.send(
-    "companion:orientation",
-    companionFacing(bounds),
-  );
-}
-
-function setCompanionStatus(status: CompanionStatus | null): void {
-  if (
-    companionStatus?.source === status?.source &&
-    companionStatus?.label === status?.label
-  ) {
-    return;
-  }
-  companionStatus = status;
-  companionWindow?.webContents.send("companion:status", status);
-}
-
 async function getNativeFocusedWindowBounds(
   binaryName: string,
   args: string[] = [String(process.pid)],
@@ -3534,7 +3376,7 @@ let activeDictationDisplay: Display | null = null;
 /**
  * Associate the restored pill with the display that received the hotkey.
  * Cursor is only an immediate fallback; the accessibility lookup corrects it
- * for keyboard-first, multi-display users without involving the optional pet.
+ * for keyboard-first, multi-display users.
  */
 function anchorPillForHotkey(): void {
   const request = dictationDisplayRequests.begin();
@@ -3554,72 +3396,6 @@ function anchorPillForHotkey(): void {
     if (!dictationDisplayRequests.isCurrent(request)) return;
     movePill(focusedDisplay ?? cursorDisplay);
   });
-}
-
-function stopCompanionHotPoll(): void {
-  if (!companionHotPollTimer) return;
-  clearInterval(companionHotPollTimer);
-  companionHotPollTimer = null;
-}
-
-function setCompanionHotRect(rect: PillHotRect | null): void {
-  if (process.env.FREESTYLE_E2E === "1") return;
-  if (rect) companionLastRect = rect;
-  companionHotRect = rect;
-  const win = companionWindow;
-  if (!win || win.isDestroyed()) return;
-  if (!rect) {
-    stopCompanionHotPoll();
-    win.setIgnoreMouseEvents(false);
-    return;
-  }
-  win.setIgnoreMouseEvents(true, { forward: process.platform !== "linux" });
-  if (companionHotPollTimer) return;
-  companionHotPollTimer = setInterval(() => {
-    const w = companionWindow;
-    const hot = companionHotRect;
-    if (!w || w.isDestroyed() || !hot || !w.isVisible()) return;
-    const bounds = w.getBounds();
-    const cursor = screen.getCursorScreenPoint();
-    const inside =
-      cursor.x >= bounds.x + hot.x &&
-      cursor.x <= bounds.x + hot.x + hot.width &&
-      cursor.y >= bounds.y + hot.y &&
-      cursor.y <= bounds.y + hot.y + hot.height;
-    if (!inside) return;
-    companionHotRect = null;
-    stopCompanionHotPoll();
-    w.setIgnoreMouseEvents(false);
-    w.webContents.send("companion:hot-enter");
-  }, 120);
-}
-
-function rearmCompanionHotRect(): void {
-  if (!companionLastRect) return;
-  setCompanionHotRect(companionLastRect);
-}
-
-function rearmCompanionPointerEvents(): void {
-  rearmCompanionHotRect();
-  const win = companionWindow;
-  if (win && !win.isDestroyed()) {
-    win.setIgnoreMouseEvents(true, {
-      forward: process.platform !== "linux",
-    });
-  }
-}
-
-function companionPointerLeft(): void {
-  rearmCompanionPointerEvents();
-}
-
-function companionFormSetting(): CompanionForm {
-  return parseCompanionForm(readSettings().companionForm as string | undefined);
-}
-
-/** The pet is intentionally local to this Electron installation. */
-function petEnabled(): boolean {
-  return parsePetEnabled(readSettings().petEnabled);
 }
 
 async function dictationPrefs(): Promise<DictationPrefs> {
@@ -3649,114 +3425,6 @@ export function broadcastDictationPrefs(): void {
 ipcMain.handle("dictation:prefs", () => dictationPrefs());
 
 ipcMain.on("dictation:reload-prefs", () => broadcastDictationPrefs());
-
-ipcMain.handle("companion:form", () => companionFormSetting());
-
-ipcMain.handle("companion:orientation", () => companionFacing());
-
-ipcMain.handle("companion:status", () => companionStatus);
-
-ipcMain.handle("pet:enabled", () => petEnabled());
-
-function setPetEnabled(enabled: boolean): void {
-  writeSettings({ petEnabled: enabled });
-  panelWindow?.webContents.send("pet:enabled", enabled);
-  if (enabled) createCompanionWindow();
-  else destroyCompanionWindow();
-}
-
-ipcMain.on("pet:set-enabled", (event, enabled: unknown) => {
-  if (event.sender !== panelWindow?.webContents) return;
-  setPetEnabled(enabled === true);
-});
-
-ipcMain.on("companion:wake", (event) => {
-  if (event.sender !== panelWindow?.webContents) return;
-  wakeCompanion();
-});
-
-ipcMain.on("companion:open-workspace", (event) => {
-  if (event.sender !== companionWindow?.webContents) return;
-  openRemixWorkspaceFromCompanion();
-});
-
-ipcMain.on("companion:position-drag-start", (event) => {
-  if (event.sender !== companionWindow?.webContents) return;
-  armCompanionPositionSave();
-});
-
-ipcMain.on("companion:pointer-left", (event) => {
-  if (event.sender !== companionWindow?.webContents) return;
-  companionPointerLeft();
-});
-
-ipcMain.on("pet:set-state", (event, state: PetState) => {
-  // The pill owns both dictation and the Remix hotkey lifecycle. Accept its
-  // observer update as well as dashboard-originated companion controls; the
-  // old dashboard-only check silently dropped every live Remix transition.
-  if (
-    (event.sender !== mainWindow?.webContents &&
-      event.sender !== panelWindow?.webContents) ||
-    !petEnabled()
-  )
-    return;
-  setCompanionState(
-    state === "working" ? "working" : state === "idle" ? "idle" : "suggestion",
-  );
-});
-
-ipcMain.on("companion:set-status", (event, status: unknown) => {
-  if (event.sender !== mainWindow?.webContents) return;
-  setCompanionStatus(parseCompanionStatus(status));
-});
-
-ipcMain.on("companion:set-form", (event, form: unknown) => {
-  if (event.sender !== panelWindow?.webContents) return;
-  if (typeof form !== "string") return;
-  const next = parseCompanionForm(form);
-  const previous = companionFormSetting();
-  if (previous !== next) {
-    captureMain("sprite_changed", { from: previous, to: next });
-    capturePerson({ companion_form: next });
-  }
-  writeSettings({ companionForm: next });
-  const win = companionWindow;
-  if (win && !win.isDestroyed()) {
-    const size = SPRITES_INFO[next].windowSize;
-    const { x, y } = companionPosition();
-    win.setBounds({ x, y, width: size, height: size });
-    win.webContents.send("companion:form", next);
-    publishCompanionFacing();
-  }
-  // The panel's head badge mirrors the active sprite too.
-  panelWindow?.webContents.send("companion:form", next);
-});
-
-ipcMain.on("companion:context-menu", (event) => {
-  if (event.sender !== companionWindow?.webContents) return;
-  const win = companionWindow;
-  if (!win || win.isDestroyed()) return;
-  Menu.buildFromTemplate([
-    {
-      label: "Close companion",
-      click: () => {
-        hideNotifications();
-        setPetEnabled(false);
-      },
-    },
-  ]).popup({ window: win });
-});
-
-ipcMain.on("sprite:event", (event, ev: unknown) => {
-  if (event.sender !== panelWindow?.webContents) return;
-  companionWindow?.webContents.send("companion:sprite-event", ev);
-  const travel = ev as { kind?: string; phase?: string };
-  if (travel?.kind === "travel") {
-    setTravelling(travel.phase === "start");
-  }
-});
-
-let notificationsShowing = false;
 
 const courierNativeNotifications = new CourierNativeNotificationPresenter(
   (title, body, onClick) => {
@@ -3792,29 +3460,19 @@ ipcMain.on("notifications:present", (event, payload: unknown) => {
     title: item.title,
     body: item.body,
   });
-  // The bubble renderer owns the content, but a brand-new notification must
-  // also wake its window immediately so it is visibly anchored above the
-  // companion before its asynchronous inbox refresh settles.
-  notificationsShowing = true;
+  // The notification renderer owns the content, but a new notification must
+  // also wake its window immediately while its inbox refresh settles.
   showNotifications();
-  setCompanionState("suggestion");
-  companionWindow?.webContents.send("companion:sprite-event", {
-    kind: "emote",
-    emotion: "proud",
-  });
 });
 
 ipcMain.on("notifications:set-visible", (event, visible: unknown) => {
   if (event.sender !== notificationWindow()?.webContents) return;
   if (typeof visible !== "boolean") return;
-  notificationsShowing = visible;
   if (visible) {
     showNotifications();
-    setCompanionState("suggestion");
     return;
   }
   hideNotifications();
-  if (!panelBusy) setCompanionState("idle");
 });
 
 ipcMain.on("notifications:set-height", (event, height: unknown) => {
@@ -3837,26 +3495,6 @@ ipcMain.on("notifications:auth-changed", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
   courierNativeNotifications.clearAll();
   notificationWindow()?.webContents.send("notifications:auth-changed");
-});
-
-ipcMain.handle("sprite:perform-sync", (event, payload: unknown) => {
-  if (event.sender !== panelWindow?.webContents) return false;
-  return performSyncAction(payload as { name: string; toolClass: string });
-});
-
-ipcMain.on("sprite:impact", (event, nonce: string) => {
-  if (event.sender !== companionWindow?.webContents) return;
-  resolveSpriteImpact(nonce);
-});
-
-ipcMain.on("sprite:perform-done", (event, nonce: string) => {
-  if (event.sender !== companionWindow?.webContents) return;
-  resolveSpritePerformDone(nonce);
-});
-
-ipcMain.on("companion:set-hot-rect", (event, rect: PillHotRect | null) => {
-  if (event.sender !== companionWindow?.webContents) return;
-  setCompanionHotRect(rect);
 });
 
 function forwardDictation(
@@ -3937,25 +3575,9 @@ ipcMain.on("panel:set-sidebar-hidden", (event, hidden: unknown) => {
   setPanelTrafficLightPosition(win, hidden);
 });
 
-// Hover auto-dismiss belonged to the former corner companion. The restored
-// desktop workspace remains open, but accepting these channels preserves a
-// safe preload contract for any renderer still sending them.
-ipcMain.on("panel:pointer-left", (event) => {
-  if (event.sender !== panelWindow?.webContents) return;
-});
-
-ipcMain.on("panel:pointer-entered", (event) => {
-  if (event.sender !== panelWindow?.webContents) return;
-});
-
 ipcMain.on("settings:open", (event) => {
-  if (
-    event.sender !== panelWindow?.webContents &&
-    event.sender !== companionWindow?.webContents
-  )
-    return;
+  if (event.sender !== panelWindow?.webContents) return;
   openPanelSettings();
-  rearmCompanionHotRect();
 });
 
 ipcMain.on("remix:open-workspace", (event, threadId: unknown) => {
@@ -4004,22 +3626,6 @@ ipcMain.on("settings:close", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
 });
 
-// The workspace publishes activity so the optional, local-only pet can mirror
-// it. Unlike the old corner panel, the workspace never auto-hides on blur.
-ipcMain.on("panel:set-busy", (event, busy: unknown) => {
-  if (event.sender !== panelWindow?.webContents) return;
-  const next = busy === true;
-  // The corner sprite mirrors the agent loop: this is what puts Jeb at his
-  // laptop (and Spark into its breathing state) while a turn runs.
-  // Falling out of a run must not clear a pending suggestion glow.
-  if (next !== panelBusy) {
-    setCompanionState(
-      next ? "working" : notificationsShowing ? "suggestion" : "idle",
-    );
-  }
-  panelBusy = next;
-});
-
 // Clicking into the composer after an agent tool yielded key focus: panel
 // windows don't always take key back from a content click on macOS, so the
 // renderer asks for it explicitly.
@@ -4036,7 +3642,6 @@ let panelWindow: BrowserWindow | null = null;
 // dashboard entry for its disposable window without widening this IPC beyond
 // E2E mode.
 let nextPanelWindowEntry = "panel.html";
-let panelBusy = false;
 const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
@@ -4243,27 +3848,8 @@ function openPanel(
   }
 }
 
-/**
- * A companion click is an invitation back into the active workspace, not a
- * detour into settings. Reuse the existing window and let the shell navigate
- * in place, so no duplicate Remix surface is created.
- */
-function openRemixWorkspaceFromCompanion(): void {
-  openPanel({ trigger: "other" });
-  const win = panelWindow;
-  if (!win || win.isDestroyed()) return;
-  win.show();
-  win.focus();
-  panelRendererMessages.send({
-    channel: "dashboard:navigate",
-    payload: "/remix",
-  });
-  rearmCompanionPointerEvents();
-}
-
 function closePanel(): void {
   if (panelWindow && !panelWindow.isDestroyed()) panelWindow.hide();
-  rearmCompanionHotRect();
 }
 
 const SUMMON_ACCELERATOR = "Alt+Space";
@@ -4294,107 +3880,6 @@ function registerSummonShortcut(): void {
 function destroyPanelWindow(): void {
   if (panelWindow && !panelWindow.isDestroyed()) panelWindow.destroy();
   panelWindow = null;
-}
-
-function createCompanionWindow(): void {
-  if (!petEnabled()) return;
-  if (companionWindow && !companionWindow.isDestroyed()) return;
-  const size = SPRITES_INFO[companionFormSetting()].windowSize;
-  const { x, y } = companionPosition();
-
-  companionWindow = new BrowserWindow({
-    width: size,
-    height: size,
-    x,
-    y,
-    show: false,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    hasShadow: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    autoHideMenuBar: true,
-    focusable: false,
-    ...(process.platform === "darwin" ? { type: "panel" as const } : {}),
-    ...(process.platform === "linux" ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, "../preload/index.js"),
-      sandbox: false,
-      backgroundThrottling: false,
-    },
-  });
-
-  companionWindow.setAlwaysOnTop(true, "screen-saver");
-  companionWindow.setVisibleOnAllWorkspaces(true, {
-    visibleOnFullScreen: true,
-  });
-  companionWindow.setIgnoreMouseEvents(true, {
-    forward: process.platform !== "linux",
-  });
-
-  // Native dragging starts from the small dock below the sprite. Electron
-  // emits `will-move` for manual movement on macOS/Windows; the renderer's
-  // drag-start IPC supplies the same signal on Linux.
-  companionWindow.on("will-move", () => armCompanionPositionSave());
-  companionWindow.on("move", () => {
-    queueCompanionPositionSave();
-    publishCompanionFacing();
-  });
-
-  companionWindow.on("closed", () => {
-    stopCompanionHotPoll();
-    stopCompanionPositionSave();
-    companionWindow = null;
-  });
-
-  companionWindow.webContents.on("render-process-gone", (_event, details) => {
-    // Destroying a BrowserWindow during quit produces the expected
-    // `clean-exit` renderer event. Do not race shutdown by creating a fresh
-    // companion window just as the process is leaving.
-    if (isQuitting) return;
-    log.error(`Companion renderer gone (${details.reason}); recreating.`);
-    destroyCompanionWindow();
-    createCompanionWindow();
-  });
-
-  companionWindow.once("ready-to-show", () => {
-    publishCompanionFacing();
-    companionWindow?.showInactive();
-  });
-
-  void companionWindow.loadURL(rendererUrl("companion.html"));
-}
-
-/** Bring an enabled companion back into view without stealing keyboard focus. */
-function wakeCompanion(): void {
-  if (!petEnabled()) return;
-  createCompanionWindow();
-  const win = companionWindow;
-  if (!win || win.isDestroyed()) return;
-  const size = SPRITES_INFO[companionFormSetting()].windowSize;
-  const { x, y } = companionPosition();
-  win.setBounds({ x, y, width: size, height: size });
-  publishCompanionFacing();
-  win.setAlwaysOnTop(true, "screen-saver");
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  if (!win.isVisible()) win.showInactive();
-  win.moveTop();
-  rearmCompanionHotRect();
-  if (notificationsShowing) showNotifications();
-}
-
-function destroyCompanionWindow(): void {
-  stopCompanionHotPoll();
-  stopCompanionPositionSave();
-  if (companionWindow && !companionWindow.isDestroyed()) {
-    companionWindow.destroy();
-  }
-  companionWindow = null;
-}
-
-export function setCompanionState(state: CompanionState): void {
-  companionWindow?.webContents.send("companion:state", state);
 }
 
 function applyRemixSettings(settings: Record<string, string>): void {
@@ -4480,8 +3965,7 @@ function hotkeyModeFromSettings(
 }
 
 function dictationTargets(): BrowserWindow[] {
-  // The restored pill is the only recording/delivery renderer. The optional
-  // pet is presentation-only and never receives dictation events.
+  // The pill is the only recording/delivery renderer.
   const targets: BrowserWindow[] = [];
   if (mainWindow && !mainWindow.isDestroyed()) targets.push(mainWindow);
   return targets;
@@ -5150,7 +4634,6 @@ function cleanupBeforeQuit(): void {
   void disposeServerPlugins().catch(() => {});
   audioPlaybackController.restoreSync();
   stopLinuxPasteHelper();
-  destroyCompanionWindow();
   destroyPanelWindow();
   if (keyListener) {
     keyListener.stop();

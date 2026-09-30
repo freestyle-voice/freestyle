@@ -13,7 +13,7 @@ describe("toolPresentation", () => {
     });
   });
 
-  it("uses the companion's existing plain-language labels for local tools", () => {
+  it("uses plain-language labels for local tools", () => {
     expect(toolPresentation("tool-web_search")).toEqual({
       title: "Searched the web",
       detail: undefined,

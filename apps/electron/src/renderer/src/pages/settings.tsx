@@ -64,7 +64,6 @@ import {
 } from "@renderer/lib/deletion-confirmation";
 import { formatNumber } from "@renderer/lib/format";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
-import { createPetEnabledStateSync } from "@renderer/lib/pet-enabled";
 import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
 import {
   invalidateThreads,
@@ -111,10 +110,6 @@ import {
   type AudioPlaybackMode,
   normalizeAudioPlaybackMode,
 } from "../../../shared/audio-playback";
-import {
-  type CompanionForm,
-  DEFAULT_COMPANION_FORM,
-} from "../../../shared/companion";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import {
   normalizePillCancelMode,
@@ -122,7 +117,6 @@ import {
 } from "../../../shared/pill-cancel";
 import { getDefaultRemixHotkey } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
-import { SPRITES_INFO } from "../../../shared/sprites";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -153,7 +147,6 @@ const settingsSectionIds = [
   "remix",
   "mcp",
   "application",
-  "companion",
   "display",
   "permissions",
   "notifications",
@@ -170,7 +163,6 @@ const settingsRouteSections = {
   remix: "remix",
   mcp: "mcp",
   application: "application",
-  companion: "companion",
   appearance: "display",
   permissions: "permissions",
   notifications: "notifications",
@@ -251,10 +243,6 @@ export default function SettingsPage(): React.JSX.Element {
   const [autoUpdate, setAutoUpdate] = useState(true);
   const [launchAtStartup, setLaunchAtStartup] = useState(false);
   const [showOnLaunch, setShowOnLaunch] = useState(true);
-  const [petEnabled, setPetEnabled] = useState(false);
-  const [companionForm, setCompanionForm] = useState<CompanionForm>(
-    DEFAULT_COMPANION_FORM,
-  );
   const activeSection = parseSettingsSection(section);
   // Radix SelectItem cannot use an empty-string value, so the "system default"
   // microphone (stored as "") is represented by this sentinel at the Select
@@ -547,25 +535,6 @@ export default function SettingsPage(): React.JSX.Element {
         clearInterval(accessibilityPollRef.current);
     };
   }, [checkPermissions]);
-
-  useEffect(() => {
-    const petEnabledSync = createPetEnabledStateSync(setPetEnabled);
-    const offPetEnabled = window.api.onPetEnabled(petEnabledSync.onChanged);
-    void window.api
-      .companionForm()
-      .then(setCompanionForm)
-      .catch(() => {});
-    void window.api
-      .petEnabled()
-      .then(petEnabledSync.onInitial)
-      .catch(() => {});
-    const offForm = window.api.onCompanionForm(setCompanionForm);
-    return () => {
-      petEnabledSync.dispose();
-      offForm();
-      offPetEnabled();
-    };
-  }, []);
 
   const handleDeviceChange = useCallback((deviceId: string) => {
     setSelectedDevice(deviceId);
@@ -902,71 +871,6 @@ export default function SettingsPage(): React.JSX.Element {
                     checked={showOnLaunch}
                     onCheckedChange={handleShowOnLaunchToggle}
                   />
-                </Row>
-              </SettingsPanel>
-            )}
-
-            {activeSection === "companion" && (
-              <SettingsPanel>
-                <Row
-                  label="Show desktop companion"
-                  desc="An optional local observer: it never records or controls your dictation. Click it to return to Remix, or drag the black handle below it to place it independently on each display."
-                >
-                  <Switch
-                    checked={petEnabled}
-                    onCheckedChange={(enabled) => {
-                      setPetEnabled(enabled);
-                      window.api.setPetEnabled(enabled);
-                    }}
-                  />
-                </Row>
-                <Row
-                  label="Companion appearance"
-                  desc={
-                    petEnabled
-                      ? "Choose the companion shown on your desktop."
-                      : "Turn on the desktop companion to choose its appearance."
-                  }
-                >
-                  <Select
-                    value={companionForm}
-                    disabled={!petEnabled}
-                    onValueChange={(form) => {
-                      const next = form as CompanionForm;
-                      setCompanionForm(next);
-                      window.api.setCompanionForm(next);
-                    }}
-                  >
-                    <SelectTrigger className="w-full max-w-md">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {Object.values(SPRITES_INFO).map((sprite) => (
-                        <SelectItem key={sprite.id} value={sprite.id}>
-                          {sprite.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </Row>
-                <Row
-                  label="Wake companion"
-                  desc={
-                    petEnabled
-                      ? "Bring it back to the active display without interrupting your work."
-                      : "Turn on the companion first."
-                  }
-                  last
-                >
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    disabled={!petEnabled}
-                    onClick={() => window.api.wakeCompanion()}
-                  >
-                    Wake companion
-                  </Button>
                 </Row>
               </SettingsPanel>
             )}

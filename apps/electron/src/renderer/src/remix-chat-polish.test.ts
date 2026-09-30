@@ -347,7 +347,7 @@ describe("Remix chat polish", () => {
     expect(pill).not.toContain("const [chatMiniVisual, setChatMiniVisual]");
   });
 
-  it("keeps the compact pill and companion informed while Remix works", async () => {
+  it("keeps the compact pill informed while Remix works", async () => {
     const [chat, pill] = await Promise.all([
       readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
       readFile(resolve(rendererRoot, "pages/app.tsx"), "utf8"),
@@ -358,9 +358,7 @@ describe("Remix chat polish", () => {
     expect(chat).toContain("latestAssistantPreview(messages)");
     expect(chat).toContain("const message = messages.at(-1)");
     expect(chat).toContain("const miniProgress =");
-    expect(pill).toContain("petStateFor");
     expect(pill).toContain("onActivityChange={handleRemixActivity}");
-    expect(pill).toContain("setCompanionStatus");
   });
 
   it("keeps the full chat surface after a spoken follow-up is transcribed", async () => {

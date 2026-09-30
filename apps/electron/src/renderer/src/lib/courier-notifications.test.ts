@@ -44,7 +44,7 @@ describe("Courier notification mapping", () => {
     ).toBeNull();
   });
 
-  it("shows only unopened, unarchived messages in the companion bubble", () => {
+  it("shows only unopened, unarchived messages in the notification bubble", () => {
     const fresh = message();
     const opened = message({
       messageId: "opened",

@@ -4,7 +4,6 @@ import {
   connectorToolActionName,
   isConnectorToolName,
 } from "@renderer/lib/connectors";
-import { parseSpriteEmotion } from "@shared/sprite-events";
 
 export type AgentToolTier = "free" | "confirmed";
 
@@ -48,7 +47,6 @@ export async function agentToolTier(
 ): Promise<AgentToolTier | null> {
   switch (call.toolName) {
     case "current_time":
-    case "emote":
       return "free";
     case "Bash":
     case "Read":
@@ -259,13 +257,6 @@ export async function executeAgentTool(
           local: now.toLocaleString(),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         };
-      }
-      case "emote": {
-        window.api.spriteEvent({
-          kind: "emote",
-          emotion: parseSpriteEmotion(input.emotion),
-        });
-        return { ok: true };
       }
       case "Bash":
         if (!str(input, "command")) return badArgs("{ command: string }");

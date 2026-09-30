@@ -56,8 +56,8 @@ const apiRouter = new Hono()
     capture(event, properties);
     return c.json({ ok: true });
   })
-  // Durable traits on the person rather than the event: the sprite in use, the
-  // trade picked at onboarding. Same opt-out gate as above.
+  // Durable traits on the person rather than the event. Same opt-out gate as
+  // above.
   .post(
     "/telemetry/person",
     zValidator(

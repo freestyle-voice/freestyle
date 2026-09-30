@@ -283,8 +283,8 @@ destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
   cards; expanding a card never replaces or navigates away from the chat.
 - **Settings is a workspace route:** Settings uses its own left navigation in
   the existing workspace window. Do not introduce a second settings window or
-  a nested settings sidebar inside the page content. The Models and Companion
-  pages belong to the General settings group; Connected apps belongs to Remix.
+  a nested settings sidebar inside the page content. The Models page belongs
+  to the General settings group; Connected apps belongs to Remix.
 - Page scroll area uses `.responsive-page-scroll` — `padding-inline: 3rem`
   (→ 2rem ≤1080px → 1rem ≤820px), `padding-bottom: 3rem`.
 - Content **max-width ~760px**, centered, for settings/editorial pages — keep

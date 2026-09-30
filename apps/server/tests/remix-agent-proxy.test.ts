@@ -85,7 +85,6 @@ describe("Remix agent proxy", () => {
             platform: process.platform,
             localTools: [
               "current_time",
-              "emote",
               "save_file",
               "Bash",
               "Read",
@@ -172,7 +171,6 @@ describe("Remix agent proxy", () => {
       platform: process.platform,
       localTools: [
         "current_time",
-        "emote",
         "save_file",
         "Bash",
         "Read",

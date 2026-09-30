@@ -20,12 +20,12 @@ export interface PluginUIPage {
 }
 
 /**
- * A compact, optional companion a plugin can contribute to the floating pill.
+ * A compact, optional panel a plugin can contribute to the floating pill.
  * The host owns window placement and focus; a plugin only supplies its
  * sandboxed content and a bounded preferred expanded size.
  */
 export interface PluginPillPanel {
-  /** Stable, plugin-unique id for the companion surface. */
+  /** Stable, plugin-unique id for the panel surface. */
   id: string;
   /** Display title available to host accessibility affordances. */
   title: string;

@@ -2,7 +2,7 @@
 
 /*
  * Remix uses the current agent runtime, but deliberately sits in the restored
- * dark desktop system instead of inheriting the old floating companion card.
+ * dark desktop system.
  */
 .remix-workspace {
   --tavern-card: var(--background);
@@ -397,10 +397,6 @@
   font-family: "Instrument Serif", "Times New Roman", serif;
   font-size: 22px;
   letter-spacing: -0.02em;
-}
-
-.remix-agent .tavern-sprite-badge {
-  display: none;
 }
 
 .remix-agent .tavern-workspace-icon-btn,

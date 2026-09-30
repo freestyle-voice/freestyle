@@ -1,7 +1,5 @@
 import { join } from "node:path";
 import { BrowserWindow, screen } from "electron";
-import type { SpriteId } from "../shared/sprites";
-import { SPRITES_INFO } from "../shared/sprites";
 import { rendererUrl } from "./renderer-url";
 
 const WIDTH = 300;
@@ -15,20 +13,6 @@ let contentHeight = DEFAULT_HEIGHT;
 let hiddenForTravel = false;
 let wantsVisible = false;
 
-interface Host {
-  spriteForm: () => SpriteId;
-  companionBounds: () => { x: number; y: number; width: number } | null;
-}
-
-let host: Host = {
-  spriteForm: () => "jeb" as SpriteId,
-  companionBounds: () => null,
-};
-
-export function initNotificationWindow(next: Host): void {
-  host = next;
-}
-
 function anchorBounds(): {
   x: number;
   y: number;
@@ -36,27 +20,15 @@ function anchorBounds(): {
   height: number;
 } {
   const height = Math.min(Math.max(contentHeight, 60), MAX_HEIGHT);
-  const info = SPRITES_INFO[host.spriteForm()];
-  const bounds = host.companionBounds();
   const cursor = screen.getCursorScreenPoint();
-  const homeDisplay = screen.getDisplayNearestPoint(cursor);
-  const windowX = bounds ? bounds.x : homeDisplay.workArea.x;
-  const windowY = bounds
-    ? bounds.y
-    : homeDisplay.workArea.y + homeDisplay.workArea.height - info.windowSize;
-  const bodyTop = windowY + info.body.y;
-  const bodyCenterX = windowX + info.body.x + info.body.width / 2;
-  const display = screen.getDisplayNearestPoint({
-    x: Math.round(bodyCenterX),
-    y: Math.round(bodyTop + info.body.height / 2),
-  });
+  const display = screen.getDisplayNearestPoint(cursor);
   const { x: waX, y: waY, width: waW } = display.workArea;
 
   const x = Math.min(
-    Math.max(Math.round(bodyCenterX - TAIL_OFFSET), waX + 4),
+    Math.max(Math.round(cursor.x - TAIL_OFFSET), waX + 4),
     waX + waW - WIDTH - 4,
   );
-  const y = Math.max(Math.round(bodyTop - height - GAP), waY + 4);
+  const y = Math.max(Math.round(cursor.y - height - GAP), waY + 4);
   return { x, y, width: WIDTH, height };
 }
 

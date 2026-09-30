@@ -143,7 +143,6 @@
     },
     "sections": {
       "application": "Application",
-      "companion": "Companion",
       "recording": "Dictation",
       "display": "Appearance",
       "permissions": "Permissions",

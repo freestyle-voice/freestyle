@@ -1,20 +1,12 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
 import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
-import type {
-  CompanionFacing,
-  CompanionForm,
-  CompanionState,
-  CompanionStatus,
-} from "../shared/companion";
 import type { DictationPrefs } from "../shared/dictation-prefs";
-import type { PetState } from "../shared/pet";
 import type {
   RemixContextResult,
   RemixCopyResult,
   RemixPrimitiveResult,
   RemixReadDocumentResult,
 } from "../shared/remix";
-import type { SpriteEvent } from "../shared/sprite-events";
 
 declare global {
   interface Window {
@@ -72,23 +64,6 @@ declare global {
       onRemixObserverHandoff: (
         callback: (threadId: string) => void,
       ) => () => void;
-      companionForm: () => Promise<CompanionForm>;
-      companionOrientation: () => Promise<CompanionFacing>;
-      companionStatus: () => Promise<CompanionStatus | null>;
-      petEnabled: () => Promise<boolean>;
-      setPetEnabled: (enabled: boolean) => void;
-      onPetEnabled: (callback: (enabled: boolean) => void) => () => void;
-      wakeCompanion: () => void;
-      openCompanionWorkspace: () => void;
-      beginCompanionPositionDrag: () => void;
-      companionPointerLeft: () => void;
-      setPetState: (state: PetState) => void;
-      setCompanionStatus: (status: CompanionStatus | null) => void;
-      companionSetHotRect: (
-        rect: { x: number; y: number; width: number; height: number } | null,
-      ) => void;
-      setCompanionForm: (form: CompanionForm) => void;
-      companionContextMenu: () => void;
       panelOpenForDictation: () => void;
       panelDictationPartial: (text: string) => void;
       panelDictationFinal: (text: string) => void;
@@ -111,11 +86,8 @@ declare global {
       setPanelSidebarHidden: (hidden: boolean) => void;
       openSettings: () => void;
       settingsClose: () => void;
-      panelSetBusy: (busy: boolean) => void;
       panelSetComposerFocused: (focused: boolean) => void;
       panelRequestFocus: () => void;
-      panelPointerLeft: () => void;
-      panelPointerEntered: () => void;
       onPanelFocusComposer: (callback: () => void) => () => void;
       onDashboardNavigate: (
         callback: (route: "/settings" | "/settings/models" | "/remix") => void,
@@ -137,25 +109,6 @@ declare global {
       onPanelThreadUpdated: (
         callback: (threadId: string) => void,
       ) => () => void;
-      onCompanionForm: (callback: (form: CompanionForm) => void) => () => void;
-      onCompanionState: (
-        callback: (state: CompanionState) => void,
-      ) => () => void;
-      onCompanionOrientation: (
-        callback: (facing: CompanionFacing) => void,
-      ) => () => void;
-      onCompanionStatus: (
-        callback: (status: CompanionStatus | null) => void,
-      ) => () => void;
-      onCompanionHotEnter: (callback: () => void) => () => void;
-      spriteEvent: (ev: SpriteEvent) => void;
-      spritePerformSync: (payload: {
-        name: string;
-        toolClass: string;
-      }) => Promise<boolean>;
-      spriteImpact: (nonce: string) => void;
-      spritePerformDone: (nonce: string) => void;
-      onSpriteEvent: (callback: (ev: SpriteEvent) => void) => () => void;
       checkMicPermission: () => Promise<string>;
       requestMicPermission: () => Promise<string>;
       checkAccessibilityPermission: () => Promise<boolean>;

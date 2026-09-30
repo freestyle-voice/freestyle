@@ -68,7 +68,6 @@ describe("connector proxy", () => {
     });
     expect(JSON.parse(request.body as string).client.localTools).toEqual([
       "current_time",
-      "emote",
       "save_file",
       "Bash",
       "Read",

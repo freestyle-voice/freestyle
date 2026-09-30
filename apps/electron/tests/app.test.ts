@@ -17,7 +17,7 @@ let app: ElectronApplication | undefined;
 let pillPage: Page;
 let serverPort: number;
 
-/** The pill is the only default boot surface; the pet is opt-in. */
+/** The pill is the default boot surface. */
 async function waitForPillWindow(
   electronApp: ElectronApplication,
   timeoutMs = 10_000,
@@ -163,13 +163,6 @@ test("pill can open the dictation WebSocket", async () => {
     serverPort,
   );
   expect(outcome).toMatch(/^message:\{"type":"(config|error)"/);
-});
-
-test("pet window stays absent until enabled", async () => {
-  const urls = (app?.windows() ?? []).map((w) => w.url());
-  for (const url of urls) {
-    expect(url).not.toContain("companion");
-  }
 });
 
 test("workspace opens as a primary application window", async () => {

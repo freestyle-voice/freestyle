@@ -171,9 +171,9 @@ describe("beat script", () => {
 });
 
 describe("the handoff", () => {
-  it("brands the CTA by whether a task exists", () => {
+  it("chooses the CTA by whether a task exists", () => {
     expect(handoffCta("Finish the deck")).toBe("Get it done ▸");
-    expect(handoffCta("  ")).toBe("Ride with Jeb ▸");
+    expect(handoffCta("  ")).toBe("Get started ▸");
   });
 
   it("phrases the seeded message as a request", () => {

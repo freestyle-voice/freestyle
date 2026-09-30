@@ -55,7 +55,6 @@ import {
   executeApprovedRemixTool,
   executeRemixTool,
 } from "@renderer/lib/remix-tool-executor";
-import { useSpriteEmitter } from "@renderer/lib/sprite-emitter";
 import {
   type DurableThreadAction,
   displayThreadTitle,
@@ -1322,8 +1321,6 @@ function PanelInner({
           lastMessage.role !== "assistant" ||
           !messageText(lastMessage))));
 
-  useSpriteEmitter(messages, approvals.length, busy);
-
   const send = (): void => {
     const text = draft.trim();
     if (!text || tab !== "chat" || isSessionLoading || sessionLoadError) return;
@@ -1529,10 +1526,6 @@ function PanelInner({
   }, [desktop, messages, approvals, tab]);
 
   const pinned = busy || approvals.length > 0;
-  useEffect(() => {
-    window.api.panelSetBusy(pinned);
-    return () => window.api.panelSetBusy(false);
-  }, [pinned]);
 
   useEffect(() => {
     // The composer only exists on the chat tab — dictation and explicit
@@ -1597,15 +1590,9 @@ function PanelInner({
     const onKey = (e: KeyboardEvent): void => {
       if (!desktop && e.key === "Escape") window.api.panelClose();
     };
-    const onLeave = (): void => window.api.panelPointerLeft();
-    const onEnter = (): void => window.api.panelPointerEntered();
     window.addEventListener("keydown", onKey);
-    document.addEventListener("mouseleave", onLeave);
-    document.addEventListener("mouseenter", onEnter);
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.removeEventListener("mouseleave", onLeave);
-      document.removeEventListener("mouseenter", onEnter);
     };
   }, [desktop]);
 

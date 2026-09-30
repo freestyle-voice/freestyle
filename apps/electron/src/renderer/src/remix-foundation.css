@@ -148,45 +148,6 @@
   filter: brightness(1.1);
 }
 
-/* Spark outside the companion window: that window styles these from its own
-   inline sheet; everywhere else (panel head, settings picker) the spans need
-   block layout and the diamond rotation or the core collapses to 0x0. */
-.spark-core,
-.spark-satellite {
-  display: block;
-  transform: rotate(45deg);
-}
-
-.spark-level {
-  display: block;
-}
-
-.tavern-sprite-badge {
-  image-rendering: auto;
-  display: block;
-  flex-shrink: 0;
-}
-
-.tavern-sprite-badge.is-working {
-  animation: tavern-badge-breathe 1.6s ease-in-out infinite;
-}
-
-@keyframes tavern-badge-breathe {
-  0%,
-  100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.15);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .tavern-sprite-badge.is-working {
-    animation: none;
-  }
-}
-
 .tavern-gate {
   position: relative;
   display: flex;
@@ -314,33 +275,6 @@
 
 .tavern-gate-link:hover {
   text-decoration-color: var(--tavern-mute);
-}
-
-.tavern-sprite-pick {
-  display: flex;
-  gap: 6px;
-}
-
-.tavern-sprite-pick-btn {
-  font: inherit;
-  font-size: 11.5px;
-  font-weight: 700;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 5px 11px;
-  border-radius: 8px;
-  border: 1px solid var(--tavern-rule);
-  background: var(--tavern-card);
-  color: var(--tavern-mute);
-  cursor: pointer;
-}
-
-.tavern-sprite-pick-btn.is-on {
-  border-color: var(--tavern-lantern);
-  box-shadow: inset 0 0 0 1px var(--tavern-lantern);
-  color: var(--tavern-ink);
-  background: var(--tavern-wash);
 }
 
 .tavern-tab:focus-visible {
@@ -3568,8 +3502,7 @@ button.tavern-recovery-notice:focus-visible {
   color: var(--tavern-mute);
 }
 
-/* --- Onboarding: Jeb's intro — stage on top, dialogue strip at the
-   bottom, its manga tail aimed at the real corner sprite. ------------- */
+/* --- Onboarding ------------------------------------------------------ */
 
 .tavern-onb {
   display: flex;
@@ -3696,8 +3629,7 @@ button.tavern-recovery-notice:focus-visible {
   box-shadow: 2px 2px 0 var(--tavern-lantern);
 }
 
-/* The dialogue strip: Jeb's line pinned above the footer, nameplate tab on
-   the border, tail pointing down-left out of the panel at the sprite. */
+/* The dialogue strip stays pinned above the footer. */
 .tavern-onb-say {
   position: relative;
   margin: 0 14px 14px;
@@ -4005,51 +3937,6 @@ button.tavern-recovery-notice:focus-visible {
   background: var(--tavern-lantern);
   border-color: var(--tavern-lantern);
   color: var(--tavern-card);
-}
-
-/* The corner beat: a miniature of the user's desktop, Jeb at home. */
-.tavern-onb-desk {
-  position: relative;
-  flex: 1;
-  min-height: 180px;
-  border: 2px solid var(--tavern-ink);
-  border-radius: 12px;
-  background: linear-gradient(160deg, #8fa07a, #6f8266 70%);
-  overflow: hidden;
-  box-shadow: 3px 3px 0 rgba(42, 33, 20, 0.35);
-}
-
-.tavern-onb-deskwin {
-  position: absolute;
-  left: 18%;
-  top: 14%;
-  width: 70%;
-  height: 56%;
-  background: #fdfbf3;
-  border-radius: 6px;
-  border: 1px solid #d9d1bd;
-}
-
-.tavern-onb-deskwin i {
-  display: block;
-  height: 9px;
-  border-bottom: 1px solid #ede6d4;
-}
-
-.tavern-onb-deskjeb {
-  position: absolute;
-  left: 10px;
-  bottom: 6px;
-}
-
-.tavern-onb-deskhome {
-  position: absolute;
-  left: 82px;
-  bottom: 26px;
-  font-family: var(--tavern-px);
-  font-size: 11px;
-  color: var(--foreground);
-  text-shadow: 1px 1px 0 color-mix(in srgb, #000 40%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

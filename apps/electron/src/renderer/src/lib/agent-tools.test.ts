@@ -1,9 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@shared/sprite-events", () => ({
-  parseSpriteEmotion: vi.fn(),
-}));
-
 import {
   agentToolResultTelemetry,
   agentToolTier,
@@ -31,9 +27,8 @@ describe("agent tool approval tiers", () => {
     await expect(agentToolTier(call("save_file"))).resolves.toBe("confirmed");
   });
 
-  it("keeps cosmetic client tools free and leaves Cloud-owned Brain tools unclaimed", async () => {
+  it("keeps client clock reads free and leaves Cloud-owned Brain tools unclaimed", async () => {
     await expect(agentToolTier(call("current_time"))).resolves.toBe("free");
-    await expect(agentToolTier(call("emote"))).resolves.toBe("free");
     await expect(agentToolTier(call("brain_read"))).resolves.toBeNull();
   });
 

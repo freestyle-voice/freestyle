@@ -122,7 +122,6 @@ const PAGE_FALLBACKS: Record<string, RouteFallbackCopy> = {
 
 const SETTINGS_FALLBACKS: Record<string, RouteFallbackCopy> = {
   application: { eyebrow: "Settings", title: "Application" },
-  companion: { eyebrow: "Settings", title: "Companion" },
   recording: { eyebrow: "Settings", title: "Dictation" },
   remix: { eyebrow: "Settings", title: "Remix" },
   mcp: { eyebrow: "Settings", title: "MCP connections" },

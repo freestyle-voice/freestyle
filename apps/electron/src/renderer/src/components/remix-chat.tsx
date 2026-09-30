@@ -434,7 +434,7 @@ function RemixThread(props: RemixThreadProps): React.JSX.Element {
       working: busy || actionRunning || waitingForApproval,
       // `useChat` correctly remains streaming while a client tool waits for
       // its result. The approval state is more actionable than that generic
-      // streaming label for the pill and companion, so it must win here.
+      // streaming label for the pill, so it must win here.
       label: waitingForApproval
         ? "Waiting for your approval"
         : busy

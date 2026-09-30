@@ -25,7 +25,6 @@ const TOOL_LABELS: Record<string, string> = {
   "tool-brain_glob": "Browsed memories",
   "tool-brain_search": "Searched memories",
   "tool-brain_delete": "Forgot a memory",
-  "tool-emote": "Changed expression",
   "tool-connector_search_tools": "Looked up connected-app actions",
   "tool-suggest_connections": "Suggested apps to connect",
 };

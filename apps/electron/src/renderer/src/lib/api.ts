@@ -73,13 +73,15 @@ async function resolvedClientFetch(
   const original = new Request(input, init);
   const url = new URL(original.url);
   const target = `${getApiBase()}${url.pathname}${url.search}${url.hash}`;
-  const headers = new Headers(original.headers);
+  // Transfer the request body at most once. In Electron's Chromium Fetch
+  // implementation, rebuilding the routed request a second time just to
+  // replace its headers can consume JSON request bodies before dispatch.
+  const routedRequest = new Request(target, original);
   for (const [key, value] of Object.entries(bearerAuthHeaders(serverToken))) {
-    if (!headers.has(key)) headers.set(key, value);
+    if (!routedRequest.headers.has(key)) routedRequest.headers.set(key, value);
   }
 
-  const routedRequest = new Request(target, original);
-  return observedFetch(new Request(routedRequest, { headers }));
+  return observedFetch(routedRequest);
 }
 
 /** Base URL of the locally-run server (used when no server URL is configured). */

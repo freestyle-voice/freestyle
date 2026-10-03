@@ -37,6 +37,31 @@ describe("typed API client startup routing", () => {
     );
   });
 
+  it("preserves the JSON device-token poll body while routing to the configured target", async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify({}), {
+        headers: { "content-type": "application/json" },
+      }),
+    );
+    const { getClient } = await import("./api");
+
+    await getClient().api.auth.device.token.$post({
+      json: { device_code: "device-code" },
+    });
+
+    const request = fetchMock.mock.calls[0]?.[0] as Request;
+    expect(request.url).toBe(
+      "https://desktop.example.test/api/auth/device/token",
+    );
+    expect(request.method).toBe("POST");
+    expect(request.headers.get("authorization")).toBe(
+      "Bearer configured-server-token",
+    );
+    await expect(request.json()).resolves.toEqual({
+      device_code: "device-code",
+    });
+  });
+
   it("reports a typed protected 401 to the shared observer", async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 401 }));
     const { getClient, subscribeToUnauthorized } = await import("./api");

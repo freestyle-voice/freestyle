@@ -32,6 +32,12 @@ export interface LlmProvider {
   ): Promise<LanguageModel> | LanguageModel;
   /** Per-model provider options merged into the cleanup `generateText` call. */
   providerOptions?(modelId: string): CleanupProviderOptions | undefined;
+  /**
+   * Conservative input-token budget for a single cleanup request. Providers
+   * that enforce low per-minute input limits can opt in so oversized
+   * dictations safely bypass cleanup instead of producing a retrying error.
+   */
+  maxInputTokens?(modelId: string): number | undefined;
   /** Warm the connection while the user is still speaking. */
   prewarm?(modelId: string): void;
 }
@@ -86,6 +92,9 @@ const PROVIDERS: LlmProvider[] = [
       return getGroqChatModel(modelId);
     },
     providerOptions: (modelId) => groqCleanupProviderOptions(modelId),
+    // Groq's on-demand tier can reject prompts above 7k input tokens. Leave
+    // room for this package's intentionally approximate token estimate.
+    maxInputTokens: () => 6_000,
     prewarm: (modelId) => {
       void import("../groq-http.js").then(({ prewarmGroqConnection }) =>
         prewarmGroqConnection(stripGroqPrefix(modelId)),

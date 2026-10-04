@@ -33,6 +33,7 @@ import { getRewritePromptContext } from "./editor/rewrite-context.js";
 import {
   FREESTYLE_CLOUD_PROVIDER_ID,
   FreestyleCloudAuthError,
+  FreestyleCloudUsageError,
   isTransientCloudError,
   postProcessWithFreestyleCloud,
 } from "./freestyle-cloud.js";
@@ -302,7 +303,12 @@ export async function postProcess(
           llmModel = llm.model_id;
           cleanedText = sanitizeTranscriptText(result.cleaned);
         } catch (err) {
-          if (err instanceof FreestyleCloudAuthError) throw err;
+          if (
+            err instanceof FreestyleCloudAuthError ||
+            err instanceof FreestyleCloudUsageError
+          ) {
+            throw err;
+          }
           // Transient network faults / upstream 5xx aren't app defects.
           if (!isTransientCloudError(err)) captureException(err);
           capture("post process failed", {
@@ -361,6 +367,7 @@ export async function postProcess(
         const finalPrompt = promptHook.prompt ?? prompt;
         handoffMs = Date.now() - handoffStart;
 
+        const provider = getLlmProvider(llm.provider);
         const chatModel = await createCleanupModel(llm.provider, llm.model_id);
         let cleanupError: unknown;
         const result = await cleanupWithModel({
@@ -369,9 +376,8 @@ export async function postProcess(
           system: pluginSystem,
           prompt: finalPrompt,
           skipEmptyText: false,
-          providerOptions: getLlmProvider(llm.provider)?.providerOptions?.(
-            llm.model_id,
-          ),
+          providerOptions: provider?.providerOptions?.(llm.model_id),
+          maxInputTokens: provider?.maxInputTokens?.(llm.model_id),
           onError: (error) => {
             cleanupError = error;
           },
@@ -382,6 +388,11 @@ export async function postProcess(
           outputTokens = result.outputTokens;
           llmProvider = llm.provider;
           llmModel = llm.model_id;
+          cleanedText = result.cleaned;
+        } else if (result.skipReason === "input_too_large") {
+          log.warn(
+            `Skipping LLM cleanup: prompt exceeds ${llm.provider}/${llm.model_id} input-token budget`,
+          );
           cleanedText = result.cleaned;
         } else {
           const error = cleanupError;

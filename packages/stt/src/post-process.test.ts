@@ -88,6 +88,35 @@ describe("postProcess", () => {
     expect(result.cleaned).toBe("hello there");
   });
 
+  it("skips an oversized prompt without calling the model", async () => {
+    const doGenerate = vi.fn(() => {
+      throw new Error("should not be called");
+    });
+    const onError = vi.fn();
+    const text = "hello there";
+
+    const result = await postProcess({
+      model: fakeModel(doGenerate),
+      system: "system instructions",
+      // The transcript itself is short. This verifies that the complete
+      // provider input, including a caller-supplied prompt, is budgeted.
+      prompt: "x".repeat(1_000),
+      text,
+      maxInputTokens: 100,
+      onError,
+    });
+
+    expect(doGenerate).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      cleaned: text,
+      model: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      skipReason: "input_too_large",
+    });
+  });
+
   it("never calls onError when the model call succeeds", async () => {
     const onError = vi.fn();
     const model = {

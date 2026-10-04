@@ -1,4 +1,18 @@
 # Changelog
+## 0.9.2
+
+### Breaking Changes 🛠
+
+- Remove desktop companions by @MathurAditya724 in [#687](https://github.com/freestyle-voice/freestyle/pull/687)
+
+### Bug Fixes 🐛
+
+- (electron) Preserve device-token request bodies by @MathurAditya724 in [#688](https://github.com/freestyle-voice/freestyle/pull/688)
+
+### Internal Changes 🔧
+
+- (electron) Upgrade Electron Builder by @MathurAditya724 in [#689](https://github.com/freestyle-voice/freestyle/pull/689)
+
 ## 0.9.1
 
 ### New Features ✨

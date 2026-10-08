@@ -265,6 +265,13 @@ export default function HistoryPage(): React.JSX.Element {
   const filtersButtonRef = useRef<HTMLButtonElement>(null);
   const statsButtonRef = useRef<HTMLButtonElement>(null);
   const [statsResizing, setStatsResizing] = useState(false);
+  const statsResizeCleanupRef = useRef<(() => void) | null>(null);
+  // Pointer capture can disappear with the handle without dispatching a lost
+  // capture event to it. End the drag when switching/closing or leaving history.
+  useEffect(() => {
+    if (sidebar === "stats") return () => statsResizeCleanupRef.current?.();
+    return undefined;
+  }, [sidebar]);
   const [statsWidthRaw, setStatsWidthRaw] = usePersistentState<string>(
     "today.statsWidth",
     "320",
@@ -286,21 +293,25 @@ export default function HistoryPage(): React.JSX.Element {
   const onResizeStart = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       e.preventDefault();
+      statsResizeCleanupRef.current?.();
       setStatsResizing(true);
       const el = e.currentTarget;
-      el.setPointerCapture(e.pointerId);
+      const pointerId = e.pointerId;
+      el.setPointerCapture(pointerId);
       const onMove = (ev: PointerEvent): void => {
         setStatsWidth(Math.round(window.innerWidth - ev.clientX));
       };
-      const onUp = (ev: PointerEvent): void => {
+      const onUp = (): void => {
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerup", onUp);
         el.removeEventListener("pointercancel", onUp);
         el.removeEventListener("lostpointercapture", onUp);
+        statsResizeCleanupRef.current = null;
         setStatsResizing(false);
-        if (el.hasPointerCapture(ev.pointerId))
-          el.releasePointerCapture(ev.pointerId);
+        if (el.hasPointerCapture(pointerId))
+          el.releasePointerCapture(pointerId);
       };
+      statsResizeCleanupRef.current = onUp;
       el.addEventListener("pointermove", onMove);
       el.addEventListener("pointerup", onUp);
       el.addEventListener("pointercancel", onUp);
@@ -806,7 +817,7 @@ export default function HistoryPage(): React.JSX.Element {
       >
         <div
           data-testid="history-layout"
-          data-resizing={statsResizing}
+          data-resizing={sidebar === "stats" && statsResizing}
           className="grid min-h-0 flex-1 overflow-hidden transition-[grid-template-columns] duration-200 ease-out data-[resizing=true]:transition-none motion-reduce:duration-0 motion-reduce:transition-none"
           style={{
             gridTemplateColumns: `minmax(0,1fr) ${sidebar ? "var(--history-sidebar-width)" : "0px"}`,

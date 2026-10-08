@@ -986,6 +986,49 @@ test("switches history sidebars from grouped icon controls and resizes stats imm
   ).toBe(false);
   await dashboard.keyboard.press("ArrowRight");
   await expect(resize).toHaveAttribute("aria-valuenow", String(width));
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "false",
+  );
+  await expect(dashboard.getByTestId("history-layout")).toHaveCSS(
+    "grid-template-columns",
+    new RegExp(` ${width}px$`),
+  );
+  const resizeBounds = await resize.boundingBox();
+  await dashboard.mouse.move(
+    resizeBounds!.x + resizeBounds!.width - 1,
+    resizeBounds!.y + 30,
+  );
+  await dashboard.mouse.down();
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "true",
+  );
+  await dashboard.mouse.move(viewportWidth - width - 32, resizeBounds!.y + 30);
+  await expect(resize).toHaveAttribute("aria-valuenow", String(width + 32));
+  await expect(dashboard.getByTestId("history-layout")).toHaveCSS(
+    "grid-template-columns",
+    new RegExp(` ${width + 32}px$`),
+  );
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "true",
+  );
+  // Closing during a captured pointer drag must not leave future slides in
+  // resize mode after the handle unmounts.
+  await dashboard.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await dashboard.mouse.up();
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "false",
+  );
+  await stats.click();
+  await expect(panel).toBeVisible();
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "false",
+  );
   await stats.click();
   await expect(panel).toBeHidden();
   await expect(stats).not.toBeChecked();

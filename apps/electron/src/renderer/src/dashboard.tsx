@@ -217,8 +217,8 @@ function PagePad(): React.JSX.Element {
  * first-run wizard.
  */
 function OnboardingOutlet(): React.JSX.Element {
-  const { phase, canRequestData } = useCloudAuth();
-  const onboarding = useOnboarding(canRequestData);
+  const { phase } = useCloudAuth();
+  const onboarding = useOnboarding(phase === "authenticated");
   const { pathname } = useLocation();
 
   if (phase === "checking") return <Outlet />;

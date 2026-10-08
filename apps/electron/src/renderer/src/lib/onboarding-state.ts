@@ -114,5 +114,13 @@ export function useOnboarding(canRequestCloudData: boolean): {
     setStatus("done");
   }, [queryClient]);
 
-  return { status, markDone };
+  return {
+    status:
+      canRequestCloudData &&
+      threadsQuery.isPending &&
+      !parseSaved(settingsQuery.data?.[ONBOARDING_KEY])?.done
+        ? "loading"
+        : status,
+    markDone,
+  };
 }

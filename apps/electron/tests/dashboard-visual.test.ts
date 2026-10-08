@@ -96,6 +96,180 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           return originalFetch(input, init);
         visualReviewWindow.__visualReviewRequests?.push(url.pathname);
 
+        const personalScenario =
+          scenario === "guest-remix-local" || scenario === "guest-remix-byok";
+        const provider =
+          scenario === "guest-remix-byok" ? "openai" : "local-llm";
+        const model = {
+          provider_id: provider,
+          provider_name: provider === "openai" ? "OpenAI" : "Local LLM",
+          model_id:
+            provider === "local-llm"
+              ? "local-llm/Personal chat model"
+              : `${provider}/test-chat`,
+          model_name: "Personal chat model",
+          type: "llm",
+          curated: true,
+        };
+        const selectionKey = `${scenario}:model`;
+        const historyKey = `${scenario}:history`;
+        const selectedModel = JSON.parse(
+          localStorage.getItem(selectionKey) ?? "null",
+        );
+        const localThreads = JSON.parse(
+          localStorage.getItem(historyKey) ?? "[]",
+        );
+        const method =
+          init?.method ?? (input instanceof Request ? input.method : "GET");
+        const requestBody = async (): Promise<string> =>
+          init?.body !== undefined
+            ? String(init.body)
+            : input instanceof Request
+              ? input.clone().text()
+              : "";
+        if (url.pathname === "/api/remix/sessions/runtime") {
+          return Response.json(
+            personalScenario && selectedModel
+              ? {
+                  kind: "local",
+                  model: {
+                    provider: selectedModel.provider,
+                    model_id: selectedModel.model_id,
+                    model_name: selectedModel.model_name,
+                  },
+                }
+              : { kind: "managed" },
+          );
+        }
+        if (personalScenario) {
+          if (url.pathname === "/api/test-sign-in") {
+            guest = false;
+            return Response.json({ ok: true });
+          }
+          if (url.pathname === "/api/settings/local-llm/test")
+            return Response.json({
+              ok: true,
+              models: ["Personal chat model", "Second chat model"],
+            });
+          if (url.pathname === "/api/models/available")
+            return Response.json([
+              model,
+              {
+                ...model,
+                model_id:
+                  provider === "local-llm"
+                    ? "local-llm/Second chat model"
+                    : `${provider}/second-chat`,
+                model_name: "Second chat model",
+              },
+            ]);
+          if (url.pathname === "/api/models/configured") {
+            if (method === "POST") {
+              const configured = {
+                ...JSON.parse(await requestBody()),
+                id: 1,
+                is_default: 1,
+              };
+              localStorage.setItem(selectionKey, JSON.stringify(configured));
+              return Response.json(configured);
+            }
+            return Response.json(selectedModel ? [selectedModel] : []);
+          }
+          if (url.pathname === "/api/keys/validate")
+            return Response.json({ valid: true });
+          if (url.pathname === "/api/keys") {
+            if (method === "POST")
+              localStorage.setItem(`${scenario}:key`, "saved");
+            return Response.json(
+              localStorage.getItem(`${scenario}:key`)
+                ? [{ provider, status: "valid" }]
+                : [],
+            );
+          }
+          if (url.pathname === "/api/remix/sessions" && method === "POST") {
+            if (
+              scenario === "guest-remix-local" &&
+              !localStorage.getItem(`${scenario}:startup-retried`)
+            ) {
+              localStorage.setItem(`${scenario}:startup-retried`, "true");
+              return Response.json({ error: "unavailable" }, { status: 503 });
+            }
+            const next = {
+              id: crypto.randomUUID(),
+              type: "local",
+              title: null,
+              messages: [],
+              model: {
+                provider: selectedModel.provider,
+                modelId: selectedModel.model_id,
+                modelName: selectedModel.model_name,
+              },
+              lastActiveAt: new Date()
+                .toISOString()
+                .slice(0, 19)
+                .replace("T", " "),
+            };
+            localStorage.setItem(
+              historyKey,
+              JSON.stringify([next, ...localThreads]),
+            );
+            return Response.json({ thread: next }, { status: 201 });
+          }
+          if (url.pathname === "/api/remix/sessions/local/latest") {
+            if (
+              scenario === "guest-remix-byok" &&
+              !localStorage.getItem(`${scenario}:startup-retried`)
+            ) {
+              localStorage.setItem(`${scenario}:startup-retried`, "true");
+              return Response.json({ error: "unavailable" }, { status: 503 });
+            }
+            return Response.json({ thread: localThreads[0] ?? null });
+          }
+          if (url.pathname === "/api/remix/sessions/local")
+            return Response.json({ threads: localThreads, nextCursor: null });
+          const session = localThreads.find(
+            (item: { id: string }) => item.id === url.pathname.split("/")[4],
+          );
+          if (session) {
+            if (url.pathname.endsWith("/stream")) {
+              const parts = [
+                { type: "start", messageId: crypto.randomUUID() },
+                { type: "text-start", id: "reply" },
+                {
+                  type: "text-delta",
+                  id: "reply",
+                  delta: `Hello from ${session.model.modelName}.`,
+                },
+                { type: "text-end", id: "reply" },
+                { type: "finish", finishReason: "stop" },
+              ];
+              return new Response(
+                `${parts.map((part) => `data: ${JSON.stringify(part)}\n\n`).join("")}data: [DONE]\n\n`,
+                {
+                  headers: {
+                    "Content-Type": "text/event-stream",
+                    "x-vercel-ai-ui-message-stream": "v1",
+                  },
+                },
+              );
+            }
+            if (url.pathname.endsWith("/messages") && method === "PUT") {
+              session.messages = JSON.parse(await requestBody()).messages;
+              localStorage.setItem(
+                historyKey,
+                JSON.stringify([
+                  session,
+                  ...localThreads.filter(
+                    (item: { id: string }) => item.id !== session.id,
+                  ),
+                ]),
+              );
+              return Response.json({ ok: true });
+            }
+            return Response.json({ thread: session });
+          }
+        }
+
         if (scenario === "guest-sidebar") {
           if (url.pathname === "/api/auth/device/code") {
             return Response.json({
@@ -791,6 +965,122 @@ test("shares Settings and Help across workspaces and switches to the signed-in p
     sidebar.getByRole("button", { name: "Visual review" }),
   ).toBeHidden();
 });
+
+for (const mode of ["local", "byok"] as const) {
+  test(`lets a guest choose a ${mode} Remix model, chat and restore history`, async ({
+    browserName,
+  }, testInfo) => {
+    void browserName;
+    await dashboard.goto(`${DASHBOARD_URL}?visual=guest-remix-${mode}#/remix`);
+    await dashboard
+      .getByRole("button", { name: "Use a local model or API key" })
+      .click();
+    const picker = dashboard.getByRole("dialog", {
+      name: "Choose a Remix model",
+    });
+    await expect(picker).toBeVisible();
+    if (mode === "local") {
+      await picker
+        .getByRole("button", { name: "On-device", exact: true })
+        .click();
+      await picker.getByRole("button", { name: "Test", exact: true }).click();
+    }
+    await picker
+      .locator(".group")
+      .filter({ hasText: "Personal chat model" })
+      .getByRole("button", {
+        name: mode === "local" ? "Use" : "Add key",
+        exact: true,
+      })
+      .click();
+    if (mode === "byok") {
+      const keyDialog = dashboard.getByRole("dialog");
+      await keyDialog
+        .getByPlaceholder("sk-…")
+        .fill("test-key-not-a-real-secret");
+      await keyDialog.getByRole("button", { name: /Save/ }).click();
+    }
+    await expect(dashboard).toHaveURL(/#\/remix$/);
+    // Recover both a failed create (local) and a failed latest-history read
+    // (BYOK) without leaving the workspace or asking the guest to sign in.
+    await dashboard
+      .getByRole("button", { name: "Try again", exact: true })
+      .click();
+    const composer = dashboard.locator("#panel-composer");
+    await expect(composer).toBeVisible();
+    const sidebar = dashboard.getByRole("region", { name: "Remix chats" });
+    const newChat = sidebar
+      .getByRole("button", { name: "New chat", exact: true })
+      .and(sidebar.locator(".remix-sidebar-new"));
+    await expect(newChat).toBeEnabled();
+    await expect(
+      sidebar.getByRole("button", { name: "Schedules" }),
+    ).toBeDisabled();
+    await composer.fill("Say hello");
+    await dashboard.getByRole("button", { name: "Send", exact: true }).click();
+    await expect(
+      dashboard.getByText("Hello from Personal chat model.", { exact: true }),
+    ).toBeVisible();
+    await dashboard.screenshot({
+      path: testInfo.outputPath(`guest-remix-${mode}.png`),
+    });
+    await expect
+      .poll(() =>
+        dashboard.evaluate(() =>
+          (
+            window as typeof window & { __visualReviewRequests: string[] }
+          ).__visualReviewRequests.some((path) => path.endsWith("/messages")),
+        ),
+      )
+      .toBe(true);
+    await dashboard.reload();
+    await expect(
+      dashboard.getByText("Hello from Personal chat model.", { exact: true }),
+    ).toBeVisible();
+    await expect(composer).toBeVisible();
+    await newChat.click();
+    await expect(
+      dashboard.getByText("Hello from Personal chat model.", { exact: true }),
+    ).toBeHidden();
+    await expect(composer).toBeVisible();
+    const requests = await dashboard.evaluate(
+      () =>
+        (window as typeof window & { __visualReviewRequests: string[] })
+          .__visualReviewRequests,
+    );
+    expect(
+      requests.some(
+        (path) =>
+          path.startsWith("/api/agent/") ||
+          path.startsWith("/api/connectors") ||
+          path.startsWith("/api/suggestions") ||
+          path.startsWith("/api/scheduled"),
+      ),
+    ).toBe(false);
+    expect(requests).not.toContain("/api/auth/device/code");
+    await composer.fill("Keep this draft across account changes");
+    await dashboard.evaluate(async () => {
+      // Local chat can be ready before the delayed startup auth check. Let
+      // that read settle before simulating the next account reconciliation.
+      await fetch("http://127.0.0.1:4649/api/auth/status");
+      await fetch("http://127.0.0.1:4649/api/test-sign-in");
+      window.dispatchEvent(new Event("focus"));
+    });
+    const profile = dashboard
+      .locator(".glass-sidebar")
+      .getByRole("button", { name: "Visual review" });
+    await expect(profile).toBeVisible();
+    await expect(composer).toHaveValue(
+      "Keep this draft across account changes",
+    );
+    await profile.click();
+    await dashboard.getByRole("menuitem", { name: "Sign out" }).click();
+    await expect(profile).toBeHidden();
+    await expect(composer).toHaveValue(
+      "Keep this draft across account changes",
+    );
+  });
+}
 
 test("lets guests browse, paginate and search apps before signing in to connect", async ({
   browserName,

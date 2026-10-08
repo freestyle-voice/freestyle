@@ -161,7 +161,11 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
 
 function buildLlmRows(
   m: UseModels,
-  h: { onPickCloud: (model: AvailableModel) => void; onClose: () => void },
+  h: {
+    onPickCloud: (model: AvailableModel) => void;
+    onClose: () => void;
+    onModelSelected?: () => void;
+  },
   selectedModel: ConfiguredModel | undefined,
   type: "llm" | "remix",
 ): Row[] {
@@ -215,7 +219,7 @@ function buildLlmRows(
       status: "ready",
       onSelect: () =>
         void m.selectLocalLlmModel(name, type).then((selected) => {
-          if (selected) h.onClose();
+          if (selected) (h.onModelSelected ?? h.onClose)();
         }),
     });
   }
@@ -236,6 +240,7 @@ export function ModelList({
   catalogLoading,
   onClose,
   onPickCloud,
+  onModelSelected,
   onPickLocalVoice,
   onRequestDeleteLocal,
 }: {
@@ -247,6 +252,7 @@ export function ModelList({
   catalogLoading: boolean;
   onClose: () => void;
   onPickCloud: (model: AvailableModel) => void;
+  onModelSelected?: () => void;
   onPickLocalVoice: (
     defId: string,
     name: string,
@@ -320,7 +326,7 @@ export function ModelList({
         })
       : buildLlmRows(
           m,
-          { onPickCloud, onClose },
+          { onPickCloud, onClose, onModelSelected },
           type === "remix" ? m.defaultRemix : m.defaultLlm,
           type,
         );
@@ -363,7 +369,8 @@ export function ModelList({
     ? filteredRows.length - filteredRows.filter((r) => r.curated).length
     : 0;
 
-  const showLocalLlmForm = type !== "voice" && localOnly;
+  const showLocalLlmForm =
+    type !== "voice" && (localOnly || filter === "local");
   const showOpenaiSttForm = type === "voice" && cloudOnly;
 
   const scopedTitle =

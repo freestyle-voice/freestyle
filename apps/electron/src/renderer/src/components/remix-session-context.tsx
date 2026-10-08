@@ -2,7 +2,6 @@ import {
   type AgentThreadActivity,
   subscribeToAgentThreadActivity,
 } from "@renderer/lib/agent-message-queue";
-import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
   setDeletionConfirmationSkipped,
   shouldSkipDeletionConfirmation,
@@ -23,6 +22,7 @@ import {
   type ThreadState,
   type ThreadSummary,
 } from "@renderer/lib/threads";
+import { useRemixAvailability } from "@renderer/lib/use-remix-availability";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createContext,
@@ -126,18 +126,42 @@ export function RemixSessionProvider({
     type: "local" | "remote";
   } | null>(null);
   const queryClient = useQueryClient();
-  const { canRequestData, phase } = useCloudAuth();
+  const availability = useRemixAvailability();
+  const {
+    canChat,
+    canUseCloud: canRequestData,
+    historyType,
+    sessionScope,
+  } = availability;
+  const scopeRef = useRef(sessionScope);
+  scopeRef.current = sessionScope;
   const latestQuery = useQuery({
-    ...latestThreadQueryOptions(),
-    enabled: canRequestData,
+    ...latestThreadQueryOptions(historyType),
+    enabled: canChat,
   });
   const selectionRef = useRef(0);
   const deletionVersionRef = useRef(0);
   const selectedSummaryRef = useRef<ThreadSummary | null>(null);
   const activeSessionIdsRef = useRef<Set<string>>(new Set());
   const selectedThreadIdRef = useRef<string | null>(null);
+  const cloudAccountRef = useRef(availability.cloudAccountId);
   const titleRefreshTimersRef = useRef<Map<string, number[]>>(new Map());
   selectedThreadIdRef.current = thread?.id ?? null;
+
+  useEffect(() => {
+    if (cloudAccountRef.current === availability.cloudAccountId) return;
+    cloudAccountRef.current = availability.cloudAccountId;
+    if (!availability.cloudAccountId) setWorkspaceSurface("chat");
+    if (thread && thread.type !== "local") {
+      selectionRef.current += 1;
+      setThread(null);
+      setLoadingThreadId(null);
+      setThreadLoadError(null);
+    }
+    setSessionActivity({});
+    setCompletedSessionIds(new Set());
+    activeSessionIdsRef.current = new Set();
+  }, [availability.cloudAccountId, thread]);
 
   const markSessionSeen = useCallback((threadId: string) => {
     setCompletedSessionIds((current) => {
@@ -181,7 +205,9 @@ export function RemixSessionProvider({
    */
   const selectThread = useCallback(
     (summary: ThreadSummary) => {
+      if (!availability.canOpenThread(summary.type)) return;
       openChat();
+      const scope = sessionScope;
       const selection = ++selectionRef.current;
       selectedSummaryRef.current = summary;
       setThreadLoadError(null);
@@ -212,7 +238,8 @@ export function RemixSessionProvider({
         .fetchQuery(threadQueryOptions(summary.id, summary.type ?? "remote"))
         .then((loaded) => {
           if (!loaded) throw new Error("Conversation not found.");
-          if (selectionRef.current !== selection) return;
+          if (selectionRef.current !== selection || scopeRef.current !== scope)
+            return;
           const reconciled = reconcileThreadSummaryTitle(loaded, summary);
           queryClient.setQueryData(
             queryKeys.threads.detail(summary.id, summary.type ?? "remote"),
@@ -222,7 +249,8 @@ export function RemixSessionProvider({
           setLoadingThreadId(null);
         })
         .catch(() => {
-          if (selectionRef.current !== selection) return;
+          if (selectionRef.current !== selection || scopeRef.current !== scope)
+            return;
           setLoadingThreadId(null);
           // Cached detail remains a usable conversation if its quiet
           // background refresh fails; only an uncached selection needs an
@@ -231,26 +259,60 @@ export function RemixSessionProvider({
           setThreadLoadError("Couldn’t load this conversation. Try again.");
         });
     },
-    [markSessionSeen, openChat, queryClient],
+    [
+      availability.canOpenThread,
+      sessionScope,
+      markSessionSeen,
+      openChat,
+      queryClient,
+    ],
   );
 
   const retryThreadLoad = useCallback(() => {
     const summary = selectedSummaryRef.current;
     if (summary) selectThread(summary);
-  }, [selectThread]);
+    else {
+      setThreadLoadError(null);
+      void latestQuery.refetch();
+    }
+  }, [selectThread, latestQuery.refetch]);
 
+  const creatingRef = useRef(false);
+  const [creating, setCreating] = useState(false);
   const startNewThread = useCallback(() => {
+    if (!canChat || creatingRef.current) return;
+    const scope = sessionScope;
+    const selection = ++selectionRef.current;
+    creatingRef.current = true;
+    setCreating(true);
     setThreadLoadError(null);
     setLoadingThreadId("creating");
     void createThread()
-      .then((next) => switchThread(next))
-      .catch(() => setThreadLoadError("Couldn’t start a new conversation."))
-      .finally(() => setLoadingThreadId(null));
-  }, [switchThread]);
+      .then((next) => {
+        if (scopeRef.current === scope && selectionRef.current === selection) {
+          switchThread(next);
+          void invalidateThreads(queryClient);
+        }
+      })
+      .catch(() => {
+        if (scopeRef.current === scope && selectionRef.current === selection)
+          setThreadLoadError("Couldn’t start a new conversation.");
+      })
+      .finally(() => {
+        creatingRef.current = false;
+        setCreating(false);
+        if (scopeRef.current === scope) setLoadingThreadId(null);
+      });
+  }, [canChat, sessionScope, switchThread, queryClient]);
 
   useEffect(() => {
-    if (phase === "signed_out") {
-      setThread(null);
+    selectionRef.current += 1;
+    selectedSummaryRef.current = null;
+    setThread(null);
+    setWorkspaceSurface("chat");
+    setLoadingThreadId(null);
+    setThreadLoadError(null);
+    if (!sessionScope) {
       setWorkspaceSurface("chat");
       setLoadingThreadId(null);
       setThreadLoadError(null);
@@ -266,7 +328,7 @@ export function RemixSessionProvider({
       ?.getRemixSessionTitles?.()
       .then((titles) => setLocalTitles(titles))
       .catch(() => {});
-  }, [phase]);
+  }, [sessionScope]);
 
   useEffect(() => {
     if (!canRequestData) return;
@@ -376,7 +438,7 @@ export function RemixSessionProvider({
   >({
     mutationFn: ({ threadId, type }: ThreadDeletionVariables) =>
       deleteStoredThread(threadId, type),
-    onMutate: async ({ threadId, selected, localTitles }) => {
+    onMutate: async ({ threadId, type, selected, localTitles }) => {
       // A late session-list response was able to repaint the just-deleted row
       // because the old version changed cache data before cancellation had
       // settled. Await it here, where React Query guarantees this mutation's
@@ -386,6 +448,7 @@ export function RemixSessionProvider({
         queryClient,
         threadId,
         localTitles,
+        type,
       );
       setLocalTitles((current) => {
         const next = { ...current };
@@ -421,7 +484,7 @@ export function RemixSessionProvider({
     onSuccess: (_result, { threadId }) => {
       void window.api?.setRemixSessionTitle?.(threadId, null);
     },
-    onError: (_error, { threadId }, context) => {
+    onError: (_error, { threadId, type }, context) => {
       if (!context) return;
       // A newer delete has a newer cache snapshot. Do not restore this older
       // one over it; refresh from the server instead and restore only this
@@ -431,6 +494,7 @@ export function RemixSessionProvider({
           queryClient,
           threadId,
           context.snapshot,
+          type,
         );
       }
       const previousTitle = context.snapshot.localTitles[threadId];
@@ -490,6 +554,7 @@ export function RemixSessionProvider({
   useEffect(() => {
     if (!canRequestData) return;
     const off = window.api.onPanelOpenThread((threadId) => {
+      const scope = sessionScope;
       openChat();
       const selection = ++selectionRef.current;
       markSessionSeen(threadId);
@@ -497,7 +562,12 @@ export function RemixSessionProvider({
         .fetchQuery(threadQueryOptions(threadId, "remote"))
         .catch(() => null)
         .then((picked) => {
-          if (!picked || selectionRef.current !== selection) return;
+          if (
+            !picked ||
+            selectionRef.current !== selection ||
+            scopeRef.current !== scope
+          )
+            return;
           queryClient.setQueryData(queryKeys.threads.detail(threadId), picked);
           setLoadingThreadId(null);
           setThreadLoadError(null);
@@ -505,7 +575,7 @@ export function RemixSessionProvider({
         });
     });
     return () => off?.();
-  }, [canRequestData, markSessionSeen, openChat, queryClient]);
+  }, [canRequestData, sessionScope, markSessionSeen, openChat, queryClient]);
 
   useEffect(() => {
     if (!canRequestData) return;
@@ -522,25 +592,45 @@ export function RemixSessionProvider({
   }, [canRequestData, requestThreadTitleRefresh]);
 
   useEffect(() => {
-    if (latestQuery.isPending) return;
+    if (
+      !canChat ||
+      latestQuery.isPending ||
+      latestQuery.isFetching ||
+      latestQuery.isError
+    )
+      return;
     const latestThread = latestQuery.data;
-    if (latestThread?.id && latestThread.messages) {
+    const model =
+      availability.runtime?.kind === "local"
+        ? availability.runtime.model
+        : null;
+    const matchesModel =
+      !model ||
+      (latestThread?.model?.provider === model.provider &&
+        latestThread.model.modelId === model.model_id);
+    if (latestThread?.id && latestThread.messages && matchesModel) {
       setThread(
         (current) =>
           current ?? {
             id: latestThread.id,
             title: latestThread.title ?? null,
             messages: latestThread.messages,
-            type: "remote",
+            type: latestThread.type,
+            model: latestThread.model,
           },
       );
       return;
     }
-    if (canRequestData && !thread) startNewThread();
+    if (!thread && !threadLoadError && !creating) startNewThread();
   }, [
-    canRequestData,
+    canChat,
+    availability.runtime,
+    threadLoadError,
+    creating,
+    latestQuery.isError,
     latestQuery.data,
     latestQuery.isPending,
+    latestQuery.isFetching,
     startNewThread,
     thread,
   ]);
@@ -555,8 +645,13 @@ export function RemixSessionProvider({
       switchThread,
       selectThread,
       startNewThread,
-      isThreadLoading: loadingThreadId === thread?.id,
-      threadLoadError,
+      isThreadLoading:
+        loadingThreadId === "creating" || loadingThreadId === thread?.id,
+      threadLoadError:
+        threadLoadError ??
+        (!thread && latestQuery.isError
+          ? "Couldn’t load conversations. Try again."
+          : null),
       retryThreadLoad,
       localTitles,
       sessionActivity,
@@ -585,6 +680,7 @@ export function RemixSessionProvider({
       completedSessionIds,
       sessionActivity,
       requestDeleteThread,
+      latestQuery.isError,
     ],
   );
 

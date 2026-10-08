@@ -37,7 +37,7 @@ describe("Models shared assistant role", () => {
     expect(page).toContain('data-testid="models-settings-page"');
     expect(page).toContain('data-testid="models-api-keys"');
     expect(page).toContain('aria-label="Dictation models"');
-    expect(page).toContain('aria-label="Remix runtime"');
+    expect(page).toContain('aria-label="Remix model"');
     expect(pairCard).toContain('data-testid="models-configuration"');
     expect(pairCard).not.toContain("fontSize: 34");
     expect(page).toContain("<RemixModelCard");

@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { useNavigate, useSearchParams } from "react-router";
 import { FreestyleCloudBundleCard } from "./freestyle-cloud-bundle-card";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
@@ -44,6 +45,16 @@ const FREESTYLE_CLOUD_REMIX: AvailableModel = {
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const m = useModels();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [choosingForRemix] = useState(searchParams.get("choose") === "remix");
+  useEffect(() => {
+    if (m.loading || searchParams.get("choose") !== "remix") return;
+    setModal({ kind: "list", type: "remix" });
+    const next = new URLSearchParams(searchParams);
+    next.delete("choose");
+    setSearchParams(next, { replace: true });
+  }, [m.loading, searchParams, setSearchParams]);
   const cloudAuth = useCloudAuth();
   const [modal, setModal] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -130,6 +141,11 @@ export default function ModelsPage(): React.JSX.Element {
     setModal(null);
     setKeyError(null);
     setSaving(false);
+  };
+
+  const finishSelection = (type: string | null): void => {
+    closeModal();
+    if (type === "remix" && choosingForRemix) navigate("/remix");
   };
 
   const ensureCloudAuth = async (): Promise<boolean> => {
@@ -241,7 +257,7 @@ export default function ModelsPage(): React.JSX.Element {
         } finally {
           setCloudBusy(false);
         }
-        closeModal();
+        finishSelection(type);
       })();
       return;
     }
@@ -261,7 +277,7 @@ export default function ModelsPage(): React.JSX.Element {
       });
       return;
     }
-    void m.configureModel(model, type).then(closeModal);
+    void m.configureModel(model, type).then(() => finishSelection(type));
   };
 
   const onPickLocalVoice = (
@@ -319,7 +335,7 @@ export default function ModelsPage(): React.JSX.Element {
           await m.configureModel(pendingModel, type);
         }
       }
-      closeModal();
+      finishSelection(type);
     })();
   };
 
@@ -379,8 +395,8 @@ export default function ModelsPage(): React.JSX.Element {
             />
           </section>
 
-          <section aria-label="Remix runtime" className="space-y-3">
-            <Eyebrow text="Remix runtime" mono={false} />
+          <section aria-label="Remix model" className="space-y-3">
+            <Eyebrow text="Remix model" mono={false} />
             <RemixModelCard
               model={m.defaultRemix}
               busy={cloudBusy}
@@ -424,6 +440,9 @@ export default function ModelsPage(): React.JSX.Element {
             cloudBusy={cloudBusy}
             catalogLoading={m.catalogLoading}
             onClose={closeModal}
+            onModelSelected={() =>
+              finishSelection(modal.kind === "list" ? modal.type : null)
+            }
             onPickCloud={onPickCloud}
             onPickLocalVoice={onPickLocalVoice}
             onRequestDeleteLocal={onRequestDeleteLocal}

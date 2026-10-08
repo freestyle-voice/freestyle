@@ -95,11 +95,9 @@ describe("dashboard startup rendering", () => {
     expect(auth).toContain("resetAccountCaches(queryClient)");
     expect(auth).toContain("refetchInterval");
     expect(auth).toContain("enabled: !forcedSignedOut");
-    expect(sessions).toContain("enabled: canRequestData");
+    expect(sessions).toContain("enabled: canChat");
     expect(shell).toContain("queryFn: () => listPlugins()");
-    expect(sessions).toContain(
-      "const { canRequestData, phase } = useCloudAuth();",
-    );
+    expect(sessions).toContain("const availability = useRemixAvailability();");
     expect(history).toContain('aria-label="Loading transcription history"');
     expect(history).toContain("{searchRow}");
     expect(panel).toContain("RemixWorkspaceLoadingSkeleton");

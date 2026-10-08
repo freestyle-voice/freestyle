@@ -7,6 +7,7 @@ export type ThreadState = {
   type?: "local" | "remote";
   title?: string | null;
   messages: UIMessage[];
+  model?: { provider: string; modelId: string; modelName: string } | null;
 };
 
 /**
@@ -111,24 +112,49 @@ export async function listThreads({
   cursor,
   limit = 24,
   origin,
+  type = "remote",
 }: {
   cursor?: number;
   limit?: number;
   origin?: ThreadOrigin;
+  type?: "local" | "remote";
 } = {}): Promise<ThreadPage> {
   const params = new URLSearchParams({ limit: String(limit) });
   if (cursor !== undefined) params.set("cursor", String(cursor));
+  if (type === "local") {
+    if (origin === "scheduled") return { threads: [], nextCursor: null };
+    const page = await responseJson<{
+      threads: { id: string; title: string | null; lastActiveAt: string }[];
+      nextCursor: number | null;
+    }>(await apiFetch(`/api/remix/sessions/local?${params.toString()}`));
+    return {
+      threads: page.threads.map((thread) => ({
+        id: thread.id,
+        type: "local",
+        title: thread.title || "New chat",
+        updatedAt: Date.parse(`${thread.lastActiveAt.replace(" ", "T")}Z`),
+        origin: "user",
+      })),
+      nextCursor: page.nextCursor,
+    };
+  }
   if (origin) params.set("origin", origin);
   return responseJson<ThreadPage>(
     await apiFetch(`/api/agent/thread/list?${params.toString()}`),
   );
 }
 
-export async function getLatestThread(): Promise<ThreadState | null> {
+export async function getLatestThread(
+  type: "local" | "remote" = "remote",
+): Promise<ThreadState | null> {
   const data = await responseJson<{ thread: ThreadState | null }>(
-    await apiFetch("/api/agent/thread/latest"),
+    await apiFetch(
+      type === "local"
+        ? "/api/remix/sessions/local/latest"
+        : "/api/agent/thread/latest",
+    ),
   );
-  return data.thread;
+  return data.thread ? { ...data.thread, type } : null;
 }
 
 /** Server-owned creation freezes local versus managed-Cloud ownership. */

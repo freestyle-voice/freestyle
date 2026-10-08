@@ -14,13 +14,15 @@ import {
 import type { CloudUser } from "../../../shared/cloud-user";
 import { getClient, resolveApiBase, subscribeToUnauthorized } from "./api";
 import { resetBrainCache } from "./brain-fs";
-import { queryKeys } from "./query";
+import { isDeviceOwnedRemixQuery, queryKeys } from "./query";
 
 function resetAccountCaches(queryClient: QueryClient): void {
   resetBrainCache();
   // Local pages stay mounted after sign-out. Reset their observed queries so
   // cancelled startup reads restart, while discarding all cached account data.
-  void queryClient.resetQueries();
+  void queryClient.resetQueries({
+    predicate: (query) => !isDeviceOwnedRemixQuery(query.queryKey),
+  });
 }
 
 export interface UseCloudAuth {

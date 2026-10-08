@@ -10,9 +10,9 @@ type OnboardingLocationState = { from?: string } | null;
 
 /** First-run orientation for Freestyle as a whole, deliberately outside Remix. */
 export default function OnboardingPage(): React.JSX.Element {
-  const { user, canRequestData, signingIn, signIn, cancelSignIn, error } =
+  const { user, phase, signingIn, signIn, cancelSignIn, error } =
     useCloudAuth();
-  const onboarding = useOnboarding(canRequestData);
+  const onboarding = useOnboarding(phase === "authenticated");
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as OnboardingLocationState)?.from;

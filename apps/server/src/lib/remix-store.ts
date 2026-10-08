@@ -124,15 +124,15 @@ export function getRemixThread(threadId: string): RemixThread | null {
 }
 
 /** Local sessions are the only complete transcripts owned by this database. */
-export function listLocalRemixThreads(limit = 24): RemixThread[] {
+export function listLocalRemixThreads(limit = 24, offset = 0): RemixThread[] {
   return getDb()
     .prepare(
       `SELECT * FROM remix_threads
        WHERE type = 'local'
-       ORDER BY last_active_at DESC
-       LIMIT ?`,
+       ORDER BY last_active_at DESC, id DESC
+       LIMIT ? OFFSET ?`,
     )
-    .all(limit)
+    .all(limit, offset)
     .map((row) => rowToThread(row as unknown as ThreadRow));
 }
 

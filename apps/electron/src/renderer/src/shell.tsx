@@ -32,6 +32,7 @@ import {
   SIDEBAR_VISIBILITY_STORAGE_KEY,
   type SidebarVisibility,
 } from "@renderer/lib/sidebar-visibility";
+import { useRemixAvailability } from "@renderer/lib/use-remix-availability";
 import { cn } from "@renderer/lib/utils";
 import {
   DEFAULT_WORKSPACE,
@@ -385,7 +386,7 @@ function RemixSidebarSessions({
     completedSessionIds,
     markSessionSeen,
   } = useRemixSession();
-  const { phase } = useCloudAuth();
+  const availability = useRemixAvailability();
   const listRef = useRef<HTMLDivElement>(null);
   const [hasMoreSessions, setHasMoreSessions] = useState(false);
 
@@ -430,7 +431,7 @@ function RemixSidebarSessions({
           type="button"
           className="remix-sidebar-new"
           onClick={startNewThread}
-          disabled={phase !== "authenticated"}
+          disabled={!availability.canChat}
         >
           <Plus aria-hidden="true" />
           New chat
@@ -442,7 +443,7 @@ function RemixSidebarSessions({
           }`}
           aria-current={workspaceSurface === "scheduled" ? "page" : undefined}
           onClick={openScheduledTasks}
-          disabled={phase !== "authenticated"}
+          disabled={!availability.canUseCloud}
         >
           <CalendarClock aria-hidden="true" />
           Schedules
@@ -453,15 +454,16 @@ function RemixSidebarSessions({
         className="remix-sidebar-sessions-list"
         data-has-more={hasMoreSessions || undefined}
       >
-        {phase === "checking" ? (
+        {availability.checking ? (
           <SessionHistorySkeleton />
-        ) : phase === "signed_out" ? (
+        ) : !availability.canChat ? (
           <div className="tavern-empty tavern-thread-empty">
             <strong>No sessions yet</strong>
             <span>Sign in to start a chat or run a scheduled task.</span>
           </div>
         ) : (
           <ThreadHistory
+            type={availability.historyType}
             currentId={sidebarCurrentThreadId(
               workspaceSurface,
               thread?.id ?? "",
@@ -558,6 +560,7 @@ function SessionSearchDialog({
   inputRef: React.RefObject<HTMLInputElement | null>;
 }): React.JSX.Element | null {
   const { thread, selectThread } = useRemixSession();
+  const availability = useRemixAvailability();
   if (!thread) return null;
 
   return (
@@ -585,6 +588,7 @@ function SessionSearchDialog({
           </label>
           <div className="remix-session-search-results">
             <ThreadHistory
+              type={availability.historyType}
               currentId={thread.id}
               searchQuery={query}
               onPick={(picked) => {
@@ -693,7 +697,7 @@ export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const { canRequestData } = useCloudAuth();
+  const { canChat } = useRemixAvailability();
   // Keep dismissal in memory so the prompt returns on the next app launch.
   const [isSignInCardDismissed, setIsSignInCardDismissed] = useState(false);
   const isRemixRoute = location.pathname === "/remix";
@@ -871,7 +875,7 @@ export default function AppShell(): React.JSX.Element {
                       DEV
                     </span>
                   )}
-                  {isRemixSidebar && canRequestData ? (
+                  {isRemixSidebar && canChat ? (
                     <button
                       type="button"
                       aria-label="Search sessions"
@@ -919,7 +923,7 @@ export default function AppShell(): React.JSX.Element {
         </>
       ) : null}
 
-      {isRemixSidebar && canRequestData ? (
+      {isRemixSidebar && canChat ? (
         <SessionSearchDialog
           open={isSessionSearchOpen}
           onOpenChange={handleSessionSearchOpenChange}

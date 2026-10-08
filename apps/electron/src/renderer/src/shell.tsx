@@ -964,6 +964,7 @@ function ContentTitlebar({
     <div
       className={cn(
         "glass-content-titlebar",
+        IS_MAC && "glass-content-titlebar--mac",
         sidebarHidden && "glass-content-titlebar--sidebar-hidden",
       )}
       aria-hidden={sidebarHidden ? undefined : true}

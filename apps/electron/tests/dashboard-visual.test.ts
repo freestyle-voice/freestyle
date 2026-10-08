@@ -465,10 +465,11 @@ test("captures the desktop sidebar hidden and restored", async ({
   await expect(dashboard.locator(".glass-sidebar")).toHaveCount(0);
   const showSidebar = dashboard.getByRole("button", { name: "Show sidebar" });
   await expect(showSidebar).toBeFocused();
-  await expectDashboardWindowButtonPosition({ x: 62, y: 16 });
+  await expectDashboardWindowButtonPosition({ x: 20, y: 16 });
   const revealBounds = await showSidebar.boundingBox();
   expect(revealBounds).not.toBeNull();
-  expect(revealBounds?.x).toBeLessThanOrEqual(16);
+  expect(revealBounds?.x).toBe(process.platform === "darwin" ? 104 : 12);
+  expect(revealBounds?.y).toBe(process.platform === "darwin" ? 8 : 12);
   for (const width of [1080, 760]) {
     await app!.evaluate(({ BrowserWindow }, windowWidth) => {
       const panel = BrowserWindow.getAllWindows().find((window) =>
@@ -496,7 +497,7 @@ test("captures the desktop sidebar hidden and restored", async ({
         expect(contentBounds!.y).toBeGreaterThanOrEqual(
           bounds!.y + bounds!.height,
         );
-        await expectDashboardWindowButtonPosition({ x: 62, y: 16 });
+        await expectDashboardWindowButtonPosition({ x: 20, y: 16 });
       };
       // Check before and after lazy route/data loading: neither state should
       // put content underneath the shell's restore button.

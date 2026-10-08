@@ -3641,7 +3641,7 @@ const DASHBOARD_MIN_WIDTH = 760;
 const DASHBOARD_MIN_HEIGHT = 680;
 const DASHBOARD_TRAFFIC_LIGHT_POSITION = {
   default: { x: 20, y: 16 },
-  sidebarHidden: { x: 62, y: 16 },
+  sidebarHidden: { x: 20, y: 16 },
 };
 
 function setPanelTrafficLightPosition(

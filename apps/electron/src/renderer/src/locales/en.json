@@ -308,6 +308,13 @@
     "title": "History",
     "loading": "Loading history…",
     "filterTitle": "Filter",
+    "datePresets": "Date presets",
+    "presets": {
+      "today": "Today",
+      "last3Days": "Last 3 days",
+      "lastWeek": "Last Week",
+      "lastMonth": "Last Month"
+    },
     "closeFilters": "Close filters",
     "dateRangeLabel": "Date range",
     "viewLabel": "View",

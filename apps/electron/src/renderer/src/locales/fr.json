@@ -241,6 +241,13 @@
     "title": "Historique",
     "loading": "Chargement de l'historique…",
     "filterTitle": "Filtre",
+    "datePresets": "Périodes prédéfinies",
+    "presets": {
+      "today": "Aujourd’hui",
+      "last3Days": "3 derniers jours",
+      "lastWeek": "7 derniers jours",
+      "lastMonth": "30 derniers jours"
+    },
     "done": "Terminé",
     "filtersBtn": "Filtres",
     "timeLabelAllTime": "Toute la période",

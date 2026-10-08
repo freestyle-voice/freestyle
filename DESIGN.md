@@ -355,6 +355,9 @@ apply changes immediately and restore the stats rail when it closes. Slide
 motion respects reduced-motion preferences. The filter rail fills the page height,
 including the space above the feed. Animate its reserved width so the feed narrows
 and expands with the rail; do not reserve the final width before sliding it in.
+Below the date picker, compact presets select Today or the last 3, 7, or 30 local
+calendar days, including today. They populate the same explicit date range as the
+calendar and use the accent wash to indicate the matching selection.
 
 ### Keycaps → `Kbd`
 `import { Kbd } from ".../ui/kbd"` for `⌘K`-style hints and keycaps.

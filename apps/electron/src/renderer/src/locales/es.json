@@ -241,6 +241,13 @@
     "title": "Historial",
     "loading": "Cargando historial…",
     "filterTitle": "Filtro",
+    "datePresets": "Rangos rápidos",
+    "presets": {
+      "today": "Hoy",
+      "last3Days": "Últimos 3 días",
+      "lastWeek": "Últimos 7 días",
+      "lastMonth": "Últimos 30 días"
+    },
     "done": "Listo",
     "filtersBtn": "Filtros",
     "timeLabelAllTime": "Todo el tiempo",

@@ -241,6 +241,13 @@
     "title": "Verlauf",
     "loading": "Verlauf wird geladen…",
     "filterTitle": "Filter",
+    "datePresets": "Zeitraum-Vorgaben",
+    "presets": {
+      "today": "Heute",
+      "last3Days": "Letzte 3 Tage",
+      "lastWeek": "Letzte 7 Tage",
+      "lastMonth": "Letzte 30 Tage"
+    },
     "done": "Fertig",
     "filtersBtn": "Filter",
     "timeLabelAllTime": "Gesamter Zeitraum",

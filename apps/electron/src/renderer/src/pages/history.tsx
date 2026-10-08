@@ -33,6 +33,10 @@ import {
 } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
 import { formatNumber } from "@renderer/lib/format";
+import {
+  getLocalDateString,
+  getRecentDateRange,
+} from "@renderer/lib/history-dates";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
@@ -126,13 +130,6 @@ function formatCost(cost: number): string {
   if (cost === 0) return "$0.000";
   if (cost < 0.001) return "<$0.001";
   return `$${cost.toFixed(3)}`;
-}
-
-function getLocalDateString(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
 }
 
 function parseLocalDate(value: string): Date | undefined {
@@ -321,7 +318,7 @@ export default function HistoryPage(): React.JSX.Element {
 
   const todayStr = getLocalDateString(new Date());
 
-  // Presets are gone: the only date filter is an explicit custom range.
+  // Quick presets populate the same explicit range as the calendar picker.
   // Legacy persisted presets (today/weekly/monthly) are treated as all-time.
   const hasCustomRange =
     activePreset === "custom" && !!(customStartDate || customEndDate);
@@ -904,6 +901,13 @@ const StatsPanel = memo(function StatsPanel({
   );
 });
 
+const HISTORY_DATE_PRESETS = [
+  { label: "history.presets.today", days: 1 },
+  { label: "history.presets.last3Days", days: 3 },
+  { label: "history.presets.lastWeek", days: 7 },
+  { label: "history.presets.lastMonth", days: 30 },
+] as const;
+
 /** Live filters in a non-modal rail beside the history feed. */
 const FiltersPanel = memo(function FiltersPanel({
   startDate,
@@ -1035,6 +1039,33 @@ const FiltersPanel = memo(function FiltersPanel({
               />
             </PopoverContent>
           </Popover>
+          <fieldset
+            aria-label={t("history.datePresets")}
+            className="grid min-w-0 grid-cols-2 gap-1.5"
+          >
+            {HISTORY_DATE_PRESETS.map(({ label, days }) => {
+              const range = getRecentDateRange(days);
+              const selected =
+                startDate === getLocalDateString(range.from) &&
+                endDate === getLocalDateString(range.to);
+              return (
+                <Button
+                  key={days}
+                  variant="outline"
+                  size="sm"
+                  aria-pressed={selected}
+                  className={cn(
+                    "h-auto min-h-8 whitespace-normal px-2 py-1.5 text-[12px]",
+                    selected &&
+                      "border-primary/40 bg-accent text-accent-foreground hover:bg-accent/80 hover:text-accent-foreground dark:border-primary/40 dark:bg-accent dark:hover:bg-accent/80",
+                  )}
+                  onClick={() => onSelectRange(getRecentDateRange(days))}
+                >
+                  {t(label)}
+                </Button>
+              );
+            })}
+          </fieldset>
         </div>
 
         {/* View — global toggles that apply to every entry at once */}

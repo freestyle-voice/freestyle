@@ -70,6 +70,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       const visualReviewWindow = window as typeof window & {
         __visualReviewErrors?: string[];
         __visualReviewRequests?: string[];
+        __visualReviewHistoryQueries?: string[];
         __holdLocalReply?: boolean;
         __releaseLocalReply?: () => void;
         __holdLocalCreate?: boolean;
@@ -79,6 +80,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       };
       visualReviewWindow.__visualReviewErrors = [];
       visualReviewWindow.__visualReviewRequests = [];
+      visualReviewWindow.__visualReviewHistoryQueries = [];
       const originalFetch = window.fetch.bind(window);
       let signedOut = false;
       const scenario = new URLSearchParams(window.location.search).get(
@@ -442,6 +444,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           }
           if (url.pathname === "/api/history") {
             if (scenario === "guest-history-filters") {
+              visualReviewWindow.__visualReviewHistoryQueries!.push(url.search);
               const search = url.searchParams.get("search") ?? "";
               const items = Array.from({ length: 40 }, (_, index) => ({
                 id: index + 1,
@@ -903,6 +906,55 @@ test("fills the history height and resizes the feed with the filter rail", async
   await expect(
     dashboard.getByRole("button", { name: "Hide stats" }),
   ).toBeVisible();
+});
+
+test("applies history date presets through the live calendar range", async () => {
+  await dashboard.clock.setFixedTime(new Date(2026, 9, 9, 12));
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-filters#/today`);
+  await expect(
+    dashboard.getByText("“Edited note 1”", { exact: true }),
+  ).toBeVisible();
+  await dashboard.getByRole("button", { name: "Next page" }).click();
+  await expect(dashboard.getByText("1 / 2", { exact: true })).toBeHidden();
+  await dashboard.getByRole("button", { name: "Filters", exact: true }).click();
+  const panel = dashboard.getByRole("dialog", { name: "Filter", exact: true });
+  const presets = panel.getByRole("group", { name: "Date presets" });
+  for (const [label, start, formattedStart] of [
+    ["Today", "2026-10-09", "9 Oct, 2026"],
+    ["Last 3 days", "2026-10-07", "7 Oct, 2026"],
+    ["Last Week", "2026-10-03", "3 Oct, 2026"],
+    ["Last Month", "2026-09-10", "10 Sep, 2026"],
+  ]) {
+    const button = presets.getByRole("button", { name: label, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(presets.locator('[aria-pressed="true"]')).toHaveCount(1);
+    await expect(
+      panel.getByRole("button", { name: `${formattedStart} - 9 Oct, 2026` }),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        dashboard.evaluate(() => {
+          const queries = (
+            window as typeof window & {
+              __visualReviewHistoryQueries?: string[];
+            }
+          ).__visualReviewHistoryQueries;
+          const query = new URLSearchParams(queries?.at(-1));
+          return [
+            query.get("start_date"),
+            query.get("end_date"),
+            query.get("offset"),
+          ];
+        }),
+      )
+      .toEqual([start, "2026-10-09", "0"]);
+    await expect(panel).toBeVisible();
+  }
+  await panel.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(presets.locator('[aria-pressed="true"]')).toHaveCount(0);
+  await panel.getByRole("button", { name: "Close filters" }).click();
+  await dashboard.clock.setSystemTime(new Date());
 });
 
 test("keeps history interactive while live filters are open in the right rail", async ({

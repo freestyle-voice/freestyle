@@ -241,6 +241,8 @@
     "title": "Historique",
     "loading": "Chargement de l'historique…",
     "filterTitle": "Filtre",
+    "sidebars": "Panneaux de l’historique",
+    "statsTitle": "Statistiques",
     "datePresets": "Périodes prédéfinies",
     "presets": {
       "today": "Aujourd’hui",

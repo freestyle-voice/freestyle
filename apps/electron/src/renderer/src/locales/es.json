@@ -241,6 +241,8 @@
     "title": "Historial",
     "loading": "Cargando historial…",
     "filterTitle": "Filtro",
+    "sidebars": "Paneles del historial",
+    "statsTitle": "Estadísticas",
     "datePresets": "Rangos rápidos",
     "presets": {
       "today": "Hoy",

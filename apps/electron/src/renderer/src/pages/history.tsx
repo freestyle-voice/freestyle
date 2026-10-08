@@ -18,9 +18,12 @@ import {
   SheetClose,
   SheetContent,
   SheetTitle,
-  SheetTrigger,
 } from "@renderer/components/ui/sheet";
 import { Switch } from "@renderer/components/ui/switch";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@renderer/components/ui/toggle-group";
 import {
   Tooltip,
   TooltipContent,
@@ -48,6 +51,7 @@ import {
 } from "@tanstack/react-query";
 import {
   CalendarDays,
+  ChartColumnIncreasing,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -56,8 +60,8 @@ import {
   FileDiff,
   FlaskConical,
   GraduationCap,
-  PanelRight,
   Search,
+  SlidersHorizontal,
   Sparkles,
   Trash2,
   X,
@@ -251,6 +255,16 @@ export default function HistoryPage(): React.JSX.Element {
   const statsOpen = statsOpenRaw === "1";
   const openStats = useCallback(() => setStatsOpenRaw("1"), [setStatsOpenRaw]);
   const closeStats = useCallback(() => setStatsOpenRaw("0"), [setStatsOpenRaw]);
+  const sidebar = filtersOpen ? "filters" : statsOpen ? "stats" : null;
+  // Retain the current content and width until Sheet's exit animation ends.
+  const [lastSidebar, setLastSidebar] = useState<"filters" | "stats">("stats");
+  const displayedSidebar = sidebar ?? lastSidebar;
+  useEffect(() => {
+    if (sidebar) setLastSidebar(sidebar);
+  }, [sidebar]);
+  const filtersButtonRef = useRef<HTMLButtonElement>(null);
+  const statsButtonRef = useRef<HTMLButtonElement>(null);
+  const [statsResizing, setStatsResizing] = useState(false);
   const [statsWidthRaw, setStatsWidthRaw] = usePersistentState<string>(
     "today.statsWidth",
     "320",
@@ -272,18 +286,25 @@ export default function HistoryPage(): React.JSX.Element {
   const onResizeStart = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       e.preventDefault();
+      setStatsResizing(true);
       const el = e.currentTarget;
       el.setPointerCapture(e.pointerId);
       const onMove = (ev: PointerEvent): void => {
         setStatsWidth(Math.round(window.innerWidth - ev.clientX));
       };
       const onUp = (ev: PointerEvent): void => {
-        el.releasePointerCapture(ev.pointerId);
         el.removeEventListener("pointermove", onMove);
         el.removeEventListener("pointerup", onUp);
+        el.removeEventListener("pointercancel", onUp);
+        el.removeEventListener("lostpointercapture", onUp);
+        setStatsResizing(false);
+        if (el.hasPointerCapture(ev.pointerId))
+          el.releasePointerCapture(ev.pointerId);
       };
       el.addEventListener("pointermove", onMove);
       el.addEventListener("pointerup", onUp);
+      el.addEventListener("pointercancel", onUp);
+      el.addEventListener("lostpointercapture", onUp);
     },
     [setStatsWidth],
   );
@@ -570,7 +591,7 @@ export default function HistoryPage(): React.JSX.Element {
 
   const searchRow = (
     <div className="mb-6 flex gap-2">
-      <div className="border-border bg-card flex flex-1 items-center gap-2 rounded-lg border px-3 py-2">
+      <div className="border-border bg-card flex min-w-0 flex-1 items-center gap-2 rounded-lg border px-3 py-2">
         <Search className="text-muted-foreground h-3.5 w-3.5 shrink-0" />
         <input
           ref={searchInputRef}
@@ -585,37 +606,66 @@ export default function HistoryPage(): React.JSX.Element {
               ? t("history.searchSingular", { total })
               : t("history.searchPlural", { total })
           }
-          className="placeholder:text-muted-foreground/80 text-foreground flex-1 bg-transparent text-[13px] outline-none"
+          className="placeholder:text-muted-foreground/80 text-foreground min-w-0 flex-1 bg-transparent text-[13px] outline-none"
         />
         <span className="text-muted-foreground text-[10px]">
           {SEARCH_SHORTCUT_LABEL}
         </span>
       </div>
-      <SheetTrigger asChild>
-        <Button
-          variant="link"
-          className={cn(
-            "h-auto self-center px-2 text-[13px] underline",
-            filterCount > 0
-              ? "text-primary"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {t("history.filtersBtn")}
-        </Button>
-      </SheetTrigger>
-      {!statsOpen && !filtersOpen && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className="self-center"
-          onClick={openStats}
-          aria-label={t("history.openStats")}
-          title={t("history.openStats")}
-        >
-          <PanelRight />
-        </Button>
-      )}
+      <ToggleGroup
+        type="single"
+        variant="outline"
+        spacing={0}
+        value={sidebar ?? ""}
+        className="self-center"
+        aria-label={t("history.sidebars")}
+        onValueChange={(value) => {
+          if (value === "filters") setFiltersOpen(true);
+          else if (value === "stats") {
+            setFiltersOpen(false);
+            openStats();
+          } else if (filtersOpen) setFiltersOpen(false);
+          else closeStats();
+        }}
+      >
+        <Tooltip>
+          <ToggleGroupItem
+            asChild
+            value="filters"
+            ref={filtersButtonRef}
+            aria-label={t("history.filtersBtn")}
+            aria-expanded={filtersOpen}
+            aria-controls="history-sidebar"
+            className="relative"
+          >
+            <TooltipTrigger>
+              <SlidersHorizontal />
+              {filterCount > 0 && (
+                <span
+                  aria-hidden="true"
+                  className="bg-primary absolute right-1 top-1 size-1.5 rounded-full"
+                />
+              )}
+            </TooltipTrigger>
+          </ToggleGroupItem>
+          <TooltipContent>{t("history.filtersBtn")}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <ToggleGroupItem
+            asChild
+            value="stats"
+            ref={statsButtonRef}
+            aria-label={t("history.statsTitle")}
+            aria-expanded={sidebar === "stats"}
+            aria-controls="history-sidebar"
+          >
+            <TooltipTrigger>
+              <ChartColumnIncreasing />
+            </TooltipTrigger>
+          </ToggleGroupItem>
+          <TooltipContent>{t("history.statsTitle")}</TooltipContent>
+        </Tooltip>
+      </ToggleGroup>
     </div>
   );
 
@@ -696,42 +746,6 @@ export default function HistoryPage(): React.JSX.Element {
     </div>
   );
 
-  if (loading) {
-    // Preserve the feed and stats-rail geometry from the populated page. The
-    // initial request should feel like the same transcription surface gaining
-    // content, not a temporary stack of unrelated cards.
-    return (
-      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen} modal={false}>
-        <div className="flex h-full min-h-0 flex-col">
-          <div
-            className="grid min-h-0 flex-1"
-            style={{
-              gridTemplateColumns: statsOpen
-                ? `minmax(0,1fr) ${statsWidth}px`
-                : "minmax(0,1fr)",
-            }}
-          >
-            <div
-              className="responsive-page-scroll min-w-0 overflow-auto"
-              style={
-                {
-                  scrollbarWidth: "none",
-                  paddingRight: statsOpen ? "1.25rem" : undefined,
-                } as React.CSSProperties
-              }
-            >
-              <DragSpacer />
-              <div className="h-5 shrink-0" aria-hidden="true" />
-              {searchRow}
-              <HistoryFeedSkeleton />
-            </div>
-            {statsOpen && <HistoryStatsSkeleton />}
-          </div>
-        </div>
-      </Sheet>
-    );
-  }
-
   const filtersPanel = (
     <FiltersPanel
       startDate={startDate}
@@ -748,7 +762,7 @@ export default function HistoryPage(): React.JSX.Element {
     />
   );
 
-  if (isGenuineEmpty) {
+  if (!loading && isGenuineEmpty) {
     return (
       <div className="flex h-full min-h-0 flex-col">
         <DragSpacer />
@@ -766,16 +780,36 @@ export default function HistoryPage(): React.JSX.Element {
 
   // The right rail shows filters while open, then restores the stats panel.
   // The feed and rail scroll independently so history stays usable throughout.
-  // Match Sheet's 200ms ease-out slide. Only animate while the sheet is mounted
-  // (including its exit), so dragging the stats resize handle stays immediate.
+  // Both panels share Sheet's 200ms ease-out slide and the reserved column.
+  // Disable width transitions during stats resizing so dragging stays immediate.
   return (
-    <Sheet open={filtersOpen} onOpenChange={setFiltersOpen} modal={false}>
-      <div className="flex h-full min-h-0 flex-col [container-type:inline-size] [--history-filter-width:min(340px,48cqw)]">
+    <Sheet
+      open={sidebar !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          if (filtersOpen) setFiltersOpen(false);
+          else closeStats();
+        }
+      }}
+      modal={false}
+    >
+      <div
+        className="flex h-full min-h-0 flex-col [container-type:inline-size]"
+        style={
+          {
+            "--history-sidebar-width":
+              displayedSidebar === "filters"
+                ? "min(340px,48cqw)"
+                : `${statsWidth}px`,
+          } as React.CSSProperties
+        }
+      >
         <div
           data-testid="history-layout"
-          className="grid min-h-0 flex-1 overflow-hidden transition-none duration-200 ease-out has-[[data-slot=sheet-content]]:transition-[grid-template-columns] motion-reduce:duration-0 motion-reduce:transition-none"
+          data-resizing={statsResizing}
+          className="grid min-h-0 flex-1 overflow-hidden transition-[grid-template-columns] duration-200 ease-out data-[resizing=true]:transition-none motion-reduce:duration-0 motion-reduce:transition-none"
           style={{
-            gridTemplateColumns: `minmax(0,1fr) ${filtersOpen ? "var(--history-filter-width)" : statsOpen ? `${statsWidth}px` : "0px"}`,
+            gridTemplateColumns: `minmax(0,1fr) ${sidebar ? "var(--history-sidebar-width)" : "0px"}`,
           }}
         >
           <div
@@ -790,30 +824,81 @@ export default function HistoryPage(): React.JSX.Element {
           >
             <DragSpacer />
             <div className="h-5 shrink-0" aria-hidden="true" />
-            {historyPaused && <HistoryPausedNotice />}
-            {hero}
+            {!loading && historyPaused && <HistoryPausedNotice />}
+            {!loading && hero}
             {searchRow}
-            {feed}
-            {pagination}
+            {loading ? <HistoryFeedSkeleton /> : feed}
+            {!loading && pagination}
           </div>
           <div className="relative min-h-0 min-w-0">
-            {!filtersOpen && statsOpen && (
-              <StatsPanel
-                stats={stats}
-                timeLabel={timeLabel}
-                daily={daily}
-                avgWpm={avgWpm}
-                width={statsWidth}
-                onClose={closeStats}
-                onResizeStart={onResizeStart}
-                onWidthChange={setStatsWidth}
-              />
-            )}
             <div
-              data-testid="history-filter-rail"
+              data-testid="history-sidebar-rail"
               className="pointer-events-none absolute inset-0 overflow-hidden"
             >
-              {filtersPanel}
+              <SheetContent
+                key={displayedSidebar}
+                id="history-sidebar"
+                docked
+                aria-describedby={undefined}
+                className="pointer-events-auto left-auto w-(--history-sidebar-width)"
+                onInteractOutside={(event) => event.preventDefault()}
+                onOpenAutoFocus={(event) => event.preventDefault()}
+                onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  // Keep focus in the feed if the user was browsing there.
+                  // Otherwise return to the button for the panel being closed.
+                  if (document.activeElement === document.body) {
+                    (displayedSidebar === "filters"
+                      ? filtersButtonRef
+                      : statsButtonRef
+                    ).current?.focus();
+                  }
+                }}
+              >
+                <header className="border-border flex items-center justify-between gap-3 border-b px-4 py-4">
+                  <SheetTitle>
+                    {t(
+                      displayedSidebar === "filters"
+                        ? "history.filterTitle"
+                        : "history.statsTitle",
+                    )}
+                  </SheetTitle>
+                  <SheetClose asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t(
+                        displayedSidebar === "filters"
+                          ? "history.closeFilters"
+                          : "history.closeStats",
+                      )}
+                    >
+                      <X />
+                    </Button>
+                  </SheetClose>
+                </header>
+                {displayedSidebar === "filters" ? (
+                  filtersPanel
+                ) : loading ? (
+                  <HistoryStatsSkeleton />
+                ) : (
+                  <StatsPanel
+                    stats={stats}
+                    timeLabel={timeLabel}
+                    daily={daily}
+                    avgWpm={avgWpm}
+                    width={statsWidth}
+                    onResizeStart={onResizeStart}
+                    onWidthChange={(width) => {
+                      setStatsResizing(true);
+                      setStatsWidth(width);
+                      requestAnimationFrame(() =>
+                        requestAnimationFrame(() => setStatsResizing(false)),
+                      );
+                    }}
+                  />
+                )}
+              </SheetContent>
             </div>
           </div>
         </div>
@@ -837,7 +922,6 @@ const StatsPanel = memo(function StatsPanel({
   daily,
   avgWpm,
   width,
-  onClose,
   onResizeStart,
   onWidthChange,
 }: {
@@ -846,15 +930,13 @@ const StatsPanel = memo(function StatsPanel({
   daily: DayActivity[];
   avgWpm: number;
   width: number;
-  onClose: () => void;
   onResizeStart: (e: React.PointerEvent<HTMLDivElement>) => void;
   onWidthChange: (width: number) => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    // Fills the full height of its grid cell and stays fixed while the feed
-    // column scrolls independently beside it.
-    <div className="border-border/70 relative h-full min-h-0 border-l">
+    // Fill the shared sheet body and scroll independently from the feed.
+    <div className="relative min-h-0 flex-1">
       {/* Invisible drag handle straddling the panel's left border. Focusable
           window-splitter: arrow keys nudge the width for keyboard users. */}
       {/* biome-ignore lint/a11y/useSemanticElements: an <hr> can't act as a focusable, draggable window splitter */}
@@ -879,17 +961,6 @@ const StatsPanel = memo(function StatsPanel({
         className="hover:bg-primary/25 active:bg-primary/40 focus-visible:bg-primary/25 absolute inset-y-0 -left-1 z-10 w-2 cursor-col-resize transition-colors outline-none"
       />
       <aside className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)]">
-        <div className="-mr-1.5 flex justify-end">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={onClose}
-            aria-label={t("history.closeStats")}
-            title={t("history.closeStats")}
-          >
-            <PanelRight />
-          </Button>
-        </div>
         <StatsTab
           stats={stats}
           timeLabel={timeLabel}
@@ -941,178 +1012,156 @@ const FiltersPanel = memo(function FiltersPanel({
   };
 
   return (
-    <SheetContent
-      docked
-      aria-describedby={undefined}
-      // Keep the slide distance stable while its reserved column animates.
-      className="pointer-events-auto left-auto w-(--history-filter-width)"
-      onInteractOutside={(event) => event.preventDefault()}
-    >
-      <header className="border-border flex items-center justify-between gap-3 border-b px-4 py-4">
-        <SheetTitle>{t("history.filterTitle")}</SheetTitle>
-        <SheetClose asChild>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={t("history.closeFilters", {
-              defaultValue: "Close filters",
-            })}
-          >
-            <X />
-          </Button>
-        </SheetClose>
-      </header>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-5">
-        {/* Date range */}
-        <div className="flex flex-col gap-2.5">
-          <div className="flex items-center justify-between">
-            <Label className="text-muted-foreground text-[12px]">
-              {t("history.dateRangeLabel")}
-            </Label>
-            {(startDate || endDate) && (
-              <Button
-                variant="link"
-                size="xs"
-                className="text-muted-foreground hover:text-foreground h-auto p-0 text-[11px] underline"
-                onClick={() => onSelectRange(undefined)}
-              >
-                {t("history.clearDates")}
-              </Button>
-            )}
-          </div>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
-              >
-                <CalendarDays data-icon="inline-start" />
-                <span className="truncate">
-                  {formatRangeLabel(startDate, endDate)}
-                </span>
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent
-              align="start"
-              className="w-[320px] overflow-visible p-2"
-              collisionPadding={8}
-              sideOffset={6}
+    <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-5">
+      {/* Date range */}
+      <div className="flex flex-col gap-2.5">
+        <div className="flex items-center justify-between">
+          <Label className="text-muted-foreground text-[12px]">
+            {t("history.dateRangeLabel")}
+          </Label>
+          {(startDate || endDate) && (
+            <Button
+              variant="link"
+              size="xs"
+              className="text-muted-foreground hover:text-foreground h-auto p-0 text-[11px] underline"
+              onClick={() => onSelectRange(undefined)}
             >
-              <DayPicker
-                mode="range"
-                numberOfMonths={2}
-                selected={selectedDateRange}
-                onSelect={onSelectRange}
-                defaultMonth={selectedDateRange.from ?? selectedDateRange.to}
-                classNames={{
-                  root: "p-0",
-                  months: "flex gap-3",
-                  month: "flex flex-col gap-2",
-                  month_caption: "flex h-6 items-center justify-center",
-                  caption_label: "text-[12px] font-medium text-foreground",
-                  nav: "absolute inset-x-2 top-2 flex items-center justify-between",
-                  button_previous:
-                    "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
-                  button_next:
-                    "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
-                  chevron: "size-3.5 fill-current",
-                  month_grid: "w-full border-collapse border-spacing-0",
-                  weekdays: "flex",
-                  weekday:
-                    "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
-                  week: "flex w-full",
-                  day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
-                  day_button:
-                    "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                  outside: "text-muted-foreground/45",
-                  today:
-                    "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",
-                  selected:
-                    "text-primary-foreground after:!hidden [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
-                  range_start:
-                    "bg-primary/15 rounded-l-md [&>button]:rounded-l [&>button]:rounded-r-none",
-                  range_middle:
-                    "bg-primary/15 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!text-foreground [&>button]:hover:!bg-transparent",
-                  range_end:
-                    "bg-primary/15 rounded-r-md [&>button]:rounded-r [&>button]:rounded-l-none",
-                }}
-              />
-            </PopoverContent>
-          </Popover>
-          <fieldset
-            aria-label={t("history.datePresets")}
-            className="grid min-w-0 grid-cols-2 gap-1.5"
-          >
-            {HISTORY_DATE_PRESETS.map(({ label, days }) => {
-              const range = getRecentDateRange(days);
-              const selected =
-                startDate === getLocalDateString(range.from) &&
-                endDate === getLocalDateString(range.to);
-              return (
-                <Button
-                  key={days}
-                  variant="outline"
-                  size="sm"
-                  aria-pressed={selected}
-                  className={cn(
-                    "h-auto min-h-8 whitespace-normal px-2 py-1.5 text-[12px]",
-                    selected &&
-                      "border-primary/40 bg-accent text-accent-foreground hover:bg-accent/80 hover:text-accent-foreground dark:border-primary/40 dark:bg-accent dark:hover:bg-accent/80",
-                  )}
-                  onClick={() => onSelectRange(getRecentDateRange(days))}
-                >
-                  {t(label)}
-                </Button>
-              );
-            })}
-          </fieldset>
+              {t("history.clearDates")}
+            </Button>
+          )}
         </div>
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              variant="outline"
+              className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
+            >
+              <CalendarDays data-icon="inline-start" />
+              <span className="truncate">
+                {formatRangeLabel(startDate, endDate)}
+              </span>
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="w-[320px] overflow-visible p-2"
+            collisionPadding={8}
+            sideOffset={6}
+          >
+            <DayPicker
+              mode="range"
+              numberOfMonths={2}
+              selected={selectedDateRange}
+              onSelect={onSelectRange}
+              defaultMonth={selectedDateRange.from ?? selectedDateRange.to}
+              classNames={{
+                root: "p-0",
+                months: "flex gap-3",
+                month: "flex flex-col gap-2",
+                month_caption: "flex h-6 items-center justify-center",
+                caption_label: "text-[12px] font-medium text-foreground",
+                nav: "absolute inset-x-2 top-2 flex items-center justify-between",
+                button_previous:
+                  "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                button_next:
+                  "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                chevron: "size-3.5 fill-current",
+                month_grid: "w-full border-collapse border-spacing-0",
+                weekdays: "flex",
+                weekday:
+                  "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
+                week: "flex w-full",
+                day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
+                day_button:
+                  "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                outside: "text-muted-foreground/45",
+                today:
+                  "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",
+                selected:
+                  "text-primary-foreground after:!hidden [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
+                range_start:
+                  "bg-primary/15 rounded-l-md [&>button]:rounded-l [&>button]:rounded-r-none",
+                range_middle:
+                  "bg-primary/15 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!text-foreground [&>button]:hover:!bg-transparent",
+                range_end:
+                  "bg-primary/15 rounded-r-md [&>button]:rounded-r [&>button]:rounded-l-none",
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+        <fieldset
+          aria-label={t("history.datePresets")}
+          className="grid min-w-0 grid-cols-2 gap-1.5"
+        >
+          {HISTORY_DATE_PRESETS.map(({ label, days }) => {
+            const range = getRecentDateRange(days);
+            const selected =
+              startDate === getLocalDateString(range.from) &&
+              endDate === getLocalDateString(range.to);
+            return (
+              <Button
+                key={days}
+                variant="outline"
+                size="sm"
+                aria-pressed={selected}
+                className={cn(
+                  "h-auto min-h-8 whitespace-normal px-2 py-1.5 text-[12px]",
+                  selected &&
+                    "border-primary/40 bg-accent text-accent-foreground hover:bg-accent/80 hover:text-accent-foreground dark:border-primary/40 dark:bg-accent dark:hover:bg-accent/80",
+                )}
+                onClick={() => onSelectRange(getRecentDateRange(days))}
+              >
+                {t(label)}
+              </Button>
+            );
+          })}
+        </fieldset>
+      </div>
 
-        {/* View — global toggles that apply to every entry at once */}
-        <div className="flex flex-col gap-2.5">
-          <span className="text-muted-foreground text-[10px]">
-            {t("history.viewLabel")}
-          </span>
-          <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
-            <ViewToggleRow
-              icon={<FileDiff className="text-muted-foreground h-3.5 w-3.5" />}
-              title={t("history.diffToggle")}
-              description={t("history.diffToggleDesc")}
-              checked={diffMode}
-              onCheckedChange={onDiffModeChange}
-            />
-            <ViewToggleRow
-              icon={<Sparkles className="text-muted-foreground h-3.5 w-3.5" />}
-              title={t("history.aiEditToggle")}
-              description={t("history.aiEditToggleDesc")}
-              checked={showAiEdits}
-              // Diff mode already shows both raw and cleaned, so the plain
-              // AI-edit toggle is moot while diff mode is on.
-              disabled={diffMode}
-              onCheckedChange={onShowAiEditsChange}
-            />
-            <ViewToggleRow
-              icon={
-                <FlaskConical className="text-muted-foreground h-3.5 w-3.5" />
-              }
-              title={t("history.nerdToggle")}
-              description={t("history.nerdToggleDesc")}
-              checked={nerdMode}
-              onCheckedChange={onNerdModeChange}
-            />
-            <ViewToggleRow
-              icon={
-                <GraduationCap className="text-muted-foreground h-3.5 w-3.5" />
-              }
-              title={t("history.tutorialToggle")}
-              description={t("history.tutorialToggleDesc")}
-              checked={showTutorial}
-              onCheckedChange={onShowTutorialChange}
-            />
-          </div>
+      {/* View — global toggles that apply to every entry at once */}
+      <div className="flex flex-col gap-2.5">
+        <span className="text-muted-foreground text-[10px]">
+          {t("history.viewLabel")}
+        </span>
+        <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
+          <ViewToggleRow
+            icon={<FileDiff className="text-muted-foreground h-3.5 w-3.5" />}
+            title={t("history.diffToggle")}
+            description={t("history.diffToggleDesc")}
+            checked={diffMode}
+            onCheckedChange={onDiffModeChange}
+          />
+          <ViewToggleRow
+            icon={<Sparkles className="text-muted-foreground h-3.5 w-3.5" />}
+            title={t("history.aiEditToggle")}
+            description={t("history.aiEditToggleDesc")}
+            checked={showAiEdits}
+            // Diff mode already shows both raw and cleaned, so the plain
+            // AI-edit toggle is moot while diff mode is on.
+            disabled={diffMode}
+            onCheckedChange={onShowAiEditsChange}
+          />
+          <ViewToggleRow
+            icon={
+              <FlaskConical className="text-muted-foreground h-3.5 w-3.5" />
+            }
+            title={t("history.nerdToggle")}
+            description={t("history.nerdToggleDesc")}
+            checked={nerdMode}
+            onCheckedChange={onNerdModeChange}
+          />
+          <ViewToggleRow
+            icon={
+              <GraduationCap className="text-muted-foreground h-3.5 w-3.5" />
+            }
+            title={t("history.tutorialToggle")}
+            description={t("history.tutorialToggleDesc")}
+            checked={showTutorial}
+            onCheckedChange={onShowTutorialChange}
+          />
         </div>
       </div>
-    </SheetContent>
+    </div>
   );
 });
 
@@ -1475,12 +1524,9 @@ function HistoryFeedSkeleton(): React.JSX.Element {
 /** Keeps the fixed desktop rail from appearing only after history has loaded. */
 function HistoryStatsSkeleton(): React.JSX.Element {
   return (
-    <div
-      className="border-border/70 relative min-h-0 border-l"
-      aria-hidden="true"
-    >
+    <div className="relative min-h-0 flex-1" aria-hidden="true">
       <aside className="flex h-full min-h-0 flex-col overflow-hidden px-4 py-4 shadow-[-12px_0_28px_-28px_var(--glass-shadow)]">
-        <div className="animate-pulse pt-11">
+        <div className="animate-pulse pt-4">
           <div className="grid grid-cols-2 gap-2.5">
             <div className="bg-muted col-span-2 h-[76px] rounded-lg" />
             <div className="bg-muted h-[76px] rounded-lg" />

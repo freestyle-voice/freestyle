@@ -241,6 +241,8 @@
     "title": "Cronologia",
     "loading": "Caricamento cronologia...",
     "filterTitle": "Filtro",
+    "sidebars": "Pannelli della cronologia",
+    "statsTitle": "Statistiche",
     "datePresets": "Intervalli rapidi",
     "presets": {
       "today": "Oggi",

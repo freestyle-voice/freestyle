@@ -308,6 +308,8 @@
     "title": "History",
     "loading": "Loading history…",
     "filterTitle": "Filter",
+    "sidebars": "History panels",
+    "statsTitle": "Stats",
     "datePresets": "Date presets",
     "presets": {
       "today": "Today",

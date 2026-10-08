@@ -241,6 +241,8 @@
     "title": "Verlauf",
     "loading": "Verlauf wird geladen…",
     "filterTitle": "Filter",
+    "sidebars": "Verlaufsbereiche",
+    "statsTitle": "Statistiken",
     "datePresets": "Zeitraum-Vorgaben",
     "presets": {
       "today": "Heute",

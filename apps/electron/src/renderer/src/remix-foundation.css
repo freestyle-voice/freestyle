@@ -148,20 +148,34 @@
   filter: brightness(1.1);
 }
 
+.tavern-model-setup {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.tavern-model-setup .tavern-head {
+  justify-content: space-between;
+}
+
+.tavern-model-setup h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
 .tavern-gate {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   padding: 20px 28px 18px;
   text-align: center;
-}
-
-.tavern-gate-close {
-  position: absolute;
-  top: 12px;
-  right: 12px;
 }
 
 .tavern-gate-body {
@@ -1480,6 +1494,19 @@
   transform: translateY(-1px);
   background: color-mix(in srgb, var(--tavern-ink) 88%, var(--tavern-lantern));
   box-shadow: 0 3px 7px rgba(42, 33, 20, .2);
+}
+
+.tavern-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.tavern-btn-send:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  transform: none;
+  box-shadow: none;
+  pointer-events: none;
 }
 
 .tavern-btn:focus-visible {

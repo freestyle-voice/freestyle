@@ -886,6 +886,22 @@ test("guides guests to Remix model setup and keeps workspace sign-in cards above
     dashboard.getByRole("button", { name: "Switch workspace" }),
   ).toBeVisible();
   const sessions = dashboard.getByRole("region", { name: "Remix chats" });
+  const chat = dashboard.getByRole("region", {
+    name: "Remix chat",
+    exact: true,
+  });
+  await expect(
+    chat.getByRole("heading", { name: "New chat", exact: true }),
+  ).toBeVisible();
+  await expect(
+    chat.getByRole("textbox", { name: "Message Remix" }),
+  ).toBeDisabled();
+  await expect(
+    chat.getByRole("textbox", { name: "Message Remix" }),
+  ).toHaveAttribute("placeholder", "Choose a Remix model to start chatting…");
+  await expect(
+    chat.getByRole("button", { name: "Send", exact: true }),
+  ).toBeDisabled();
   await expect(
     sessions.getByText("No sessions yet", { exact: true }),
   ).toBeVisible();

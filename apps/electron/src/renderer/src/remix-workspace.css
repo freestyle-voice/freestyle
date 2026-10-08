@@ -468,7 +468,8 @@
   gap: 4px;
 }
 
-.remix-agent .remix-chat-session h1 {
+.remix-agent .remix-chat-session h1,
+.remix-agent .remix-chat-session h2 {
   overflow: hidden;
   margin: 0;
   color: var(--foreground);

@@ -648,71 +648,139 @@ function contextKindFor(message: UIMessage): RemixContextKind | null {
   return "brain";
 }
 
-function RemixModelSetup(): React.JSX.Element {
+function RemixComposer({
+  textareaProps,
+  sendDisabled,
+  onSend,
+  busy = false,
+  onStop,
+}: {
+  textareaProps: React.TextareaHTMLAttributes<HTMLTextAreaElement>;
+  sendDisabled: boolean;
+  onSend?: () => void;
+  busy?: boolean;
+  onStop?: () => void;
+}): React.JSX.Element {
+  return (
+    <div className="tavern-composer">
+      <textarea
+        id="panel-composer"
+        className="tavern-input"
+        rows={1}
+        aria-label="Message Remix"
+        {...textareaProps}
+      />
+      {busy ? (
+        <button
+          type="button"
+          className="tavern-btn tavern-btn-send is-stop"
+          aria-label="Stop generating"
+          title="Stop generating"
+          onClick={onStop}
+        >
+          <WorkspaceIcon name="stop" />
+        </button>
+      ) : null}
+      <button
+        type="button"
+        className="tavern-btn tavern-btn-send"
+        aria-label="Send"
+        title={busy ? "Queue message" : "Send"}
+        disabled={sendDisabled}
+        onClick={onSend}
+      >
+        <WorkspaceIcon name="send" />
+      </button>
+    </div>
+  );
+}
+
+function RemixModelSetup({
+  desktop = false,
+}: {
+  desktop?: boolean;
+}): React.JSX.Element {
   const navigate = useNavigate();
   const auth = useCloudAuth();
   return (
-    <div className="tavern-gate">
-      <button
-        type="button"
-        className="tavern-close tavern-gate-close"
-        aria-label="Close"
-        onClick={() => window.api.panelClose()}
-      >
-        <WorkspaceIcon name="close" />
-      </button>
-      <div className="tavern-gate-body">
-        <div className="tavern-gate-lockup">
-          <img
-            src={markLight}
-            alt=""
-            className="tavern-gate-mark dark:hidden"
-          />
-          <img
-            src={markDark}
-            alt=""
-            className="tavern-gate-mark hidden dark:block"
-          />
-          <span className="tavern-gate-wordmark">freestyle</span>
+    <section className="tavern-model-setup" aria-label="Remix chat">
+      <header className={desktop ? "remix-chat-header" : "tavern-head"}>
+        <div className="remix-chat-session">
+          <h2>New chat</h2>
         </div>
-        <h1 className="tavern-gate-heading">Set up your Remix model</h1>
-        <p className="tavern-gate-sub">
-          Choose a local model, bring your own API key, or use Freestyle Cloud
-          to start chatting.
-        </p>
-        {auth.signingIn ? (
-          <>
-            <div className="tavern-gate-code">{auth.userCode ?? "…"}</div>
-            <p className="tavern-gate-sub is-small">
-              Check that your browser shows this code, then finish signing in
-              there.
-            </p>
+        <button
+          type="button"
+          className="tavern-close"
+          aria-label="Close"
+          onClick={() => window.api.panelClose()}
+        >
+          <WorkspaceIcon name="close" />
+        </button>
+      </header>
+      <div className="tavern-gate">
+        <div className="tavern-gate-body">
+          <div className="tavern-gate-lockup">
+            <img
+              src={markLight}
+              alt=""
+              className="tavern-gate-mark dark:hidden"
+            />
+            <img
+              src={markDark}
+              alt=""
+              className="tavern-gate-mark hidden dark:block"
+            />
+            <span className="tavern-gate-wordmark">freestyle</span>
+          </div>
+          <h1 id="remix-model-setup-heading" className="tavern-gate-heading">
+            Set up your Remix model
+          </h1>
+          <p className="tavern-gate-sub">
+            Choose a local model, bring your own API key, or use Freestyle Cloud
+            to start chatting.
+          </p>
+          {auth.signingIn ? (
+            <>
+              <div className="tavern-gate-code">{auth.userCode ?? "…"}</div>
+              <p className="tavern-gate-sub is-small">
+                Check that your browser shows this code, then finish signing in
+                there.
+              </p>
+              <button
+                type="button"
+                className="tavern-approve-btn"
+                onClick={() => auth.cancelSignIn()}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
             <button
               type="button"
-              className="tavern-approve-btn"
-              onClick={() => auth.cancelSignIn()}
+              className="tavern-gate-btn"
+              onClick={() => navigate("/settings/models?choose=remix")}
             >
-              Cancel
+              Choose a Remix model
             </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="tavern-gate-btn"
-            onClick={() => navigate("/settings/models?choose=remix")}
-          >
-            Choose a Remix model
-          </button>
-        )}
-        {auth.sessionExpired && !auth.signingIn ? (
-          <p className="tavern-gate-sub is-small">
-            Your Cloud session expired. Sign in for Cloud features, or choose a
-            local model or API key to keep chatting.
-          </p>
-        ) : null}
-        {auth.error ? <p className="tavern-notice">{auth.error}</p> : null}
+          )}
+          {auth.sessionExpired && !auth.signingIn ? (
+            <p className="tavern-gate-sub is-small">
+              Your Cloud session expired. Sign in for Cloud features, or choose
+              a local model or API key to keep chatting.
+            </p>
+          ) : null}
+          {auth.error ? <p className="tavern-notice">{auth.error}</p> : null}
+        </div>
       </div>
-    </div>
+      <RemixComposer
+        textareaProps={{
+          disabled: true,
+          placeholder: "Choose a Remix model to start chatting…",
+          "aria-describedby": "remix-model-setup-heading",
+        }}
+        sendDisabled
+      />
+    </section>
   );
 }
 
@@ -749,7 +817,16 @@ export function RemixWorkspace(): React.JSX.Element {
         <Button onClick={() => void availability.retry()}>Try again</Button>
       </div>
     );
-  if (!availability.canChat) return <RemixModelSetup />;
+  if (!availability.canChat)
+    return (
+      <div className="remix-workspace">
+        <div className="remix-agent">
+          <div className="tavern tavern-panel remix-agent-panel">
+            <RemixModelSetup desktop />
+          </div>
+        </div>
+      </div>
+    );
 
   if (!thread) {
     return threadLoadError ? (
@@ -1667,7 +1744,7 @@ function PanelInner({
           {availability.checking ? (
             <ConversationSkeleton />
           ) : (
-            <RemixModelSetup />
+            <RemixModelSetup desktop={desktop} />
           )}
         </div>
       </div>
@@ -2081,25 +2158,20 @@ function PanelInner({
                   onSteer={queue.steer}
                   onError={setNotice}
                 />
-                <div className="tavern-composer">
-                  <textarea
-                    id="panel-composer"
-                    className="tavern-input"
-                    value={draft}
-                    rows={1}
-                    placeholder={
-                      isSessionLoading
-                        ? "Loading conversation…"
-                        : busy
-                          ? "Add a follow-up…"
-                          : "Message Freestyle"
-                    }
-                    disabled={isSessionLoading || Boolean(sessionLoadError)}
-                    onMouseDown={() => window.api.panelRequestFocus()}
-                    onFocus={() => window.api.panelSetComposerFocused(true)}
-                    onBlur={() => window.api.panelSetComposerFocused(false)}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
+                <RemixComposer
+                  textareaProps={{
+                    value: draft,
+                    placeholder: isSessionLoading
+                      ? "Loading conversation…"
+                      : busy
+                        ? "Add a follow-up…"
+                        : "Message Freestyle",
+                    disabled: isSessionLoading || Boolean(sessionLoadError),
+                    onMouseDown: () => window.api.panelRequestFocus(),
+                    onFocus: () => window.api.panelSetComposerFocused(true),
+                    onBlur: () => window.api.panelSetComposerFocused(false),
+                    onChange: (e) => setDraft(e.target.value),
+                    onKeyDown: (e) => {
                       if (
                         e.key === "Enter" &&
                         !e.shiftKey &&
@@ -2108,34 +2180,17 @@ function PanelInner({
                         e.preventDefault();
                         send();
                       }
-                    }}
-                  />
-                  {busy ? (
-                    <button
-                      type="button"
-                      className="tavern-btn tavern-btn-send is-stop"
-                      aria-label="Stop generating"
-                      title="Stop generating"
-                      onClick={stopGeneration}
-                    >
-                      <WorkspaceIcon name="stop" />
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="tavern-btn tavern-btn-send"
-                    aria-label="Send"
-                    title={busy ? "Queue message" : "Send"}
-                    disabled={
-                      isSessionLoading ||
-                      Boolean(sessionLoadError) ||
-                      !draft.trim()
-                    }
-                    onClick={send}
-                  >
-                    <WorkspaceIcon name="send" />
-                  </button>
-                </div>
+                    },
+                  }}
+                  busy={busy}
+                  onStop={stopGeneration}
+                  sendDisabled={
+                    isSessionLoading ||
+                    Boolean(sessionLoadError) ||
+                    !draft.trim()
+                  }
+                  onSend={send}
+                />
               </>
             ) : null}
           </div>

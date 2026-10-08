@@ -171,6 +171,27 @@ function buildLlmRows(
 ): Row[] {
   const rows: Row[] = [];
 
+  if (type === "remix") {
+    rows.push({
+      key: "freestyle-cloud/remix",
+      name: "Freestyle Cloud",
+      source: "cloud",
+      provider: "freestyle-cloud",
+      meta: "Managed · no API key needed",
+      curated: true,
+      selected: selectedModel?.provider === "freestyle-cloud",
+      hasKey: true,
+      onSelect: () =>
+        h.onPickCloud({
+          provider_id: "freestyle-cloud",
+          provider_name: "Freestyle Cloud",
+          model_id: "freestyle-cloud/remix",
+          model_name: "Freestyle Cloud",
+          type: "llm",
+        }),
+    });
+  }
+
   for (const [providerId, { providerName, models }] of m.llmModelsByProvider) {
     if (providerId === FREESTYLE_CLOUD_CLEANUP.provider_id) continue;
     for (const model of models) {

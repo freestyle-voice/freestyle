@@ -24,6 +24,7 @@ import {
 } from "@renderer/lib/workspace";
 import HelpPage from "@renderer/pages/help";
 import HistoryPage from "@renderer/pages/history";
+import { ModelsPageLoadingSkeleton } from "@renderer/pages/models/models-page-layout";
 import NotFoundPage from "@renderer/pages/not-found";
 import { PluginsPageLoadingSkeleton } from "@renderer/pages/plugins/plugin-skeletons";
 import AppShell from "@renderer/shell";
@@ -107,7 +108,6 @@ const PAGE_FALLBACKS: Record<string, RouteFallbackCopy> = {
     title: "Tone",
     subtitle: "How much Freestyle cleans up — and how it sounds in each app.",
   },
-  "/settings/models": { title: "Models" },
   "/help": { title: "Help" },
   "/profile": {
     title: "Profile",
@@ -150,6 +150,7 @@ function fallbackCopyForPath(pathname: string): RouteFallbackCopy {
 function RouteFallback(): React.JSX.Element {
   const { pathname } = useLocation();
   if (pathname === "/plugins") return <PluginsPageLoadingSkeleton />;
+  if (pathname === "/settings/models") return <ModelsPageLoadingSkeleton />;
   const { eyebrow, title, subtitle } = fallbackCopyForPath(pathname);
 
   return (

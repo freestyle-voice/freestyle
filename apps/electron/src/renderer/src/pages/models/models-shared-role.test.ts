@@ -15,7 +15,7 @@ describe("Models shared assistant role", () => {
     ]);
 
     expect(page).toContain('subtitle={t("models.subtitle")}');
-    expect(pairCard).toContain('t("models.pair.assistantKicker")');
+    expect(pairCard).toContain('t("models.picker.cleanup")');
     expect(locale).toContain(
       '"subtitle": "Configure transcription and assistant models in one place."',
     );
@@ -26,15 +26,17 @@ describe("Models shared assistant role", () => {
   });
 
   it("uses the compact Settings frame instead of a standalone editorial page", async () => {
-    const [page, pairCard, remixCard, modal, modelList] = await Promise.all([
-      readFile(resolve(modelsRoot, "index.tsx"), "utf8"),
-      readFile(resolve(modelsRoot, "pair-card.tsx"), "utf8"),
-      readFile(resolve(modelsRoot, "remix-model-card.tsx"), "utf8"),
-      readFile(resolve(modelsRoot, "model-modal.tsx"), "utf8"),
-      readFile(resolve(modelsRoot, "model-list.tsx"), "utf8"),
-    ]);
+    const [page, pairCard, remixCard, modal, modelList, layout] =
+      await Promise.all([
+        readFile(resolve(modelsRoot, "index.tsx"), "utf8"),
+        readFile(resolve(modelsRoot, "pair-card.tsx"), "utf8"),
+        readFile(resolve(modelsRoot, "remix-model-card.tsx"), "utf8"),
+        readFile(resolve(modelsRoot, "model-modal.tsx"), "utf8"),
+        readFile(resolve(modelsRoot, "model-list.tsx"), "utf8"),
+        readFile(resolve(modelsRoot, "models-page-layout.tsx"), "utf8"),
+      ]);
 
-    expect(page).toContain('data-testid="models-settings-page"');
+    expect(layout).toContain('data-testid="models-settings-page"');
     expect(page).toContain('data-testid="models-api-keys"');
     expect(page).toContain('aria-label="Dictation models"');
     expect(page).toContain('aria-label="Remix model"');

@@ -641,6 +641,17 @@
     "deleteProviderTitle": "Delete provider",
     "deleteProviderMsgBase": "Delete the <b>{{provider}}</b> API key? This also removes all configured models for this provider",
     "deleteProviderCurrentSuffix": ", including a model you're currently using",
+    "overview": {
+      "off": "Off",
+      "included": "Included",
+      "changeCleanup": "Change cleanup model",
+      "enableCleanup": "Enable cleanup",
+      "cloudHint": "Freestyle Cloud · no API key needed",
+      "signIn": "Sign in",
+      "keyAttention": "Needs attention",
+      "cloudChats": "Chats sync across your devices",
+      "accountRequired": "Account required"
+    },
     "pair": {
       "transcriptionKicker": "Transcription · required",
       "assistantKicker": "AI assistant · optional",

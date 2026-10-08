@@ -435,7 +435,8 @@ async function installDashboardFixtures(page: Page): Promise<void> {
               return {};
             return {
               onboarding: JSON.stringify({ v: 2, done: true }),
-              ...(scenario === "cloud-expiry"
+              ...(scenario === "cloud-expiry" ||
+              scenario === "guest-models-cloud"
                 ? { llm_cleanup: String(!signedOut) }
                 : {}),
             };
@@ -467,15 +468,25 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           }
           if (url.pathname === "/api/config") return { version: 1, flags: {} };
           if (
-            scenario === "cloud-expiry" &&
+            (scenario === "cloud-expiry" ||
+              scenario === "guest-models-cloud") &&
             url.pathname === "/api/models/configured"
           ) {
             return [
               {
                 id: 1,
-                provider: "openai",
-                model_id: "whisper-1",
-                model_name: "Whisper",
+                provider:
+                  scenario === "guest-models-cloud"
+                    ? "freestyle-cloud"
+                    : "openai",
+                model_id:
+                  scenario === "guest-models-cloud"
+                    ? "freestyle-cloud/transcribe"
+                    : "whisper-1",
+                model_name:
+                  scenario === "guest-models-cloud"
+                    ? "Freestyle Transcribe"
+                    : "Whisper",
                 type: "voice",
                 is_default: 1,
               },
@@ -1316,6 +1327,100 @@ test("keeps local settings usable after signing out", async () => {
   ).toBeVisible();
   await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
   await expect(dashboard).toHaveURL(/#\/settings\/models$/);
+});
+
+test("keeps the compact model overview usable with Cloud, local setup and collapsed API keys", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=guest-models-cloud#/settings/models`,
+  );
+  const overview = dashboard.getByTestId("models-settings-page");
+  await expect(
+    overview.getByText("Freestyle Transcribe", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    overview.getByText("Freestyle Cleanup", { exact: true }),
+  ).toBeVisible();
+  await expect(overview.getByText("Included", { exact: true })).toBeVisible();
+  await expect(overview.getByRole("switch")).toHaveCount(0);
+  await expect(
+    overview.getByText("One service for transcription and cleanup", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  const keys = overview.getByTestId("models-api-keys");
+  await expect(keys).not.toHaveAttribute("open");
+  await keys.locator("summary").focus();
+  await dashboard.keyboard.press("Enter");
+  await expect(keys).toHaveAttribute("open", "");
+  await expect(
+    keys.getByText(
+      "Keys are only requested when the model you choose needs one.",
+    ),
+  ).toBeVisible();
+  await dashboard.keyboard.press("Enter");
+  await expect(keys).not.toHaveAttribute("open");
+  for (const theme of ["light", "dark"]) {
+    await dashboard
+      .locator("html")
+      .evaluate(
+        (html, value) => html.classList.toggle("dark", value === "dark"),
+        theme,
+      );
+    await dashboard.screenshot({
+      path: testInfo.outputPath(`models-overview-${theme}.png`),
+      animations: "disabled",
+    });
+  }
+  await app!.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().includes("index.html"))
+      ?.setSize(760, 760);
+  });
+  await expect
+    .poll(() => dashboard.evaluate(() => window.innerWidth))
+    .toBe(760);
+  await expect(
+    overview.getByRole("button", { name: "Sign in", exact: true }),
+  ).toHaveCSS("color", "rgb(236, 231, 214)");
+  const rows = overview.getByTestId("models-configuration");
+  const labelBounds = await rows
+    .getByRole("heading", { name: "Transcription", exact: true })
+    .boundingBox();
+  const modelBounds = await rows
+    .getByText("Freestyle Transcribe", { exact: true })
+    .boundingBox();
+  expect(modelBounds!.y).toBeGreaterThan(labelBounds!.y);
+  await dashboard.screenshot({
+    path: testInfo.outputPath("models-overview-narrow.png"),
+    animations: "disabled",
+  });
+  await app!.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().includes("index.html"))
+      ?.setSize(1080, 760);
+  });
+  await overview
+    .getByRole("button", { name: "Change voice transcription model" })
+    .click();
+  await expect(dashboard.getByRole("dialog")).toBeVisible();
+  await dashboard
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
+  await overview
+    .getByTestId("remix-model-configuration")
+    .getByRole("button", { name: "Choose a model" })
+    .click();
+  await expect(
+    dashboard.getByRole("dialog").getByText("Freestyle Cloud", { exact: true }),
+  ).toBeVisible();
+  await dashboard
+    .getByRole("dialog")
+    .getByRole("button", { name: "Close", exact: true })
+    .click();
 });
 
 test("refreshes cleanup state when a session expires while Models is open", async () => {

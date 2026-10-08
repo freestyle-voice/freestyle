@@ -1,4 +1,15 @@
 # Changelog
+## 0.9.3
+
+### New Features ✨
+
+- (desktop) Allow guest access and local Remix chat by @MathurAditya724 in [#694](https://github.com/freestyle-voice/freestyle/pull/694)
+
+### Bug Fixes 🐛
+
+- (desktop) Unify history sidebar controls and motion by @MathurAditya724 in [#695](https://github.com/freestyle-voice/freestyle/pull/695)
+- (electron) Align collapsed sidebar controls across pages by @MathurAditya724 in [#693](https://github.com/freestyle-voice/freestyle/pull/693)
+
 ## 0.9.2
 
 ### Breaking Changes 🛠

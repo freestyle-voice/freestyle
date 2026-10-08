@@ -2,6 +2,7 @@ import "./shell.css";
 
 import {
   CloudProfileButton,
+  SignInCtaCard,
   UpgradeCtaCard,
 } from "@renderer/components/cloud-profile";
 import {
@@ -657,6 +658,8 @@ export default function AppShell(): React.JSX.Element {
   const location = useLocation();
   const { t } = useTranslation();
   const { user, canRequestData } = useCloudAuth();
+  // Keep dismissal in memory so the prompt returns on the next app launch.
+  const [isSignInCardDismissed, setIsSignInCardDismissed] = useState(false);
   const isRemixRoute = location.pathname === "/remix";
   const isSettingsRoute =
     location.pathname === "/settings" ||
@@ -864,17 +867,23 @@ export default function AppShell(): React.JSX.Element {
                     </>
                   )}
                 </div>
+                {!isSignInCardDismissed ? (
+                  <SignInCtaCard
+                    onDismiss={() => setIsSignInCardDismissed(true)}
+                  />
+                ) : null}
+                <UpgradeCtaCard />
                 {!isRemixSidebar && !user ? (
                   <>
-                    {pluginNav.length > 0 ? (
-                      <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-                    ) : null}
+                    <div className="border-sidebar-border mx-3 mt-2 mb-2 border-t" />
                     <NavList items={footerNav} />
                   </>
                 ) : null}
-                <UpgradeCtaCard />
                 <div
-                  className="border-sidebar-border mx-3 mt-2 border-t pt-2"
+                  className={cn(
+                    "mx-3",
+                    user && "border-sidebar-border mt-2 border-t pt-2",
+                  )}
                   style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 >
                   <CloudProfileButton />

@@ -673,9 +673,7 @@ function RemixModelSetup(): React.JSX.Element {
             alt=""
             className="tavern-gate-mark hidden dark:block"
           />
-          <span className="tavern-gate-wordmark">
-            freestyle<span className="tavern-gate-accent">.</span>
-          </span>
+          <span className="tavern-gate-wordmark">freestyle</span>
         </div>
         <h1 className="tavern-gate-heading">Set up your Remix model</h1>
         <p className="tavern-gate-sub">

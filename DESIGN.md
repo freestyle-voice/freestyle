@@ -49,8 +49,12 @@ not copy a diamond or an old accent just because it is still on a screen.
   icon and monochrome native tray templates are valid asset-specific variants.
 - Preserve aspect ratio, round caps, stroke proportions, and clear space.
   Do not stretch, rotate, add gradients, or animate the static brand mark.
-- Prefer supplied full lockups when a logo wordmark is needed; preserve their
-  lettering and terminal period rather than recreating the logo in a UI font.
+- The in-app lockup pairs the olive wave with lowercase `freestyle` in
+  **Instrument Serif italic**, with no trailing period. Use the existing
+  bundled typeface for its curved lettering; do not substitute a sans-serif.
+- Existing full logo artwork and docs SVGs still contain a period. Those
+  files are historical artwork references, not a reason to add the period
+  back to the in-app wordmark.
 - A standalone mark has `alt="Freestyle"`. Beside an already-readable
   Freestyle wordmark, use `alt=""` to avoid announcing the brand twice.
 - Brand artwork can contain white or black. The warm-neutral surface rules
@@ -387,10 +391,9 @@ destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
 - **Labels:** mono eyebrows are terse and categorical — `VOICE · REQUIRED`,
   `LLM CLEANUP · OPTIONAL`, `PROVIDERS & KEYS`.
 - **Brand name in prose:** `Freestyle`.
-- **Wordmark:** use the supplied logo artwork and preserve its lettering and
-  terminal period. The full PNG lockups use `Freestyle.`; the existing docs
-  SVGs use `freestyle.`. Do not recreate either lockup in a UI font. The wave
-  and olive palette are required for both variants.
+- **In-app wordmark:** lowercase `freestyle`, Instrument Serif italic, no
+  trailing period, paired with the supplied olive wave. Ordinary sentences
+  still use normal punctuation.
 - Numbers/metadata (sizes, RAM, $/hr, percentages) are mono.
 - Sentence case for everything except mono labels (which are UPPERCASE).
 

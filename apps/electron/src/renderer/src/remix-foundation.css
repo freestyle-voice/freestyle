@@ -187,8 +187,10 @@
 }
 
 .tavern-gate-wordmark {
-  font-family: var(--tavern-px);
-  font-size: 26px;
+  font-family: "Instrument Serif", "Times New Roman", serif;
+  font-style: italic;
+  font-size: 32px;
+  letter-spacing: -0.005em;
   line-height: 1;
   color: var(--tavern-ink);
 }
@@ -201,10 +203,6 @@
   line-height: 1.15;
   margin: 0;
   color: var(--tavern-robe);
-}
-
-.tavern-gate-accent {
-  color: var(--tavern-lantern);
 }
 
 .tavern-gate-sub {

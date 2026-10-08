@@ -180,11 +180,9 @@
   margin-bottom: 26px;
 }
 
-.tavern-gate-spark {
-  width: 11px;
-  height: 11px;
-  background: var(--tavern-lantern);
-  transform: rotate(45deg);
+.tavern-gate-mark {
+  width: 36px;
+  height: 36px;
   flex-shrink: 0;
 }
 

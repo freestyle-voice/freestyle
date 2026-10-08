@@ -6,6 +6,60 @@
 > pages — match them exactly. When in doubt, copy an existing page's recipe
 > rather than inventing a new one.
 
+## Current brand — read first
+
+Confirmed **2026-10-09**: Freestyle uses the **olive palette and wave logo**.
+These rules take precedence over older screenshots, prototypes, specs, and
+legacy `tavern-*` class names. Existing UI can contain outdated branding; do
+not copy a diamond or an old accent just because it is still on a screen.
+
+| Brand element | Current rule |
+|---|---|
+| Light-theme olive | `--primary: #6B8F12` |
+| Dark-theme olive | `--primary: #8AB62A` — the contrast-adjusted olive |
+| Light accent wash | `--accent: #E8EFC9`, text `#2E3F05` |
+| Dark accent wash | `--accent: #2E3F05`, text `#E8EFC9` |
+| Logo symbol | The rounded, rising **wave** from the supplied assets |
+| Retired branding | Diamond / rotated-square logo and older non-olive UI accents |
+
+### Sources of truth
+
+- **Theme values:** [`globals.css`](apps/electron/src/renderer/src/globals.css).
+  Use semantic tokens so light and dark themes stay in sync.
+- **Remix colors:** [`remix-foundation.css`](apps/electron/src/renderer/src/remix-foundation.css)
+  aliases the same theme tokens. It does not define a separate brand palette.
+- **App wave:** [`mark-light.svg`](apps/electron/src/renderer/src/assets/mark-light.svg)
+  on light surfaces and [`mark-dark.svg`](apps/electron/src/renderer/src/assets/mark-dark.svg)
+  on dark surfaces. These are ready to import into the renderer.
+- **Full logo artwork:** [`freestyle-logo-full-light.png`](media/freestyle-logo-full-light.png)
+  for light backgrounds and [`freestyle-logo-full-dark.png`](media/freestyle-logo-full-dark.png)
+  for dark backgrounds.
+- **Square icon artwork:** [`freestyle-logo-square.png`](media/freestyle-logo-square.png)
+  — a white wave on an olive tile.
+- **Docs lockups:** [`freestyle-light.svg`](apps/docs/logo/freestyle-light.svg)
+  and [`freestyle-dark.svg`](apps/docs/logo/freestyle-dark.svg).
+
+### Logo usage
+
+<img src="apps/electron/src/renderer/src/assets/mark-light.svg" width="96" height="96" alt="Freestyle olive wave mark">
+
+- Reuse the supplied wave geometry. Do not redraw it as a diamond, a generic
+  sparkle, equalizer bars, or an improvised CSS symbol.
+- Use the olive wave for in-app branding. The supplied white-on-olive square
+  icon and monochrome native tray templates are valid asset-specific variants.
+- Preserve aspect ratio, round caps, stroke proportions, and clear space.
+  Do not stretch, rotate, add gradients, or animate the static brand mark.
+- Prefer supplied full lockups when a logo wordmark is needed; preserve their
+  lettering and terminal period rather than recreating the logo in a UI font.
+- A standalone mark has `alt="Freestyle"`. Beside an already-readable
+  Freestyle wordmark, use `alt=""` to avoid announcing the brand twice.
+- Brand artwork can contain white or black. The warm-neutral surface rules
+  below apply to product UI, not recoloring approved logo assets.
+
+Before shipping any branded surface, check **wave shape, theme olive, asset
+variant, and contrast in both themes**. Do not treat a legacy screenshot as
+permission to reintroduce the old logo.
+
 ---
 
 ## 1. Essence
@@ -17,7 +71,8 @@ like a well-set magazine, not a SaaS dashboard.
 Three principles govern every decision:
 
 1. **Warm paper, not cold white.** The whole product sits on a cream substrate
-   (`#F4F0E4`). Never use pure white (`#FFF`) or pure black (`#000`).
+   (`#F4F0E4`); dark mode uses warm ink (`#16140F`). Do not use pure white
+   (`#FFF`) or pure black (`#000`) for ordinary app surfaces.
 2. **Serif for voice, mono for machinery.** A large Instrument Serif headline
    with one italic, olive-accented word is the signature. Monospace, uppercase,
    widely-tracked micro-labels do the structural/metadata work.
@@ -25,9 +80,13 @@ Three principles govern every decision:
    state, one meter — never a page of green. Lots of air; hairline borders; no
    drop shadows except on things that truly float (modals, popovers).
 
-**Avoid:** gradients, glassmorphism, emoji, neon, heavy shadows, rounded-pill
+**Avoid:** gradients, decorative glassmorphism, emoji, neon, heavy shadows, rounded-pill
 buttons everywhere, icon soup, and "data slop" (decorative stats/badges that
 don't inform a decision).
+
+The existing macOS native-vibrancy shell is supported: use its `glass-*`
+classes and tokens. Other platforms use the solid fallbacks in `globals.css`.
+Do not invent translucent content cards or a separate glass palette.
 
 ---
 
@@ -57,7 +116,7 @@ you can reproduce the palette in a standalone HTML artifact.
 | `--border` | `#D6CDB8` | Hairline borders, dividers |
 | `--input` | `#E3DCC8` | Input borders |
 | `--ring` | `#6B8F12` | Focus ring (olive) |
-| `--plum` (`--chart-3`) | `#5E4E78` | Tertiary data accent only — never a UI accent |
+| `--chart-3` | `#5E4E78` | Tertiary data accent only — never a UI accent |
 
 ### Dark
 
@@ -66,9 +125,12 @@ you can reproduce the palette in a standalone HTML artifact.
 | `--background` | `#16140F` |
 | `--foreground` | `#ECE7D6` |
 | `--card` | `#1E1C16` |
+| `--card-foreground` | `#ECE7D6` |
+| `--popover` / `--popover-foreground` | `#1E1C16` / `#ECE7D6` |
 | `--primary` | `#8AB62A` (brighter olive for contrast) |
 | `--primary-foreground` | `#16140F` |
 | `--secondary` / `--muted` | `#2A2720` |
+| `--secondary-foreground` | `#ECE7D6` |
 | `--muted-foreground` | `#9E977F` |
 | `--accent` | `#2E3F05` |
 | `--accent-foreground` | `#E8EFC9` |
@@ -78,6 +140,9 @@ you can reproduce the palette in a standalone HTML artifact.
 
 ### Rules
 
+- **One brand palette.** Remix, Dictate, onboarding, sign-in, and settings
+  consume the same semantic olive tokens. Do not use generic Tailwind greens,
+  a new purple/orange brand accent, or hardcoded legacy `tavern-*` colors.
 - **Olive is rationed.** A typical screen has olive in exactly 2–3 places: the
   italic headline word, the active/selected state, and a single CTA or meter.
 - **On-device = `--accent` wash + olive.** Privacy/local affordances use the
@@ -114,7 +179,7 @@ Helper classes (from `globals.css`):
 
 ### The signature page title
 
-Every top-level page uses this exact pattern — an italic, olive accent word
+Editorial settings/content page titles use this pattern — an italic, olive accent word
 followed by an upright period:
 
 ```html
@@ -124,6 +189,10 @@ followed by an upright period:
 ```
 
 Optionally followed by one muted sentence (`text-muted-foreground text-[14px] leading-[1.5] max-w-[580px]`).
+
+Chat titles, compact workspace headers, and functional controls use the UI
+family. Do not force an oversized serif hero into every Remix chat view.
+Logo lettering comes from the approved lockup assets, not this page-title recipe.
 
 ### Eyebrows / kickers
 
@@ -170,6 +239,9 @@ Tracking convention: the **smaller** the mono label, the **wider** the tracking
 
 ## 5. Iconography
 
+- **Brand mark:** use the supplied wave assets above. Lucide icons are for
+  controls and features; `Sparkles`, diamonds, and waveform meters are not
+  substitutes for the Freestyle logo.
 - **Library:** `lucide-react`. (In standalone HTML, hand-draw matching 24×24
   paths at `stroke-width:1.7`, round caps/joins.)
 - **Size:** 12–16px inline; default color `--muted-foreground`, shifting to
@@ -314,8 +386,11 @@ destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
   exclamation marks.
 - **Labels:** mono eyebrows are terse and categorical — `VOICE · REQUIRED`,
   `LLM CLEANUP · OPTIONAL`, `PROVIDERS & KEYS`.
-- **Wordmark:** lowercase `freestyle` with an olive period — `freestyle.` Never
-  capitalize it mid-sentence; never drop the period in the logo lockup.
+- **Brand name in prose:** `Freestyle`.
+- **Wordmark:** use the supplied logo artwork and preserve its lettering and
+  terminal period. The full PNG lockups use `Freestyle.`; the existing docs
+  SVGs use `freestyle.`. Do not recreate either lockup in a UI font. The wave
+  and olive palette are required for both variants.
 - Numbers/metadata (sizes, RAM, $/hr, percentages) are mono.
 - Sentence case for everything except mono labels (which are UPPERCASE).
 
@@ -327,6 +402,8 @@ destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
 - Reach for a `components/ui/*` component (§6) before writing any styled
   `<button>`/`<input>`/`<div>`. Pick a variant; don't restyle.
 - Start from an existing page's structure and swap the content.
+- Check the current-brand section before copying a logo or accent from an
+  older page, screenshot, or spec.
 - Keep one olive accent word per title; keep one primary action per view.
 - Use hairline borders + generous whitespace to separate, before reaching for
   fills or shadows.
@@ -336,6 +413,7 @@ destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
 - Hand-roll a control (button, switch, badge, modal, segmented toggle, slider,
   progress) with bare Tailwind when a `components/ui/*` component exists.
 - Introduce new hues, gradients, or a second accent color.
+- Use the retired diamond/rotated-square mark, or build a logo with CSS.
 - Use pure white/black, emoji, or drop shadows on resting elements.
 - Build big `<h2>` section headers — structure with mono eyebrows.
 - Lay out rows of controls as bare inline siblings — use flex/grid + `gap`.

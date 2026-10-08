@@ -1,5 +1,7 @@
 import "../overlay.css";
 
+import markDark from "@renderer/assets/mark-dark.svg";
+import markLight from "@renderer/assets/mark-light.svg";
 import { AgentMessageQueueControls } from "@renderer/components/agent-message-queue";
 import { RotatingThinkingLabel } from "@renderer/components/agents/loading-states/rotating-thinking-label";
 import { AttentionHome } from "@renderer/components/attention-home";
@@ -661,7 +663,16 @@ function RemixModelSetup(): React.JSX.Element {
       </button>
       <div className="tavern-gate-body">
         <div className="tavern-gate-lockup">
-          <span className="tavern-gate-spark" />
+          <img
+            src={markLight}
+            alt=""
+            className="tavern-gate-mark dark:hidden"
+          />
+          <img
+            src={markDark}
+            alt=""
+            className="tavern-gate-mark hidden dark:block"
+          />
           <span className="tavern-gate-wordmark">
             freestyle<span className="tavern-gate-accent">.</span>
           </span>

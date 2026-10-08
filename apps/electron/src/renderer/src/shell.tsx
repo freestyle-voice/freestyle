@@ -459,7 +459,7 @@ function RemixSidebarSessions({
         ) : !availability.canChat ? (
           <div className="tavern-empty tavern-thread-empty">
             <strong>No sessions yet</strong>
-            <span>Sign in to start a chat or run a scheduled task.</span>
+            <span>Choose your Remix model to start a chat.</span>
           </div>
         ) : (
           <ThreadHistory
@@ -699,7 +699,9 @@ export default function AppShell(): React.JSX.Element {
   const { t } = useTranslation();
   const { canChat } = useRemixAvailability();
   // Keep dismissal in memory so the prompt returns on the next app launch.
-  const [isSignInCardDismissed, setIsSignInCardDismissed] = useState(false);
+  const [dismissedSignInCards, setDismissedSignInCards] = useState<
+    Record<Workspace, boolean>
+  >({ dictate: false, remix: false });
   const isRemixRoute = location.pathname === "/remix";
   const isSettingsRoute =
     location.pathname === "/settings" ||
@@ -907,9 +909,15 @@ export default function AppShell(): React.JSX.Element {
                     </>
                   )}
                 </div>
-                {!isRemixSidebar && !isSignInCardDismissed ? (
+                {!dismissedSignInCards[activeWorkspace] ? (
                   <SignInCtaCard
-                    onDismiss={() => setIsSignInCardDismissed(true)}
+                    workspace={activeWorkspace}
+                    onDismiss={() =>
+                      setDismissedSignInCards((previous) => ({
+                        ...previous,
+                        [activeWorkspace]: true,
+                      }))
+                    }
                   />
                 ) : null}
                 <SidebarFooter items={footerNav} />

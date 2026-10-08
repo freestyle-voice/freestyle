@@ -21,6 +21,7 @@ import {
   useSetActiveOrganization,
 } from "@renderer/lib/use-profile";
 import { cn } from "@renderer/lib/utils";
+import type { Workspace } from "@renderer/lib/workspace";
 import {
   Building2,
   Check,
@@ -119,22 +120,27 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
 }
 
 export function SignInCtaCard({
+  workspace = "dictate",
   onDismiss,
 }: {
+  workspace?: Workspace;
   onDismiss: () => void;
 }): React.JSX.Element | null {
   const { user, phase, signingIn, signIn } = useCloudAuth();
   if (user || phase === "checking") return null;
+  const title =
+    workspace === "remix" ? "Freestyle Remix" : "Freestyle Transcribe";
 
   return (
-    <div
+    <section
+      aria-label={title}
       className="glass-card mx-3 mt-2 rounded-[10px] border p-3"
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
       <div className="flex items-start gap-1.5">
         <Cloud className="text-primary mt-0.5 size-3.5 shrink-0" />
         <span className="text-foreground min-w-0 flex-1 text-[12.5px] font-medium">
-          Freestyle Transcribe
+          {title}
         </span>
         <Button
           variant="ghost"
@@ -148,7 +154,9 @@ export function SignInCtaCard({
         </Button>
       </div>
       <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
-        Fast, accurate transcription, no API key required.
+        {workspace === "remix"
+          ? "Sign in for Cloud models, synced chats, and scheduled tasks."
+          : "Fast, accurate transcription, no API key required."}
       </p>
       <Button
         size="sm"
@@ -168,7 +176,7 @@ export function SignInCtaCard({
           </>
         )}
       </Button>
-    </div>
+    </section>
   );
 }
 

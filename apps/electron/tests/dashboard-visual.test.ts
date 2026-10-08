@@ -863,7 +863,10 @@ test("lets a first-time guest finish onboarding and set up dictation", async ({
   await expect(dashboard).toHaveURL(/#\/today$/);
 });
 
-test("keeps guest settings available and requests sign-in only inside Remix", async () => {
+test("guides guests to Remix model setup and keeps workspace sign-in cards above the footer", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
   await dashboard.goto(
     `${DASHBOARD_URL}?visual=guest-settings#/settings/models`,
   );
@@ -873,7 +876,10 @@ test("keeps guest settings available and requests sign-in only inside Remix", as
   await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
   await dashboard.goto(`${DASHBOARD_URL}?visual=guest-remix#/remix`);
   await expect(
-    dashboard.getByText("Sign in to use Remix", { exact: true }),
+    dashboard.getByRole("heading", {
+      name: "Set up your Remix model",
+      exact: true,
+    }),
   ).toBeVisible();
   await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
   await expect(
@@ -892,15 +898,47 @@ test("keeps guest settings available and requests sign-in only inside Remix", as
   await expect(
     dashboard.getByRole("link", { name: /Transcriptions/ }),
   ).toBeHidden();
+  const remixCard = dashboard.getByRole("region", {
+    name: "Freestyle Remix",
+    exact: true,
+  });
+  await expect(remixCard).toBeVisible();
   await expect(
-    dashboard.getByRole("button", { name: "Dismiss sign-in card" }),
-  ).toBeHidden();
+    remixCard.getByText(
+      "Sign in for Cloud models, synced chats, and scheduled tasks.",
+    ),
+  ).toBeVisible();
+  await expect(
+    sessions.getByText("Choose your Remix model to start a chat."),
+  ).toBeVisible();
+  const cardBounds = await remixCard.boundingBox();
+  const settingsBounds = await dashboard
+    .getByRole("link", { name: /^Settings/ })
+    .boundingBox();
+  expect(cardBounds!.y + cardBounds!.height).toBeLessThan(settingsBounds!.y);
+  await dashboard.screenshot({
+    path: testInfo.outputPath("remix-model-setup.png"),
+  });
+  await remixCard.getByRole("button", { name: "Dismiss sign-in card" }).click();
+  await expect(remixCard).toBeHidden();
   await dashboard.evaluate(() => {
     window.location.hash = "#/today";
   });
   await expect(
     dashboard.getByRole("button", { name: "Dismiss sign-in card" }),
   ).toBeVisible();
+  await expect(
+    dashboard.getByRole("region", {
+      name: "Freestyle Transcribe",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await dashboard.evaluate(() => {
+    window.location.hash = "#/remix";
+  });
+  await expect(remixCard).toBeHidden();
+  await dashboard.reload();
+  await expect(remixCard).toBeVisible();
 });
 
 test("shares Settings and Help across workspaces and switches to the signed-in profile", async () => {
@@ -932,7 +970,7 @@ test("shares Settings and Help across workspaces and switches to the signed-in p
   await dashboard.evaluate(() => {
     window.location.hash = "#/remix";
   });
-  await dashboard.getByRole("button", { name: "Continue in browser" }).click();
+  await sidebar.getByRole("button", { name: "Sign in", exact: true }).click();
 
   for (const path of ["/remix", "/today"]) {
     await dashboard.evaluate((route) => {
@@ -973,7 +1011,7 @@ for (const mode of ["local", "byok"] as const) {
     void browserName;
     await dashboard.goto(`${DASHBOARD_URL}?visual=guest-remix-${mode}#/remix`);
     await dashboard
-      .getByRole("button", { name: "Use a local model or API key" })
+      .getByRole("button", { name: "Choose a Remix model", exact: true })
       .click();
     const picker = dashboard.getByRole("dialog", {
       name: "Choose a Remix model",

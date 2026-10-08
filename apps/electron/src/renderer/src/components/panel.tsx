@@ -646,7 +646,7 @@ function contextKindFor(message: UIMessage): RemixContextKind | null {
   return "brain";
 }
 
-function SignInGate(): React.JSX.Element {
+function RemixModelSetup(): React.JSX.Element {
   const navigate = useNavigate();
   const auth = useCloudAuth();
   return (
@@ -666,8 +666,11 @@ function SignInGate(): React.JSX.Element {
             freestyle<span className="tavern-gate-accent">.</span>
           </span>
         </div>
-        <h1 className="tavern-gate-heading">The intelligent reminders app.</h1>
-        <p className="tavern-gate-sub">Sign in to use Remix</p>
+        <h1 className="tavern-gate-heading">Set up your Remix model</h1>
+        <p className="tavern-gate-sub">
+          Choose a local model, bring your own API key, or use Freestyle Cloud
+          to start chatting.
+        </p>
         {auth.signingIn ? (
           <>
             <div className="tavern-gate-code">{auth.userCode ?? "…"}</div>
@@ -684,26 +687,18 @@ function SignInGate(): React.JSX.Element {
             </button>
           </>
         ) : (
-          <>
-            <button
-              type="button"
-              className="tavern-gate-btn"
-              onClick={() => void auth.signIn()}
-            >
-              Continue in browser
-            </button>
-            <Button
-              variant="outline"
-              className="mt-3 w-full max-w-[260px]"
-              onClick={() => navigate("/settings/models?choose=remix")}
-            >
-              Use a local model or API key
-            </Button>
-          </>
+          <button
+            type="button"
+            className="tavern-gate-btn"
+            onClick={() => navigate("/settings/models?choose=remix")}
+          >
+            Choose a Remix model
+          </button>
         )}
         {auth.sessionExpired && !auth.signingIn ? (
           <p className="tavern-gate-sub is-small">
-            Your session expired — sign in again to pick up where you left off.
+            Your Cloud session expired. Sign in for Cloud features, or choose a
+            local model or API key to keep chatting.
           </p>
         ) : null}
         {auth.error ? <p className="tavern-notice">{auth.error}</p> : null}
@@ -768,7 +763,7 @@ export function RemixWorkspace(): React.JSX.Element {
         <Button onClick={() => void availability.retry()}>Try again</Button>
       </div>
     );
-  if (!availability.canChat) return <SignInGate />;
+  if (!availability.canChat) return <RemixModelSetup />;
 
   if (!thread) {
     return threadLoadError ? (
@@ -1675,16 +1670,19 @@ function PanelInner({
     );
   };
 
-  // Signed out, the gate is the entire panel — no head, no tabs, no way to
-  // reach the agent. While auth status resolves, keep the conversation's
-  // layout visible but withhold its sensitive controls and content.
+  // Inaccessible Cloud conversations show model setup until the user signs
+  // in or chooses a personal model. Keep their content hidden during auth.
   if (!availability.canOpenThread(thread.type)) {
     return (
       <div className={desktop ? "remix-agent" : "tavern-shell"}>
         <div
           className={`tavern tavern-panel${desktop ? " remix-agent-panel" : ""}`}
         >
-          {availability.checking ? <ConversationSkeleton /> : <SignInGate />}
+          {availability.checking ? (
+            <ConversationSkeleton />
+          ) : (
+            <RemixModelSetup />
+          )}
         </div>
       </div>
     );

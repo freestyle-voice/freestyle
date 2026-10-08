@@ -231,6 +231,27 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
   );
 }
 
+function SidebarFooter({ items }: { items: NavItem[] }): React.JSX.Element {
+  const { user, phase } = useCloudAuth();
+
+  return (
+    <div className="shrink-0 pb-3">
+      <UpgradeCtaCard />
+      <div className="border-sidebar-border mx-3 mt-2 mb-2 border-t" />
+      {user || phase === "checking" ? (
+        <div
+          className="mx-3"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <CloudProfileButton />
+        </div>
+      ) : (
+        <NavList items={items} />
+      )}
+    </div>
+  );
+}
+
 function SettingsSidebar({
   workspace,
   onBack,
@@ -672,7 +693,7 @@ export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const { user, canRequestData } = useCloudAuth();
+  const { canRequestData } = useCloudAuth();
   // Keep dismissal in memory so the prompt returns on the next app launch.
   const [isSignInCardDismissed, setIsSignInCardDismissed] = useState(false);
   const isRemixRoute = location.pathname === "/remix";
@@ -887,23 +908,7 @@ export default function AppShell(): React.JSX.Element {
                     onDismiss={() => setIsSignInCardDismissed(true)}
                   />
                 ) : null}
-                <UpgradeCtaCard />
-                {!isRemixSidebar && !user ? (
-                  <>
-                    <div className="border-sidebar-border mx-3 mt-2 mb-2 border-t" />
-                    <NavList items={footerNav} />
-                  </>
-                ) : null}
-                <div
-                  className={cn(
-                    "mx-3",
-                    user && "border-sidebar-border mt-2 border-t pt-2",
-                  )}
-                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                >
-                  <CloudProfileButton />
-                </div>
-                <div className="h-3" />
+                <SidebarFooter items={footerNav} />
               </>
             )}
           </aside>

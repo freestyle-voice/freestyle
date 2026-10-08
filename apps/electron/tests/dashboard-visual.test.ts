@@ -78,7 +78,12 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       const scenario = new URLSearchParams(window.location.search).get(
         "visual",
       );
-      const guest = scenario?.startsWith("guest") ?? false;
+      let guest = scenario?.startsWith("guest") ?? false;
+      const fixtureUser = {
+        id: "visual-review-user",
+        email: "review@example.test",
+        name: "Visual review",
+      };
       window.fetch = async (input, init) => {
         const url = new URL(
           typeof input === "string"
@@ -90,6 +95,22 @@ async function installDashboardFixtures(page: Page): Promise<void> {
         if (!url.pathname.startsWith("/api/"))
           return originalFetch(input, init);
         visualReviewWindow.__visualReviewRequests?.push(url.pathname);
+
+        if (scenario === "guest-sidebar") {
+          if (url.pathname === "/api/auth/device/code") {
+            return Response.json({
+              device_code: "sidebar-test-device",
+              user_code: "SIDEBAR",
+              verification_uri: "https://example.test/device",
+              expires_in: 60,
+              interval: 1,
+            });
+          }
+          if (url.pathname === "/api/auth/device/token") {
+            guest = false;
+            return Response.json({ user: fixtureUser });
+          }
+        }
 
         if (
           scenario === "guest-connectors" &&
@@ -165,11 +186,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
               return { authenticated: false, user: null, verified: true };
             return {
               authenticated: true,
-              user: {
-                id: "visual-review-user",
-                email: "review@example.test",
-                name: "Visual review",
-              },
+              user: fixtureUser,
               verified: true,
             };
           }
@@ -710,6 +727,69 @@ test("keeps guest settings available and requests sign-in only inside Remix", as
   await expect(
     dashboard.getByRole("button", { name: "Dismiss sign-in card" }),
   ).toBeVisible();
+});
+
+test("shares Settings and Help across workspaces and switches to the signed-in profile", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-sidebar#/remix`);
+  const sidebar = dashboard.locator(".glass-sidebar");
+
+  for (const path of ["/remix", "/today"]) {
+    await dashboard.evaluate((route) => {
+      window.location.hash = `#${route}`;
+    }, path);
+    await sidebar.getByRole("link", { name: /^Settings/ }).click();
+    await expect(dashboard).toHaveURL(/#\/settings(?:\/.*)?$/);
+    await sidebar.getByRole("button", { name: "Back to app" }).click();
+    await expect(dashboard).toHaveURL(new RegExp(`#${path}$`));
+    await sidebar.getByRole("link", { name: /^Help/ }).click();
+    await expect(dashboard).toHaveURL(/#\/help$/);
+    await expect(
+      sidebar.getByRole("link", { name: /^Settings/ }),
+    ).toBeVisible();
+  }
+
+  // Exercise the device flow without opening an external browser.
+  await app.evaluate(({ shell }) => {
+    Object.defineProperty(shell, "openExternal", {
+      configurable: true,
+      value: async () => {},
+    });
+  });
+  await dashboard.evaluate(() => {
+    window.location.hash = "#/remix";
+  });
+  await dashboard.getByRole("button", { name: "Continue in browser" }).click();
+
+  for (const path of ["/remix", "/today"]) {
+    await dashboard.evaluate((route) => {
+      window.location.hash = `#${route}`;
+    }, path);
+    await expect(sidebar.getByRole("link", { name: /^Settings/ })).toBeHidden();
+    await expect(sidebar.getByRole("link", { name: /^Help/ })).toBeHidden();
+    await sidebar.getByRole("button", { name: "Visual review" }).click();
+    await dashboard
+      .getByRole("menuitem", { name: "Settings", exact: true })
+      .click();
+    await expect(dashboard).toHaveURL(/#\/settings(?:\/.*)?$/);
+    await sidebar.getByRole("button", { name: "Back to app" }).click();
+    await expect(dashboard).toHaveURL(new RegExp(`#${path}$`));
+    await sidebar.getByRole("button", { name: "Visual review" }).click();
+    await dashboard
+      .getByRole("menuitem", { name: "Help", exact: true })
+      .click();
+    await expect(dashboard).toHaveURL(/#\/help$/);
+  }
+
+  await dashboard.evaluate(() => {
+    window.location.hash = "#/remix";
+  });
+  await sidebar.getByRole("button", { name: "Visual review" }).click();
+  await dashboard.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(sidebar.getByRole("link", { name: /^Settings/ })).toBeVisible();
+  await expect(sidebar.getByRole("link", { name: /^Help/ })).toBeVisible();
+  await expect(
+    sidebar.getByRole("button", { name: "Visual review" }),
+  ).toBeHidden();
 });
 
 test("lets guests browse, paginate and search apps before signing in to connect", async ({

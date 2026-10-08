@@ -536,7 +536,7 @@ function WorkspaceSwitcher({
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="text-[12px] font-medium">Remix</span>
               <span className="text-muted-foreground text-[10.5px] leading-snug">
-                Chat, automate, and work with your apps
+                Chat and automate your work
               </span>
             </span>
           </DropdownMenuRadioItem>

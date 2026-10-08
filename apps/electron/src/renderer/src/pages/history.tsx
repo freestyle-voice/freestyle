@@ -1088,12 +1088,6 @@ const FiltersPanel = memo(function FiltersPanel({
           </div>
         </div>
       </div>
-
-      <footer className="border-border flex justify-end border-t px-4 py-3">
-        <SheetClose asChild>
-          <Button variant="outline">{t("history.done")}</Button>
-        </SheetClose>
-      </footer>
     </SheetContent>
   );
 });

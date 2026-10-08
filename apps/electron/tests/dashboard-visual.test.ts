@@ -980,7 +980,7 @@ test("keeps history interactive while live filters are open in the right rail", 
       });
     }
   }
-  await panel.getByRole("button", { name: "Done", exact: true }).focus();
+  await panel.getByRole("button", { name: "Close filters" }).focus();
   await dashboard.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(filters).toBeFocused();

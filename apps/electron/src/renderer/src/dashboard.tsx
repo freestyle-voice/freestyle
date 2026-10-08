@@ -25,6 +25,7 @@ import {
 import HelpPage from "@renderer/pages/help";
 import HistoryPage from "@renderer/pages/history";
 import NotFoundPage from "@renderer/pages/not-found";
+import { PluginsPageLoadingSkeleton } from "@renderer/pages/plugins/plugin-skeletons";
 import AppShell from "@renderer/shell";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { ThemeProvider, useTheme } from "next-themes";
@@ -112,11 +113,6 @@ const PAGE_FALLBACKS: Record<string, RouteFallbackCopy> = {
     title: "Profile",
     subtitle: "Manage your account details.",
   },
-  "/plugins": {
-    title: "Plugins",
-    subtitle:
-      "Install plugins to add features. Each runs in the dictation pipeline and can ship its own page.",
-  },
 };
 
 const SETTINGS_FALLBACKS: Record<string, RouteFallbackCopy> = {
@@ -153,6 +149,7 @@ function fallbackCopyForPath(pathname: string): RouteFallbackCopy {
 // its chunk (and its translated content) is available.
 function RouteFallback(): React.JSX.Element {
   const { pathname } = useLocation();
+  if (pathname === "/plugins") return <PluginsPageLoadingSkeleton />;
   const { eyebrow, title, subtitle } = fallbackCopyForPath(pathname);
 
   return (

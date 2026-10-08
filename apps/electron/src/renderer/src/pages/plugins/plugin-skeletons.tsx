@@ -1,4 +1,9 @@
 import { Skeleton } from "@renderer/components/ui/skeleton";
+import {
+  PluginsPageLayout,
+  type PluginsTab,
+  usePluginsTab,
+} from "./plugin-layout";
 
 // ---------------------------------------------------------------------------
 // Skeleton loading — mirrors PluginCard / CatalogCard / Detail shape
@@ -12,7 +17,7 @@ function SkeletonLine({
   return <Skeleton className={`rounded-full ${className ?? ""}`} />;
 }
 
-function PluginCardSkeleton(): React.JSX.Element {
+function PluginCardSkeleton({ tab }: { tab: PluginsTab }): React.JSX.Element {
   return (
     <div className="border-border bg-card flex w-full items-center gap-4 rounded-[14px] border p-5">
       {/* Icon placeholder */}
@@ -22,28 +27,50 @@ function PluginCardSkeleton(): React.JSX.Element {
       <div className="min-w-0 flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <SkeletonLine className="h-4 w-36" />
-          <SkeletonLine className="h-3 w-10" />
+          <SkeletonLine
+            className={tab === "browse" ? "h-3 w-20" : "h-3 w-10"}
+          />
         </div>
         <SkeletonLine className="h-3 w-full max-w-[260px]" />
       </div>
 
       {/* Action button placeholder */}
-      <SkeletonLine className="h-8 w-20 shrink-0 rounded-md" />
+      <SkeletonLine
+        className={
+          tab === "browse"
+            ? "h-7 w-16 shrink-0 rounded-md"
+            : "size-7 shrink-0 rounded-md"
+        }
+      />
     </div>
   );
 }
 
-export function PluginsLoadingSkeleton(): React.JSX.Element {
+export function PluginsLoadingSkeleton({
+  tab,
+}: {
+  tab: PluginsTab;
+}): React.JSX.Element {
   return (
     <div
       className="flex flex-col gap-3"
       role="status"
       aria-label="Loading plugins"
+      aria-busy="true"
     >
       {[0, 1, 2].map((i) => (
-        <PluginCardSkeleton key={i} />
+        <PluginCardSkeleton key={i} tab={tab} />
       ))}
     </div>
+  );
+}
+
+export function PluginsPageLoadingSkeleton(): React.JSX.Element {
+  const [tab, setTab] = usePluginsTab();
+  return (
+    <PluginsPageLayout tab={tab} onTabChange={setTab} loading>
+      <PluginsLoadingSkeleton tab={tab} />
+    </PluginsPageLayout>
   );
 }
 

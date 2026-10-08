@@ -47,7 +47,7 @@ describe("dashboard startup rendering", () => {
     expect(dashboard).toContain("const SETTINGS_FALLBACKS");
     expect(dashboard).toContain('title: "Shortcuts"');
     expect(dashboard).toContain('title: "Vocabulary"');
-    expect(dashboard).toContain('title: "Plugins"');
+    expect(dashboard).toContain("return <PluginsPageLoadingSkeleton />;");
     expect(dashboard).toContain('title: "Profile"');
     expect(dashboard).not.toContain(
       'return <div className="min-h-0 flex-1" />;',

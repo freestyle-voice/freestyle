@@ -78,6 +78,20 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       const scenario = new URLSearchParams(window.location.search).get(
         "visual",
       );
+      const pluginLayoutScenario = scenario?.startsWith("guest-plugin-layout-");
+      let releasePluginData: () => void = () => {};
+      const pluginDataReady = new Promise<void>((resolve) => {
+        releasePluginData = resolve;
+      });
+      if (pluginLayoutScenario) {
+        localStorage.setItem(
+          "plugins.activeTab",
+          scenario!.endsWith("installed") ? "installed" : "browse",
+        );
+        (
+          window as typeof window & { __releasePluginData?: () => void }
+        ).__releasePluginData = releasePluginData;
+      }
       let guest = scenario?.startsWith("guest") ?? false;
       const fixtureUser = {
         id: "visual-review-user",
@@ -355,6 +369,37 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           ],
         };
         const body = (() => {
+          if (pluginLayoutScenario && url.pathname === "/api/plugins") {
+            return {
+              plugins: scenario!.endsWith("installed")
+                ? Array.from({ length: 3 }, (_, index) => ({
+                    name: `fixture-plugin-${index}`,
+                    displayName: `Fixture plugin ${index + 1}`,
+                    slug: `fixture-plugin-${index}`,
+                    specifier: `fixture-plugin-${index}`,
+                    enabled: true,
+                    version: "1.0.0",
+                    description: "A plugin for testing the loading layout.",
+                    pages: [],
+                  }))
+                : [],
+            };
+          }
+          if (url.pathname === "/api/plugins") return { plugins: [] };
+          if (url.pathname === "/api/plugins/catalog") {
+            return {
+              plugins: pluginLayoutScenario
+                ? Array.from({ length: 3 }, (_, index) => ({
+                    npmName: `fixture-plugin-${index}`,
+                    title: `Fixture plugin ${index + 1}`,
+                    description: "A plugin for testing the loading layout.",
+                    author: "Freestyle",
+                  }))
+                : [],
+            };
+          }
+          if (url.pathname === "/api/plugins/check-updates")
+            return { updates: [] };
           if (url.pathname === "/api/auth/status") {
             if (guest || signedOut)
               return { authenticated: false, user: null, verified: true };
@@ -450,8 +495,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             url.pathname === "/api/keys" ||
             url.pathname === "/api/api-keys" ||
             url.pathname === "/api/brain/files" ||
-            url.pathname === "/api/brain/notes" ||
-            url.pathname === "/api/plugins"
+            url.pathname === "/api/brain/notes"
           ) {
             return [];
           }
@@ -512,6 +556,8 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           return {};
         })();
 
+        if (pluginLayoutScenario && url.pathname.startsWith("/api/plugins"))
+          await pluginDataReady;
         await new Promise((resolve) =>
           setTimeout(
             resolve,
@@ -687,6 +733,69 @@ test("captures every main dashboard page while loading and after data resolves",
       contentType: "image/png",
     });
   }
+});
+
+test("keeps Plugins toolbar and row geometry stable as Browse and Installed finish loading", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  for (const tab of ["browse", "installed"]) {
+    await dashboard.goto(
+      `${DASHBOARD_URL}?visual=guest-plugin-layout-${tab}#/plugins`,
+    );
+    const loading = dashboard.getByRole("status", {
+      name: "Loading plugins",
+      exact: true,
+    });
+    await expect(loading).toBeVisible();
+    const search = dashboard.getByRole("textbox", {
+      name: "Search plugins…",
+      exact: true,
+    });
+    await expect(search).toBeVisible();
+    const beforeSearch = await search.boundingBox();
+    const beforeRow = await loading
+      .locator(":scope > div")
+      .first()
+      .boundingBox();
+    await dashboard.screenshot({
+      path: testInfo.outputPath(`plugins-${tab}-loading.png`),
+    });
+    await dashboard.evaluate(() => {
+      (
+        window as typeof window & { __releasePluginData?: () => void }
+      ).__releasePluginData?.();
+    });
+    await expect(loading).toBeHidden();
+    await expect(
+      dashboard.getByText("Fixture plugin 1", { exact: true }),
+    ).toBeVisible();
+    const rows = dashboard
+      .locator(".responsive-page-scroll > div")
+      .last()
+      .locator(":scope > div");
+    await expect(rows).toHaveCount(3);
+    const afterRow = await rows.first().boundingBox();
+    const afterSearch = await search.boundingBox();
+    for (const coordinate of ["x", "y", "width", "height"] as const) {
+      expect(
+        Math.abs(beforeRow![coordinate] - afterRow![coordinate]),
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(beforeSearch![coordinate] - afterSearch![coordinate]),
+      ).toBeLessThanOrEqual(1);
+    }
+    await expect(
+      dashboard.getByRole("button", {
+        name: tab === "browse" ? "Install" : "More options",
+        exact: true,
+      }),
+    ).toHaveCount(3);
+    await dashboard.screenshot({
+      path: testInfo.outputPath(`plugins-${tab}-loaded.png`),
+    });
+  }
+  await dashboard.evaluate(() => localStorage.removeItem("plugins.activeTab"));
 });
 
 test("captures the desktop sidebar hidden and restored", async ({

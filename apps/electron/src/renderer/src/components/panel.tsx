@@ -712,29 +712,6 @@ function RemixModelSetup(): React.JSX.Element {
         ) : null}
         {auth.error ? <p className="tavern-notice">{auth.error}</p> : null}
       </div>
-      <p className="tavern-gate-terms">
-        By continuing, you agree to our{" "}
-        <button
-          type="button"
-          className="tavern-gate-link"
-          onClick={() =>
-            void window.api.openExternal("https://freestylevoice.com/terms")
-          }
-        >
-          Terms
-        </button>{" "}
-        and{" "}
-        <button
-          type="button"
-          className="tavern-gate-link"
-          onClick={() =>
-            void window.api.openExternal("https://freestylevoice.com/privacy")
-          }
-        >
-          Privacy Policy
-        </button>
-        .
-      </p>
     </div>
   );
 }

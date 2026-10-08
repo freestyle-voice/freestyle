@@ -2,13 +2,17 @@ import "./shell.css";
 
 import {
   CloudProfileButton,
+  SignInCtaCard,
   UpgradeCtaCard,
 } from "@renderer/components/cloud-profile";
 import {
   sidebarCurrentThreadId,
   useRemixSession,
 } from "@renderer/components/remix-session-context";
-import { ThreadHistory } from "@renderer/components/thread-history";
+import {
+  SessionHistorySkeleton,
+  ThreadHistory,
+} from "@renderer/components/thread-history";
 import { Badge } from "@renderer/components/ui/badge";
 import {
   DropdownMenu,
@@ -28,6 +32,7 @@ import {
   SIDEBAR_VISIBILITY_STORAGE_KEY,
   type SidebarVisibility,
 } from "@renderer/lib/sidebar-visibility";
+import { useRemixAvailability } from "@renderer/lib/use-remix-availability";
 import { cn } from "@renderer/lib/utils";
 import {
   DEFAULT_WORKSPACE,
@@ -227,6 +232,27 @@ function NavList({ items }: { items: NavItem[] }): React.JSX.Element {
   );
 }
 
+function SidebarFooter({ items }: { items: NavItem[] }): React.JSX.Element {
+  const { user, phase } = useCloudAuth();
+
+  return (
+    <div className="shrink-0 pb-3">
+      <UpgradeCtaCard />
+      <div className="border-sidebar-border mx-3 mt-2 mb-2 border-t" />
+      {user || phase === "checking" ? (
+        <div
+          className="mx-3"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <CloudProfileButton />
+        </div>
+      ) : (
+        <NavList items={items} />
+      )}
+    </div>
+  );
+}
+
 function SettingsSidebar({
   workspace,
   onBack,
@@ -360,7 +386,7 @@ function RemixSidebarSessions({
     completedSessionIds,
     markSessionSeen,
   } = useRemixSession();
-  const { phase } = useCloudAuth();
+  const availability = useRemixAvailability();
   const listRef = useRef<HTMLDivElement>(null);
   const [hasMoreSessions, setHasMoreSessions] = useState(false);
 
@@ -405,7 +431,7 @@ function RemixSidebarSessions({
           type="button"
           className="remix-sidebar-new"
           onClick={startNewThread}
-          disabled={phase === "checking"}
+          disabled={!availability.canChat}
         >
           <Plus aria-hidden="true" />
           New chat
@@ -417,7 +443,7 @@ function RemixSidebarSessions({
           }`}
           aria-current={workspaceSurface === "scheduled" ? "page" : undefined}
           onClick={openScheduledTasks}
-          disabled={phase === "checking"}
+          disabled={!availability.canUseCloud}
         >
           <CalendarClock aria-hidden="true" />
           Schedules
@@ -428,24 +454,37 @@ function RemixSidebarSessions({
         className="remix-sidebar-sessions-list"
         data-has-more={hasMoreSessions || undefined}
       >
-        <ThreadHistory
-          currentId={sidebarCurrentThreadId(workspaceSurface, thread?.id ?? "")}
-          searchQuery={searchQuery}
-          titleOverrides={localTitles}
-          onRename={(picked, title) =>
-            renameThread(picked.id, title, picked.type)
-          }
-          onDelete={(picked) =>
-            requestDeleteThread(picked.id, picked.title, picked.type)
-          }
-          sessionActions="context"
-          sessionActivity={sessionActivity}
-          completedSessionIds={completedSessionIds}
-          onSessionSeen={markSessionSeen}
-          onPick={(picked) => {
-            if (picked.id !== thread?.id) selectThread(picked);
-          }}
-        />
+        {availability.checking ? (
+          <SessionHistorySkeleton />
+        ) : !availability.canChat ? (
+          <div className="tavern-empty tavern-thread-empty">
+            <strong>No sessions yet</strong>
+            <span>Choose your Remix model to start a chat.</span>
+          </div>
+        ) : (
+          <ThreadHistory
+            type={availability.historyType}
+            currentId={sidebarCurrentThreadId(
+              workspaceSurface,
+              thread?.id ?? "",
+            )}
+            searchQuery={searchQuery}
+            titleOverrides={localTitles}
+            onRename={(picked, title) =>
+              renameThread(picked.id, title, picked.type)
+            }
+            onDelete={(picked) =>
+              requestDeleteThread(picked.id, picked.title, picked.type)
+            }
+            sessionActions="context"
+            sessionActivity={sessionActivity}
+            completedSessionIds={completedSessionIds}
+            onSessionSeen={markSessionSeen}
+            onPick={(picked) => {
+              if (picked.id !== thread?.id) selectThread(picked);
+            }}
+          />
+        )}
       </div>
     </section>
   );
@@ -497,7 +536,7 @@ function WorkspaceSwitcher({
             <span className="flex min-w-0 flex-col gap-0.5">
               <span className="text-[12px] font-medium">Remix</span>
               <span className="text-muted-foreground text-[10.5px] leading-snug">
-                Chat, automate, and work with your apps
+                Chat and automate your work
               </span>
             </span>
           </DropdownMenuRadioItem>
@@ -521,6 +560,7 @@ function SessionSearchDialog({
   inputRef: React.RefObject<HTMLInputElement | null>;
 }): React.JSX.Element | null {
   const { thread, selectThread } = useRemixSession();
+  const availability = useRemixAvailability();
   if (!thread) return null;
 
   return (
@@ -548,6 +588,7 @@ function SessionSearchDialog({
           </label>
           <div className="remix-session-search-results">
             <ThreadHistory
+              type={availability.historyType}
               currentId={thread.id}
               searchQuery={query}
               onPick={(picked) => {
@@ -656,7 +697,11 @@ export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const { user, phase, canRequestData } = useCloudAuth();
+  const { canChat } = useRemixAvailability();
+  // Keep dismissal in memory so the prompt returns on the next app launch.
+  const [dismissedSignInCards, setDismissedSignInCards] = useState<
+    Record<Workspace, boolean>
+  >({ dictate: false, remix: false });
   const isRemixRoute = location.pathname === "/remix";
   const isSettingsRoute =
     location.pathname === "/settings" ||
@@ -703,8 +748,8 @@ export default function AppShell(): React.JSX.Element {
   }, [setSidebarVisibility]);
 
   useEffect(() => {
-    window.api.setPanelSidebarHidden(phase !== "signed_out" && isSidebarHidden);
-  }, [isSidebarHidden, phase]);
+    window.api.setPanelSidebarHidden(isSidebarHidden);
+  }, [isSidebarHidden]);
 
   const changeWorkspace = useCallback(
     (workspace: Workspace) => {
@@ -755,7 +800,6 @@ export default function AppShell(): React.JSX.Element {
   const { data: plugins = [] } = useQuery({
     queryKey: queryKeys.plugins,
     queryFn: () => listPlugins(),
-    enabled: canRequestData,
   });
 
   const pluginNav = usePluginNavItems(plugins);
@@ -791,12 +835,6 @@ export default function AppShell(): React.JSX.Element {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isSettingsRoute, navigate, staticNav]);
-
-  // Authenticated pages use the application chrome. Until the auth check has
-  // established a user, the sign-in route owns the entire window; rendering
-  // the app sidebar beside it makes the login experience look like a broken
-  // half-loaded workspace and can briefly expose stale navigation state.
-  if (phase === "signed_out") return <SignedOutShell />;
 
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
@@ -839,7 +877,7 @@ export default function AppShell(): React.JSX.Element {
                       DEV
                     </span>
                   )}
-                  {isRemixSidebar && canRequestData ? (
+                  {isRemixSidebar && canChat ? (
                     <button
                       type="button"
                       aria-label="Search sessions"
@@ -857,7 +895,7 @@ export default function AppShell(): React.JSX.Element {
                   className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
                   style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 >
-                  {isRemixSidebar && canRequestData ? (
+                  {isRemixSidebar ? (
                     <RemixSidebarSessions searchQuery="" />
                   ) : (
                     <>
@@ -871,22 +909,18 @@ export default function AppShell(): React.JSX.Element {
                     </>
                   )}
                 </div>
-                {!isRemixSidebar && !user ? (
-                  <>
-                    {pluginNav.length > 0 ? (
-                      <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-                    ) : null}
-                    <NavList items={footerNav} />
-                  </>
+                {!dismissedSignInCards[activeWorkspace] ? (
+                  <SignInCtaCard
+                    workspace={activeWorkspace}
+                    onDismiss={() =>
+                      setDismissedSignInCards((previous) => ({
+                        ...previous,
+                        [activeWorkspace]: true,
+                      }))
+                    }
+                  />
                 ) : null}
-                <UpgradeCtaCard />
-                <div
-                  className="border-sidebar-border mx-3 mt-2 border-t pt-2"
-                  style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                >
-                  <CloudProfileButton />
-                </div>
-                <div className="h-3" />
+                <SidebarFooter items={footerNav} />
               </>
             )}
           </aside>
@@ -897,7 +931,7 @@ export default function AppShell(): React.JSX.Element {
         </>
       ) : null}
 
-      {isRemixSidebar && canRequestData ? (
+      {isRemixSidebar && canChat ? (
         <SessionSearchDialog
           open={isSessionSearchOpen}
           onOpenChange={handleSessionSearchOpenChange}
@@ -915,27 +949,6 @@ export default function AppShell(): React.JSX.Element {
         />
         <UpdateBanner className="relative z-50 mt-4 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
-        <main
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
-          style={{ scrollbarWidth: "none" } as React.CSSProperties}
-        >
-          <Outlet />
-        </main>
-      </div>
-    </div>
-  );
-}
-
-/**
- * The signed-out view deliberately has no app navigation or resize handle.
- * LoginGate renders its own full-window sign-in experience through this
- * outlet, and the normal AppShell mounts as soon as CloudAuth has a user.
- */
-function SignedOutShell(): React.JSX.Element {
-  return (
-    <div className="glass-window-shell flex h-screen min-h-0">
-      <div className="glass-content relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <ContentTitlebar />
         <main
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
           style={{ scrollbarWidth: "none" } as React.CSSProperties}
@@ -968,6 +981,7 @@ function ContentTitlebar({
     <div
       className={cn(
         "glass-content-titlebar",
+        IS_MAC && "glass-content-titlebar--mac",
         sidebarHidden && "glass-content-titlebar--sidebar-hidden",
       )}
       aria-hidden={sidebarHidden ? undefined : true}

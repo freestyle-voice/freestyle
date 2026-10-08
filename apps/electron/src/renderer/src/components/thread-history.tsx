@@ -46,6 +46,7 @@ export function ThreadHistory({
   sessionActivity,
   completedSessionIds,
   onSessionSeen,
+  type = "remote",
 }: {
   /** Select immediately; the session owner loads the message detail. */
   onPick: (thread: ThreadSummary) => void;
@@ -66,6 +67,7 @@ export function ThreadHistory({
   /** Locally acknowledged only after the user re-opens that finished session. */
   completedSessionIds?: ReadonlySet<string>;
   onSessionSeen?: (threadId: string) => void;
+  type?: "local" | "remote";
 }): React.JSX.Element {
   const [internalSearch, setInternalSearch] = useState("");
   const [renamingId, setRenamingId] = useState<string | null>(null);
@@ -75,11 +77,12 @@ export function ThreadHistory({
   const search = searchQuery ?? internalSearch;
   const rendersSearchField = showSearch && searchQuery === undefined;
   const conversationsQuery = useInfiniteQuery(
-    threadHistoryInfiniteQueryOptions("user"),
+    threadHistoryInfiniteQueryOptions("user", type),
   );
-  const briefsQuery = useInfiniteQuery(
-    threadHistoryInfiniteQueryOptions("scheduled"),
-  );
+  const briefsQuery = useInfiniteQuery({
+    ...threadHistoryInfiniteQueryOptions("scheduled", type),
+    enabled: type === "remote",
+  });
   const threads = useMemo(() => {
     const withOrigin = (origin: ThreadOrigin, summaries: ThreadSummary[]) =>
       summaries.map((thread) => ({ ...thread, origin }));
@@ -111,7 +114,7 @@ export function ThreadHistory({
   const isLoading =
     threads.length === 0 &&
     conversationsQuery.isLoading &&
-    briefsQuery.isLoading;
+    (type === "local" || briefsQuery.isLoading);
   const hasNextPage = conversationsQuery.hasNextPage || briefsQuery.hasNextPage;
   const isFetchingNextPage =
     conversationsQuery.isFetchingNextPage || briefsQuery.isFetchingNextPage;
@@ -381,7 +384,7 @@ function ThreadActivityIndicator({
  * skeleton. Keeping the date dividers and single-line row rhythm in place
  * prevents the sidebar from visually jumping when the first page arrives.
  */
-function SessionHistorySkeleton(): React.JSX.Element {
+export function SessionHistorySkeleton(): React.JSX.Element {
   const now = Date.now();
   const groups = [
     { label: dateGroup(now), rows: ["wide", "medium"] },

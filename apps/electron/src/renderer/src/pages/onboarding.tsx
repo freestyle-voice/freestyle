@@ -1,3 +1,4 @@
+import { SignInButton } from "@renderer/components/sign-in-split";
 import { Button } from "@renderer/components/ui/button";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { useOnboarding } from "@renderer/lib/onboarding-state";
@@ -9,22 +10,28 @@ type OnboardingLocationState = { from?: string } | null;
 
 /** First-run orientation for Freestyle as a whole, deliberately outside Remix. */
 export default function OnboardingPage(): React.JSX.Element {
-  const { user } = useCloudAuth();
-  const onboarding = useOnboarding(Boolean(user));
+  const { user, phase, signingIn, signIn, cancelSignIn, error } =
+    useCloudAuth();
+  const onboarding = useOnboarding(phase === "authenticated");
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as OnboardingLocationState)?.from;
-  const destination = from && from !== "/onboarding" ? from : "/today";
+  const destination = !user
+    ? "/settings/models"
+    : from && from !== "/onboarding"
+      ? from
+      : "/today";
 
   useEffect(() => {
     if (onboarding.status === "done") navigate(destination, { replace: true });
   }, [destination, navigate, onboarding.status]);
 
-  if (onboarding.status === "loading" || !user) {
+  if (onboarding.status === "loading") {
     return <div aria-busy="true" className="flex min-h-0 flex-1" />;
   }
 
   const continueToFreestyle = (): void => {
+    if (signingIn) cancelSignIn();
     onboarding.markDone();
     navigate(destination, { replace: true });
   };
@@ -69,9 +76,30 @@ export default function OnboardingPage(): React.JSX.Element {
           </article>
         </div>
 
-        <div>
-          <Button size="lg" onClick={continueToFreestyle}>
-            Continue to Freestyle
+        <div className="flex max-w-md flex-col items-start gap-3">
+          {!user ? (
+            <>
+              <p className="text-muted-foreground m-0 text-sm leading-5">
+                Use local models or your own API keys without an account. Sign
+                in for Freestyle Cloud transcription and Cloud Remix.
+              </p>
+              <SignInButton
+                signingIn={signingIn}
+                onClick={() => void signIn()}
+              />
+              {error ? (
+                <p role="alert" className="text-destructive m-0 text-sm">
+                  {error}
+                </p>
+              ) : null}
+            </>
+          ) : null}
+          <Button
+            size="lg"
+            variant={user ? "default" : "outline"}
+            onClick={continueToFreestyle}
+          >
+            {user ? "Continue to Freestyle" : "Continue without an account"}
             <ArrowRight aria-hidden="true" />
           </Button>
         </div>

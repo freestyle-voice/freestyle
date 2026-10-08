@@ -64,7 +64,7 @@ describe("Models local-runtime reliability", () => {
     expect(page).toContain("onUse={() => void configureFreestylePair()}");
     expect(bundle).toContain('data-testid="freestyle-cloud-bundle"');
     expect(bundle).toContain('t("models.freestyleCloud.use")');
-    expect(bundle).toContain('t("models.freestyleCloud.signedInDescription")');
+    expect(bundle).toContain('t("models.overview.cloudHint",');
     expect(bundle).not.toContain("CloudRouteOption");
   });
 });

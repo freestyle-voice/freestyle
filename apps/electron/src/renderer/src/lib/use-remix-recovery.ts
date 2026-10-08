@@ -1,7 +1,12 @@
 import { Chat, useChat } from "@ai-sdk/react";
 import { apiFetch, initApiBase } from "@renderer/lib/api";
-import { DefaultChatTransport, type UIMessage } from "ai";
 import {
+  DefaultChatTransport,
+  lastAssistantMessageIsCompleteWithToolCalls,
+  type UIMessage,
+} from "ai";
+import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -39,6 +44,18 @@ const defaultContext = () => ({
 export function useRemixRecovery(options: Options) {
   const ref = useRef(options);
   ref.current = options;
+  const activeRef = useRef(true);
+  const localStoppedRef = useRef(false);
+  useEffect(() => {
+    activeRef.current = true;
+    return () => {
+      activeRef.current = false;
+    };
+  }, []);
+  const isCurrentSession = useCallback(
+    () => activeRef.current && ref.current.id === options.id,
+    [options.id],
+  );
   const controller = useMemo(
     () =>
       new RemixRecoveryController({
@@ -49,7 +66,9 @@ export function useRemixRecovery(options: Options) {
           await initApiBase();
           return apiFetch(path, init);
         },
-        onToolCall: (toolCall) => ref.current.onToolCall({ toolCall }),
+        onToolCall: async (toolCall) => {
+          if (isCurrentSession()) await ref.current.onToolCall({ toolCall });
+        },
         requiresApproval: (name) =>
           [
             "Bash",
@@ -60,13 +79,20 @@ export function useRemixRecovery(options: Options) {
             "Grep",
             "save_file",
           ].includes(name),
-        onFinish: (messages) => ref.current.onFinish?.({ messages }),
-        onError: (error) => ref.current.onError?.(error),
-        onFork: (thread) => ref.current.onFork?.(thread),
-        onActionUnavailable: (actionId) =>
-          ref.current.onActionUnavailable?.(actionId),
+        onFinish: (messages) => {
+          if (isCurrentSession()) ref.current.onFinish?.({ messages });
+        },
+        onError: (error) => {
+          if (isCurrentSession()) ref.current.onError?.(error);
+        },
+        onFork: (thread) => {
+          if (isCurrentSession()) ref.current.onFork?.(thread);
+        },
+        onActionUnavailable: (actionId) => {
+          if (isCurrentSession()) ref.current.onActionUnavailable?.(actionId);
+        },
       }),
-    [options.id],
+    [options.id, isCurrentSession],
   );
   // The chat owns streaming message state. Recreating it for every streamed
   // token would discard that state, so only a session ID creates a new chat.
@@ -76,6 +102,10 @@ export function useRemixRecovery(options: Options) {
       new Chat({
         id: options.id,
         messages: options.messages,
+        sendAutomaticallyWhen: (event) =>
+          isCurrentSession() &&
+          !localStoppedRef.current &&
+          lastAssistantMessageIsCompleteWithToolCalls(event),
         transport: new DefaultChatTransport({
           api: `/api/remix/sessions/${encodeURIComponent(options.id)}/stream`,
           fetch: async (input, init) => {
@@ -89,7 +119,9 @@ export function useRemixRecovery(options: Options) {
             },
           }),
         }),
-        onToolCall: ({ toolCall }) => ref.current.onToolCall({ toolCall }),
+        onToolCall: async ({ toolCall }) => {
+          if (isCurrentSession()) await ref.current.onToolCall({ toolCall });
+        },
         onFinish: async ({ messages }) => {
           await initApiBase();
           const response = await apiFetch(
@@ -103,13 +135,25 @@ export function useRemixRecovery(options: Options) {
           if (!response.ok) {
             throw new Error("Could not save this local Remix session.");
           }
-          ref.current.onFinish?.({ messages });
+          if (isCurrentSession()) ref.current.onFinish?.({ messages });
         },
-        onError: (error) => ref.current.onError?.(error),
+        onError: (error) => {
+          if (isCurrentSession()) ref.current.onError?.(error);
+        },
       }),
     [options.id],
   );
   const local = useChat({ chat: localChat });
+  const stopLocalChat = useCallback(() => {
+    localStoppedRef.current = true;
+    return local.stop();
+  }, [local.stop]);
+  useEffect(
+    () => () => {
+      void localChat.stop();
+    },
+    [localChat],
+  );
   const snapshot = useSyncExternalStore(
     controller.subscribe,
     controller.getSnapshot,
@@ -214,12 +258,18 @@ export function useRemixRecovery(options: Options) {
     durableRuntime: { data: null, refetch: async () => ({ data: null }) },
     setMessages: local.setMessages,
     clearError: local.clearError,
-    sendMessage: local.sendMessage,
-    regenerate: local.regenerate,
+    sendMessage: (...args: Parameters<typeof local.sendMessage>) => {
+      localStoppedRef.current = false;
+      return local.sendMessage(...args);
+    },
+    regenerate: (...args: Parameters<typeof local.regenerate>) => {
+      localStoppedRef.current = false;
+      return local.regenerate(...args);
+    },
     addToolResult: local.addToolResult,
     addToolOutput: local.addToolOutput,
-    stop: local.stop,
-    cancel: local.stop,
+    stop: stopLocalChat,
+    cancel: stopLocalChat,
     authorizeTool: async () => {},
     resumeStream: async () => {},
     recovery: {

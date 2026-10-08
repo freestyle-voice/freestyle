@@ -161,11 +161,36 @@ function buildVoiceRows(m: UseModels, h: VoiceHandlers): Row[] {
 
 function buildLlmRows(
   m: UseModels,
-  h: { onPickCloud: (model: AvailableModel) => void; onClose: () => void },
+  h: {
+    onPickCloud: (model: AvailableModel) => void;
+    onClose: () => void;
+    onModelSelected?: () => void;
+  },
   selectedModel: ConfiguredModel | undefined,
   type: "llm" | "remix",
 ): Row[] {
   const rows: Row[] = [];
+
+  if (type === "remix") {
+    rows.push({
+      key: "freestyle-cloud/remix",
+      name: "Freestyle Cloud",
+      source: "cloud",
+      provider: "freestyle-cloud",
+      meta: "Managed · no API key needed",
+      curated: true,
+      selected: selectedModel?.provider === "freestyle-cloud",
+      hasKey: true,
+      onSelect: () =>
+        h.onPickCloud({
+          provider_id: "freestyle-cloud",
+          provider_name: "Freestyle Cloud",
+          model_id: "freestyle-cloud/remix",
+          model_name: "Freestyle Cloud",
+          type: "llm",
+        }),
+    });
+  }
 
   for (const [providerId, { providerName, models }] of m.llmModelsByProvider) {
     if (providerId === FREESTYLE_CLOUD_CLEANUP.provider_id) continue;
@@ -215,7 +240,7 @@ function buildLlmRows(
       status: "ready",
       onSelect: () =>
         void m.selectLocalLlmModel(name, type).then((selected) => {
-          if (selected) h.onClose();
+          if (selected) (h.onModelSelected ?? h.onClose)();
         }),
     });
   }
@@ -236,6 +261,7 @@ export function ModelList({
   catalogLoading,
   onClose,
   onPickCloud,
+  onModelSelected,
   onPickLocalVoice,
   onRequestDeleteLocal,
 }: {
@@ -247,6 +273,7 @@ export function ModelList({
   catalogLoading: boolean;
   onClose: () => void;
   onPickCloud: (model: AvailableModel) => void;
+  onModelSelected?: () => void;
   onPickLocalVoice: (
     defId: string,
     name: string,
@@ -320,7 +347,7 @@ export function ModelList({
         })
       : buildLlmRows(
           m,
-          { onPickCloud, onClose },
+          { onPickCloud, onClose, onModelSelected },
           type === "remix" ? m.defaultRemix : m.defaultLlm,
           type,
         );
@@ -363,7 +390,8 @@ export function ModelList({
     ? filteredRows.length - filteredRows.filter((r) => r.curated).length
     : 0;
 
-  const showLocalLlmForm = type !== "voice" && localOnly;
+  const showLocalLlmForm =
+    type !== "voice" && (localOnly || filter === "local");
   const showOpenaiSttForm = type === "voice" && cloudOnly;
 
   const scopedTitle =

@@ -21,6 +21,7 @@ import {
   useSetActiveOrganization,
 } from "@renderer/lib/use-profile";
 import { cn } from "@renderer/lib/utils";
+import type { Workspace } from "@renderer/lib/workspace";
 import {
   Building2,
   Check,
@@ -31,6 +32,7 @@ import {
   LogIn,
   LogOut,
   Settings,
+  X,
 } from "lucide-react";
 import { useState } from "react";
 import { useNavigate } from "react-router";
@@ -117,8 +119,69 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
   );
 }
 
-export function CloudProfileButton(): React.JSX.Element {
-  const { user, phase, signingIn, signIn, signOut } = useCloudAuth();
+export function SignInCtaCard({
+  workspace = "dictate",
+  onDismiss,
+}: {
+  workspace?: Workspace;
+  onDismiss: () => void;
+}): React.JSX.Element | null {
+  const { user, phase, signingIn, signIn } = useCloudAuth();
+  if (user || phase === "checking") return null;
+  const title =
+    workspace === "remix" ? "Freestyle Remix" : "Freestyle Transcribe";
+
+  return (
+    <section
+      aria-label={title}
+      className="glass-card mx-3 mt-2 rounded-[10px] border p-3"
+      style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+    >
+      <div className="flex items-center gap-1.5">
+        <Cloud className="text-primary size-3.5 shrink-0" />
+        <span className="serif-italic text-foreground min-w-0 flex-1 text-[16px]">
+          {title}
+        </span>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          aria-label="Dismiss sign-in card"
+          title="Dismiss until next launch"
+          onClick={onDismiss}
+          className="text-muted-foreground -mt-1 -mr-1"
+        >
+          <X aria-hidden="true" />
+        </Button>
+      </div>
+      <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
+        {workspace === "remix"
+          ? "Sign in for Cloud models, synced chats, and scheduled tasks."
+          : "Fast, accurate transcription, no API key required."}
+      </p>
+      <Button
+        size="sm"
+        onClick={() => void signIn()}
+        disabled={signingIn}
+        className="bg-accent text-accent-foreground hover:bg-accent/70 mt-2.5 w-full"
+      >
+        {signingIn ? (
+          <>
+            <Loader2 className="animate-spin" />
+            Signing in…
+          </>
+        ) : (
+          <>
+            <LogIn />
+            Sign in
+          </>
+        )}
+      </Button>
+    </section>
+  );
+}
+
+export function CloudProfileButton(): React.JSX.Element | null {
+  const { user, phase, signOut } = useCloudAuth();
   const { isPro, openBillingPortal } = useCloudUsage(!!user);
   const { data: activeOrg } = useActiveOrganization(!!user);
   const { data: orgs } = useListOrganizations(!!user);
@@ -140,39 +203,7 @@ export function CloudProfileButton(): React.JSX.Element {
     );
   }
 
-  if (!user) {
-    return (
-      <div className="glass-card rounded-[10px] border p-3">
-        <div className="flex items-center gap-1.5">
-          <Cloud className="text-primary size-3.5 shrink-0" />
-          <span className="text-foreground text-[12.5px] font-medium">
-            Freestyle Transcribe
-          </span>
-        </div>
-        <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
-          Fast, accurate transcription, no API key required.
-        </p>
-        <Button
-          size="sm"
-          onClick={() => void signIn()}
-          disabled={signingIn}
-          className="bg-accent text-accent-foreground hover:bg-accent/70 mt-2.5 w-full"
-        >
-          {signingIn ? (
-            <>
-              <Loader2 className="animate-spin" />
-              Signing in…
-            </>
-          ) : (
-            <>
-              <LogIn />
-              Sign in
-            </>
-          )}
-        </Button>
-      </div>
-    );
-  }
+  if (!user) return null;
 
   return (
     <DropdownMenu>

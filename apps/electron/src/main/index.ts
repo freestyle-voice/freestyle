@@ -1369,9 +1369,8 @@ async function probeServerHealth(
   }
 }
 
-// Hotkey configuration and the signed-out fallback both need the same answer
-// during startup. Keep one result for this boot rather than sending a separate
-// health request for every consumer.
+// Share startup readiness across consumers instead of sending a separate
+// health request for every settings read.
 let serverReadyPromise: Promise<boolean> | null = null;
 
 /**
@@ -2319,30 +2318,10 @@ app.whenReady().then(async () => {
   createNotificationWindow();
 
   // Paint the desktop shell as soon as the launch preference permits it. The
-  // local server/auth check runs independently below; waiting for it made a
+  // local server readiness checks run independently; waiting for them made a
   // mostly-static workspace look frozen on every cold start.
   const shouldOpenDashboard = readSettings().showDashboardOnLaunch !== false;
   if (shouldOpenDashboard) openPanel();
-
-  // A signed-out launch still surfaces the panel when the signed-in preference
-  // says not to open it. This keeps first-run/sign-out behavior intact without
-  // holding a normal startup behind the server health/auth round-trip.
-  if (!shouldOpenDashboard) {
-    void (async () => {
-      await waitForServerReady();
-      const user = await serverClient()
-        .api.auth.status.$get()
-        .then(async (res) =>
-          res.ok ? ((await res.json()).user ?? null) : null,
-        )
-        .catch(() => null);
-      // A signed-out launch always needs the sign-in gate. Signed-in users can
-      // opt out of the restored desktop workspace opening automatically.
-      // The auth probe can outlive an E2E shutdown or a fast user quit. Do not
-      // touch Electron's display APIs once teardown has started.
-      if (!isQuitting && !user) openPanel();
-    })();
-  }
 
   createTray();
 
@@ -3662,7 +3641,7 @@ const DASHBOARD_MIN_WIDTH = 760;
 const DASHBOARD_MIN_HEIGHT = 680;
 const DASHBOARD_TRAFFIC_LIGHT_POSITION = {
   default: { x: 20, y: 16 },
-  sidebarHidden: { x: 62, y: 16 },
+  sidebarHidden: { x: 20, y: 16 },
 };
 
 function setPanelTrafficLightPosition(

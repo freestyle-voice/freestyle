@@ -7,22 +7,17 @@ const rendererRoot = dirname(fileURLToPath(import.meta.url));
 
 describe("dashboard startup rendering", () => {
   it("keeps the application shell and page data mounted while authentication verifies", async () => {
-    const [dashboard, gate, shell] = await Promise.all([
+    const [dashboard, shell] = await Promise.all([
       readFile(resolve(rendererRoot, "dashboard.tsx"), "utf8"),
-      readFile(resolve(rendererRoot, "components/login-gate.tsx"), "utf8"),
       readFile(resolve(rendererRoot, "shell.tsx"), "utf8"),
     ]);
 
     expect(dashboard).toContain("<Route element={<AppShell />}>");
-    expect(dashboard).toContain("<ProtectedOutlet />");
-    expect(gate).not.toContain("StartupContentPlaceholder");
-    expect(gate).toContain('if (phase === "signed_out") return <LoginPage />;');
-    expect(shell).toContain("function SignedOutShell");
+    expect(dashboard).not.toContain("LoginGate");
+    expect(dashboard).not.toContain("ProtectedOutlet");
+    expect(shell).not.toContain("SignedOutShell");
     expect(shell).toContain(
-      'if (phase === "signed_out") return <SignedOutShell />;',
-    );
-    expect(shell).toContain(
-      'className="glass-content relative flex min-h-0 min-w-0 flex-1 flex-col"',
+      "window.api.setPanelSidebarHidden(isSidebarHidden)",
     );
   });
 
@@ -52,7 +47,7 @@ describe("dashboard startup rendering", () => {
     expect(dashboard).toContain("const SETTINGS_FALLBACKS");
     expect(dashboard).toContain('title: "Shortcuts"');
     expect(dashboard).toContain('title: "Vocabulary"');
-    expect(dashboard).toContain('title: "Plugins"');
+    expect(dashboard).toContain("return <PluginsPageLoadingSkeleton />;");
     expect(dashboard).toContain('title: "Profile"');
     expect(dashboard).not.toContain(
       'return <div className="min-h-0 flex-1" />;',
@@ -100,11 +95,9 @@ describe("dashboard startup rendering", () => {
     expect(auth).toContain("resetAccountCaches(queryClient)");
     expect(auth).toContain("refetchInterval");
     expect(auth).toContain("enabled: !forcedSignedOut");
-    expect(sessions).toContain("enabled: canRequestData");
-    expect(shell).toContain("enabled: canRequestData");
-    expect(sessions).toContain(
-      "const { canRequestData, phase } = useCloudAuth();",
-    );
+    expect(sessions).toContain("enabled: canChat");
+    expect(shell).toContain("queryFn: () => listPlugins()");
+    expect(sessions).toContain("const availability = useRemixAvailability();");
     expect(history).toContain('aria-label="Loading transcription history"');
     expect(history).toContain("{searchRow}");
     expect(panel).toContain("RemixWorkspaceLoadingSkeleton");
@@ -139,7 +132,8 @@ describe("dashboard startup rendering", () => {
     expect(main).toContain(
       "if (!getServerUrl()) serverReadyPromise = Promise.resolve(true);",
     );
-    expect(main.match(/waitForServerReady\(\)/g)).toHaveLength(2);
+    expect(main.match(/waitForServerReady\(\)/g)).toHaveLength(1);
+    expect(main).not.toContain("if (!isQuitting && !user) openPanel()");
     expect(main).not.toContain(
       "for (let attempt = 0; attempt < 20; attempt++)",
     );

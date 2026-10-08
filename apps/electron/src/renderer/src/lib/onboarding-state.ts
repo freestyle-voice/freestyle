@@ -35,27 +35,36 @@ function cacheSaved(queryClient: QueryClient, state: OnboardingSaved): void {
 export type OnboardingStatus = "loading" | "show" | "done";
 
 /**
- * Tracks whether a signed-in person still needs the product-level welcome.
+ * Tracks whether this installation still needs the product-level welcome.
  * Existing people with Remix history are grandfathered, so moving this flow
  * out of Remix never interrupts established workspaces.
  */
-export function useOnboarding(enabled: boolean): {
+export function useOnboarding(canRequestCloudData: boolean): {
   status: OnboardingStatus;
   markDone: () => void;
 } {
   const [status, setStatus] = useState<OnboardingStatus>("loading");
   const [saved, setSaved] = useState<OnboardingSaved | null>(null);
   const queryClient = useQueryClient();
-  const settingsQuery = useQuery({ ...settingsQueryOptions(), enabled });
+  const settingsQuery = useQuery(settingsQueryOptions());
+  // Cloud history is only needed to grandfather installations with no saved
+  // onboarding state. A completed or resumable local save must work offline.
+  const needsCloudHistory =
+    canRequestCloudData &&
+    !settingsQuery.isPending &&
+    !parseSaved(settingsQuery.data?.[ONBOARDING_KEY]);
   const threadsQuery = useInfiniteQuery({
     ...threadHistoryInfiniteQueryOptions(),
-    enabled,
+    enabled: needsCloudHistory,
   });
   const decided = useRef<OnboardingSaved | null>(null);
 
   useEffect(() => {
-    if (!enabled) return;
-    if (settingsQuery.isPending || threadsQuery.isPending) return;
+    if (
+      settingsQuery.isPending ||
+      (needsCloudHistory && threadsQuery.isPending)
+    )
+      return;
 
     const parsed = parseSaved(settingsQuery.data?.[ONBOARDING_KEY]);
     if (decided.current?.done && !parsed?.done) {
@@ -72,7 +81,10 @@ export function useOnboarding(enabled: boolean): {
       setStatus("show");
       return;
     }
-    if ((threadsQuery.data?.pages[0]?.threads.length ?? 0) > 0) {
+    if (
+      canRequestCloudData &&
+      (threadsQuery.data?.pages[0]?.threads.length ?? 0) > 0
+    ) {
       const grandfathered: OnboardingSaved = { v: 2, done: true };
       decided.current = grandfathered;
       persistSaved(grandfathered);
@@ -83,7 +95,8 @@ export function useOnboarding(enabled: boolean): {
     }
     setStatus("show");
   }, [
-    enabled,
+    canRequestCloudData,
+    needsCloudHistory,
     queryClient,
     settingsQuery.data,
     settingsQuery.isPending,
@@ -108,5 +121,13 @@ export function useOnboarding(enabled: boolean): {
     setStatus("done");
   }, [queryClient]);
 
-  return { status, markDone };
+  return {
+    status:
+      needsCloudHistory &&
+      threadsQuery.isPending &&
+      !parseSaved(settingsQuery.data?.[ONBOARDING_KEY])?.done
+        ? "loading"
+        : status,
+    markDone,
+  };
 }

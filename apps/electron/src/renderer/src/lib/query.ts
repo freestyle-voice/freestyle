@@ -55,6 +55,7 @@ export const queryKeys = {
     all: ["models"] as const,
     available: ["models", "available"] as const,
     configured: ["models", "configured"] as const,
+    remixRuntime: ["models", "remix-runtime"] as const,
   },
   apiKeys: ["api-keys"] as const,
   whisperStatus: ["whisper-status"] as const,
@@ -110,8 +111,12 @@ export const queryKeys = {
   threads: {
     all: ["threads"] as const,
     latest: ["threads", "latest"] as const,
+    localLatest: ["threads", "latest", "local"] as const,
     lists: THREAD_LIST_QUERY_KEY,
-    list: (origin: ThreadOrigin) => [...THREAD_LIST_QUERY_KEY, origin] as const,
+    list: (origin: ThreadOrigin, type: "local" | "remote" = "remote") =>
+      type === "local"
+        ? ([...THREAD_LIST_QUERY_KEY, origin, "local"] as const)
+        : ([...THREAD_LIST_QUERY_KEY, origin] as const),
     detail: (id: string, type: "local" | "remote" = "remote") =>
       ["threads", "detail", type, id] as const,
   },
@@ -298,10 +303,13 @@ export function connectorDetailsQueryOptions(slug: string) {
   };
 }
 
-export function latestThreadQueryOptions() {
+export function latestThreadQueryOptions(type: "local" | "remote" = "remote") {
   return {
-    queryKey: queryKeys.threads.latest,
-    queryFn: getLatestThread,
+    queryKey:
+      type === "local"
+        ? queryKeys.threads.localLatest
+        : queryKeys.threads.latest,
+    queryFn: () => getLatestThread(type),
     // These are Cloud-backed navigation reads. A completed turn updates the
     // active conversation cache directly, so remounts must not refetch them.
     staleTime: 60_000,
@@ -356,12 +364,13 @@ export function threadQueryOptions(
 
 export function threadHistoryInfiniteQueryOptions(
   origin: ThreadOrigin = "user",
+  type: "local" | "remote" = "remote",
 ) {
   return {
-    queryKey: queryKeys.threads.list(origin),
+    queryKey: queryKeys.threads.list(origin, type),
     initialPageParam: null as number | null,
     queryFn: ({ pageParam }: { pageParam: number | null }) =>
-      listThreads({ cursor: pageParam ?? undefined, origin }),
+      listThreads({ cursor: pageParam ?? undefined, origin, type }),
     getNextPageParam: (page: ThreadPage) => page.nextCursor ?? undefined,
     // The sidebar is updated optimistically for the active conversation.
     // Keep its two Cloud list reads quiet across normal remounts.
@@ -378,7 +387,7 @@ export function prependThreadToHistory(
   queryClient: QueryClient,
   summary: ThreadSummary,
 ): void {
-  const key = queryKeys.threads.list(summary.origin ?? "user");
+  const key = queryKeys.threads.list(summary.origin ?? "user", summary.type);
   queryClient.setQueryData<InfiniteData<ThreadPage, number | null>>(
     key,
     (data) => {
@@ -432,23 +441,29 @@ export function optimisticallyDeleteThread(
   queryClient: QueryClient,
   threadId: string,
   localTitles: Record<string, string>,
+  type: "local" | "remote" = "remote",
 ): ThreadDeletionSnapshot {
   const history = queryClient.getQueriesData<
     InfiniteData<ThreadPage, number | null>
   >({ queryKey: queryKeys.threads.lists });
   const detail = queryClient.getQueryData<ThreadState | null>(
-    queryKeys.threads.detail(threadId),
+    queryKeys.threads.detail(threadId, type),
   );
   const latest = queryClient.getQueryData<ThreadState | null>(
-    queryKeys.threads.latest,
+    type === "local" ? queryKeys.threads.localLatest : queryKeys.threads.latest,
   );
 
   removeThreadFromHistory(queryClient, threadId);
   queryClient.removeQueries({
-    queryKey: queryKeys.threads.detail(threadId),
+    queryKey: queryKeys.threads.detail(threadId, type),
   });
   if (latest?.id === threadId) {
-    queryClient.setQueryData(queryKeys.threads.latest, null);
+    queryClient.setQueryData(
+      type === "local"
+        ? queryKeys.threads.localLatest
+        : queryKeys.threads.latest,
+      null,
+    );
   }
 
   return { history, detail, latest, localTitles };
@@ -459,12 +474,19 @@ export function restoreOptimisticallyDeletedThread(
   queryClient: QueryClient,
   threadId: string,
   snapshot: ThreadDeletionSnapshot,
+  type: "local" | "remote" = "remote",
 ): void {
   for (const [key, data] of snapshot.history) {
     queryClient.setQueryData(key, data);
   }
-  queryClient.setQueryData(queryKeys.threads.detail(threadId), snapshot.detail);
-  queryClient.setQueryData(queryKeys.threads.latest, snapshot.latest);
+  queryClient.setQueryData(
+    queryKeys.threads.detail(threadId, type),
+    snapshot.detail,
+  );
+  queryClient.setQueryData(
+    type === "local" ? queryKeys.threads.localLatest : queryKeys.threads.latest,
+    snapshot.latest,
+  );
 }
 
 export function brainFileQueryOptions(path: string) {
@@ -509,4 +531,15 @@ export function createQueryClient(): QueryClient {
       },
     },
   });
+}
+
+/** These Remix values belong to this device, so logout must not stop its chat. */
+export function isDeviceOwnedRemixQuery(key: readonly unknown[]): boolean {
+  return (
+    (key[0] === "models" && key[1] === "remix-runtime") ||
+    (key[0] === "threads" &&
+      ((key[1] === "detail" && key[2] === "local") ||
+        (key[1] === "latest" && key[2] === "local") ||
+        (key[1] === "list" && key[3] === "local")))
+  );
 }

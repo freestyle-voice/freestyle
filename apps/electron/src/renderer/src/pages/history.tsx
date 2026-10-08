@@ -7,19 +7,20 @@ import {
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@renderer/components/ui/dialog";
 import { Label } from "@renderer/components/ui/label";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@renderer/components/ui/popover";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+  SheetTrigger,
+} from "@renderer/components/ui/sheet";
 import { Switch } from "@renderer/components/ui/switch";
 import {
   Tooltip,
@@ -183,7 +184,7 @@ export default function HistoryPage(): React.JSX.Element {
   const { t } = useTranslation();
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
-  // The filter dialog is transient UI, not persisted state.
+  // The filter sidebar is transient UI, not persisted state.
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Keep the legacy localStorage flag as a synchronous compatibility mirror:
@@ -594,19 +595,20 @@ export default function HistoryPage(): React.JSX.Element {
           {SEARCH_SHORTCUT_LABEL}
         </span>
       </div>
-      <Button
-        variant="link"
-        onClick={() => setFiltersOpen(true)}
-        className={cn(
-          "h-auto self-center px-2 text-[13px] underline",
-          filterCount > 0
-            ? "text-primary"
-            : "text-muted-foreground hover:text-foreground",
-        )}
-      >
-        {t("history.filtersBtn")}
-      </Button>
-      {!statsOpen && (
+      <SheetTrigger asChild>
+        <Button
+          variant="link"
+          className={cn(
+            "h-auto self-center px-2 text-[13px] underline",
+            filterCount > 0
+              ? "text-primary"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {t("history.filtersBtn")}
+        </Button>
+      </SheetTrigger>
+      {!statsOpen && !filtersOpen && (
         <Button
           variant="ghost"
           size="icon-sm"
@@ -703,38 +705,38 @@ export default function HistoryPage(): React.JSX.Element {
     // initial request should feel like the same transcription surface gaining
     // content, not a temporary stack of unrelated cards.
     return (
-      <div className="flex h-full min-h-0 flex-col">
-        <DragSpacer />
-        <div
-          className="grid min-h-0 flex-1"
-          style={{
-            gridTemplateColumns: statsOpen
-              ? `minmax(0,1fr) ${statsWidth}px`
-              : "minmax(0,1fr)",
-          }}
-        >
+      <Sheet open={filtersOpen} onOpenChange={setFiltersOpen} modal={false}>
+        <div className="flex h-full min-h-0 flex-col">
+          <DragSpacer />
           <div
-            className="responsive-page-scroll min-w-0 overflow-auto pt-5"
-            style={
-              {
-                scrollbarWidth: "none",
-                paddingRight: statsOpen ? "1.25rem" : undefined,
-              } as React.CSSProperties
-            }
+            className="grid min-h-0 flex-1"
+            style={{
+              gridTemplateColumns: statsOpen
+                ? `minmax(0,1fr) ${statsWidth}px`
+                : "minmax(0,1fr)",
+            }}
           >
-            {searchRow}
-            <HistoryFeedSkeleton />
+            <div
+              className="responsive-page-scroll min-w-0 overflow-auto pt-5"
+              style={
+                {
+                  scrollbarWidth: "none",
+                  paddingRight: statsOpen ? "1.25rem" : undefined,
+                } as React.CSSProperties
+              }
+            >
+              {searchRow}
+              <HistoryFeedSkeleton />
+            </div>
+            {statsOpen && <HistoryStatsSkeleton />}
           </div>
-          {statsOpen && <HistoryStatsSkeleton />}
         </div>
-      </div>
+      </Sheet>
     );
   }
 
-  const filtersModal = (
-    <FiltersModal
-      open={filtersOpen}
-      onOpenChange={setFiltersOpen}
+  const filtersPanel = (
+    <FiltersPanel
       startDate={startDate}
       endDate={endDate}
       diffMode={diffMode}
@@ -765,50 +767,51 @@ export default function HistoryPage(): React.JSX.Element {
     );
   }
 
-  // Split layout: a scrollable feed column beside the collapsible, resizable
-  // stats panel. The DragSpacer stays at the top; the feed column owns its own
-  // scroll so the panel never scrolls out of view.
+  // The right rail shows filters while open, then restores the stats panel.
+  // The feed and rail scroll independently so history stays usable throughout.
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <DragSpacer />
-      <div
-        className="grid min-h-0 flex-1"
-        style={{
-          gridTemplateColumns: statsOpen
-            ? `minmax(0,1fr) ${statsWidth}px`
-            : "minmax(0,1fr)",
-        }}
-      >
+    <Sheet open={filtersOpen} onOpenChange={setFiltersOpen} modal={false}>
+      <div className="flex h-full min-h-0 flex-col">
+        <DragSpacer />
         <div
-          className="responsive-page-scroll min-w-0 overflow-auto pt-5"
-          style={
-            {
-              scrollbarWidth: "none",
-              paddingRight: statsOpen ? "1.25rem" : undefined,
-            } as React.CSSProperties
-          }
+          className="grid min-h-0 flex-1 overflow-hidden"
+          style={{
+            gridTemplateColumns: `minmax(0,1fr) ${filtersOpen ? "min(340px, 48%)" : statsOpen ? `${statsWidth}px` : "0px"}`,
+          }}
         >
-          {historyPaused && <HistoryPausedNotice />}
-          {hero}
-          {searchRow}
-          {feed}
-          {pagination}
+          <div
+            className="responsive-page-scroll min-w-0 overflow-auto pt-5"
+            style={
+              {
+                scrollbarWidth: "none",
+                paddingRight: statsOpen || filtersOpen ? "1.25rem" : undefined,
+              } as React.CSSProperties
+            }
+          >
+            {historyPaused && <HistoryPausedNotice />}
+            {hero}
+            {searchRow}
+            {feed}
+            {pagination}
+          </div>
+          <div className="relative min-h-0 min-w-0">
+            {!filtersOpen && statsOpen && (
+              <StatsPanel
+                stats={stats}
+                timeLabel={timeLabel}
+                daily={daily}
+                avgWpm={avgWpm}
+                width={statsWidth}
+                onClose={closeStats}
+                onResizeStart={onResizeStart}
+                onWidthChange={setStatsWidth}
+              />
+            )}
+            {filtersPanel}
+          </div>
         </div>
-        {statsOpen && (
-          <StatsPanel
-            stats={stats}
-            timeLabel={timeLabel}
-            daily={daily}
-            avgWpm={avgWpm}
-            width={statsWidth}
-            onClose={closeStats}
-            onResizeStart={onResizeStart}
-            onWidthChange={setStatsWidth}
-          />
-        )}
       </div>
-      {filtersModal}
-    </div>
+    </Sheet>
   );
 }
 
@@ -844,7 +847,7 @@ const StatsPanel = memo(function StatsPanel({
   return (
     // Fills the full height of its grid cell and stays fixed while the feed
     // column scrolls independently beside it.
-    <div className="border-border/70 relative min-h-0 border-l">
+    <div className="border-border/70 relative h-full min-h-0 border-l">
       {/* Invisible drag handle straddling the panel's left border. Focusable
           window-splitter: arrow keys nudge the width for keyboard users. */}
       {/* biome-ignore lint/a11y/useSemanticElements: an <hr> can't act as a focusable, draggable window splitter */}
@@ -891,10 +894,8 @@ const StatsPanel = memo(function StatsPanel({
   );
 });
 
-/** Date-range + view options, presented as a modal dialog. */
-const FiltersModal = memo(function FiltersModal({
-  open,
-  onOpenChange,
+/** Live filters in a non-modal rail beside the history feed. */
+const FiltersPanel = memo(function FiltersPanel({
   startDate,
   endDate,
   diffMode,
@@ -907,8 +908,6 @@ const FiltersModal = memo(function FiltersModal({
   onNerdModeChange,
   onShowTutorialChange,
 }: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
   startDate: string;
   endDate: string;
   diffMode: boolean;
@@ -928,147 +927,158 @@ const FiltersModal = memo(function FiltersModal({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[400px]">
-        <DialogHeader>
-          <DialogTitle>{t("history.filterTitle")}</DialogTitle>
-        </DialogHeader>
-
-        <div className="flex flex-col gap-5">
-          {/* Date range */}
-          <div className="flex flex-col gap-2.5">
-            <div className="flex items-center justify-between">
-              <Label className="text-muted-foreground text-[12px]">
-                {t("history.dateRangeLabel")}
-              </Label>
-              {(startDate || endDate) && (
-                <Button
-                  variant="link"
-                  size="xs"
-                  className="text-muted-foreground hover:text-foreground h-auto p-0 text-[11px] underline"
-                  onClick={() => onSelectRange(undefined)}
-                >
-                  {t("history.clearDates")}
-                </Button>
-              )}
-            </div>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
-                >
-                  <CalendarDays data-icon="inline-start" />
-                  <span className="truncate">
-                    {formatRangeLabel(startDate, endDate)}
-                  </span>
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                className="w-[320px] overflow-visible p-2"
-                collisionPadding={8}
-                sideOffset={6}
+    <SheetContent docked onInteractOutside={(event) => event.preventDefault()}>
+      <header className="border-border flex items-start justify-between gap-3 border-b px-4 py-4">
+        <div className="flex flex-col gap-1">
+          <SheetTitle>{t("history.filterTitle")}</SheetTitle>
+          <SheetDescription>
+            {t("history.filtersLive", {
+              defaultValue: "Changes apply as you browse.",
+            })}
+          </SheetDescription>
+        </div>
+        <SheetClose asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={t("history.closeFilters", {
+              defaultValue: "Close filters",
+            })}
+          >
+            <X />
+          </Button>
+        </SheetClose>
+      </header>
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-5">
+        {/* Date range */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <Label className="text-muted-foreground text-[12px]">
+              {t("history.dateRangeLabel")}
+            </Label>
+            {(startDate || endDate) && (
+              <Button
+                variant="link"
+                size="xs"
+                className="text-muted-foreground hover:text-foreground h-auto p-0 text-[11px] underline"
+                onClick={() => onSelectRange(undefined)}
               >
-                <DayPicker
-                  mode="range"
-                  numberOfMonths={2}
-                  selected={selectedDateRange}
-                  onSelect={onSelectRange}
-                  defaultMonth={selectedDateRange.from ?? selectedDateRange.to}
-                  classNames={{
-                    root: "p-0",
-                    months: "flex gap-3",
-                    month: "flex flex-col gap-2",
-                    month_caption: "flex h-6 items-center justify-center",
-                    caption_label: "text-[12px] font-medium text-foreground",
-                    nav: "absolute inset-x-2 top-2 flex items-center justify-between",
-                    button_previous:
-                      "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
-                    button_next:
-                      "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
-                    chevron: "size-3.5 fill-current",
-                    month_grid: "w-full border-collapse border-spacing-0",
-                    weekdays: "flex",
-                    weekday:
-                      "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
-                    week: "flex w-full",
-                    day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
-                    day_button:
-                      "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-                    outside: "text-muted-foreground/45",
-                    today:
-                      "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",
-                    selected:
-                      "text-primary-foreground after:!hidden [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
-                    range_start:
-                      "bg-primary/15 rounded-l-md [&>button]:rounded-l [&>button]:rounded-r-none",
-                    range_middle:
-                      "bg-primary/15 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!text-foreground [&>button]:hover:!bg-transparent",
-                    range_end:
-                      "bg-primary/15 rounded-r-md [&>button]:rounded-r [&>button]:rounded-l-none",
-                  }}
-                />
-              </PopoverContent>
-            </Popover>
+                {t("history.clearDates")}
+              </Button>
+            )}
           </div>
-
-          {/* View — global toggles that apply to every entry at once */}
-          <div className="flex flex-col gap-2.5">
-            <span className="text-muted-foreground text-[10px]">
-              {t("history.viewLabel")}
-            </span>
-            <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
-              <ViewToggleRow
-                icon={
-                  <FileDiff className="text-muted-foreground h-3.5 w-3.5" />
-                }
-                title={t("history.diffToggle")}
-                description={t("history.diffToggleDesc")}
-                checked={diffMode}
-                onCheckedChange={onDiffModeChange}
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className="border-border/75 bg-card/45 hover:bg-card/60 h-9 w-full justify-start gap-2 px-3 text-left text-[13px] font-medium shadow-[inset_0_1px_0_rgba(255,255,255,0.035)]"
+              >
+                <CalendarDays data-icon="inline-start" />
+                <span className="truncate">
+                  {formatRangeLabel(startDate, endDate)}
+                </span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent
+              align="start"
+              className="w-[320px] overflow-visible p-2"
+              collisionPadding={8}
+              sideOffset={6}
+            >
+              <DayPicker
+                mode="range"
+                numberOfMonths={2}
+                selected={selectedDateRange}
+                onSelect={onSelectRange}
+                defaultMonth={selectedDateRange.from ?? selectedDateRange.to}
+                classNames={{
+                  root: "p-0",
+                  months: "flex gap-3",
+                  month: "flex flex-col gap-2",
+                  month_caption: "flex h-6 items-center justify-center",
+                  caption_label: "text-[12px] font-medium text-foreground",
+                  nav: "absolute inset-x-2 top-2 flex items-center justify-between",
+                  button_previous:
+                    "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                  button_next:
+                    "inline-flex size-6 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40",
+                  chevron: "size-3.5 fill-current",
+                  month_grid: "w-full border-collapse border-spacing-0",
+                  weekdays: "flex",
+                  weekday:
+                    "text-muted-foreground flex size-5 items-center justify-center text-[9px] font-normal",
+                  week: "flex w-full",
+                  day: "relative flex size-5 items-center justify-center p-0 text-center text-[10px]",
+                  day_button:
+                    "relative z-10 inline-flex size-5 items-center justify-center rounded transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+                  outside: "text-muted-foreground/45",
+                  today:
+                    "after:bg-primary after:absolute after:bottom-1 after:left-1/2 after:z-20 after:size-1 after:-translate-x-1/2 after:rounded-full",
+                  selected:
+                    "text-primary-foreground after:!hidden [&>button]:bg-primary [&>button]:text-primary-foreground [&>button]:hover:bg-primary",
+                  range_start:
+                    "bg-primary/15 rounded-l-md [&>button]:rounded-l [&>button]:rounded-r-none",
+                  range_middle:
+                    "bg-primary/15 [&>button]:rounded-none [&>button]:!bg-transparent [&>button]:!text-foreground [&>button]:hover:!bg-transparent",
+                  range_end:
+                    "bg-primary/15 rounded-r-md [&>button]:rounded-r [&>button]:rounded-l-none",
+                }}
               />
-              <ViewToggleRow
-                icon={
-                  <Sparkles className="text-muted-foreground h-3.5 w-3.5" />
-                }
-                title={t("history.aiEditToggle")}
-                description={t("history.aiEditToggleDesc")}
-                checked={showAiEdits}
-                // Diff mode already shows both raw and cleaned, so the plain
-                // AI-edit toggle is moot while diff mode is on.
-                disabled={diffMode}
-                onCheckedChange={onShowAiEditsChange}
-              />
-              <ViewToggleRow
-                icon={
-                  <FlaskConical className="text-muted-foreground h-3.5 w-3.5" />
-                }
-                title={t("history.nerdToggle")}
-                description={t("history.nerdToggleDesc")}
-                checked={nerdMode}
-                onCheckedChange={onNerdModeChange}
-              />
-              <ViewToggleRow
-                icon={
-                  <GraduationCap className="text-muted-foreground h-3.5 w-3.5" />
-                }
-                title={t("history.tutorialToggle")}
-                description={t("history.tutorialToggleDesc")}
-                checked={showTutorial}
-                onCheckedChange={onShowTutorialChange}
-              />
-            </div>
-          </div>
+            </PopoverContent>
+          </Popover>
         </div>
 
-        <DialogFooter>
-          <Button variant="ink" onClick={() => onOpenChange(false)}>
-            {t("history.done")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {/* View — global toggles that apply to every entry at once */}
+        <div className="flex flex-col gap-2.5">
+          <span className="text-muted-foreground text-[10px]">
+            {t("history.viewLabel")}
+          </span>
+          <div className="border-border/70 bg-card/35 flex flex-col divide-y divide-border/60 rounded-lg border">
+            <ViewToggleRow
+              icon={<FileDiff className="text-muted-foreground h-3.5 w-3.5" />}
+              title={t("history.diffToggle")}
+              description={t("history.diffToggleDesc")}
+              checked={diffMode}
+              onCheckedChange={onDiffModeChange}
+            />
+            <ViewToggleRow
+              icon={<Sparkles className="text-muted-foreground h-3.5 w-3.5" />}
+              title={t("history.aiEditToggle")}
+              description={t("history.aiEditToggleDesc")}
+              checked={showAiEdits}
+              // Diff mode already shows both raw and cleaned, so the plain
+              // AI-edit toggle is moot while diff mode is on.
+              disabled={diffMode}
+              onCheckedChange={onShowAiEditsChange}
+            />
+            <ViewToggleRow
+              icon={
+                <FlaskConical className="text-muted-foreground h-3.5 w-3.5" />
+              }
+              title={t("history.nerdToggle")}
+              description={t("history.nerdToggleDesc")}
+              checked={nerdMode}
+              onCheckedChange={onNerdModeChange}
+            />
+            <ViewToggleRow
+              icon={
+                <GraduationCap className="text-muted-foreground h-3.5 w-3.5" />
+              }
+              title={t("history.tutorialToggle")}
+              description={t("history.tutorialToggleDesc")}
+              checked={showTutorial}
+              onCheckedChange={onShowTutorialChange}
+            />
+          </div>
+        </div>
+      </div>
+
+      <footer className="border-border flex justify-end border-t px-4 py-3">
+        <SheetClose asChild>
+          <Button variant="outline">{t("history.done")}</Button>
+        </SheetClose>
+      </footer>
+    </SheetContent>
   );
 });
 

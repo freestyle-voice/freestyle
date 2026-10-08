@@ -1,4 +1,3 @@
-import { DragSpacer } from "@renderer/components/drag-spacer";
 import { Badge } from "@renderer/components/ui/badge";
 import { Button } from "@renderer/components/ui/button";
 import {
@@ -8,9 +7,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@renderer/components/ui/dropdown-menu";
-import { Input } from "@renderer/components/ui/input";
-import { SegmentedControl } from "@renderer/components/ui/segmented-control";
-import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import {
   getPluginCatalog,
   installPlugin,
@@ -29,7 +25,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { Loader2, MoreHorizontal, Puzzle, Search } from "lucide-react";
+import { Loader2, MoreHorizontal, Puzzle } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router";
@@ -38,20 +34,11 @@ import {
   resolvePluginIcon,
   usePluginUpdates,
 } from "./helpers";
+import { PluginsPageLayout, usePluginsTab } from "./plugin-layout";
 import { PluginsLoadingSkeleton } from "./plugin-skeletons";
 
-type Tab = "browse" | "installed";
-
-const isTab = (value: string): value is Tab =>
-  value === "browse" || value === "installed";
-
 export default function PluginsPage(): React.JSX.Element {
-  const { t } = useTranslation();
-  const [tab, setTab] = usePersistentState<Tab>(
-    "plugins.activeTab",
-    "browse",
-    isTab,
-  );
+  const [tab, setTab] = usePluginsTab();
   const [query, setQuery] = useState("");
   const queryClient = useQueryClient();
 
@@ -71,62 +58,29 @@ export default function PluginsPage(): React.JSX.Element {
   const { data: updatesMap } = usePluginUpdates(plugins);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <DragSpacer />
-      <div className="responsive-page-scroll flex-1 overflow-auto">
-        <header className="mb-7">
-          <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-            <span className="serif-italic text-primary">
-              {t("plugins.titleAccent")}
-            </span>
-            <span>.</span>
-          </h1>
-          <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">
-            {t("plugins.subtitle")}
-          </p>
-        </header>
-
-        <div className="mb-5 flex items-center gap-3">
-          <SegmentedControl
-            value={tab}
-            onValueChange={(v) => setTab(v as Tab)}
-            className="w-fit"
-            options={[
-              { value: "browse", label: t("plugins.tabs.browse") },
-              { value: "installed", label: t("plugins.tabs.installed") },
-            ]}
-          />
-          <div className="relative max-w-[280px] flex-1">
-            <Search className="text-muted-foreground/70 pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2" />
-            <Input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={t("plugins.searchPlaceholder")}
-              aria-label={t("plugins.searchPlaceholder")}
-              className="h-10 pl-9 text-[13px]"
-            />
-          </div>
-        </div>
-
-        {tab === "browse" ? (
-          <BrowseTab
-            installed={plugins}
-            query={query}
-            onChange={setPlugins}
-            updates={updatesMap}
-          />
-        ) : (
-          <InstalledTab
-            loading={loading}
-            plugins={plugins}
-            query={query}
-            onChange={setPlugins}
-            updates={updatesMap}
-          />
-        )}
-      </div>
-    </div>
+    <PluginsPageLayout
+      tab={tab}
+      onTabChange={setTab}
+      query={query}
+      onQueryChange={setQuery}
+    >
+      {tab === "browse" ? (
+        <BrowseTab
+          installed={plugins}
+          query={query}
+          onChange={setPlugins}
+          updates={updatesMap}
+        />
+      ) : (
+        <InstalledTab
+          loading={loading}
+          plugins={plugins}
+          query={query}
+          onChange={setPlugins}
+          updates={updatesMap}
+        />
+      )}
+    </PluginsPageLayout>
   );
 }
 
@@ -164,7 +118,7 @@ function InstalledTab({
   );
 
   if (loading) {
-    return <PluginsLoadingSkeleton />;
+    return <PluginsLoadingSkeleton tab="installed" />;
   }
   if (plugins.length === 0) {
     return (
@@ -411,7 +365,7 @@ function BrowseTab({
     );
   }
   if (!catalog) {
-    return <PluginsLoadingSkeleton />;
+    return <PluginsLoadingSkeleton tab="browse" />;
   }
   if (filtered.length === 0) {
     return (

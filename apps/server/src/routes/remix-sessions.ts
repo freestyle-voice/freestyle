@@ -75,6 +75,7 @@ function localThreadPayload(threadId: string) {
  * existing conversation and ensures only local sessions can read SQLite bodies.
  */
 const remixSessionsRoute = new Hono()
+  .get("/runtime", (c) => c.json(getRemixRuntime()))
   .post("/", (c) => {
     const runtime = getRemixRuntime();
     const session = runtime.kind === "managed" ? getSession() : null;
@@ -93,7 +94,28 @@ const remixSessionsRoute = new Hono()
     );
     return c.json({ thread: { ...thread, messages: [] } }, 201);
   })
-  .get("/local", (c) => c.json({ threads: listLocalRemixThreads() }))
+  .get("/local/latest", (c) => {
+    const latest = listLocalRemixThreads(1)[0];
+    return c.json({ thread: latest ? localThreadPayload(latest.id) : null });
+  })
+  .get(
+    "/local",
+    zValidator(
+      "query",
+      z.object({
+        limit: z.coerce.number().int().min(1).max(100).default(24),
+        cursor: z.coerce.number().int().min(0).default(0),
+      }),
+    ),
+    (c) => {
+      const { limit, cursor } = c.req.valid("query");
+      const threads = listLocalRemixThreads(limit + 1, cursor);
+      return c.json({
+        threads: threads.slice(0, limit),
+        nextCursor: threads.length > limit ? cursor + limit : null,
+      });
+    },
+  )
   .post(
     "/:id/stream",
     zValidator("param", z.object({ id: threadIdSchema })),
@@ -115,6 +137,9 @@ const remixSessionsRoute = new Hono()
           }),
           messages: await convertToModelMessages(
             request.messages as UIMessage[],
+            // Stopping or leaving a local chat can interrupt a tool call.
+            // Its missing output must not block the user's next message.
+            { ignoreIncompleteToolCalls: true },
           ),
           tools: createLocalRemixTools(),
           stopWhen: stepCountIs(MAX_LOCAL_REMIX_STEPS),

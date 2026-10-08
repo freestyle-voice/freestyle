@@ -89,6 +89,7 @@ export function ModelModal({
   catalogLoading,
   onClose,
   onPickCloud,
+  onModelSelected,
   onPickLocalVoice,
   onRequestDeleteLocal,
   onBack,
@@ -102,6 +103,7 @@ export function ModelModal({
   catalogLoading: boolean;
   onClose: () => void;
   onPickCloud: (model: AvailableModel) => void;
+  onModelSelected?: () => void;
   onPickLocalVoice: (
     defId: string,
     name: string,
@@ -148,6 +150,7 @@ export function ModelModal({
         catalogLoading={catalogLoading}
         onClose={onClose}
         onPickCloud={onPickCloud}
+        onModelSelected={onModelSelected}
         onPickLocalVoice={onPickLocalVoice}
         onRequestDeleteLocal={onRequestDeleteLocal}
       />

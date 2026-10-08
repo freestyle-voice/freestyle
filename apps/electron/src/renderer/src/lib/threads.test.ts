@@ -6,6 +6,7 @@ vi.mock("@renderer/lib/api", () => ({ apiFetch }));
 
 import {
   createQueryClient,
+  isDeviceOwnedRemixQuery,
   optimisticallyDeleteThread,
   queryKeys,
   removeThreadFromHistory,
@@ -18,11 +19,90 @@ import {
   displayThreadTitle,
   getDurableThreadRuns,
   getDurableTurnEvents,
+  getLatestThread,
   listThreads,
   reconcileThreadSummaryTitle,
 } from "./threads";
 
 describe("thread client", () => {
+  it("preserves device-owned Remix data while resetting account queries", async () => {
+    const client = createQueryClient();
+    const localKeys = [
+      queryKeys.models.remixRuntime,
+      queryKeys.threads.localLatest,
+      queryKeys.threads.list("user", "local"),
+      queryKeys.threads.detail("local-chat", "local"),
+    ];
+    for (const key of localKeys) client.setQueryData(key, "device data");
+    const cloudKeys = [
+      queryKeys.threads.latest,
+      queryKeys.threads.list("user"),
+      queryKeys.threads.detail("remote-chat"),
+      queryKeys.cloud.authStatus,
+    ];
+    for (const key of cloudKeys) client.setQueryData(key, "account data");
+    await client.resetQueries({
+      predicate: (query) => !isDeviceOwnedRemixQuery(query.queryKey),
+    });
+    for (const key of localKeys)
+      expect(client.getQueryData(key)).toBe("device data");
+    for (const key of cloudKeys)
+      expect(client.getQueryData(key)).toBeUndefined();
+  });
+
+  it("loads local history without Cloud and keeps its cache separate", async () => {
+    apiFetch.mockReset();
+    apiFetch.mockResolvedValue(
+      Response.json({
+        threads: [
+          {
+            id: "local-one",
+            title: "Draft",
+            lastActiveAt: "2026-10-09 00:00:00",
+          },
+        ],
+        nextCursor: 24,
+      }),
+    );
+    await expect(listThreads({ type: "local", cursor: 0 })).resolves.toEqual({
+      threads: [
+        {
+          id: "local-one",
+          title: "Draft",
+          type: "local",
+          origin: "user",
+          updatedAt: Date.parse("2026-10-09T00:00:00Z"),
+        },
+      ],
+      nextCursor: 24,
+    });
+    expect(apiFetch).toHaveBeenCalledWith(
+      "/api/remix/sessions/local?limit=24&cursor=0",
+    );
+    expect(
+      threadHistoryInfiniteQueryOptions("user", "local").queryKey,
+    ).not.toEqual(threadHistoryInfiniteQueryOptions("user").queryKey);
+    apiFetch.mockClear();
+    await expect(
+      listThreads({ type: "local", origin: "scheduled" }),
+    ).resolves.toEqual({ threads: [], nextCursor: null });
+    expect(apiFetch).not.toHaveBeenCalled();
+  });
+
+  it("restores a local conversation with its frozen model", async () => {
+    const thread = {
+      id: "local-one",
+      messages: [],
+      model: { provider: "openai", modelId: "gpt-test", modelName: "Test" },
+    };
+    apiFetch.mockResolvedValue(Response.json({ thread }));
+    await expect(getLatestThread("local")).resolves.toEqual({
+      ...thread,
+      type: "local",
+    });
+    expect(apiFetch).toHaveBeenCalledWith("/api/remix/sessions/local/latest");
+  });
+
   it("passes a cursor and preserves the server next cursor", async () => {
     apiFetch.mockResolvedValue(
       new Response(JSON.stringify({ threads: [], nextCursor: 42 })),

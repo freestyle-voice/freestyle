@@ -132,7 +132,7 @@ export interface UseModels {
   setCleanup: (next: boolean) => void;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   deleteProvider: (provider: string) => Promise<void>;
-  reload: () => Promise<void>;
+  reload: (refreshCleanup?: boolean) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -241,6 +241,8 @@ export function useModels(): UseModels {
   // -------------------------------------------------------------------------
 
   const [llmCleanup, setLlmCleanup] = useState(false);
+  const cleanupEditRevision = useRef(0);
+  const cleanupRefreshGeneration = useRef(0);
   const [mlxKeepAliveMinutes, setMlxKeepAliveMinutes] = useState(
     DEFAULT_MLX_KEEP_ALIVE_MINUTES,
   );
@@ -292,13 +294,34 @@ export function useModels(): UseModels {
   // refetchInterval on the whisper/mlx queries above)
   // -------------------------------------------------------------------------
 
-  const reload = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: MODELS_KEYS.all }),
-      queryClient.invalidateQueries({ queryKey: MODELS_KEYS.keys }),
-      queryClient.invalidateQueries({ queryKey: MODELS_KEYS.settings }),
-    ]);
-  }, [queryClient]);
+  const reload = useCallback(
+    async (refreshCleanup = false) => {
+      const generation = refreshCleanup
+        ? ++cleanupRefreshGeneration.current
+        : cleanupRefreshGeneration.current;
+      const editRevision = cleanupEditRevision.current;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: MODELS_KEYS.all }),
+        queryClient.invalidateQueries({ queryKey: MODELS_KEYS.keys }),
+        queryClient.invalidateQueries({ queryKey: MODELS_KEYS.settings }),
+      ]);
+      if (refreshCleanup) {
+        // Account transitions can reset Cloud cleanup server-side. Reconcile
+        // that saved value even when the Models page remains mounted.
+        const settings = await queryClient.fetchQuery({
+          ...settingsQueryOptions(),
+          staleTime: 0,
+        });
+        if (
+          generation === cleanupRefreshGeneration.current &&
+          editRevision === cleanupEditRevision.current
+        ) {
+          setLlmCleanup(settings[SETTINGS_KEYS.llmCleanup] === "true");
+        }
+      }
+    },
+    [queryClient],
+  );
   const loadData = reload;
 
   // -------------------------------------------------------------------------
@@ -648,6 +671,7 @@ export function useModels(): UseModels {
 
   const setCleanup = useCallback(
     (next: boolean) => {
+      cleanupEditRevision.current += 1;
       const previous = llmCleanup;
       setLlmCleanup(next);
       void (async () => {

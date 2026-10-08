@@ -12,17 +12,19 @@ const log = createAppLogger("connectors-proxy");
  */
 const connectors = new Hono().all("/*", async (c) => {
   const token = getSessionToken();
-  if (!token) return c.json({ error: "cloud_auth_required" }, 401);
-
   const requestUrl = new URL(c.req.url);
   const suffix = requestUrl.pathname.replace(/^\/api\/connectors/, "");
-  const upstreamUrl = `${freestyleCloudUrl()}/v2/connectors${suffix}${requestUrl.search}`;
   const method = c.req.method;
+  const publicCatalog = !token && method === "GET" && suffix === "/catalog";
+  if (!token && !publicCatalog)
+    return c.json({ error: "cloud_auth_required" }, 401);
+  const upstreamPath = publicCatalog ? "/public/catalog" : suffix;
+  const upstreamUrl = `${freestyleCloudUrl()}/v2/connectors${upstreamPath}${requestUrl.search}`;
   try {
     const upstream = await fetch(upstreamUrl, {
       method,
       headers: {
-        Authorization: `Bearer ${token}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(method === "GET" || method === "HEAD"
           ? {}
           : {
@@ -36,6 +38,8 @@ const connectors = new Hono().all("/*", async (c) => {
       signal: c.req.raw.signal,
     });
     if (upstream.status === 401) {
+      if (publicCatalog)
+        return c.json({ error: "connected_apps_unavailable" }, 502);
       invalidateSession();
       return c.json({ error: "cloud_auth_required" }, 401);
     }

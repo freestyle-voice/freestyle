@@ -5,6 +5,7 @@ import type { AvailableModel } from "@renderer/lib/models";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
 import {
   CheckCircle,
+  ChevronDown,
   Key,
   Loader2,
   Pencil,
@@ -13,10 +14,16 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
+import { useNavigate, useSearchParams } from "react-router";
 import { FreestyleCloudBundleCard } from "./freestyle-cloud-bundle-card";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
-import { Eyebrow, PageShell } from "./page-chrome";
+import {
+  ModelsLoadingSkeleton,
+  ModelsSettingsFrame,
+  ModelsSettingsHeader,
+} from "./models-page-layout";
+import { PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
 import { RemixModelCard } from "./remix-model-card";
 import {
@@ -33,17 +40,19 @@ import { displayName } from "./utils";
  */
 const FREESTYLE_CLOUD_PROVIDER = "freestyle-cloud";
 
-const FREESTYLE_CLOUD_REMIX: AvailableModel = {
-  provider_id: FREESTYLE_CLOUD_PROVIDER,
-  provider_name: "Freestyle Cloud",
-  model_id: "freestyle-cloud/remix",
-  model_name: "Freestyle Cloud",
-  type: "llm",
-};
-
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const m = useModels();
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [choosingForRemix] = useState(searchParams.get("choose") === "remix");
+  useEffect(() => {
+    if (m.loading || searchParams.get("choose") !== "remix") return;
+    setModal({ kind: "list", type: "remix" });
+    const next = new URLSearchParams(searchParams);
+    next.delete("choose");
+    setSearchParams(next, { replace: true });
+  }, [m.loading, searchParams, setSearchParams]);
   const cloudAuth = useCloudAuth();
   const [modal, setModal] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -74,7 +83,9 @@ export default function ModelsPage(): React.JSX.Element {
   useEffect(() => {
     if (prevCloudUserId.current === cloudUserId) return;
     prevCloudUserId.current = cloudUserId;
-    void reloadModels();
+    void reloadModels(true).catch((error) => {
+      console.error("Failed to refresh model preferences:", error);
+    });
   }, [cloudUserId, reloadModels]);
 
   // Keep Freestyle Cleanup paired with Freestyle Transcribe. Wait for the
@@ -128,6 +139,11 @@ export default function ModelsPage(): React.JSX.Element {
     setModal(null);
     setKeyError(null);
     setSaving(false);
+  };
+
+  const finishSelection = (type: string | null): void => {
+    closeModal();
+    if (type === "remix" && choosingForRemix) navigate("/remix");
   };
 
   const ensureCloudAuth = async (): Promise<boolean> => {
@@ -189,16 +205,6 @@ export default function ModelsPage(): React.JSX.Element {
 
   const openRemix = (): void => setModal({ kind: "list", type: "remix" });
 
-  const configureFreestyleRemix = async (): Promise<void> => {
-    setCloudBusy(true);
-    try {
-      if (!(await ensureCloudAuth())) return;
-      await m.configureModel(FREESTYLE_CLOUD_REMIX, "remix");
-    } finally {
-      setCloudBusy(false);
-    }
-  };
-
   const onToggleCleanup = (next: boolean): void => {
     if (freestyleVoiceActive) return;
     if (!next) {
@@ -239,7 +245,7 @@ export default function ModelsPage(): React.JSX.Element {
         } finally {
           setCloudBusy(false);
         }
-        closeModal();
+        finishSelection(type);
       })();
       return;
     }
@@ -259,7 +265,7 @@ export default function ModelsPage(): React.JSX.Element {
       });
       return;
     }
-    void m.configureModel(model, type).then(closeModal);
+    void m.configureModel(model, type).then(() => finishSelection(type));
   };
 
   const onPickLocalVoice = (
@@ -317,7 +323,7 @@ export default function ModelsPage(): React.JSX.Element {
           await m.configureModel(pendingModel, type);
         }
       }
-      closeModal();
+      finishSelection(type);
     })();
   };
 
@@ -348,9 +354,29 @@ export default function ModelsPage(): React.JSX.Element {
           title={t("models.title")}
           subtitle={t("models.subtitle")}
         />
-        <div className="space-y-6">
-          <section aria-label="Dictation models" className="space-y-3">
-            <Eyebrow text="Dictation models" mono={false} />
+        <div className="space-y-5">
+          <div className="@container border-border bg-card/55 overflow-hidden rounded-[12px] border">
+            <section aria-label="Dictation models">
+              <PairCard
+                voice={m.defaultVoice}
+                llm={m.defaultLlm}
+                llmCleanup={m.llmCleanup}
+                cleanupLocked={freestyleVoiceActive}
+                onToggleCleanup={onToggleCleanup}
+                onChangeVoice={openVoice}
+                onChangeLlm={openLlm}
+                onConfigureWarming={
+                  showMlxWarming ? () => setWarmingOpen(true) : undefined
+                }
+              />
+            </section>
+            <section aria-label="Remix model">
+              <RemixModelCard
+                model={m.defaultRemix}
+                signedIn={!!cloudAuth.user}
+                onChooseModel={openRemix}
+              />
+            </section>
             <FreestyleCloudBundleCard
               active={
                 freestyleVoiceActive &&
@@ -362,30 +388,7 @@ export default function ModelsPage(): React.JSX.Element {
               busy={cloudBusy}
               onUse={() => void configureFreestylePair()}
             />
-
-            <PairCard
-              voice={m.defaultVoice}
-              llm={m.defaultLlm}
-              llmCleanup={m.llmCleanup}
-              cleanupLocked={freestyleVoiceActive}
-              onToggleCleanup={onToggleCleanup}
-              onChangeVoice={openVoice}
-              onChangeLlm={openLlm}
-              onConfigureWarming={
-                showMlxWarming ? () => setWarmingOpen(true) : undefined
-              }
-            />
-          </section>
-
-          <section aria-label="Remix runtime" className="space-y-3">
-            <Eyebrow text="Remix runtime" mono={false} />
-            <RemixModelCard
-              model={m.defaultRemix}
-              busy={cloudBusy}
-              onChooseModel={openRemix}
-              onUseCloud={() => void configureFreestyleRemix()}
-            />
-          </section>
+          </div>
 
           <KeysSection
             apiKeys={m.apiKeys}
@@ -422,6 +425,9 @@ export default function ModelsPage(): React.JSX.Element {
             cloudBusy={cloudBusy}
             catalogLoading={m.catalogLoading}
             onClose={closeModal}
+            onModelSelected={() =>
+              finishSelection(modal.kind === "list" ? modal.type : null)
+            }
             onPickCloud={onPickCloud}
             onPickLocalVoice={onPickLocalVoice}
             onRequestDeleteLocal={onRequestDeleteLocal}
@@ -486,91 +492,12 @@ export default function ModelsPage(): React.JSX.Element {
   );
 }
 
-function ModelsSettingsFrame({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.JSX.Element {
-  return (
-    <div
-      className="mx-auto flex w-full max-w-5xl flex-col pb-8"
-      data-testid="models-settings-page"
-    >
-      {children}
-    </div>
-  );
-}
-
-function ModelsSettingsHeader({
-  title,
-  subtitle,
-}: {
-  title: string;
-  subtitle: string;
-}): React.JSX.Element {
-  return (
-    <header className="border-border mb-6 border-b pb-5 sm:mb-7 sm:pb-6">
-      <h1 className="serif text-foreground m-0 text-[30px] font-normal leading-none tracking-[-0.025em] sm:text-[36px]">
-        {title}
-      </h1>
-      <p className="text-muted-foreground mt-2 max-w-xl text-[13px] leading-[1.55]">
-        {subtitle}
-      </p>
-    </header>
-  );
-}
-
 function SkeletonLine({
   className,
 }: {
   className?: string;
 }): React.JSX.Element {
   return <Skeleton className={cn("rounded-full", className)} />;
-}
-
-function ModelsLoadingSkeleton(): React.JSX.Element {
-  return (
-    <div className="space-y-6" role="status" aria-label="Loading models">
-      <section className="border-border bg-card/55 grid grid-cols-1 overflow-hidden rounded-[12px] border min-[820px]:grid-cols-2">
-        {["voice", "cleanup"].map((key) => (
-          <div
-            key={key}
-            className={cn(
-              "flex min-h-[132px] flex-col gap-3 p-4 sm:p-5",
-              key === "cleanup" &&
-                "border-border border-t min-[820px]:border-l min-[820px]:border-t-0",
-            )}
-          >
-            <SkeletonLine className="h-3 w-40" />
-            <SkeletonLine className="h-6 w-52 max-w-full" />
-            <SkeletonLine className="h-3 w-32" />
-            <div className="mt-auto flex items-center gap-3">
-              <SkeletonLine className="h-9 w-24 rounded-md" />
-              <SkeletonLine className="h-5 w-28" />
-            </div>
-          </div>
-        ))}
-      </section>
-
-      <section>
-        <SkeletonLine className="h-3 w-28" />
-        <div className="border-border bg-card mt-3 overflow-hidden rounded-[12px] border">
-          {[0, 1].map((i) => (
-            <div
-              key={i}
-              className={cn(
-                "flex items-center justify-between gap-4 px-[18px] py-[13px]",
-                i > 0 && "border-border border-t",
-              )}
-            >
-              <SkeletonLine className="h-4 w-40" />
-              <SkeletonLine className="h-8 w-16 rounded-md" />
-            </div>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
 }
 
 // ---------------------------------------------------------------------------
@@ -594,45 +521,60 @@ function KeysSection({
 }): React.JSX.Element {
   const { t } = useTranslation();
   return (
-    <section
-      className="border-border bg-card/55 overflow-hidden rounded-[12px] border"
+    <details
+      className="group border-border overflow-hidden rounded-[12px] border"
       data-testid="models-api-keys"
     >
-      <div className="border-border border-b px-4 py-3.5 sm:px-5">
-        <Eyebrow text={t("models.apiKeys")} />
-        <p className="text-muted-foreground mt-1 text-[12px] leading-[1.5]">
-          {t("models.apiKeysHint")}
-        </p>
+      <summary className="text-foreground flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring sm:px-5 [&::-webkit-details-marker]:hidden">
+        <span className="flex items-center gap-2">
+          {t("models.apiKeys")}
+          <span className="text-muted-foreground text-[12px]">
+            {loading ? "…" : apiKeys.length}
+          </span>
+          {apiKeys.some((key) => key.status === "invalid") && (
+            <span className="text-destructive text-[11px]">
+              {t("models.overview.keyAttention", {
+                defaultValue: "Needs attention",
+              })}
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          className="text-muted-foreground size-4 transition-transform group-open:rotate-180"
+          aria-hidden="true"
+        />
+      </summary>
+      <div className="border-border border-t">
+        {loading ? (
+          <div
+            className="space-y-3 px-4 py-4 sm:px-5"
+            role="status"
+            aria-label="Loading API keys"
+          >
+            <SkeletonLine className="h-4 w-40" />
+            <SkeletonLine className="h-3 w-28" />
+          </div>
+        ) : apiKeys.length === 0 ? (
+          <p className="text-muted-foreground px-4 py-4 text-[13px] sm:px-5">
+            {t("models.apiKeysHint")}
+          </p>
+        ) : (
+          apiKeys.map((entry, i) => (
+            <KeyRow
+              key={entry.provider}
+              entry={entry}
+              count={
+                configured.filter((c) => c.provider === entry.provider).length
+              }
+              first={i === 0}
+              deleting={deletingProviders.has(entry.provider)}
+              onEdit={() => onEdit(entry.provider)}
+              onDelete={() => onDelete(entry.provider)}
+            />
+          ))
+        )}
       </div>
-      {loading ? (
-        <div
-          className="space-y-3 px-4 py-4 sm:px-5"
-          role="status"
-          aria-label="Loading API keys"
-        >
-          <SkeletonLine className="h-4 w-40" />
-          <SkeletonLine className="h-3 w-28" />
-        </div>
-      ) : apiKeys.length === 0 ? (
-        <p className="text-muted-foreground px-4 py-4 text-[13px] sm:px-5">
-          {t("models.noApiKeys")}
-        </p>
-      ) : (
-        apiKeys.map((entry, i) => (
-          <KeyRow
-            key={entry.provider}
-            entry={entry}
-            count={
-              configured.filter((c) => c.provider === entry.provider).length
-            }
-            first={i === 0}
-            deleting={deletingProviders.has(entry.provider)}
-            onEdit={() => onEdit(entry.provider)}
-            onDelete={() => onDelete(entry.provider)}
-          />
-        ))
-      )}
-    </section>
+    </details>
   );
 }
 

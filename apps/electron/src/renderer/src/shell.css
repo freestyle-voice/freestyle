@@ -162,3 +162,10 @@
   top: 12px;
   left: 12px;
 }
+
+/* Native macOS controls start at (20, 16) and are 14px tall. Center the
+ * 30px restore button beside them, leaving a clear gap after the green light. */
+.glass-content-titlebar--mac .sidebar-reveal-trigger {
+  top: 8px;
+  left: 104px;
+}

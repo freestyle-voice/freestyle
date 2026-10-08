@@ -1,5 +1,7 @@
 import "../overlay.css";
 
+import markDark from "@renderer/assets/mark-dark.svg";
+import markLight from "@renderer/assets/mark-light.svg";
 import { AgentMessageQueueControls } from "@renderer/components/agent-message-queue";
 import { RotatingThinkingLabel } from "@renderer/components/agents/loading-states/rotating-thinking-label";
 import { AttentionHome } from "@renderer/components/attention-home";
@@ -22,6 +24,7 @@ import {
 } from "@renderer/components/remix-session-context";
 import { ScheduledTasks } from "@renderer/components/scheduled-tasks";
 import { ThreadHistory } from "@renderer/components/thread-history";
+import { Button } from "@renderer/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -68,11 +71,13 @@ import {
   type ToolPhase,
   toolPresentation,
 } from "@renderer/lib/tool-presentation";
+import { useRemixAvailability } from "@renderer/lib/use-remix-availability";
 import { useRemixRecovery } from "@renderer/lib/use-remix-recovery";
 import { compactActivitySummary } from "@renderer/lib/workspace-navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
 import {
+  ArrowRight,
   Check,
   Copy,
   Ellipsis,
@@ -84,6 +89,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router";
 
 type WorkspaceView = "chat" | "history";
 const WORKSPACE_VIEW_LABELS: Record<WorkspaceView, string> = {
@@ -180,7 +186,11 @@ function ShikiJson({ value }: { value: unknown }): React.JSX.Element {
 function ToolMark({ partType }: { partType: string }): React.JSX.Element {
   const slug = connectorToolkitSlug(partType);
   const [failed, setFailed] = useState(false);
-  const connections = useQuery(connectorConnectionsQueryOptions());
+  const { user } = useCloudAuth();
+  const connections = useQuery({
+    ...connectorConnectionsQueryOptions(),
+    enabled: !!user && !!slug,
+  });
   const logo = slug
     ? (connections.data?.find((connection) => connection.toolkitSlug === slug)
         ?.toolkitLogo ?? null)
@@ -602,10 +612,6 @@ function ChatMessage({
   );
 }
 
-function newThread(): ThreadState {
-  return { id: crypto.randomUUID(), messages: [] };
-}
-
 function durableDesktopClientId(): string {
   const key = "freestyle.durable-desktop-client-id";
   const existing = window.localStorage.getItem(key);
@@ -643,82 +649,142 @@ function contextKindFor(message: UIMessage): RemixContextKind | null {
   return "brain";
 }
 
-function SignInGate(): React.JSX.Element {
-  const auth = useCloudAuth();
+function RemixComposer({
+  textareaProps,
+  sendDisabled,
+  onSend,
+  busy = false,
+  canQueue = true,
+  onStop,
+}: {
+  textareaProps: React.TextareaHTMLAttributes<HTMLTextAreaElement>;
+  sendDisabled: boolean;
+  onSend?: () => void;
+  busy?: boolean;
+  canQueue?: boolean;
+  onStop?: () => void;
+}): React.JSX.Element {
   return (
-    <div className="tavern-gate">
+    <div className="tavern-composer">
+      <textarea
+        id="panel-composer"
+        className="tavern-input"
+        rows={1}
+        aria-label="Message Remix"
+        {...textareaProps}
+      />
+      {busy ? (
+        <button
+          type="button"
+          className="tavern-btn tavern-btn-send is-stop"
+          aria-label="Stop generating"
+          title="Stop generating"
+          onClick={onStop}
+        >
+          <WorkspaceIcon name="stop" />
+        </button>
+      ) : null}
       <button
         type="button"
-        className="tavern-close tavern-gate-close"
-        aria-label="Close"
-        onClick={() => window.api.panelClose()}
+        className="tavern-btn tavern-btn-send"
+        aria-label="Send"
+        title={busy && canQueue ? "Queue message" : "Send"}
+        disabled={sendDisabled}
+        onClick={onSend}
       >
-        <WorkspaceIcon name="close" />
+        <WorkspaceIcon name="send" />
       </button>
-      <div className="tavern-gate-body">
-        <div className="tavern-gate-lockup">
-          <span className="tavern-gate-spark" />
-          <span className="tavern-gate-wordmark">
-            freestyle<span className="tavern-gate-accent">.</span>
-          </span>
-        </div>
-        <h1 className="tavern-gate-heading">The intelligent reminders app.</h1>
-        <p className="tavern-gate-sub">Sign in to your Freestyle account</p>
-        {auth.signingIn ? (
-          <>
-            <div className="tavern-gate-code">{auth.userCode ?? "…"}</div>
-            <p className="tavern-gate-sub is-small">
-              Check that your browser shows this code, then finish signing in
-              there.
-            </p>
-            <button
-              type="button"
-              className="tavern-approve-btn"
-              onClick={() => auth.cancelSignIn()}
-            >
-              Cancel
-            </button>
-          </>
-        ) : (
-          <button
-            type="button"
-            className="tavern-gate-btn"
-            onClick={() => void auth.signIn()}
-          >
-            Continue in browser
-          </button>
-        )}
-        {auth.sessionExpired && !auth.signingIn ? (
-          <p className="tavern-gate-sub is-small">
-            Your session expired — sign in again to pick up where you left off.
-          </p>
-        ) : null}
-        {auth.error ? <p className="tavern-notice">{auth.error}</p> : null}
-      </div>
-      <p className="tavern-gate-terms">
-        By continuing, you agree to our{" "}
-        <button
-          type="button"
-          className="tavern-gate-link"
-          onClick={() =>
-            void window.api.openExternal("https://freestylevoice.com/terms")
-          }
-        >
-          Terms
-        </button>{" "}
-        and{" "}
-        <button
-          type="button"
-          className="tavern-gate-link"
-          onClick={() =>
-            void window.api.openExternal("https://freestylevoice.com/privacy")
-          }
-        >
-          Privacy Policy
-        </button>
-        .
-      </p>
     </div>
+  );
+}
+
+function RemixModelSetup({
+  desktop = false,
+}: {
+  desktop?: boolean;
+}): React.JSX.Element {
+  const navigate = useNavigate();
+  const auth = useCloudAuth();
+  return (
+    <section className="tavern-model-setup" aria-label="Remix chat">
+      <header className={desktop ? "remix-chat-header" : "tavern-head"}>
+        <div className="remix-chat-session">
+          <h2>New chat</h2>
+        </div>
+        <button
+          type="button"
+          className="tavern-close"
+          aria-label="Close"
+          onClick={() => window.api.panelClose()}
+        >
+          <WorkspaceIcon name="close" />
+        </button>
+      </header>
+      <div className="tavern-gate">
+        <div className="tavern-gate-body">
+          <div className="tavern-gate-lockup">
+            <img
+              src={markLight}
+              alt=""
+              className="tavern-gate-mark dark:hidden"
+            />
+            <img
+              src={markDark}
+              alt=""
+              className="tavern-gate-mark hidden dark:block"
+            />
+            <span className="tavern-gate-wordmark">freestyle</span>
+          </div>
+          <h1 id="remix-model-setup-heading" className="tavern-gate-heading">
+            Set up your Remix model
+          </h1>
+          <p className="tavern-gate-sub">
+            Choose a local model, bring your own API key, or use Freestyle Cloud
+            to start chatting.
+          </p>
+          {auth.signingIn ? (
+            <>
+              <div className="tavern-gate-code">{auth.userCode ?? "…"}</div>
+              <p className="tavern-gate-sub is-small">
+                Check that your browser shows this code, then finish signing in
+                there.
+              </p>
+              <button
+                type="button"
+                className="tavern-approve-btn"
+                onClick={() => auth.cancelSignIn()}
+              >
+                Cancel
+              </button>
+            </>
+          ) : (
+            <Button
+              variant="default"
+              className="tavern-gate-btn"
+              onClick={() => navigate("/settings/models?choose=remix")}
+            >
+              Choose a Remix model
+              <ArrowRight data-icon="inline-end" aria-hidden="true" />
+            </Button>
+          )}
+          {auth.sessionExpired && !auth.signingIn ? (
+            <p className="tavern-gate-sub is-small">
+              Your Cloud session expired. Sign in for Cloud features, or choose
+              a local model or API key to keep chatting.
+            </p>
+          ) : null}
+          {auth.error ? <p className="tavern-notice">{auth.error}</p> : null}
+        </div>
+      </div>
+      <RemixComposer
+        textareaProps={{
+          disabled: true,
+          placeholder: "Choose a Remix model to start chatting…",
+          "aria-describedby": "remix-model-setup-heading",
+        }}
+        sendDisabled
+      />
+    </section>
   );
 }
 
@@ -729,10 +795,12 @@ function SignInGate(): React.JSX.Element {
  * implementation.
  */
 export function RemixWorkspace(): React.JSX.Element {
-  const { phase } = useCloudAuth();
+  const availability = useRemixAvailability();
   const {
     thread,
+    startNewThread,
     switchThread,
+    updateThreadMessages,
     selectThread,
     isThreadLoading,
     threadLoadError,
@@ -746,19 +814,44 @@ export function RemixWorkspace(): React.JSX.Element {
     openChat,
   } = useRemixSession();
 
+  if (availability.checking) return <RemixWorkspaceLoadingSkeleton />;
+  if (availability.error)
+    return (
+      <div className="tavern-empty" role="alert">
+        {availability.error}
+        <Button onClick={() => void availability.retry()}>Try again</Button>
+      </div>
+    );
+  if (!availability.canChat)
+    return (
+      <div className="remix-workspace">
+        <div className="remix-agent">
+          <div className="tavern tavern-panel remix-agent-panel">
+            <RemixModelSetup desktop />
+          </div>
+        </div>
+      </div>
+    );
+
   if (!thread) {
-    return phase === "checking" ? (
-      <RemixWorkspaceLoadingSkeleton />
+    return threadLoadError ? (
+      <div className="tavern-empty" role="alert">
+        {threadLoadError}
+        <Button onClick={retryThreadLoad}>Try again</Button>
+      </div>
     ) : (
-      <div className="remix-workspace" />
+      <RemixWorkspaceLoadingSkeleton />
     );
   }
 
   return (
     <div className="remix-workspace">
       <PanelInner
+        key={thread.id}
         thread={thread}
         onSwitchThread={switchThread}
+        onThreadMessages={updateThreadMessages}
+        onNewThread={startNewThread}
         onSelectThread={selectThread}
         isSessionLoading={isThreadLoading}
         sessionLoadError={threadLoadError}
@@ -1032,6 +1125,8 @@ function ApprovalDetails({
 function PanelInner({
   thread,
   onSwitchThread,
+  onThreadMessages,
+  onNewThread,
   onSelectThread,
   isSessionLoading = false,
   sessionLoadError = null,
@@ -1047,6 +1142,8 @@ function PanelInner({
 }: {
   thread: ThreadState;
   onSwitchThread: (thread: ThreadState) => void;
+  onThreadMessages: (id: string, messages: UIMessage[]) => void;
+  onNewThread: () => void;
   onSelectThread?: (thread: ThreadSummary) => void;
   isSessionLoading?: boolean;
   sessionLoadError?: string | null;
@@ -1074,7 +1171,8 @@ function PanelInner({
     useState<RemixInspectorTarget | null>(null);
   const restoreContextRailOnInspectorCloseRef = useRef(false);
   const queryClient = useQueryClient();
-  const auth = useCloudAuth();
+  const availability = useRemixAvailability();
+  const localSession = thread.type === "local";
   useEffect(() => {
     const media = window.matchMedia("(max-width: 1080px)");
     const update = (): void => setNarrowRemix(media.matches);
@@ -1144,11 +1242,13 @@ function PanelInner({
         pending.filter((item) => item.call.toolCallId !== actionId),
       ),
     onFinish: ({ messages: finished }) => {
+      onThreadMessages(thread.id, finished);
       queryClient.setQueryData(
         queryKeys.threads.detail(thread.id, thread.type ?? "remote"),
         {
           id: thread.id,
           type: thread.type,
+          model: thread.model,
           messages: finished,
         },
       );
@@ -1162,7 +1262,8 @@ function PanelInner({
         updatedAt: Date.now(),
         origin: "user",
       });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
+      if (!localSession)
+        void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
       void queryClient.invalidateQueries({
         queryKey: queryKeys.durableThreadRuns(thread.id),
       });
@@ -1297,11 +1398,12 @@ function PanelInner({
     startedRef.current = true;
     prependThreadToHistory(queryClient, {
       id: thread.id,
+      type: thread.type,
       title: "New conversation",
       updatedAt: Date.now(),
       origin: "user",
     });
-  }, [messages.length, queryClient, thread.id]);
+  }, [messages.length, queryClient, thread.id, thread.type]);
 
   const busy =
     status === "submitted" ||
@@ -1321,9 +1423,17 @@ function PanelInner({
           lastMessage.role !== "assistant" ||
           !messageText(lastMessage))));
 
+  const sendBlocked =
+    isSessionLoading ||
+    Boolean(sessionLoadError) ||
+    (localSession && busy) ||
+    (!busy && waitingForApproval);
+
   const send = (): void => {
     const text = draft.trim();
-    if (!text || tab !== "chat" || isSessionLoading || sessionLoadError) return;
+    // Personal chats have no durable follow-up queue. Keep the draft until
+    // generation and approvals finish rather than accepting a no-op enqueue.
+    if (!text || tab !== "chat" || sendBlocked) return;
     capture("message_sent", {
       source: dictatedRef.current ? "dictated" : "typed",
       chars: text.length,
@@ -1340,7 +1450,6 @@ function PanelInner({
       capture("remix_message_queued", { source: "typed", chars: text.length });
       return;
     }
-    if (approvals.length > 0) return;
     void sendMessage({ text });
   };
 
@@ -1437,7 +1546,8 @@ function PanelInner({
           clientId: durableDesktopClientId(),
           result: output,
         });
-        void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
+        if (!localSession)
+          void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
         await durableRuntime.refetch();
         await queryClient.invalidateQueries({
           queryKey: queryKeys.durableThreadRuns(thread.id),
@@ -1461,7 +1571,8 @@ function PanelInner({
       actionId: action.id,
     })
       .then(async () => {
-        void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
+        if (!localSession)
+          void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
         await durableRuntime.refetch();
         return queryClient.invalidateQueries({
           queryKey: queryKeys.durableThreadRuns(thread.id),
@@ -1508,7 +1619,8 @@ function PanelInner({
         clientId: durableDesktopClientId(),
         result: output,
       });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
+      if (!localSession)
+        void queryClient.invalidateQueries({ queryKey: queryKeys.attention });
       await durableRuntime.refetch();
       await queryClient.invalidateQueries({
         queryKey: queryKeys.durableThreadRuns(thread.id),
@@ -1599,6 +1711,7 @@ function PanelInner({
   const chatActive = desktop ? desktopSurface === "chat" : tab === "chat";
   const contextRailVisible =
     desktop &&
+    !localSession &&
     desktopSurface === "chat" &&
     (narrowRemix ? narrowContextOpen : contextRailOpen);
   const remixRun = describeRemixRun(
@@ -1630,25 +1743,24 @@ function PanelInner({
     setNotice(null);
     dictationBaseRef.current = null;
     dictatedRef.current = false;
-    onSwitchThread(newThread());
+    onNewThread();
     requestAnimationFrame(() =>
       document.getElementById("panel-composer")?.focus(),
     );
   };
 
-  // Signed out, the gate is the entire panel — no head, no tabs, no way to
-  // reach the agent. While auth status resolves, keep the conversation's
-  // layout visible but withhold its sensitive controls and content.
-  if (!auth.user) {
+  // Inaccessible Cloud conversations show model setup until the user signs
+  // in or chooses a personal model. Keep their content hidden during auth.
+  if (!availability.canOpenThread(thread.type)) {
     return (
       <div className={desktop ? "remix-agent" : "tavern-shell"}>
         <div
           className={`tavern tavern-panel${desktop ? " remix-agent-panel" : ""}`}
         >
-          {auth.phase === "checking" ? (
+          {availability.checking ? (
             <ConversationSkeleton />
           ) : (
-            <SignInGate />
+            <RemixModelSetup desktop={desktop} />
           )}
         </div>
       </div>
@@ -1734,30 +1846,31 @@ function PanelInner({
               onRename={onRenameSession}
               onDelete={onDeleteSession}
             >
-              {inspectorTarget ? (
-                <button
-                  type="button"
-                  className="remix-context-toggle"
-                  aria-label="Close context inspector"
-                  title="Close context inspector"
-                  onClick={closeInspector}
-                >
-                  <PanelRightClose aria-hidden="true" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="remix-context-toggle"
-                  aria-label={
-                    contextRailVisible ? "Hide context" : "Show context"
-                  }
-                  aria-pressed={contextRailVisible}
-                  title={contextRailVisible ? "Hide context" : "Show context"}
-                  onClick={toggleContextRail}
-                >
-                  <WorkspaceIcon name="context" />
-                </button>
-              )}
+              {!localSession &&
+                (inspectorTarget ? (
+                  <button
+                    type="button"
+                    className="remix-context-toggle"
+                    aria-label="Close context inspector"
+                    title="Close context inspector"
+                    onClick={closeInspector}
+                  >
+                    <PanelRightClose aria-hidden="true" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="remix-context-toggle"
+                    aria-label={
+                      contextRailVisible ? "Hide context" : "Show context"
+                    }
+                    aria-pressed={contextRailVisible}
+                    title={contextRailVisible ? "Hide context" : "Show context"}
+                    onClick={toggleContextRail}
+                  >
+                    <WorkspaceIcon name="context" />
+                  </button>
+                ))}
             </RemixChatHeader>
           ) : desktopSurface === "capabilities" ? (
             <RemixCapabilitiesHeader />
@@ -1828,6 +1941,7 @@ function PanelInner({
                 </section>
               ) : tab === "history" ? (
                 <ThreadHistory
+                  type={availability.historyType}
                   currentId={thread.id}
                   onPick={(picked) => {
                     setTab("chat");
@@ -1991,6 +2105,11 @@ function PanelInner({
                     </div>
                   ) : null}
                 </>
+              ) : chatActive && localSession ? (
+                <div className="tavern-empty">
+                  <strong>Start a conversation</strong>
+                  <span>Your chat history stays on this device.</span>
+                </div>
               ) : chatActive ? (
                 <>
                   <AttentionHome
@@ -2055,25 +2174,20 @@ function PanelInner({
                   onSteer={queue.steer}
                   onError={setNotice}
                 />
-                <div className="tavern-composer">
-                  <textarea
-                    id="panel-composer"
-                    className="tavern-input"
-                    value={draft}
-                    rows={1}
-                    placeholder={
-                      isSessionLoading
-                        ? "Loading conversation…"
-                        : busy
-                          ? "Add a follow-up…"
-                          : "Message Freestyle"
-                    }
-                    disabled={isSessionLoading || Boolean(sessionLoadError)}
-                    onMouseDown={() => window.api.panelRequestFocus()}
-                    onFocus={() => window.api.panelSetComposerFocused(true)}
-                    onBlur={() => window.api.panelSetComposerFocused(false)}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
+                <RemixComposer
+                  textareaProps={{
+                    value: draft,
+                    placeholder: isSessionLoading
+                      ? "Loading conversation…"
+                      : busy && !localSession
+                        ? "Add a follow-up…"
+                        : "Message Freestyle",
+                    disabled: isSessionLoading || Boolean(sessionLoadError),
+                    onMouseDown: () => window.api.panelRequestFocus(),
+                    onFocus: () => window.api.panelSetComposerFocused(true),
+                    onBlur: () => window.api.panelSetComposerFocused(false),
+                    onChange: (e) => setDraft(e.target.value),
+                    onKeyDown: (e) => {
                       if (
                         e.key === "Enter" &&
                         !e.shiftKey &&
@@ -2082,38 +2196,18 @@ function PanelInner({
                         e.preventDefault();
                         send();
                       }
-                    }}
-                  />
-                  {busy ? (
-                    <button
-                      type="button"
-                      className="tavern-btn tavern-btn-send is-stop"
-                      aria-label="Stop generating"
-                      title="Stop generating"
-                      onClick={stopGeneration}
-                    >
-                      <WorkspaceIcon name="stop" />
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="tavern-btn tavern-btn-send"
-                    aria-label="Send"
-                    title={busy ? "Queue message" : "Send"}
-                    disabled={
-                      isSessionLoading ||
-                      Boolean(sessionLoadError) ||
-                      !draft.trim()
-                    }
-                    onClick={send}
-                  >
-                    <WorkspaceIcon name="send" />
-                  </button>
-                </div>
+                    },
+                  }}
+                  busy={busy}
+                  canQueue={!localSession}
+                  onStop={stopGeneration}
+                  sendDisabled={sendBlocked || !draft.trim()}
+                  onSend={send}
+                />
               </>
             ) : null}
           </div>
-          {desktop ? (
+          {desktop && !localSession ? (
             <RemixContextRail
               attention={contextAttention}
               open={contextRailVisible}
@@ -2121,7 +2215,7 @@ function PanelInner({
               onOpenInspector={openInspector}
             />
           ) : null}
-          {desktop && inspectorTarget ? (
+          {desktop && !localSession && inspectorTarget ? (
             <RemixInspector target={inspectorTarget} run={remixRun} />
           ) : null}
         </div>

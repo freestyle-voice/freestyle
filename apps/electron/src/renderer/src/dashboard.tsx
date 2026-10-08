@@ -3,7 +3,6 @@ import "./fonts.css";
 
 import { CloudSignInModal } from "@renderer/components/cloud-signin-modal";
 import { ErrorBoundary } from "@renderer/components/error-boundary";
-import { LoginGate } from "@renderer/components/login-gate";
 import { RemixSessionProvider } from "@renderer/components/remix-session-context";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { UpgradeModalProvider } from "@renderer/components/upgrade-modal";
@@ -25,7 +24,9 @@ import {
 } from "@renderer/lib/workspace";
 import HelpPage from "@renderer/pages/help";
 import HistoryPage from "@renderer/pages/history";
+import { ModelsPageLoadingSkeleton } from "@renderer/pages/models/models-page-layout";
 import NotFoundPage from "@renderer/pages/not-found";
+import { PluginsPageLoadingSkeleton } from "@renderer/pages/plugins/plugin-skeletons";
 import AppShell from "@renderer/shell";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { ThemeProvider, useTheme } from "next-themes";
@@ -107,16 +108,10 @@ const PAGE_FALLBACKS: Record<string, RouteFallbackCopy> = {
     title: "Tone",
     subtitle: "How much Freestyle cleans up — and how it sounds in each app.",
   },
-  "/settings/models": { title: "Models" },
   "/help": { title: "Help" },
   "/profile": {
     title: "Profile",
     subtitle: "Manage your account details.",
-  },
-  "/plugins": {
-    title: "Plugins",
-    subtitle:
-      "Install plugins to add features. Each runs in the dictation pipeline and can ship its own page.",
   },
 };
 
@@ -154,6 +149,8 @@ function fallbackCopyForPath(pathname: string): RouteFallbackCopy {
 // its chunk (and its translated content) is available.
 function RouteFallback(): React.JSX.Element {
   const { pathname } = useLocation();
+  if (pathname === "/plugins") return <PluginsPageLoadingSkeleton />;
+  if (pathname === "/settings/models") return <ModelsPageLoadingSkeleton />;
   const { eyebrow, title, subtitle } = fallbackCopyForPath(pathname);
 
   return (
@@ -212,26 +209,17 @@ function PagePad(): React.JSX.Element {
   );
 }
 
-/** Protect route content while AppShell selects the signed-in or signed-out frame. */
-function ProtectedOutlet(): React.JSX.Element {
-  return (
-    <LoginGate>
-      <Outlet />
-    </LoginGate>
-  );
-}
-
 /**
  * Onboarding is an application concern. Keeping this guard above every normal
  * workspace route means a direct Remix link cannot turn the chat into a
  * first-run wizard.
  */
 function OnboardingOutlet(): React.JSX.Element {
-  const { phase, user } = useCloudAuth();
-  const onboarding = useOnboarding(Boolean(user));
+  const { phase } = useCloudAuth();
+  const onboarding = useOnboarding(phase === "authenticated");
   const { pathname } = useLocation();
 
-  if (!user && phase === "checking") return <Outlet />;
+  if (phase === "checking") return <Outlet />;
   if (onboarding.status === "loading") return <RouteFallback />;
   if (onboarding.status === "show") {
     return <Navigate to="/onboarding" replace state={{ from: pathname }} />;
@@ -294,7 +282,7 @@ function mount(): void {
                         <Routes>
                           <Route path="/" element={<DashboardHomeRedirect />} />
                           <Route element={<AppShell />}>
-                            <Route element={<ProtectedOutlet />}>
+                            <Route element={<PagePad />}>
                               <Route
                                 path="/onboarding"
                                 element={

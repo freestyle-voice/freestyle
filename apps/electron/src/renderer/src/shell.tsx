@@ -961,16 +961,20 @@ function ContentTitlebar({
   sidebarHidden?: boolean;
   onShowSidebar?: () => void;
   sidebarRevealRef?: React.RefObject<HTMLButtonElement | null>;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
+  if (!IS_MAC && !sidebarHidden) return null;
+
   return (
-    <>
-      {IS_MAC ? (
-        <div
-          className="glass-content-titlebar"
-          aria-hidden="true"
-          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-        />
-      ) : null}
+    <div
+      className={cn(
+        "glass-content-titlebar",
+        sidebarHidden && "glass-content-titlebar--sidebar-hidden",
+      )}
+      aria-hidden={sidebarHidden ? undefined : true}
+      style={
+        { WebkitAppRegion: IS_MAC ? "drag" : undefined } as React.CSSProperties
+      }
+    >
       {sidebarHidden && onShowSidebar ? (
         <button
           type="button"
@@ -984,6 +988,6 @@ function ContentTitlebar({
           <PanelLeftOpen aria-hidden="true" />
         </button>
       ) : null}
-    </>
+    </div>
   );
 }

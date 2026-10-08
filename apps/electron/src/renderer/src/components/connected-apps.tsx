@@ -5,6 +5,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@renderer/components/ui/dialog";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import {
   type ConnectorAuthField,
   type ConnectorCatalogItem,
@@ -257,6 +258,7 @@ function ConnectedAppsSkeleton(): React.JSX.Element {
 }
 
 export function ConnectedApps(): React.JSX.Element {
+  const cloudAuth = useCloudAuth();
   const [query, setQuery] = useState("");
   const [apiKeyConnector, setApiKeyConnector] =
     useState<ConnectorCatalogItem | null>(null);
@@ -271,7 +273,10 @@ export function ConnectedApps(): React.JSX.Element {
   } = useConnectorConnect();
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const connectionsQuery = useQuery(connectorConnectionsQueryOptions());
+  const connectionsQuery = useQuery({
+    ...connectorConnectionsQueryOptions(),
+    enabled: !!cloudAuth.user,
+  });
   const browseQuery = useInfiniteQuery(connectorCatalogInfiniteQueryOptions());
   const searchTerm = query.trim();
   const searchQuery = useInfiniteQuery(
@@ -280,10 +285,10 @@ export function ConnectedApps(): React.JSX.Element {
 
   const connections = useMemo(
     () =>
-      (connectionsQuery.data ?? []).filter(
+      (cloudAuth.user ? (connectionsQuery.data ?? []) : []).filter(
         (connection) => connection.status !== "disconnected",
       ),
-    [connectionsQuery.data],
+    [cloudAuth.user, connectionsQuery.data],
   );
   const connectedSlugs = useMemo(
     () => new Set(connections.map((connection) => connection.toolkitSlug)),
@@ -342,9 +347,16 @@ export function ConnectedApps(): React.JSX.Element {
         ),
     });
   };
-  const startConnect = (toolkit: string) => {
+  const ensureSignedIn = async (): Promise<boolean> =>
+    !!cloudAuth.user || !!(await cloudAuth.signIn());
+  const startConnect = async (toolkit: string) => {
     setActionError(null);
+    if (!(await ensureSignedIn())) return;
     connect(toolkit);
+  };
+  const setUpConnector = async (connector: ConnectorCatalogItem) => {
+    if (!(await ensureSignedIn())) return;
+    setApiKeyConnector(connector);
   };
 
   const searching = query.trim().length > 0;
@@ -394,12 +406,14 @@ export function ConnectedApps(): React.JSX.Element {
     items.map((connector) => (
       <ConnectorCard
         key={connector.slug}
-        connector={connector}
+        connector={
+          cloudAuth.user ? connector : { ...connector, connection: null }
+        }
         phase={phases[connector.slug]}
         busy={busyDisconnect === connector.slug}
         onConnect={() => startConnect(connector.slug)}
         onDisconnect={() => disconnect(connector.slug)}
-        onSetUp={() => setApiKeyConnector(connector)}
+        onSetUp={() => void setUpConnector(connector)}
       />
     ));
 
@@ -441,7 +455,7 @@ export function ConnectedApps(): React.JSX.Element {
               setActionError(null);
               clearError();
               void browseQuery.refetch();
-              void connectionsQuery.refetch();
+              if (cloudAuth.user) void connectionsQuery.refetch();
               if (searching) void searchQuery.refetch();
             }}
           >

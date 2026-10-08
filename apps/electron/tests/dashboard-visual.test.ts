@@ -91,6 +91,22 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           return originalFetch(input, init);
         visualReviewWindow.__visualReviewRequests?.push(url.pathname);
 
+        if (
+          scenario === "guest-connectors" &&
+          url.pathname === "/api/auth/device/code"
+        ) {
+          return Response.json({ error: "test_sign_in" }, { status: 503 });
+        }
+        if (
+          scenario === "guest-connectors" &&
+          url.pathname === "/api/connectors"
+        ) {
+          return Response.json(
+            { error: "cloud_auth_required" },
+            { status: 401 },
+          );
+        }
+
         if (url.pathname === "/api/client-error") {
           visualReviewWindow.__visualReviewErrors?.push(
             typeof init?.body === "string" ? init.body : "Unknown client error",
@@ -255,6 +271,42 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             return { items: [], total: 0 };
           }
           if (url.pathname === "/api/connectors/catalog") {
+            if (scenario === "guest-connectors") {
+              const apps = [
+                {
+                  slug: "gmail",
+                  name: "Gmail",
+                  description: "Search and send email.",
+                  authMode: "oauth",
+                  connection: null,
+                },
+                {
+                  slug: "github",
+                  name: "GitHub",
+                  description: "Work with repositories.",
+                  authMode: "oauth",
+                  connection: null,
+                },
+                {
+                  slug: "posthog",
+                  name: "PostHog",
+                  description: "Product analytics.",
+                  authMode: "api_key",
+                  connection: null,
+                },
+              ];
+              const search = url.searchParams.get("search");
+              if (search)
+                return {
+                  connectors: apps.filter((app) =>
+                    app.name.toLowerCase().includes(search.toLowerCase()),
+                  ),
+                  nextCursor: null,
+                };
+              return url.searchParams.get("cursor")
+                ? { connectors: apps.slice(1), nextCursor: null }
+                : { connectors: apps.slice(0, 1), nextCursor: "second" };
+            }
             return { connectors: [], nextCursor: null };
           }
           if (url.pathname === "/api/connectors/connections") {
@@ -658,6 +710,56 @@ test("keeps guest settings available and requests sign-in only inside Remix", as
   await expect(
     dashboard.getByRole("button", { name: "Dismiss sign-in card" }),
   ).toBeVisible();
+});
+
+test("lets guests browse, paginate and search apps before signing in to connect", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=guest-connectors#/settings/apps`,
+  );
+  await expect(dashboard.getByText("Gmail", { exact: true })).toBeVisible();
+  await dashboard.locator(".connector-load-more").scrollIntoViewIfNeeded();
+  await expect(dashboard.getByText("GitHub", { exact: true })).toBeVisible();
+  await expect(
+    dashboard.getByText("Sign in to Freestyle before connecting an app.", {
+      exact: true,
+    }),
+  ).toBeHidden();
+  await dashboard.screenshot({
+    path: testInfo.outputPath("guest-connected-apps.png"),
+  });
+  await dashboard
+    .getByRole("textbox", { name: "Search all apps" })
+    .fill("PostHog");
+  const posthog = dashboard
+    .locator(".connector-card")
+    .filter({ hasText: "PostHog" });
+  await expect(posthog).toBeVisible();
+  await posthog.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect
+    .poll(() =>
+      dashboard.evaluate(
+        () =>
+          (
+            window as typeof window & { __visualReviewRequests?: string[] }
+          ).__visualReviewRequests?.filter(
+            (path) => path === "/api/auth/device/code",
+          ).length,
+      ),
+    )
+    .toBe(1);
+  await expect(
+    dashboard.getByRole("dialog", { name: "Connect PostHog" }),
+  ).toBeHidden();
+  const requests = await dashboard.evaluate(
+    () =>
+      (window as typeof window & { __visualReviewRequests?: string[] })
+        .__visualReviewRequests ?? [],
+  );
+  expect(requests).not.toContain("/api/connectors");
+  expect(requests).not.toContain("/api/connectors/posthog/connect");
 });
 
 test("keeps local settings usable after signing out", async () => {

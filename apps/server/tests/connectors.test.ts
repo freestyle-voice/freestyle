@@ -12,6 +12,65 @@ afterEach(() => {
 });
 
 describe("connector proxy", () => {
+  it("lets guests browse and search the public catalog without a bearer", async () => {
+    clearSession();
+    const fetchMock = vi.fn().mockResolvedValue(
+      Response.json({
+        connectors: [{ slug: "gmail", connection: null }],
+        nextCursor: "next",
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const response = await app.request(
+      "/api/connectors/catalog?search=mail&cursor=page-2&limit=24",
+    );
+    expect(response.status).toBe(200);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe(
+      `${freestyleCloudUrl()}/v2/connectors/public/catalog?search=mail&cursor=page-2&limit=24`,
+    );
+    expect(fetchMock.mock.calls[0]?.[1].headers).not.toHaveProperty(
+      "Authorization",
+    );
+    await expect(response.json()).resolves.toMatchObject({
+      nextCursor: "next",
+    });
+  });
+
+  it.each([
+    ["GET", "/api/connectors/gmail/status"],
+    ["POST", "/api/connectors/gmail/connect"],
+    ["POST", "/api/connectors/gmail/disconnect"],
+    ["POST", "/api/connectors/catalog"],
+  ])("keeps guest %s %s protected", async (method, path) => {
+    clearSession();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await app.request(path, { method })).status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("preserves the authenticated catalog and its server-owned bearer", async () => {
+    setSession({
+      token: "cloud-session",
+      user: { id: "user-1", email: "user@example.com" },
+      host: freestyleCloudUrl(),
+    });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(Response.json({ connectors: [], nextCursor: null }));
+    vi.stubGlobal("fetch", fetchMock);
+    expect((await app.request("/api/connectors/catalog?limit=24")).status).toBe(
+      200,
+    );
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${freestyleCloudUrl()}/v2/connectors/catalog?limit=24`,
+      expect.objectContaining({
+        headers: { Authorization: "Bearer cloud-session" },
+      }),
+    );
+  });
+
   it("requires the server-owned Freestyle Cloud session", async () => {
     const response = await app.request("/api/connectors");
 

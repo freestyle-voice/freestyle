@@ -349,10 +349,18 @@ Esc, focus-trap, and backdrop dismissal, so don't re-implement them. For
 destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
 `AlertDialogAction variant="destructive"`). Side panels use `Sheet`.
 
-History filters use a docked, non-modal `Sheet` beside the feed, with no backdrop
-or focus trap. Keep it open while the user searches, scrolls, or changes pages;
+History filters and stats share a docked, non-modal `Sheet` beside the feed, with
+no backdrop or focus trap. A joined icon `ToggleGroup` beside search selects the
+panel or toggles it closed; use tooltips and accessible labels for both controls.
+Keep it open while the user searches, scrolls, or changes pages;
 apply changes immediately and restore the stats rail when it closes. Slide
-motion respects reduced-motion preferences.
+motion respects reduced-motion preferences. The filter rail fills the page height,
+including the space above the feed. Both panels use the same header and 200ms
+ease-out slide. Animate the reserved width so the feed narrows
+and expands with the rail; do not reserve the final width before sliding it in.
+Below the date picker, compact presets select Today or the last 3, 7, or 30 local
+calendar days, including today. They populate the same explicit date range as the
+calendar and use the accent wash to indicate the matching selection.
 
 ### Keycaps → `Kbd`
 `import { Kbd } from ".../ui/kbd"` for `⌘K`-style hints and keycaps.

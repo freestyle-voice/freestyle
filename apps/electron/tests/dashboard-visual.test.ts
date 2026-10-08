@@ -70,6 +70,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       const visualReviewWindow = window as typeof window & {
         __visualReviewErrors?: string[];
         __visualReviewRequests?: string[];
+        __visualReviewHistoryQueries?: string[];
         __holdLocalReply?: boolean;
         __releaseLocalReply?: () => void;
         __holdLocalCreate?: boolean;
@@ -79,6 +80,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       };
       visualReviewWindow.__visualReviewErrors = [];
       visualReviewWindow.__visualReviewRequests = [];
+      visualReviewWindow.__visualReviewHistoryQueries = [];
       const originalFetch = window.fetch.bind(window);
       let signedOut = false;
       const scenario = new URLSearchParams(window.location.search).get(
@@ -442,6 +444,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           }
           if (url.pathname === "/api/history") {
             if (scenario === "guest-history-filters") {
+              visualReviewWindow.__visualReviewHistoryQueries!.push(url.search);
               const search = url.searchParams.get("search") ?? "";
               const items = Array.from({ length: 40 }, (_, index) => ({
                 id: index + 1,
@@ -806,12 +809,288 @@ test("captures every main dashboard page while loading and after data resolves",
   }
 });
 
+test("fills the history height and resizes the feed with both sidebar slides", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-filters#/today`);
+  await expect(
+    dashboard.getByText("“Edited note 1”", { exact: true }),
+  ).toBeVisible();
+  await dashboard.getByRole("button", { name: "Hide stats" }).click();
+  const layout = dashboard.getByTestId("history-layout");
+  await expect(layout).toHaveCSS("grid-template-columns", / 0px$/);
+  const layoutBounds = await layout.boundingBox();
+  const mainBounds = await dashboard.locator("main").boundingBox();
+  expect(layoutBounds!.y).toBeCloseTo(mainBounds!.y, 0);
+  expect(layoutBounds!.height).toBeCloseTo(mainBounds!.height, 0);
+
+  // Pause real browser transitions and sample their geometry. This catches a
+  // feed that jumps to its final width before an independent sheet animation.
+  const sampleMotion = async (opening: boolean, panel: "filters" | "stats") =>
+    dashboard.evaluate(
+      async ({ open, panel }) => {
+        const layout = document.querySelector<HTMLElement>(
+          '[data-testid="history-layout"]',
+        )!;
+        const feed = document.querySelector<HTMLElement>(
+          '[data-testid="history-feed"]',
+        )!;
+        const rail = document.querySelector<HTMLElement>(
+          '[data-testid="history-sidebar-rail"]',
+        )!;
+        const initialWidth = feed.getBoundingClientRect().width;
+        const button = open
+          ? document.querySelector<HTMLButtonElement>(
+              `[role="radio"][aria-label="${panel === "filters" ? "Filters" : "Stats"}"]`,
+            )
+          : document.querySelector<HTMLButtonElement>(
+              `[aria-label="${panel === "filters" ? "Close filters" : "Hide stats"}"]`,
+            );
+        button!.click();
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+        const content = document.querySelector<HTMLElement>(
+          '[data-slot="sheet-content"]',
+        )!;
+        const transitions = document.getAnimations().filter((animation) => {
+          const target = (animation.effect as KeyframeEffect | null)?.target;
+          return target === layout || target === feed || target === content;
+        });
+        const layoutTransition = transitions.find(
+          (animation) =>
+            animation instanceof CSSTransition &&
+            animation.transitionProperty === "grid-template-columns",
+        );
+        if (!layoutTransition)
+          throw new Error("History layout did not animate");
+        for (const animation of transitions) animation.pause();
+        const duration = Number(layoutTransition.effect!.getTiming().duration);
+        const samples = [0, duration / 2, duration].map((time) => {
+          for (const animation of transitions) animation.currentTime = time;
+          const content = document.querySelector<HTMLElement>(
+            '[data-slot="sheet-content"]',
+          )!;
+          return {
+            feed: feed.getBoundingClientRect().toJSON(),
+            rail: rail.getBoundingClientRect().toJSON(),
+            panel: content.getBoundingClientRect().toJSON(),
+            layout: layout.getBoundingClientRect().toJSON(),
+          };
+        });
+        for (const animation of transitions) animation.finish();
+        return { initialWidth, samples };
+      },
+      { open: opening, panel },
+    );
+
+  for (const panel of ["filters", "stats"] as const) {
+    const opened = await sampleMotion(true, panel);
+    expect(opened.samples[0].feed.width).toBeCloseTo(opened.initialWidth, 0);
+    expect(opened.samples[0].rail.width).toBeCloseTo(0, 0);
+    expect(opened.samples[1].feed.width).toBeLessThan(opened.initialWidth);
+    expect(opened.samples[1].feed.width).toBeGreaterThan(
+      opened.samples[2].feed.width,
+    );
+    for (const sample of opened.samples) {
+      expect(sample.feed.right).toBeCloseTo(sample.rail.left, 0);
+      expect(sample.panel.top).toBeCloseTo(sample.layout.top, 0);
+      expect(sample.panel.bottom).toBeCloseTo(sample.layout.bottom, 0);
+      expect(sample.panel.left).toBeCloseTo(sample.rail.left, 0);
+    }
+
+    const closed = await sampleMotion(false, panel);
+    expect(closed.samples[0].feed.width).toBeCloseTo(closed.initialWidth, 0);
+    expect(closed.samples[1].feed.width).toBeGreaterThan(closed.initialWidth);
+    expect(closed.samples[1].feed.width).toBeLessThan(
+      closed.samples[2].feed.width,
+    );
+    expect(closed.samples[2].rail.width).toBeCloseTo(0, 0);
+    await expect(
+      dashboard.getByRole("dialog", {
+        name: panel === "filters" ? "Filter" : "Stats",
+        exact: true,
+      }),
+    ).toBeHidden();
+  }
+  await dashboard.getByRole("radio", { name: "Stats", exact: true }).click();
+  await expect(
+    dashboard.getByRole("button", { name: "Hide stats" }),
+  ).toBeVisible();
+});
+
+test("switches history sidebars from grouped icon controls and resizes stats immediately", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-filters#/today`);
+  await expect(
+    dashboard.getByText("“Edited note 1”", { exact: true }),
+  ).toBeVisible();
+  const controls = dashboard.getByRole("radiogroup", {
+    name: "History panels",
+  });
+  const filters = controls.getByRole("radio", { name: "Filters", exact: true });
+  const stats = controls.getByRole("radio", { name: "Stats", exact: true });
+  await expect(controls.getByRole("radio")).toHaveCount(2);
+  await expect(stats).toBeChecked();
+  await expect(stats).toHaveAttribute("data-state", "on");
+  await filters.click();
+  await expect(filters).toBeChecked();
+  await expect(stats).not.toBeChecked();
+  await expect(
+    dashboard.getByRole("dialog", { name: "Filter", exact: true }),
+  ).toBeVisible();
+  await dashboard.screenshot({
+    path: testInfo.outputPath("history-filter-controls.png"),
+    animations: "disabled",
+  });
+  await stats.click();
+  await expect(stats).toBeChecked();
+  await expect(filters).not.toBeChecked();
+  const panel = dashboard.getByRole("dialog", { name: "Stats", exact: true });
+  await expect(panel).toBeVisible();
+  await expect(stats).toBeFocused();
+  const viewportWidth = await dashboard.evaluate(() => window.innerWidth);
+  await expect
+    .poll(() =>
+      panel.evaluate((element) =>
+        Math.round(element.getBoundingClientRect().right),
+      ),
+    )
+    .toBe(viewportWidth);
+  await expect(panel.getByRole("button", { name: "Hide stats" })).toBeVisible();
+  await dashboard.screenshot({
+    path: testInfo.outputPath("history-stats-controls.png"),
+    animations: "disabled",
+  });
+  const resize = panel.getByRole("separator", { name: "Resize stats panel" });
+  const width = Number(await resize.getAttribute("aria-valuenow"));
+  await resize.focus();
+  await dashboard.keyboard.press("ArrowLeft");
+  await expect(resize).toHaveAttribute("aria-valuenow", String(width + 16));
+  await expect(dashboard.getByTestId("history-layout")).toHaveCSS(
+    "grid-template-columns",
+    new RegExp(` ${width + 16}px$`),
+  );
+  expect(
+    await dashboard
+      .getByTestId("history-layout")
+      .evaluate((layout) =>
+        layout
+          .getAnimations()
+          .some(
+            (animation) =>
+              animation instanceof CSSTransition &&
+              animation.transitionProperty === "grid-template-columns",
+          ),
+      ),
+  ).toBe(false);
+  await dashboard.keyboard.press("ArrowRight");
+  await expect(resize).toHaveAttribute("aria-valuenow", String(width));
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "false",
+  );
+  await expect(dashboard.getByTestId("history-layout")).toHaveCSS(
+    "grid-template-columns",
+    new RegExp(` ${width}px$`),
+  );
+  const resizeBounds = await resize.boundingBox();
+  await dashboard.mouse.move(
+    resizeBounds!.x + resizeBounds!.width - 1,
+    resizeBounds!.y + 30,
+  );
+  await dashboard.mouse.down();
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "true",
+  );
+  await dashboard.mouse.move(viewportWidth - width - 32, resizeBounds!.y + 30);
+  await expect(resize).toHaveAttribute("aria-valuenow", String(width + 32));
+  await expect(dashboard.getByTestId("history-layout")).toHaveCSS(
+    "grid-template-columns",
+    new RegExp(` ${width + 32}px$`),
+  );
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "true",
+  );
+  // Closing during a captured pointer drag must not leave future slides in
+  // resize mode after the handle unmounts.
+  await dashboard.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await dashboard.mouse.up();
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "false",
+  );
+  await stats.click();
+  await expect(panel).toBeVisible();
+  await expect(dashboard.getByTestId("history-layout")).toHaveAttribute(
+    "data-resizing",
+    "false",
+  );
+  await stats.click();
+  await expect(panel).toBeHidden();
+  await expect(stats).not.toBeChecked();
+  await stats.click();
+  await expect(panel).toBeVisible();
+});
+
+test("applies history date presets through the live calendar range", async () => {
+  await dashboard.clock.setFixedTime(new Date(2026, 9, 9, 12));
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-filters#/today`);
+  await expect(
+    dashboard.getByText("“Edited note 1”", { exact: true }),
+  ).toBeVisible();
+  await dashboard.getByRole("button", { name: "Next page" }).click();
+  await expect(dashboard.getByText("1 / 2", { exact: true })).toBeHidden();
+  await dashboard.getByRole("radio", { name: "Filters", exact: true }).click();
+  const panel = dashboard.getByRole("dialog", { name: "Filter", exact: true });
+  const presets = panel.getByRole("group", { name: "Date presets" });
+  for (const [label, start, formattedStart] of [
+    ["Today", "2026-10-09", "9 Oct, 2026"],
+    ["Last 3 days", "2026-10-07", "7 Oct, 2026"],
+    ["Last Week", "2026-10-03", "3 Oct, 2026"],
+    ["Last Month", "2026-09-10", "10 Sep, 2026"],
+  ]) {
+    const button = presets.getByRole("button", { name: label, exact: true });
+    await button.click();
+    await expect(button).toHaveAttribute("aria-pressed", "true");
+    await expect(presets.locator('[aria-pressed="true"]')).toHaveCount(1);
+    await expect(
+      panel.getByRole("button", { name: `${formattedStart} - 9 Oct, 2026` }),
+    ).toBeVisible();
+    await expect
+      .poll(() =>
+        dashboard.evaluate(() => {
+          const queries = (
+            window as typeof window & {
+              __visualReviewHistoryQueries?: string[];
+            }
+          ).__visualReviewHistoryQueries;
+          const query = new URLSearchParams(queries?.at(-1));
+          return [
+            query.get("start_date"),
+            query.get("end_date"),
+            query.get("offset"),
+          ];
+        }),
+      )
+      .toEqual([start, "2026-10-09", "0"]);
+    await expect(panel).toBeVisible();
+  }
+  await panel.getByRole("button", { name: "Clear", exact: true }).click();
+  await expect(presets.locator('[aria-pressed="true"]')).toHaveCount(0);
+  await panel.getByRole("button", { name: "Close filters" }).click();
+  await dashboard.clock.setSystemTime(new Date());
+});
+
 test("keeps history interactive while live filters are open in the right rail", async ({
   browserName,
 }, testInfo) => {
   void browserName;
   await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-filters#/today`);
-  const filters = dashboard.getByRole("button", {
+  const filters = dashboard.getByRole("radio", {
     name: "Filters",
     exact: true,
   });
@@ -820,7 +1099,7 @@ test("keeps history interactive while live filters are open in the right rail", 
     dashboard.getByText("“Edited note 1”", { exact: true }),
   ).toBeVisible();
   await filters.click();
-  const panel = dashboard.getByRole("dialog", { name: "Filter History" });
+  const panel = dashboard.getByRole("dialog", { name: "Filter", exact: true });
   await expect(panel).toBeVisible();
   await expect(panel).not.toHaveAttribute("aria-modal", "true");
   await panel.getByRole("switch", { name: "Diff mode" }).click();
@@ -881,7 +1160,7 @@ test("keeps history interactive while live filters are open in the right rail", 
       });
     }
   }
-  await panel.getByRole("button", { name: "Done", exact: true }).focus();
+  await panel.getByRole("button", { name: "Close filters" }).focus();
   await dashboard.keyboard.press("Escape");
   await expect(panel).toBeHidden();
   await expect(filters).toBeFocused();
@@ -891,11 +1170,18 @@ test("keeps history interactive while live filters are open in the right rail", 
   await dashboard.emulateMedia({ reducedMotion: "reduce" });
   await filters.click();
   await expect(panel).toHaveCSS("animation-name", "none");
+  await expect(dashboard.getByTestId("history-layout")).toHaveCSS(
+    "transition-duration",
+    "0s",
+  );
   await expect(
     panel.getByRole("switch", { name: "AI edits" }),
   ).not.toBeChecked();
   await panel.getByRole("button", { name: "Close filters" }).click();
   await expect(panel).toBeHidden();
+  await expect(
+    dashboard.getByRole("dialog", { name: "Stats", exact: true }),
+  ).toHaveCSS("animation-name", "none");
   await dashboard.emulateMedia({ reducedMotion: "no-preference" });
   await app!.evaluate(({ BrowserWindow }) => {
     BrowserWindow.getAllWindows()

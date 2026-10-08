@@ -818,7 +818,7 @@ export default function HistoryPage(): React.JSX.Element {
             style={
               {
                 scrollbarWidth: "none",
-                paddingRight: statsOpen || filtersOpen ? "1.25rem" : "0px",
+                paddingRight: statsOpen || filtersOpen ? "1.25rem" : undefined,
               } as React.CSSProperties
             }
           >

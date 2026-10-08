@@ -308,6 +308,8 @@
     "title": "History",
     "loading": "Loading history…",
     "filterTitle": "Filter History",
+    "filtersLive": "Changes apply as you browse.",
+    "closeFilters": "Close filters",
     "dateRangeLabel": "Date range",
     "viewLabel": "View",
     "diffToggle": "Diff mode",

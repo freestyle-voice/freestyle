@@ -79,6 +79,11 @@ async function installDashboardFixtures(page: Page): Promise<void> {
         "visual",
       );
       const pluginLayoutScenario = scenario?.startsWith("guest-plugin-layout-");
+      if (scenario === "guest-history-filters") {
+        localStorage.setItem("today.heroDismissed", "1");
+        localStorage.setItem("today.statsOpen", "1");
+        localStorage.removeItem("history.filters");
+      }
       let releasePluginData: () => void = () => {};
       const pluginDataReady = new Promise<void>((resolve) => {
         releasePluginData = resolve;
@@ -409,7 +414,32 @@ async function installDashboardFixtures(page: Page): Promise<void> {
               verified: true,
             };
           }
-          if (url.pathname === "/api/history") return { items: [], total: 0 };
+          if (url.pathname === "/api/history") {
+            if (scenario === "guest-history-filters") {
+              const search = url.searchParams.get("search") ?? "";
+              const items = Array.from({ length: 40 }, (_, index) => ({
+                id: index + 1,
+                raw_text: `Raw note ${index + 1}`,
+                cleaned_text: `Edited note ${index + 1}`,
+                voice_provider: "openai",
+                voice_model: "whisper-1",
+                llm_provider: "openai",
+                llm_model: "gpt-4o-mini",
+                duration_ms: 650,
+                audio_duration_ms: 3200,
+                input_tokens: 18,
+                output_tokens: 12,
+                cost_usd: 0,
+                created_at: "2026-10-08 10:00:00",
+              })).filter((item) => item.raw_text.includes(search));
+              const offset = Number(url.searchParams.get("offset") ?? 0);
+              return {
+                items: items.slice(offset, offset + 20),
+                total: items.length,
+              };
+            }
+            return { items: [], total: 0 };
+          }
           if (url.pathname === "/api/history/stats") {
             return {
               total_sessions: 0,
@@ -423,7 +453,8 @@ async function installDashboardFixtures(page: Page): Promise<void> {
               total_words: 0,
               today_sessions: 0,
               today_cost: 0,
-              unfiltered_total_sessions: 0,
+              unfiltered_total_sessions:
+                scenario === "guest-history-filters" ? 40 : 0,
             };
           }
           if (url.pathname === "/api/history/daily") return { days: [] };
@@ -744,6 +775,104 @@ test("captures every main dashboard page while loading and after data resolves",
       contentType: "image/png",
     });
   }
+});
+
+test("keeps history interactive while live filters are open in the right rail", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-filters#/today`);
+  const filters = dashboard.getByRole("button", {
+    name: "Filters",
+    exact: true,
+  });
+  const search = dashboard.getByPlaceholder(/Search.*transcript/i);
+  await expect(
+    dashboard.getByText("“Edited note 1”", { exact: true }),
+  ).toBeVisible();
+  await filters.click();
+  const panel = dashboard.getByRole("dialog", { name: "Filter History" });
+  await expect(panel).toBeVisible();
+  await expect(panel).not.toHaveAttribute("aria-modal", "true");
+  await panel.getByRole("switch", { name: "Diff mode" }).click();
+  await expect(dashboard.locator("del").first()).toBeVisible();
+  await expect(panel.getByRole("switch", { name: "AI edits" })).toBeDisabled();
+  await panel.getByRole("switch", { name: "Diff mode" }).click();
+  await panel.getByRole("switch", { name: "AI edits" }).click();
+  await expect(
+    dashboard.getByText("“Raw note 1”", { exact: true }),
+  ).toBeVisible();
+  await search.fill("note 2");
+  await expect(search).toBeFocused();
+  await expect(
+    dashboard.getByText("“Raw note 2”", { exact: true }),
+  ).toBeVisible();
+  await expect(panel).toBeVisible();
+  await search.fill("");
+  await dashboard.getByRole("button", { name: "Next page" }).click();
+  await expect(
+    dashboard.getByText("“Raw note 21”", { exact: true }),
+  ).toBeVisible();
+  await expect(panel).toBeVisible();
+  await panel.getByRole("button", { name: "Select - Select" }).click();
+  await expect(dashboard.getByRole("grid").first()).toBeVisible();
+  await dashboard
+    .getByRole("grid")
+    .first()
+    .locator("button")
+    .filter({ hasText: /^7$/ })
+    .click();
+  await dashboard.keyboard.press("Escape");
+  await expect(panel).toBeVisible();
+  await panel.getByRole("button", { name: "Clear" }).click();
+  for (const width of [1080, 760]) {
+    await app!.evaluate(({ BrowserWindow }, nextWidth) => {
+      BrowserWindow.getAllWindows()
+        .find((window) => window.webContents.getURL().includes("index.html"))
+        ?.setSize(nextWidth, 760);
+    }, width);
+    await expect
+      .poll(() => dashboard.evaluate(() => window.innerWidth))
+      .toBe(width);
+    const panelBounds = await panel.boundingBox();
+    const searchBounds = await search.boundingBox();
+    expect(searchBounds!.x + searchBounds!.width).toBeLessThanOrEqual(
+      panelBounds!.x,
+    );
+    for (const theme of ["light", "dark"]) {
+      await dashboard
+        .locator("html")
+        .evaluate(
+          (html, value) => html.classList.toggle("dark", value === "dark"),
+          theme,
+        );
+      await dashboard.screenshot({
+        path: testInfo.outputPath(`history-filters-${width}-${theme}.png`),
+        animations: "disabled",
+      });
+    }
+  }
+  await panel.getByRole("button", { name: "Done", exact: true }).focus();
+  await dashboard.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+  await expect(filters).toBeFocused();
+  await expect(
+    dashboard.getByRole("button", { name: "Hide stats" }),
+  ).toBeVisible();
+  await dashboard.emulateMedia({ reducedMotion: "reduce" });
+  await filters.click();
+  await expect(panel).toHaveCSS("animation-name", "none");
+  await expect(
+    panel.getByRole("switch", { name: "AI edits" }),
+  ).not.toBeChecked();
+  await panel.getByRole("button", { name: "Close filters" }).click();
+  await expect(panel).toBeHidden();
+  await dashboard.emulateMedia({ reducedMotion: "no-preference" });
+  await app!.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().includes("index.html"))
+      ?.setSize(1080, 760);
+  });
 });
 
 test("keeps Plugins toolbar and row geometry stable as Browse and Installed finish loading", async ({

@@ -233,23 +233,46 @@
 }
 
 .tavern-gate-btn {
-  font: inherit;
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   width: 100%;
   max-width: 260px;
   height: 44px;
-  border-radius: 12px;
-  border: 2px solid var(--tavern-ink);
-  background: var(--tavern-lantern);
-  color: var(--tavern-card);
-  cursor: pointer;
-  transition: filter 150ms ease;
-  box-shadow: 3px 3px 0 var(--tavern-ink);
+  gap: 10px;
+  transition: background-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
 
-.tavern-gate-btn:hover {
-  filter: brightness(1.06);
+.tavern-gate-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px -6px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
+.tavern-gate-btn:active:not(:disabled) {
+  transform: translateY(0) scale(0.99);
+  box-shadow: none;
+}
+
+.tavern-gate-btn svg {
+  transition: transform 160ms ease;
+}
+
+.tavern-gate-btn:hover:not(:disabled) svg {
+  transform: translateX(2px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tavern-gate-btn,
+  .tavern-gate-btn svg {
+    transition: none;
+  }
+
+  .tavern-gate-btn:hover:not(:disabled),
+  .tavern-gate-btn:active:not(:disabled),
+  .tavern-gate-btn:hover:not(:disabled) svg {
+    transform: none;
+    translate: none;
+  }
 }
 
 .tavern-gate-code {

@@ -77,6 +77,7 @@ import { compactActivitySummary } from "@renderer/lib/workspace-navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { UIMessage } from "ai";
 import {
+  ArrowRight,
   Check,
   Copy,
   Ellipsis,
@@ -755,13 +756,14 @@ function RemixModelSetup({
               </button>
             </>
           ) : (
-            <button
-              type="button"
+            <Button
+              variant="default"
               className="tavern-gate-btn"
               onClick={() => navigate("/settings/models?choose=remix")}
             >
               Choose a Remix model
-            </button>
+              <ArrowRight data-icon="inline-end" aria-hidden="true" />
+            </Button>
           )}
           {auth.sessionExpired && !auth.signingIn ? (
             <p className="tavern-gate-sub is-small">

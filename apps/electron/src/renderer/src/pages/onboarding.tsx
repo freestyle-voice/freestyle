@@ -81,7 +81,7 @@ export default function OnboardingPage(): React.JSX.Element {
             <>
               <p className="text-muted-foreground m-0 text-sm leading-5">
                 Use local models or your own API keys without an account. Sign
-                in for Freestyle Cloud transcription and Remix.
+                in for Freestyle Cloud transcription and Cloud Remix.
               </p>
               <SignInButton
                 signingIn={signingIn}

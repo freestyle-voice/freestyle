@@ -56,6 +56,7 @@ type RemixSessionContextValue = {
   openScheduledTasks: () => void;
   openCapabilities: () => void;
   switchThread: (thread: ThreadState) => void;
+  updateThreadMessages: (id: string, messages: ThreadState["messages"]) => void;
   selectThread: (thread: ThreadSummary) => void;
   startNewThread: () => void;
   isThreadLoading: boolean;
@@ -197,6 +198,17 @@ export function RemixSessionProvider({
     [markSessionSeen, openChat],
   );
 
+  // A chat can unmount while Settings is open. Retain its completed messages
+  // in the session owner so returning to the workspace restores the transcript.
+  const updateThreadMessages = useCallback(
+    (id: string, messages: ThreadState["messages"]) => {
+      setThread((current) =>
+        current?.id === id ? { ...current, messages } : current,
+      );
+    },
+    [],
+  );
+
   /**
    * Switching conversations should feel like navigation, not a network wait.
    * Install the summary as a temporary thread immediately so its title and
@@ -301,7 +313,8 @@ export function RemixSessionProvider({
       .finally(() => {
         creatingRef.current = false;
         setCreating(false);
-        if (scopeRef.current === scope) setLoadingThreadId(null);
+        if (scopeRef.current === scope && selectionRef.current === selection)
+          setLoadingThreadId(null);
       });
   }, [canChat, sessionScope, switchThread, queryClient]);
 
@@ -313,9 +326,6 @@ export function RemixSessionProvider({
     setLoadingThreadId(null);
     setThreadLoadError(null);
     if (!sessionScope) {
-      setWorkspaceSurface("chat");
-      setLoadingThreadId(null);
-      setThreadLoadError(null);
       setLocalTitles({});
       setSessionActivity({});
       setCompletedSessionIds(new Set());
@@ -643,6 +653,7 @@ export function RemixSessionProvider({
       openScheduledTasks,
       openCapabilities,
       switchThread,
+      updateThreadMessages,
       selectThread,
       startNewThread,
       isThreadLoading:
@@ -671,6 +682,7 @@ export function RemixSessionProvider({
       selectThread,
       startNewThread,
       switchThread,
+      updateThreadMessages,
       thread,
       workspaceSurface,
       threadLoadError,

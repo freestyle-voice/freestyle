@@ -47,16 +47,22 @@ export function useOnboarding(canRequestCloudData: boolean): {
   const [saved, setSaved] = useState<OnboardingSaved | null>(null);
   const queryClient = useQueryClient();
   const settingsQuery = useQuery(settingsQueryOptions());
+  // Cloud history is only needed to grandfather installations with no saved
+  // onboarding state. A completed or resumable local save must work offline.
+  const needsCloudHistory =
+    canRequestCloudData &&
+    !settingsQuery.isPending &&
+    !parseSaved(settingsQuery.data?.[ONBOARDING_KEY]);
   const threadsQuery = useInfiniteQuery({
     ...threadHistoryInfiniteQueryOptions(),
-    enabled: canRequestCloudData,
+    enabled: needsCloudHistory,
   });
   const decided = useRef<OnboardingSaved | null>(null);
 
   useEffect(() => {
     if (
       settingsQuery.isPending ||
-      (canRequestCloudData && threadsQuery.isPending)
+      (needsCloudHistory && threadsQuery.isPending)
     )
       return;
 
@@ -90,6 +96,7 @@ export function useOnboarding(canRequestCloudData: boolean): {
     setStatus("show");
   }, [
     canRequestCloudData,
+    needsCloudHistory,
     queryClient,
     settingsQuery.data,
     settingsQuery.isPending,
@@ -116,7 +123,7 @@ export function useOnboarding(canRequestCloudData: boolean): {
 
   return {
     status:
-      canRequestCloudData &&
+      needsCloudHistory &&
       threadsQuery.isPending &&
       !parseSaved(settingsQuery.data?.[ONBOARDING_KEY])?.done
         ? "loading"

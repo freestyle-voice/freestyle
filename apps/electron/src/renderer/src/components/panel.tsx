@@ -654,12 +654,14 @@ function RemixComposer({
   sendDisabled,
   onSend,
   busy = false,
+  canQueue = true,
   onStop,
 }: {
   textareaProps: React.TextareaHTMLAttributes<HTMLTextAreaElement>;
   sendDisabled: boolean;
   onSend?: () => void;
   busy?: boolean;
+  canQueue?: boolean;
   onStop?: () => void;
 }): React.JSX.Element {
   return (
@@ -686,7 +688,7 @@ function RemixComposer({
         type="button"
         className="tavern-btn tavern-btn-send"
         aria-label="Send"
-        title={busy ? "Queue message" : "Send"}
+        title={busy && canQueue ? "Queue message" : "Send"}
         disabled={sendDisabled}
         onClick={onSend}
       >
@@ -798,6 +800,7 @@ export function RemixWorkspace(): React.JSX.Element {
     thread,
     startNewThread,
     switchThread,
+    updateThreadMessages,
     selectThread,
     isThreadLoading,
     threadLoadError,
@@ -847,6 +850,7 @@ export function RemixWorkspace(): React.JSX.Element {
         key={thread.id}
         thread={thread}
         onSwitchThread={switchThread}
+        onThreadMessages={updateThreadMessages}
         onNewThread={startNewThread}
         onSelectThread={selectThread}
         isSessionLoading={isThreadLoading}
@@ -1121,6 +1125,7 @@ function ApprovalDetails({
 function PanelInner({
   thread,
   onSwitchThread,
+  onThreadMessages,
   onNewThread,
   onSelectThread,
   isSessionLoading = false,
@@ -1137,6 +1142,7 @@ function PanelInner({
 }: {
   thread: ThreadState;
   onSwitchThread: (thread: ThreadState) => void;
+  onThreadMessages: (id: string, messages: UIMessage[]) => void;
   onNewThread: () => void;
   onSelectThread?: (thread: ThreadSummary) => void;
   isSessionLoading?: boolean;
@@ -1236,6 +1242,7 @@ function PanelInner({
         pending.filter((item) => item.call.toolCallId !== actionId),
       ),
     onFinish: ({ messages: finished }) => {
+      onThreadMessages(thread.id, finished);
       queryClient.setQueryData(
         queryKeys.threads.detail(thread.id, thread.type ?? "remote"),
         {
@@ -1416,9 +1423,17 @@ function PanelInner({
           lastMessage.role !== "assistant" ||
           !messageText(lastMessage))));
 
+  const sendBlocked =
+    isSessionLoading ||
+    Boolean(sessionLoadError) ||
+    (localSession && busy) ||
+    (!busy && waitingForApproval);
+
   const send = (): void => {
     const text = draft.trim();
-    if (!text || tab !== "chat" || isSessionLoading || sessionLoadError) return;
+    // Personal chats have no durable follow-up queue. Keep the draft until
+    // generation and approvals finish rather than accepting a no-op enqueue.
+    if (!text || tab !== "chat" || sendBlocked) return;
     capture("message_sent", {
       source: dictatedRef.current ? "dictated" : "typed",
       chars: text.length,
@@ -1435,7 +1450,6 @@ function PanelInner({
       capture("remix_message_queued", { source: "typed", chars: text.length });
       return;
     }
-    if (approvals.length > 0) return;
     void sendMessage({ text });
   };
 
@@ -2165,7 +2179,7 @@ function PanelInner({
                     value: draft,
                     placeholder: isSessionLoading
                       ? "Loading conversation…"
-                      : busy
+                      : busy && !localSession
                         ? "Add a follow-up…"
                         : "Message Freestyle",
                     disabled: isSessionLoading || Boolean(sessionLoadError),
@@ -2185,12 +2199,9 @@ function PanelInner({
                     },
                   }}
                   busy={busy}
+                  canQueue={!localSession}
                   onStop={stopGeneration}
-                  sendDisabled={
-                    isSessionLoading ||
-                    Boolean(sessionLoadError) ||
-                    !draft.trim()
-                  }
+                  sendDisabled={sendBlocked || !draft.trim()}
                   onSend={send}
                 />
               </>

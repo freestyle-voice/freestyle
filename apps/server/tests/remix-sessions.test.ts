@@ -18,7 +18,7 @@ describe("Remix local session boundary", () => {
   it.each([
     "local-llm",
     "openai",
-  ])("streams through the configured %s provider without a Freestyle account", async (provider) => {
+  ])("streams through %s after an interrupted tool without a Freestyle account", async (provider) => {
     getDb()
       .prepare(
         "INSERT INTO model_configs (provider, model_id, model_name, type, is_default) VALUES (?, ?, 'Test model', 'remix', 1)",
@@ -81,6 +81,23 @@ describe("Remix local session boundary", () => {
             role: "user",
             parts: [{ type: "text", text: "Hello" }],
           },
+          {
+            id: "interrupted-tool",
+            role: "assistant",
+            parts: [
+              {
+                type: "tool-Read",
+                toolCallId: "interrupted-read",
+                state: "input-available",
+                input: { path: "/example.txt" },
+              },
+            ],
+          },
+          {
+            id: "next-question",
+            role: "user",
+            parts: [{ type: "text", text: "Continue chatting instead" }],
+          },
         ],
         context: {
           selection: null,
@@ -104,6 +121,10 @@ describe("Remix local session boundary", () => {
         : "https://api.openai.com/v1/chat/completions",
     );
     expect(JSON.parse(String(request.body)).model).toBe("test-chat");
+    expect(JSON.parse(String(request.body)).messages.at(-1)).toMatchObject({
+      role: "user",
+      content: "Continue chatting instead",
+    });
     getDb().prepare("DELETE FROM settings WHERE key = 'local_llm_url'").run();
     getDb().prepare("DELETE FROM api_keys WHERE provider = 'openai'").run();
   });

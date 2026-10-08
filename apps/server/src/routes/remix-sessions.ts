@@ -137,6 +137,9 @@ const remixSessionsRoute = new Hono()
           }),
           messages: await convertToModelMessages(
             request.messages as UIMessage[],
+            // Stopping or leaving a local chat can interrupt a tool call.
+            // Its missing output must not block the user's next message.
+            { ignoreIncompleteToolCalls: true },
           ),
           tools: createLocalRemixTools(),
           stopWhen: stepCountIs(MAX_LOCAL_REMIX_STEPS),

@@ -70,6 +70,12 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       const visualReviewWindow = window as typeof window & {
         __visualReviewErrors?: string[];
         __visualReviewRequests?: string[];
+        __holdLocalReply?: boolean;
+        __releaseLocalReply?: () => void;
+        __holdLocalCreate?: boolean;
+        __releaseLocalCreate?: () => void;
+        __holdLocalDetail?: boolean;
+        __releaseLocalDetail?: () => void;
       };
       visualReviewWindow.__visualReviewErrors = [];
       visualReviewWindow.__visualReviewRequests = [];
@@ -116,7 +122,9 @@ async function installDashboardFixtures(page: Page): Promise<void> {
         visualReviewWindow.__visualReviewRequests?.push(url.pathname);
 
         const personalScenario =
-          scenario === "guest-remix-local" || scenario === "guest-remix-byok";
+          scenario === "guest-remix-local" ||
+          scenario === "guest-remix-byok" ||
+          scenario === "guest-remix-race";
         const provider =
           scenario === "guest-remix-byok" ? "openai" : "local-llm";
         const model = {
@@ -206,6 +214,12 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             );
           }
           if (url.pathname === "/api/remix/sessions" && method === "POST") {
+            if (visualReviewWindow.__holdLocalCreate) {
+              await new Promise<void>((resolve) => {
+                visualReviewWindow.__releaseLocalCreate = resolve;
+              });
+              visualReviewWindow.__holdLocalCreate = false;
+            }
             if (
               scenario === "guest-remix-local" &&
               !localStorage.getItem(`${scenario}:startup-retried`)
@@ -251,6 +265,12 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           );
           if (session) {
             if (url.pathname.endsWith("/stream")) {
+              if (visualReviewWindow.__holdLocalReply) {
+                await new Promise<void>((resolve) => {
+                  visualReviewWindow.__releaseLocalReply = resolve;
+                });
+                visualReviewWindow.__holdLocalReply = false;
+              }
               const parts = [
                 { type: "start", messageId: crypto.randomUUID() },
                 { type: "text-start", id: "reply" },
@@ -284,6 +304,12 @@ async function installDashboardFixtures(page: Page): Promise<void> {
                 ]),
               );
               return Response.json({ ok: true });
+            }
+            if (visualReviewWindow.__holdLocalDetail) {
+              await new Promise<void>((resolve) => {
+                visualReviewWindow.__releaseLocalDetail = resolve;
+              });
+              visualReviewWindow.__holdLocalDetail = false;
             }
             return Response.json({ thread: session });
           }
@@ -460,7 +486,8 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           if (url.pathname === "/api/history/daily") return { days: [] };
           if (url.pathname === "/api/settings") {
             if (
-              scenario === "guest-first-run" &&
+              (scenario === "guest-first-run" ||
+                scenario === "signed-in-first-run") &&
               !localStorage.getItem("visual.guest-onboarding")
             )
               return {};
@@ -478,6 +505,8 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             return { thread };
           }
           if (url.pathname === "/api/agent/thread/list") {
+            if (scenario === "signed-in-onboarded-offline")
+              return new Promise<never>(() => {});
             return { threads: [], nextCursor: null };
           }
           if (url.pathname.startsWith("/api/agent/thread/")) {
@@ -1112,6 +1141,46 @@ test("lets a first-time guest finish onboarding and set up dictation", async ({
   await expect(dashboard).toHaveURL(/#\/today$/);
 });
 
+test("completes signed-in onboarding and restores its local save without Cloud history", async () => {
+  await dashboard.evaluate(() => {
+    localStorage.removeItem("visual.guest-onboarding");
+  });
+  await dashboard.goto(`${DASHBOARD_URL}?visual=signed-in-first-run#/today`);
+  const continueButton = dashboard.getByRole("button", {
+    name: "Continue to Freestyle",
+  });
+  await expect(continueButton).toBeVisible();
+  await expect(
+    dashboard.getByRole("button", { name: "Continue without an account" }),
+  ).toBeHidden();
+  await continueButton.click();
+  await expect(dashboard).toHaveURL(/#\/today$/);
+  await expect(continueButton).toBeHidden();
+
+  // Even a permanently unavailable Cloud history endpoint cannot reopen or
+  // stall onboarding when the installation already has a completed save.
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=signed-in-onboarded-offline#/settings/models`,
+  );
+  await expect(
+    dashboard.getByRole("heading", { name: "Models", exact: true }),
+  ).toBeVisible();
+  await expect(dashboard).toHaveURL(/#\/settings\/models$/);
+  await dashboard.getByRole("button", { name: "Back to app" }).click();
+  await expect(
+    dashboard.locator(".glass-sidebar").getByRole("button", {
+      name: "Visual review",
+    }),
+  ).toBeVisible();
+  expect(
+    await dashboard.evaluate(
+      () =>
+        (window as typeof window & { __visualReviewRequests: string[] })
+          .__visualReviewRequests,
+    ),
+  ).not.toContain("/api/agent/thread/list");
+});
+
 test("guides guests to Remix model setup and keeps workspace sign-in cards above the footer", async ({
   browserName,
 }, testInfo) => {
@@ -1319,11 +1388,48 @@ for (const mode of ["local", "byok"] as const) {
     await expect(
       sidebar.getByRole("button", { name: "Schedules" }),
     ).toBeDisabled();
+    await dashboard.evaluate(() => {
+      (
+        window as typeof window & { __holdLocalReply?: boolean }
+      ).__holdLocalReply = true;
+    });
     await composer.fill("Say hello");
     await dashboard.getByRole("button", { name: "Send", exact: true }).click();
     await expect(
+      dashboard.getByRole("button", { name: "Stop generating" }),
+    ).toBeVisible();
+    await composer.fill("Keep my next message while this reply is running");
+    await expect(
+      dashboard.getByRole("button", { name: "Send", exact: true }),
+    ).toBeDisabled();
+    await composer.press("Enter");
+    await expect(composer).toHaveValue(
+      "Keep my next message while this reply is running",
+    );
+    await expect
+      .poll(() =>
+        dashboard.evaluate(
+          () =>
+            typeof (
+              window as typeof window & { __releaseLocalReply?: () => void }
+            ).__releaseLocalReply,
+        ),
+      )
+      .toBe("function");
+    await dashboard.evaluate(() => {
+      (
+        window as typeof window & { __releaseLocalReply?: () => void }
+      ).__releaseLocalReply?.();
+    });
+    await expect(
       dashboard.getByText("Hello from Personal chat model.", { exact: true }),
     ).toBeVisible();
+    await expect(composer).toHaveValue(
+      "Keep my next message while this reply is running",
+    );
+    await expect(
+      dashboard.getByRole("button", { name: "Send", exact: true }),
+    ).toBeEnabled();
     await dashboard.screenshot({
       path: testInfo.outputPath(`guest-remix-${mode}.png`),
     });
@@ -1336,6 +1442,22 @@ for (const mode of ["local", "byok"] as const) {
         ),
       )
       .toBe(true);
+    // Settings navigation unmounts the chat. The completed transcript must
+    // survive before a document reload fetches persisted history.
+    await dashboard
+      .locator(".glass-sidebar")
+      .getByRole("link", {
+        name: /^Settings/,
+      })
+      .click();
+    await expect(dashboard).toHaveURL(/#\/settings\/transcription$/);
+    await dashboard.getByRole("button", { name: "Back to app" }).click();
+    await expect(dashboard).toHaveURL(/#\/remix$/);
+    await expect(
+      dashboard.getByText("Hello from Personal chat model.", {
+        exact: true,
+      }),
+    ).toBeVisible();
     await dashboard.reload();
     await expect(
       dashboard.getByText("Hello from Personal chat model.", { exact: true }),
@@ -1384,6 +1506,113 @@ for (const mode of ["local", "byok"] as const) {
     );
   });
 }
+
+test("keeps a selected local conversation loading when an older create finishes", async () => {
+  await dashboard.evaluate(() => {
+    const model = {
+      provider: "local-llm",
+      model_id: "local-llm/Personal chat model",
+      model_name: "Personal chat model",
+      type: "remix",
+      is_default: 1,
+    };
+    localStorage.setItem("guest-remix-race:model", JSON.stringify(model));
+    localStorage.setItem(
+      "guest-remix-race:history",
+      JSON.stringify(
+        ["First conversation", "Second conversation"].map((title) => ({
+          id: crypto.randomUUID(),
+          type: "local",
+          title,
+          model: {
+            provider: model.provider,
+            modelId: model.model_id,
+            modelName: model.model_name,
+          },
+          messages: [
+            {
+              id: crypto.randomUUID(),
+              role: "user",
+              parts: [{ type: "text", text: title }],
+            },
+          ],
+          lastActiveAt: "2026-10-09 00:00:00",
+        })),
+      ),
+    );
+  });
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-remix-race#/remix`);
+  const composer = dashboard.locator("#panel-composer");
+  await expect(composer).toBeEnabled();
+  await dashboard.evaluate(() => {
+    const fixture = window as typeof window & {
+      __holdLocalCreate?: boolean;
+      __holdLocalDetail?: boolean;
+    };
+    fixture.__holdLocalCreate = true;
+    fixture.__holdLocalDetail = true;
+  });
+  const sidebar = dashboard.getByRole("region", { name: "Remix chats" });
+  await sidebar.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(composer).toBeDisabled();
+  await sidebar
+    .getByRole("button", { name: "Second conversation", exact: true })
+    .click();
+  await expect(composer).toHaveAttribute(
+    "placeholder",
+    "Loading conversation…",
+  );
+  await expect
+    .poll(() =>
+      dashboard.evaluate(
+        () =>
+          typeof (
+            window as typeof window & { __releaseLocalCreate?: () => void }
+          ).__releaseLocalCreate,
+      ),
+    )
+    .toBe("function");
+  await dashboard.evaluate(() => {
+    (
+      window as typeof window & { __releaseLocalCreate?: () => void }
+    ).__releaseLocalCreate?.();
+  });
+  await expect
+    .poll(() =>
+      dashboard.evaluate(
+        () =>
+          (window as typeof window & { __holdLocalCreate?: boolean })
+            .__holdLocalCreate,
+      ),
+    )
+    .toBe(false);
+  await expect(composer).toBeDisabled();
+  await expect(composer).toHaveAttribute(
+    "placeholder",
+    "Loading conversation…",
+  );
+  await expect
+    .poll(() =>
+      dashboard.evaluate(
+        () =>
+          typeof (
+            window as typeof window & { __releaseLocalDetail?: () => void }
+          ).__releaseLocalDetail,
+      ),
+    )
+    .toBe("function");
+  await dashboard.evaluate(() => {
+    (
+      window as typeof window & { __releaseLocalDetail?: () => void }
+    ).__releaseLocalDetail?.();
+  });
+  await expect(composer).toBeEnabled();
+  await expect(
+    dashboard.locator(".tavern-msg").getByText("Second conversation", {
+      exact: true,
+    }),
+  ).toBeVisible();
+});
 
 test("lets guests browse, paginate and search apps before signing in to connect", async ({
   browserName,

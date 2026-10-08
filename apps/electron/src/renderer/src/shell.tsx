@@ -656,7 +656,7 @@ export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const { user, phase, canRequestData } = useCloudAuth();
+  const { user, canRequestData } = useCloudAuth();
   const isRemixRoute = location.pathname === "/remix";
   const isSettingsRoute =
     location.pathname === "/settings" ||
@@ -703,8 +703,8 @@ export default function AppShell(): React.JSX.Element {
   }, [setSidebarVisibility]);
 
   useEffect(() => {
-    window.api.setPanelSidebarHidden(phase !== "signed_out" && isSidebarHidden);
-  }, [isSidebarHidden, phase]);
+    window.api.setPanelSidebarHidden(isSidebarHidden);
+  }, [isSidebarHidden]);
 
   const changeWorkspace = useCallback(
     (workspace: Workspace) => {
@@ -755,7 +755,6 @@ export default function AppShell(): React.JSX.Element {
   const { data: plugins = [] } = useQuery({
     queryKey: queryKeys.plugins,
     queryFn: () => listPlugins(),
-    enabled: canRequestData,
   });
 
   const pluginNav = usePluginNavItems(plugins);
@@ -791,12 +790,6 @@ export default function AppShell(): React.JSX.Element {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isSettingsRoute, navigate, staticNav]);
-
-  // Authenticated pages use the application chrome. Until the auth check has
-  // established a user, the sign-in route owns the entire window; rendering
-  // the app sidebar beside it makes the login experience look like a broken
-  // half-loaded workspace and can briefly expose stale navigation state.
-  if (phase === "signed_out") return <SignedOutShell />;
 
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
@@ -915,27 +908,6 @@ export default function AppShell(): React.JSX.Element {
         />
         <UpdateBanner className="relative z-50 mt-4 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
-        <main
-          className="flex min-h-0 flex-1 flex-col overflow-hidden"
-          style={{ scrollbarWidth: "none" } as React.CSSProperties}
-        >
-          <Outlet />
-        </main>
-      </div>
-    </div>
-  );
-}
-
-/**
- * The signed-out view deliberately has no app navigation or resize handle.
- * LoginGate renders its own full-window sign-in experience through this
- * outlet, and the normal AppShell mounts as soon as CloudAuth has a user.
- */
-function SignedOutShell(): React.JSX.Element {
-  return (
-    <div className="glass-window-shell flex h-screen min-h-0">
-      <div className="glass-content relative flex min-h-0 min-w-0 flex-1 flex-col">
-        <ContentTitlebar />
         <main
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
           style={{ scrollbarWidth: "none" } as React.CSSProperties}

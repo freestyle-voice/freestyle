@@ -3,7 +3,6 @@ import "./fonts.css";
 
 import { CloudSignInModal } from "@renderer/components/cloud-signin-modal";
 import { ErrorBoundary } from "@renderer/components/error-boundary";
-import { LoginGate } from "@renderer/components/login-gate";
 import { RemixSessionProvider } from "@renderer/components/remix-session-context";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { UpgradeModalProvider } from "@renderer/components/upgrade-modal";
@@ -212,26 +211,17 @@ function PagePad(): React.JSX.Element {
   );
 }
 
-/** Protect route content while AppShell selects the signed-in or signed-out frame. */
-function ProtectedOutlet(): React.JSX.Element {
-  return (
-    <LoginGate>
-      <Outlet />
-    </LoginGate>
-  );
-}
-
 /**
  * Onboarding is an application concern. Keeping this guard above every normal
  * workspace route means a direct Remix link cannot turn the chat into a
  * first-run wizard.
  */
 function OnboardingOutlet(): React.JSX.Element {
-  const { phase, user } = useCloudAuth();
-  const onboarding = useOnboarding(Boolean(user));
+  const { phase, canRequestData } = useCloudAuth();
+  const onboarding = useOnboarding(canRequestData);
   const { pathname } = useLocation();
 
-  if (!user && phase === "checking") return <Outlet />;
+  if (phase === "checking") return <Outlet />;
   if (onboarding.status === "loading") return <RouteFallback />;
   if (onboarding.status === "show") {
     return <Navigate to="/onboarding" replace state={{ from: pathname }} />;
@@ -294,7 +284,7 @@ function mount(): void {
                         <Routes>
                           <Route path="/" element={<DashboardHomeRedirect />} />
                           <Route element={<AppShell />}>
-                            <Route element={<ProtectedOutlet />}>
+                            <Route element={<PagePad />}>
                               <Route
                                 path="/onboarding"
                                 element={

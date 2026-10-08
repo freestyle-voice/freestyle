@@ -663,7 +663,7 @@ function SignInGate(): React.JSX.Element {
           </span>
         </div>
         <h1 className="tavern-gate-heading">The intelligent reminders app.</h1>
-        <p className="tavern-gate-sub">Sign in to your Freestyle account</p>
+        <p className="tavern-gate-sub">Sign in to use Remix</p>
         {auth.signingIn ? (
           <>
             <div className="tavern-gate-code">{auth.userCode ?? "…"}</div>
@@ -745,6 +745,8 @@ export function RemixWorkspace(): React.JSX.Element {
     openCapabilities,
     openChat,
   } = useRemixSession();
+
+  if (phase === "signed_out") return <SignInGate />;
 
   if (!thread) {
     return phase === "checking" ? (

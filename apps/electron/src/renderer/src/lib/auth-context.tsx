@@ -18,14 +18,17 @@ import { queryKeys } from "./query";
 
 function resetAccountCaches(queryClient: QueryClient): void {
   resetBrainCache();
-  queryClient.clear();
+  // Local pages stay mounted after sign-out. Reset their observed queries so
+  // cancelled startup reads restart, while discarding all cached account data.
+  void queryClient.resetQueries();
 }
 
 export interface UseCloudAuth {
   user: CloudUser | null;
   /** Whether the server has not yet definitively accepted or rejected the session. */
   phase: "checking" | "authenticated" | "signed_out";
-  /** Read-only requests may use the stored bearer while the profile reconciles. */
+  /** Cloud requests may use the stored bearer while the profile reconciles.
+   * Local settings, models, plugins, and dictation do not need a Cloud session. */
   canRequestData: boolean;
   loading: boolean;
   signingIn: boolean;
@@ -50,6 +53,7 @@ function useCloudAuthState(): UseCloudAuth {
   const [error, setError] = useState<string | null>(null);
   const [sessionExpired, setSessionExpired] = useState(false);
   const [forcedSignedOut, setForcedSignedOut] = useState(false);
+  const forcedSignedOutRef = useRef(false);
   const wasSignedInRef = useRef(false);
   const cancelledRef = useRef(false);
   const signInPromiseRef = useRef<Promise<CloudUser | null> | null>(null);
@@ -95,7 +99,9 @@ function useCloudAuthState(): UseCloudAuth {
     if (!status?.reached) return;
     if (!status.user && wasSignedInRef.current) {
       setSessionExpired(true);
-      queryClient.removeQueries({ queryKey: queryKeys.connectors.all });
+      forcedSignedOutRef.current = true;
+      setForcedSignedOut(true);
+      resetAccountCaches(queryClient);
     }
     if (status.user) setSessionExpired(false);
     wasSignedInRef.current = !!status.user;
@@ -104,6 +110,10 @@ function useCloudAuthState(): UseCloudAuth {
   useEffect(
     () =>
       subscribeToUnauthorized(() => {
+        // A local/remote-server query can continue returning 401 for guests.
+        // Reset once per transition so its retry cannot restart every query.
+        if (forcedSignedOutRef.current) return;
+        forcedSignedOutRef.current = true;
         const wasSignedIn = wasSignedInRef.current;
         wasSignedInRef.current = false;
         setSessionExpired(wasSignedIn);
@@ -175,6 +185,7 @@ function useCloudAuthState(): UseCloudAuth {
         resetAccountCaches(queryClient);
         wasSignedInRef.current = true;
         setSessionExpired(false);
+        forcedSignedOutRef.current = false;
         setForcedSignedOut(false);
         queryClient.setQueryData(queryKeys.cloud.authStatus, {
           user: data.user,
@@ -217,6 +228,7 @@ function useCloudAuthState(): UseCloudAuth {
       .catch(() => {});
     wasSignedInRef.current = false;
     setSessionExpired(false);
+    forcedSignedOutRef.current = true;
     setForcedSignedOut(true);
     resetAccountCaches(queryClient);
   }, [queryClient]);

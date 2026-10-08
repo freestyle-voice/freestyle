@@ -74,6 +74,11 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       visualReviewWindow.__visualReviewErrors = [];
       visualReviewWindow.__visualReviewRequests = [];
       const originalFetch = window.fetch.bind(window);
+      let signedOut = false;
+      const scenario = new URLSearchParams(window.location.search).get(
+        "visual",
+      );
+      const guest = scenario?.startsWith("guest") ?? false;
       window.fetch = async (input, init) => {
         const url = new URL(
           typeof input === "string"
@@ -105,6 +110,27 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           });
         }
 
+        if (
+          url.pathname === "/api/auth/sign-out" ||
+          url.pathname === "/api/test-expiry"
+        )
+          signedOut = true;
+        if (
+          url.pathname === "/api/settings/onboarding" &&
+          init?.method === "PUT"
+        ) {
+          localStorage.setItem("visual.guest-onboarding", "done");
+        }
+        // Guests cannot load managed conversations; onboarding must still resolve.
+        if (guest && url.pathname.startsWith("/api/agent/")) {
+          return new Response(
+            JSON.stringify({ error: "cloud_auth_required" }),
+            {
+              status: 401,
+              headers: { "content-type": "application/json" },
+            },
+          );
+        }
         const thread = {
           id: "visual-review-thread",
           type: "remote",
@@ -119,6 +145,8 @@ async function installDashboardFixtures(page: Page): Promise<void> {
         };
         const body = (() => {
           if (url.pathname === "/api/auth/status") {
+            if (guest || signedOut)
+              return { authenticated: false, user: null, verified: true };
             return {
               authenticated: true,
               user: {
@@ -148,7 +176,17 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           }
           if (url.pathname === "/api/history/daily") return { days: [] };
           if (url.pathname === "/api/settings") {
-            return { onboarding: JSON.stringify({ v: 2, done: true }) };
+            if (
+              scenario === "guest-first-run" &&
+              !localStorage.getItem("visual.guest-onboarding")
+            )
+              return {};
+            return {
+              onboarding: JSON.stringify({ v: 2, done: true }),
+              ...(scenario === "cloud-expiry"
+                ? { llm_cleanup: String(!signedOut) }
+                : {}),
+            };
           }
           if (url.pathname === "/api/dismissed-notifications") return [];
           if (url.pathname === "/api/agent/activity") return { threads: [] };
@@ -176,6 +214,29 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             };
           }
           if (url.pathname === "/api/config") return { version: 1, flags: {} };
+          if (
+            scenario === "cloud-expiry" &&
+            url.pathname === "/api/models/configured"
+          ) {
+            return [
+              {
+                id: 1,
+                provider: "openai",
+                model_id: "whisper-1",
+                model_name: "Whisper",
+                type: "voice",
+                is_default: 1,
+              },
+              {
+                id: 2,
+                provider: "freestyle-cloud",
+                model_id: "freestyle-cloud/post-process",
+                model_name: "Freestyle Cleanup",
+                type: "llm",
+                is_default: 1,
+              },
+            ];
+          }
           if (
             url.pathname === "/api/models/available" ||
             url.pathname === "/api/models/configured" ||
@@ -480,16 +541,23 @@ test("captures the desktop sidebar hidden and restored", async ({
   });
 });
 
-test("shows full-window sign-in after a protected request returns 401", async () => {
+test("keeps local navigation after a protected request returns 401", async () => {
   await dashboard.evaluate(() => {
     localStorage.setItem("shell.sidebarVisibility", "hidden");
   });
   await dashboard.goto(`${DASHBOARD_URL}?visual=protected-401#/today`);
 
   await expect(
-    dashboard.getByRole("button", { name: "Sign in via browser" }),
+    dashboard.getByRole("button", { name: "Show sidebar" }),
   ).toBeVisible();
-  await expect(dashboard.locator(".glass-sidebar")).toHaveCount(0);
+  await dashboard.getByRole("button", { name: "Show sidebar" }).click();
+  await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
+  await expect(
+    dashboard.getByRole("button", { name: "Sign in", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dashboard.getByRole("button", { name: "Sign in via browser" }),
+  ).toBeHidden();
   await expectDashboardWindowButtonPosition({ x: 20, y: 16 });
 
   const requestedEndpoints = await dashboard.evaluate(() => {
@@ -499,4 +567,113 @@ test("shows full-window sign-in after a protected request returns 401", async ()
     return visualReviewWindow.__visualReviewRequests ?? [];
   });
   expect(requestedEndpoints).toContain("/api/history");
+  // A persistent local 401 must not reset/refetch every active query forever.
+  const settingsReads = requestedEndpoints.filter(
+    (path) => path === "/api/settings",
+  ).length;
+  await dashboard.waitForTimeout(750);
+  const laterSettingsReads = await dashboard.evaluate(() => {
+    const requests =
+      (window as typeof window & { __visualReviewRequests?: string[] })
+        .__visualReviewRequests ?? [];
+    return requests.filter((path) => path === "/api/settings").length;
+  });
+  expect(laterSettingsReads).toBe(settingsReads);
+});
+
+test("lets a first-time guest finish onboarding and set up dictation", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.evaluate(() => {
+    localStorage.removeItem("visual.guest-onboarding");
+    localStorage.setItem("shell.sidebarVisibility", "visible");
+  });
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-first-run#/today`);
+  await expect(
+    dashboard.getByRole("button", { name: "Continue without an account" }),
+  ).toBeVisible();
+  const welcome = testInfo.outputPath("guest-onboarding.png");
+  await dashboard.screenshot({ path: welcome });
+  await testInfo.attach("guest-onboarding", {
+    path: welcome,
+    contentType: "image/png",
+  });
+  await dashboard
+    .getByRole("button", { name: "Continue without an account" })
+    .click();
+  await expect(dashboard).toHaveURL(/#\/settings\/models$/);
+  await expect(
+    dashboard.getByRole("heading", { name: "Models", exact: true }),
+  ).toBeVisible();
+  await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
+
+  // Completion survives a renderer restart while the user remains signed out.
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-first-run#/today`);
+  await expect(
+    dashboard.getByRole("button", { name: "Sign in", exact: true }),
+  ).toBeVisible();
+  await expect(
+    dashboard.getByRole("button", { name: "Continue without an account" }),
+  ).toBeHidden();
+  await expect(dashboard).toHaveURL(/#\/today$/);
+});
+
+test("keeps guest settings available and requests sign-in only inside Remix", async () => {
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=guest-settings#/settings/models`,
+  );
+  await expect(
+    dashboard.getByRole("heading", { name: "Models", exact: true }),
+  ).toBeVisible();
+  await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-remix#/remix`);
+  await expect(
+    dashboard.getByText("Sign in to use Remix", { exact: true }),
+  ).toBeVisible();
+  await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
+  await expect(
+    dashboard.getByRole("button", { name: "Switch workspace" }),
+  ).toBeVisible();
+});
+
+test("keeps local settings usable after signing out", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=sign-out#/settings/models`);
+  await expect(
+    dashboard.getByRole("heading", { name: "Models", exact: true }),
+  ).toBeVisible();
+  await dashboard.evaluate(() => {
+    window.location.hash = "#/today";
+  });
+  await dashboard.getByRole("button", { name: "Visual review" }).click();
+  await dashboard.getByRole("menuitem", { name: "Sign out" }).click();
+  await expect(
+    dashboard.getByRole("button", { name: "Sign in", exact: true }),
+  ).toBeVisible();
+  await dashboard.evaluate(() => {
+    window.location.hash = "#/settings/models";
+  });
+  await expect(
+    dashboard.getByRole("heading", { name: "Models", exact: true }),
+  ).toBeVisible();
+  await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
+  await expect(dashboard).toHaveURL(/#\/settings\/models$/);
+});
+
+test("refreshes cleanup state when a session expires while Models is open", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=cloud-expiry#/settings/models`);
+  const cleanup = dashboard
+    .getByTestId("models-configuration")
+    .getByRole("switch");
+  await expect(cleanup).toBeChecked();
+  await expect(dashboard.getByLabel("Loading profile")).toBeHidden();
+  await dashboard.evaluate(async () => {
+    await fetch("http://127.0.0.1:4649/api/test-expiry");
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(cleanup).not.toBeChecked();
+  await expect(
+    dashboard.getByRole("heading", { name: "Models", exact: true }),
+  ).toBeVisible();
+  await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
 });

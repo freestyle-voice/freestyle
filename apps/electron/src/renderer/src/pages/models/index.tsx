@@ -74,7 +74,9 @@ export default function ModelsPage(): React.JSX.Element {
   useEffect(() => {
     if (prevCloudUserId.current === cloudUserId) return;
     prevCloudUserId.current = cloudUserId;
-    void reloadModels();
+    void reloadModels(true).catch((error) => {
+      console.error("Failed to refresh model preferences:", error);
+    });
   }, [cloudUserId, reloadModels]);
 
   // Keep Freestyle Cleanup paired with Freestyle Transcribe. Wait for the

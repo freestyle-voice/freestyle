@@ -137,9 +137,9 @@ export function SignInCtaCard({
       className="glass-card mx-3 mt-2 rounded-[10px] border p-3"
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
-      <div className="flex items-start gap-1.5">
-        <Cloud className="text-primary mt-0.5 size-3.5 shrink-0" />
-        <span className="text-foreground min-w-0 flex-1 text-[12.5px] font-medium">
+      <div className="flex items-center gap-1.5">
+        <Cloud className="text-primary size-3.5 shrink-0" />
+        <span className="serif-italic text-foreground min-w-0 flex-1 text-[16px]">
           {title}
         </span>
         <Button

@@ -196,7 +196,11 @@ Optionally followed by one muted sentence (`text-muted-foreground text-[14px] le
 
 Chat titles, compact workspace headers, and functional controls use the UI
 family. Do not force an oversized serif hero into every Remix chat view.
-Logo lettering comes from the approved lockup assets, not this page-title recipe.
+Logo lettering follows the current-brand rules above, not this page-title recipe.
+
+The shared sidebar sign-in cards use **Instrument Serif italic** for both
+`Freestyle Transcribe` and `Freestyle Remix` titles. Their descriptions and
+buttons keep the normal UI typeface.
 
 ### Eyebrows / kickers
 

@@ -381,7 +381,7 @@ function ThreadActivityIndicator({
  * skeleton. Keeping the date dividers and single-line row rhythm in place
  * prevents the sidebar from visually jumping when the first page arrives.
  */
-function SessionHistorySkeleton(): React.JSX.Element {
+export function SessionHistorySkeleton(): React.JSX.Element {
   const now = Date.now();
   const groups = [
     { label: dateGroup(now), rows: ["wide", "medium"] },

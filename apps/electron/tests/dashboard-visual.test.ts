@@ -635,6 +635,19 @@ test("keeps guest settings available and requests sign-in only inside Remix", as
   await expect(
     dashboard.getByRole("button", { name: "Switch workspace" }),
   ).toBeVisible();
+  const sessions = dashboard.getByRole("region", { name: "Remix chats" });
+  await expect(
+    sessions.getByText("No sessions yet", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    sessions.getByRole("button", { name: "New chat" }),
+  ).toBeDisabled();
+  await expect(
+    sessions.getByRole("button", { name: "Schedules" }),
+  ).toBeDisabled();
+  await expect(
+    dashboard.getByRole("link", { name: /Transcriptions/ }),
+  ).toBeHidden();
 });
 
 test("keeps local settings usable after signing out", async () => {

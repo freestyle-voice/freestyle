@@ -9,7 +9,10 @@ import {
   sidebarCurrentThreadId,
   useRemixSession,
 } from "@renderer/components/remix-session-context";
-import { ThreadHistory } from "@renderer/components/thread-history";
+import {
+  SessionHistorySkeleton,
+  ThreadHistory,
+} from "@renderer/components/thread-history";
 import { Badge } from "@renderer/components/ui/badge";
 import {
   DropdownMenu,
@@ -406,7 +409,7 @@ function RemixSidebarSessions({
           type="button"
           className="remix-sidebar-new"
           onClick={startNewThread}
-          disabled={phase === "checking"}
+          disabled={phase !== "authenticated"}
         >
           <Plus aria-hidden="true" />
           New chat
@@ -418,7 +421,7 @@ function RemixSidebarSessions({
           }`}
           aria-current={workspaceSurface === "scheduled" ? "page" : undefined}
           onClick={openScheduledTasks}
-          disabled={phase === "checking"}
+          disabled={phase !== "authenticated"}
         >
           <CalendarClock aria-hidden="true" />
           Schedules
@@ -429,24 +432,36 @@ function RemixSidebarSessions({
         className="remix-sidebar-sessions-list"
         data-has-more={hasMoreSessions || undefined}
       >
-        <ThreadHistory
-          currentId={sidebarCurrentThreadId(workspaceSurface, thread?.id ?? "")}
-          searchQuery={searchQuery}
-          titleOverrides={localTitles}
-          onRename={(picked, title) =>
-            renameThread(picked.id, title, picked.type)
-          }
-          onDelete={(picked) =>
-            requestDeleteThread(picked.id, picked.title, picked.type)
-          }
-          sessionActions="context"
-          sessionActivity={sessionActivity}
-          completedSessionIds={completedSessionIds}
-          onSessionSeen={markSessionSeen}
-          onPick={(picked) => {
-            if (picked.id !== thread?.id) selectThread(picked);
-          }}
-        />
+        {phase === "checking" ? (
+          <SessionHistorySkeleton />
+        ) : phase === "signed_out" ? (
+          <div className="tavern-empty tavern-thread-empty">
+            <strong>No sessions yet</strong>
+            <span>Sign in to start a chat or run a scheduled task.</span>
+          </div>
+        ) : (
+          <ThreadHistory
+            currentId={sidebarCurrentThreadId(
+              workspaceSurface,
+              thread?.id ?? "",
+            )}
+            searchQuery={searchQuery}
+            titleOverrides={localTitles}
+            onRename={(picked, title) =>
+              renameThread(picked.id, title, picked.type)
+            }
+            onDelete={(picked) =>
+              requestDeleteThread(picked.id, picked.title, picked.type)
+            }
+            sessionActions="context"
+            sessionActivity={sessionActivity}
+            completedSessionIds={completedSessionIds}
+            onSessionSeen={markSessionSeen}
+            onPick={(picked) => {
+              if (picked.id !== thread?.id) selectThread(picked);
+            }}
+          />
+        )}
       </div>
     </section>
   );
@@ -853,7 +868,7 @@ export default function AppShell(): React.JSX.Element {
                   className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
                   style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 >
-                  {isRemixSidebar && canRequestData ? (
+                  {isRemixSidebar ? (
                     <RemixSidebarSessions searchQuery="" />
                   ) : (
                     <>

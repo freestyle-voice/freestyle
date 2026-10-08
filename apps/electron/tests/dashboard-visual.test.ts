@@ -649,6 +649,15 @@ test("keeps guest settings available and requests sign-in only inside Remix", as
   await expect(
     dashboard.getByRole("link", { name: /Transcriptions/ }),
   ).toBeHidden();
+  await expect(
+    dashboard.getByRole("button", { name: "Dismiss sign-in card" }),
+  ).toBeHidden();
+  await dashboard.evaluate(() => {
+    window.location.hash = "#/today";
+  });
+  await expect(
+    dashboard.getByRole("button", { name: "Dismiss sign-in card" }),
+  ).toBeVisible();
 });
 
 test("keeps local settings usable after signing out", async () => {

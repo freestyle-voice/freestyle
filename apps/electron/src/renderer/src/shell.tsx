@@ -882,7 +882,7 @@ export default function AppShell(): React.JSX.Element {
                     </>
                   )}
                 </div>
-                {!isSignInCardDismissed ? (
+                {!isRemixSidebar && !isSignInCardDismissed ? (
                   <SignInCtaCard
                     onDismiss={() => setIsSignInCardDismissed(true)}
                   />

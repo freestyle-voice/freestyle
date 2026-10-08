@@ -240,7 +240,7 @@
   "history": {
     "title": "Verlauf",
     "loading": "Verlauf wird geladen…",
-    "filterTitle": "Verlauf filtern",
+    "filterTitle": "Filter",
     "done": "Fertig",
     "filtersBtn": "Filter",
     "timeLabelAllTime": "Gesamter Zeitraum",

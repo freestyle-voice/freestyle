@@ -897,7 +897,7 @@ test("fills the history height and resizes the feed with the filter rail", async
   );
   expect(closed.samples[2].rail.width).toBeCloseTo(0, 0);
   await expect(
-    dashboard.getByRole("dialog", { name: "Filter History" }),
+    dashboard.getByRole("dialog", { name: "Filter", exact: true }),
   ).toBeHidden();
   await dashboard.getByRole("button", { name: "Show stats" }).click();
   await expect(
@@ -919,7 +919,7 @@ test("keeps history interactive while live filters are open in the right rail", 
     dashboard.getByText("“Edited note 1”", { exact: true }),
   ).toBeVisible();
   await filters.click();
-  const panel = dashboard.getByRole("dialog", { name: "Filter History" });
+  const panel = dashboard.getByRole("dialog", { name: "Filter", exact: true });
   await expect(panel).toBeVisible();
   await expect(panel).not.toHaveAttribute("aria-modal", "true");
   await panel.getByRole("switch", { name: "Diff mode" }).click();

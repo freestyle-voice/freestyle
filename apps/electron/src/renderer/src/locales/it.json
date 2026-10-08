@@ -240,7 +240,7 @@
   "history": {
     "title": "Cronologia",
     "loading": "Caricamento cronologia...",
-    "filterTitle": "Filtra Cronologia",
+    "filterTitle": "Filtro",
     "done": "Fatto",
     "filtersBtn": "Filtri",
     "timeLabelAllTime": "Tutto il periodo",

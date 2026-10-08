@@ -308,8 +308,7 @@
   "history": {
     "title": "History",
     "loading": "Loading history…",
-    "filterTitle": "Filter History",
-    "filtersLive": "Changes apply as you browse.",
+    "filterTitle": "Filter",
     "closeFilters": "Close filters",
     "dateRangeLabel": "Date range",
     "viewLabel": "View",

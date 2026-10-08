@@ -240,7 +240,7 @@
   "history": {
     "title": "Historique",
     "loading": "Chargement de l'historique…",
-    "filterTitle": "Filtrer l'historique",
+    "filterTitle": "Filtre",
     "done": "Terminé",
     "filtersBtn": "Filtres",
     "timeLabelAllTime": "Toute la période",

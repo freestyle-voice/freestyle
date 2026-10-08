@@ -17,7 +17,6 @@ import {
   Sheet,
   SheetClose,
   SheetContent,
-  SheetDescription,
   SheetTitle,
   SheetTrigger,
 } from "@renderer/components/ui/sheet";
@@ -940,19 +939,13 @@ const FiltersPanel = memo(function FiltersPanel({
   return (
     <SheetContent
       docked
+      aria-describedby={undefined}
       // Keep the slide distance stable while its reserved column animates.
       className="pointer-events-auto left-auto w-(--history-filter-width)"
       onInteractOutside={(event) => event.preventDefault()}
     >
-      <header className="border-border flex items-start justify-between gap-3 border-b px-4 py-4">
-        <div className="flex flex-col gap-1">
-          <SheetTitle>{t("history.filterTitle")}</SheetTitle>
-          <SheetDescription>
-            {t("history.filtersLive", {
-              defaultValue: "Changes apply as you browse.",
-            })}
-          </SheetDescription>
-        </div>
+      <header className="border-border flex items-center justify-between gap-3 border-b px-4 py-4">
+        <SheetTitle>{t("history.filterTitle")}</SheetTitle>
         <SheetClose asChild>
           <Button
             variant="ghost"

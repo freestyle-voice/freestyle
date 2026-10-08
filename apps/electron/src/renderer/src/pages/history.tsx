@@ -707,7 +707,6 @@ export default function HistoryPage(): React.JSX.Element {
     return (
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen} modal={false}>
         <div className="flex h-full min-h-0 flex-col">
-          <DragSpacer />
           <div
             className="grid min-h-0 flex-1"
             style={{
@@ -717,7 +716,7 @@ export default function HistoryPage(): React.JSX.Element {
             }}
           >
             <div
-              className="responsive-page-scroll min-w-0 overflow-auto pt-5"
+              className="responsive-page-scroll min-w-0 overflow-auto"
               style={
                 {
                   scrollbarWidth: "none",
@@ -725,6 +724,8 @@ export default function HistoryPage(): React.JSX.Element {
                 } as React.CSSProperties
               }
             >
+              <DragSpacer />
+              <div className="h-5 shrink-0" aria-hidden="true" />
               {searchRow}
               <HistoryFeedSkeleton />
             </div>
@@ -769,25 +770,30 @@ export default function HistoryPage(): React.JSX.Element {
 
   // The right rail shows filters while open, then restores the stats panel.
   // The feed and rail scroll independently so history stays usable throughout.
+  // Match Sheet's 200ms ease-out slide. Only animate while the sheet is mounted
+  // (including its exit), so dragging the stats resize handle stays immediate.
   return (
     <Sheet open={filtersOpen} onOpenChange={setFiltersOpen} modal={false}>
-      <div className="flex h-full min-h-0 flex-col">
-        <DragSpacer />
+      <div className="flex h-full min-h-0 flex-col [container-type:inline-size] [--history-filter-width:min(340px,48cqw)]">
         <div
-          className="grid min-h-0 flex-1 overflow-hidden"
+          data-testid="history-layout"
+          className="grid min-h-0 flex-1 overflow-hidden transition-none duration-200 ease-out has-[[data-slot=sheet-content]]:transition-[grid-template-columns] motion-reduce:duration-0 motion-reduce:transition-none"
           style={{
-            gridTemplateColumns: `minmax(0,1fr) ${filtersOpen ? "min(340px, 48%)" : statsOpen ? `${statsWidth}px` : "0px"}`,
+            gridTemplateColumns: `minmax(0,1fr) ${filtersOpen ? "var(--history-filter-width)" : statsOpen ? `${statsWidth}px` : "0px"}`,
           }}
         >
           <div
-            className="responsive-page-scroll min-w-0 overflow-auto pt-5"
+            data-testid="history-feed"
+            className="responsive-page-scroll min-w-0 overflow-auto transition-[padding-right] duration-200 ease-out motion-reduce:transition-none"
             style={
               {
                 scrollbarWidth: "none",
-                paddingRight: statsOpen || filtersOpen ? "1.25rem" : undefined,
+                paddingRight: statsOpen || filtersOpen ? "1.25rem" : "0px",
               } as React.CSSProperties
             }
           >
+            <DragSpacer />
+            <div className="h-5 shrink-0" aria-hidden="true" />
             {historyPaused && <HistoryPausedNotice />}
             {hero}
             {searchRow}
@@ -807,7 +813,12 @@ export default function HistoryPage(): React.JSX.Element {
                 onWidthChange={setStatsWidth}
               />
             )}
-            {filtersPanel}
+            <div
+              data-testid="history-filter-rail"
+              className="pointer-events-none absolute inset-0 overflow-hidden"
+            >
+              {filtersPanel}
+            </div>
           </div>
         </div>
       </div>
@@ -927,7 +938,12 @@ const FiltersPanel = memo(function FiltersPanel({
   };
 
   return (
-    <SheetContent docked onInteractOutside={(event) => event.preventDefault()}>
+    <SheetContent
+      docked
+      // Keep the slide distance stable while its reserved column animates.
+      className="pointer-events-auto left-auto w-(--history-filter-width)"
+      onInteractOutside={(event) => event.preventDefault()}
+    >
       <header className="border-border flex items-start justify-between gap-3 border-b px-4 py-4">
         <div className="flex flex-col gap-1">
           <SheetTitle>{t("history.filterTitle")}</SheetTitle>

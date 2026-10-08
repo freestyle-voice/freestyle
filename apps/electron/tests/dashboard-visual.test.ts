@@ -806,6 +806,105 @@ test("captures every main dashboard page while loading and after data resolves",
   }
 });
 
+test("fills the history height and resizes the feed with the filter rail", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-filters#/today`);
+  await expect(
+    dashboard.getByText("“Edited note 1”", { exact: true }),
+  ).toBeVisible();
+  await dashboard.getByRole("button", { name: "Hide stats" }).click();
+  const layout = dashboard.getByTestId("history-layout");
+  await expect(layout).toHaveCSS("grid-template-columns", / 0px$/);
+  const layoutBounds = await layout.boundingBox();
+  const mainBounds = await dashboard.locator("main").boundingBox();
+  expect(layoutBounds!.y).toBeCloseTo(mainBounds!.y, 0);
+  expect(layoutBounds!.height).toBeCloseTo(mainBounds!.height, 0);
+
+  // Pause real browser transitions and sample their geometry. This catches a
+  // feed that jumps to its final width before an independent sheet animation.
+  const sampleMotion = async (opening: boolean) =>
+    dashboard.evaluate(async (open) => {
+      const layout = document.querySelector<HTMLElement>(
+        '[data-testid="history-layout"]',
+      )!;
+      const feed = document.querySelector<HTMLElement>(
+        '[data-testid="history-feed"]',
+      )!;
+      const rail = document.querySelector<HTMLElement>(
+        '[data-testid="history-filter-rail"]',
+      )!;
+      const initialWidth = feed.getBoundingClientRect().width;
+      const button = open
+        ? document.querySelector<HTMLButtonElement>(
+            '[data-slot="sheet-trigger"]',
+          )
+        : document.querySelector<HTMLButtonElement>(
+            '[aria-label="Close filters"]',
+          );
+      button!.click();
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+      );
+      const content = document.querySelector<HTMLElement>(
+        '[data-slot="sheet-content"]',
+      )!;
+      const transitions = document.getAnimations().filter((animation) => {
+        const target = (animation.effect as KeyframeEffect | null)?.target;
+        return target === layout || target === feed || target === content;
+      });
+      const layoutTransition = transitions.find(
+        (animation) =>
+          animation instanceof CSSTransition &&
+          animation.transitionProperty === "grid-template-columns",
+      );
+      if (!layoutTransition) throw new Error("History layout did not animate");
+      for (const animation of transitions) animation.pause();
+      const duration = Number(layoutTransition.effect!.getTiming().duration);
+      const samples = [0, duration / 2, duration].map((time) => {
+        for (const animation of transitions) animation.currentTime = time;
+        const content = document.querySelector<HTMLElement>(
+          '[data-slot="sheet-content"]',
+        )!;
+        return {
+          feed: feed.getBoundingClientRect().toJSON(),
+          rail: rail.getBoundingClientRect().toJSON(),
+          panel: content.getBoundingClientRect().toJSON(),
+          layout: layout.getBoundingClientRect().toJSON(),
+        };
+      });
+      for (const animation of transitions) animation.finish();
+      return { initialWidth, samples };
+    }, opening);
+
+  const opened = await sampleMotion(true);
+  expect(opened.samples[0].feed.width).toBeCloseTo(opened.initialWidth, 0);
+  expect(opened.samples[0].rail.width).toBeCloseTo(0, 0);
+  expect(opened.samples[1].feed.width).toBeLessThan(opened.initialWidth);
+  expect(opened.samples[1].feed.width).toBeGreaterThan(
+    opened.samples[2].feed.width,
+  );
+  for (const sample of opened.samples) {
+    expect(sample.feed.right).toBeCloseTo(sample.rail.left, 0);
+    expect(sample.panel.top).toBeCloseTo(sample.layout.top, 0);
+    expect(sample.panel.bottom).toBeCloseTo(sample.layout.bottom, 0);
+    expect(sample.panel.left).toBeCloseTo(sample.rail.left, 0);
+  }
+
+  const closed = await sampleMotion(false);
+  expect(closed.samples[0].feed.width).toBeCloseTo(closed.initialWidth, 0);
+  expect(closed.samples[1].feed.width).toBeGreaterThan(closed.initialWidth);
+  expect(closed.samples[1].feed.width).toBeLessThan(
+    closed.samples[2].feed.width,
+  );
+  expect(closed.samples[2].rail.width).toBeCloseTo(0, 0);
+  await expect(
+    dashboard.getByRole("dialog", { name: "Filter History" }),
+  ).toBeHidden();
+  await dashboard.getByRole("button", { name: "Show stats" }).click();
+  await expect(
+    dashboard.getByRole("button", { name: "Hide stats" }),
+  ).toBeVisible();
+});
+
 test("keeps history interactive while live filters are open in the right rail", async ({
   browserName,
 }, testInfo) => {
@@ -891,6 +990,10 @@ test("keeps history interactive while live filters are open in the right rail", 
   await dashboard.emulateMedia({ reducedMotion: "reduce" });
   await filters.click();
   await expect(panel).toHaveCSS("animation-name", "none");
+  await expect(dashboard.getByTestId("history-layout")).toHaveCSS(
+    "transition-duration",
+    "0s",
+  );
   await expect(
     panel.getByRole("switch", { name: "AI edits" }),
   ).not.toBeChecked();

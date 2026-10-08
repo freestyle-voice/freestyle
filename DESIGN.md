@@ -352,7 +352,9 @@ destructive confirmations use `AlertDialog` (`AlertDialogCancel` +
 History filters use a docked, non-modal `Sheet` beside the feed, with no backdrop
 or focus trap. Keep it open while the user searches, scrolls, or changes pages;
 apply changes immediately and restore the stats rail when it closes. Slide
-motion respects reduced-motion preferences.
+motion respects reduced-motion preferences. The filter rail fills the page height,
+including the space above the feed. Animate its reserved width so the feed narrows
+and expands with the rail; do not reserve the final width before sliding it in.
 
 ### Keycaps → `Kbd`
 `import { Kbd } from ".../ui/kbd"` for `⌘K`-style hints and keycaps.

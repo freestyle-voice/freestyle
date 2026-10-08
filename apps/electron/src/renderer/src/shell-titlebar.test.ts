@@ -13,7 +13,7 @@ describe("desktop content titlebar", () => {
       readFile(resolve(sourceDir, "shell.css"), "utf8"),
     ]);
 
-    expect(shell).toContain('className="glass-content-titlebar"');
+    expect(shell).toContain('"glass-content-titlebar",');
     expect(shell).toContain('WebkitAppRegion: "drag"');
     expect(shell).not.toContain('className="glass-topbar');
     expect(spacer).toContain("h-7");
@@ -30,7 +30,7 @@ describe("desktop content titlebar", () => {
       'import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform"',
     );
     expect(shell).toContain('IS_MAC && !isFullscreen ? "h-8" : "h-0"');
-    expect(shell).toContain("{IS_MAC ? (");
+    expect(shell).toContain("if (!IS_MAC && !sidebarHidden) return null;");
     expect(shell).toContain('className="sidebar-reveal-trigger"');
     expect(shell).not.toContain("if (!IS_MAC) return null;");
   });

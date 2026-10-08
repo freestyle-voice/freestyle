@@ -105,6 +105,18 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           });
         }
 
+        const thread = {
+          id: "visual-review-thread",
+          type: "remote",
+          title: "Sidebar layout",
+          messages: [
+            {
+              id: "visual-review-message",
+              role: "assistant",
+              parts: [{ type: "text", text: "Ready when you are." }],
+            },
+          ],
+        };
         const body = (() => {
           if (url.pathname === "/api/auth/status") {
             return {
@@ -135,11 +147,13 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             };
           }
           if (url.pathname === "/api/history/daily") return { days: [] };
-          if (url.pathname === "/api/settings") return {};
+          if (url.pathname === "/api/settings") {
+            return { onboarding: JSON.stringify({ v: 2, done: true }) };
+          }
           if (url.pathname === "/api/dismissed-notifications") return [];
           if (url.pathname === "/api/agent/activity") return { threads: [] };
           if (url.pathname === "/api/agent/thread/latest") {
-            return { thread: null };
+            return { thread };
           }
           if (url.pathname === "/api/agent/thread/list") {
             return { threads: [], nextCursor: null };
@@ -147,7 +161,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           if (url.pathname.startsWith("/api/agent/thread/")) {
             if (url.pathname.endsWith("/runs")) return { runs: [] };
             return {
-              thread: null,
+              thread,
               activeTurn: null,
               pendingAction: null,
             };
@@ -394,11 +408,64 @@ test("captures the desktop sidebar hidden and restored", async ({
   const revealBounds = await showSidebar.boundingBox();
   expect(revealBounds).not.toBeNull();
   expect(revealBounds?.x).toBeLessThanOrEqual(16);
-  const hidden = testInfo.outputPath("sidebar-hidden.png");
-  await dashboard.screenshot({ path: hidden });
-  await testInfo.attach("sidebar-hidden", {
-    path: hidden,
-    contentType: "image/png",
+  for (const width of [1080, 760]) {
+    await app!.evaluate(({ BrowserWindow }, windowWidth) => {
+      const panel = BrowserWindow.getAllWindows().find((window) =>
+        window.webContents.getURL().includes("index.html"),
+      );
+      panel?.setSize(windowWidth, 760);
+    }, width);
+
+    for (const path of ["/today", "/remix", "/settings/transcription"]) {
+      await dashboard.goto(
+        `${DASHBOARD_URL}?visual=sidebar-toggle-${width}-${path}#${path}`,
+      );
+      await dashboard
+        .locator("html")
+        .evaluate((html) => html.classList.add("dark"));
+      await expect(showSidebar).toBeVisible();
+
+      const expectReservedHeader = async () => {
+        const bounds = await showSidebar.boundingBox();
+        expect(bounds).toEqual(revealBounds);
+        const contentBounds = await dashboard
+          .locator(".glass-content > main")
+          .boundingBox();
+        expect(contentBounds).not.toBeNull();
+        expect(contentBounds!.y).toBeGreaterThanOrEqual(
+          bounds!.y + bounds!.height,
+        );
+        await expectDashboardWindowButtonPosition({ x: 62, y: 16 });
+      };
+      // Check before and after lazy route/data loading: neither state should
+      // put content underneath the shell's restore button.
+      await expectReservedHeader();
+      await expect(dashboard.getByRole("status")).toHaveCount(0, {
+        timeout: 5_000,
+      });
+      await expect(showSidebar).toBeVisible();
+      await expect(dashboard).toHaveURL(new RegExp(`#${path}$`));
+      if (path === "/remix") {
+        await expect(
+          dashboard.getByText("Ready when you are.", { exact: true }),
+        ).toBeVisible();
+      }
+      await expectReservedHeader();
+      const hidden = testInfo.outputPath(
+        `sidebar-hidden-${width}-${path.replaceAll("/", "-")}.png`,
+      );
+      await dashboard.screenshot({ path: hidden });
+      await testInfo.attach(`sidebar-hidden-${width}-${path}`, {
+        path: hidden,
+        contentType: "image/png",
+      });
+    }
+  }
+
+  await app!.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().includes("index.html"))
+      ?.setSize(1080, 760);
   });
 
   await showSidebar.click();

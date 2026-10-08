@@ -11,6 +11,15 @@
   background: transparent;
 }
 
+/* Keep the restore control and macOS traffic lights above every route. The
+ * collapsed header participates in layout on Windows/Linux too, so page
+ * content never relies on its own top padding to avoid the button. */
+.glass-content-titlebar--sidebar-hidden {
+  position: relative;
+  flex: 0 0 54px;
+  height: 54px;
+}
+
 .remix-sidebar-titlebar {
   display: flex;
   align-items: center;

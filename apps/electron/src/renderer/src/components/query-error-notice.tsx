@@ -17,7 +17,7 @@ export function QueryErrorNotice({
     >
       <span>{error.message}</span>
       <Button variant="outline" size="sm" onClick={onRetry}>
-        {t("common.errors.retry")}
+        {t("common.retry")}
       </Button>
     </div>
   );

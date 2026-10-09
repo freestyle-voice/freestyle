@@ -1,16 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDb } from "../src/lib/db.js";
+import { localDayBounds } from "../src/lib/local-day-bounds.js";
 import history from "../src/routes/history.js";
 
-// SQLite uses the platform C runtime for local time. Windows' CRT expects
-// a three-letter TZ and UTC offset rather than an IANA zone identifier.
-function setTimezone(zone: "America/New_York" | "Asia/Tokyo" | "UTC"): void {
-  const windowsZones = {
-    "America/New_York": "EST5EDT",
-    "Asia/Tokyo": "JST-9",
-    UTC: "UTC0",
-  };
-  vi.stubEnv("TZ", process.platform === "win32" ? windowsZones[zone] : zone);
+// Node's local calendar uses IANA timezone rules on every native CI platform.
+function setTimezone(zone: string): void {
+  vi.stubEnv("TZ", zone);
 }
 
 function insert(createdAt: string, text = createdAt): void {
@@ -50,18 +45,38 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  vi.useRealTimers();
 });
 
 describe("history calendar bounds using real SQLite", () => {
   it.each([
-    ["2026-03-08", "2026-03-08 05:00:00", "2026-03-09 04:00:00", 23],
-    ["2026-11-01", "2026-11-01 04:00:00", "2026-11-02 05:00:00", 25],
-  ] as const)("includes the whole %s DST day", async (day, start, end, hours) => {
-    setTimezone("America/New_York");
-    const beforeStart = new Date(`${start}Z`);
-    beforeStart.setSeconds(beforeStart.getSeconds() - 1);
-    const beforeEnd = new Date(`${end}Z`);
-    beforeEnd.setMilliseconds(beforeEnd.getMilliseconds() - 1);
+    [
+      "2026-03-08",
+      "America/New_York",
+      "2026-03-08 05:00:00",
+      "2026-03-09 04:00:00",
+      23,
+    ],
+    [
+      "2026-11-01",
+      "America/New_York",
+      "2026-11-01 04:00:00",
+      "2026-11-02 05:00:00",
+      25,
+    ],
+    [
+      "2019-09-08",
+      "America/Santiago",
+      "2019-09-08 04:00:00",
+      "2019-09-09 03:00:00",
+      23,
+    ],
+  ] as const)("includes the whole %s DST day in %s", async (day, zone, start, end, hours) => {
+    setTimezone(zone);
+    const bounds = localDayBounds(day);
+    expect(bounds).toEqual({ start, end });
+    const beforeStart = new Date(new Date(`${start}Z`).getTime() - 1000);
+    const beforeEnd = new Date(new Date(`${end}Z`).getTime() - 1);
     insert(beforeStart.toISOString().replace("T", " ").slice(0, 19));
     insert(start);
     insert(beforeEnd.toISOString().replace("T", " ").slice(0, -1));
@@ -80,8 +95,33 @@ describe("history calendar bounds using real SQLite", () => {
       unfiltered_total_sessions: 4,
     });
     expect(
-      new Date(`${end}Z`).getTime() - new Date(`${start}Z`).getTime(),
+      new Date(`${bounds.end}Z`).getTime() -
+        new Date(`${bounds.start}Z`).getTime(),
     ).toBe(hours * 60 * 60 * 1000);
+  });
+
+  it("returns an empty range for a skipped local calendar day", async () => {
+    setTimezone("Pacific/Apia");
+    expect(localDayBounds("2011-12-30")).toEqual({
+      start: "2011-12-30 10:00:00",
+      end: "2011-12-30 10:00:00",
+    });
+    insert("2011-12-30 09:59:59");
+    insert("2011-12-30 10:00:00");
+    const query = "start_date=2011-12-30&end_date=2011-12-30";
+    expect((await list(query)).total).toBe(0);
+    expect((await stats(query)).total_sessions).toBe(0);
+  });
+
+  it("preserves four-digit years below 100 and bounds at the calendar limit", async () => {
+    setTimezone("UTC");
+    expect(localDayBounds("0096-02-29")).toEqual({
+      start: "0096-02-29 00:00:00",
+      end: "0096-03-01 00:00:00",
+    });
+    insert("9999-12-31 23:59:59");
+    expect((await list("end_date=9999-12-31")).total).toBe(1);
+    expect((await stats("end_date=9999-12-31")).total_sessions).toBe(1);
   });
 
   it("uses the server local calendar in a timezone east of UTC", async () => {
@@ -132,25 +172,27 @@ describe("history calendar bounds using real SQLite", () => {
     expect((await stats(query)).total_sessions).toBe(1);
   });
 
-  it("keeps today's totals independent of the selected range", async () => {
+  it.each([
+    ["2026-03-08T12:00:00Z", "2026-03-08 05:00:00", "2026-03-09 04:00:00"],
+    ["2026-11-01T12:00:00Z", "2026-11-01 04:00:00", "2026-11-02 05:00:00"],
+  ])("keeps today's totals independent of the selected range on %s", async (now, start, end) => {
     setTimezone("America/New_York");
-    const db = getDb();
-    const bounds = db
-      .prepare(
-        `SELECT datetime('now', 'localtime', 'start of day', 'utc') as start,
-              datetime('now', 'localtime', 'start of day', '+1 day', 'utc') as end`,
-      )
-      .get() as { start: string; end: string };
-    insert(bounds.start);
-    insert(bounds.end);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(now));
+    const beforeStart = new Date(new Date(`${start}Z`).getTime() - 1000);
+    const beforeEnd = new Date(new Date(`${end}Z`).getTime() - 1);
+    insert(beforeStart.toISOString().replace("T", " ").slice(0, 19));
+    insert(start);
+    insert(beforeEnd.toISOString().replace("T", " ").slice(0, -1));
+    insert(end);
     insert("2020-01-01 06:00:00");
     expect(
       await stats("start_date=2020-01-01&end_date=2020-01-01"),
     ).toMatchObject({
       total_sessions: 1,
-      today_sessions: 1,
-      today_cost: 0.5,
-      unfiltered_total_sessions: 3,
+      today_sessions: 2,
+      today_cost: 1,
+      unfiltered_total_sessions: 5,
     });
   });
 
@@ -166,10 +208,8 @@ describe("history calendar bounds using real SQLite", () => {
     prepare.mockRestore();
     for (const sql of rangeQueries) {
       const params = sql.includes("LIMIT ?")
-        ? ["2026-10-08", "2026-10-09", 20, 0]
-        : sql.includes("datetime(?,")
-          ? ["2026-10-08", "2026-10-09"]
-          : [];
+        ? ["2026-10-08 00:00:00", "2026-10-10 00:00:00", 20, 0]
+        : ["2026-10-08 00:00:00", "2026-10-10 00:00:00"];
       const plan = db.prepare(`EXPLAIN QUERY PLAN ${sql}`).all(...params) as {
         detail: string;
       }[];

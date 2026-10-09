@@ -546,6 +546,7 @@ jobs:
       - knip
       - typecheck
       - test-server
+      - test-history-platforms
       - test-electron
       - build-plugins
       - mobile

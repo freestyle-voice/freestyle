@@ -182,6 +182,9 @@ jobs:
       - name: Run server tests
         run: pnpm --filter @freestyle-voice/server run test
 
+      - name: Run standalone server lifecycle E2E
+        run: pnpm --filter @freestyle-voice/server run test:e2e:lifecycle
+
   test-electron:
     name: Test (Electron E2E)
     needs: [changes, test-server]

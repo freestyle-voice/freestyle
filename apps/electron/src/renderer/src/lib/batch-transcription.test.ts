@@ -75,8 +75,10 @@ describe("batch transcription transport", () => {
   });
   it("returns an aborted disposition and forwards cancellation", async () => {
     const controller = new AbortController();
-    controller.abort();
-    fetchMock.mockRejectedValue(new DOMException("Aborted", "AbortError"));
+    fetchMock.mockImplementation(async () => {
+      controller.abort();
+      throw new DOMException("Aborted", "AbortError");
+    });
     expect(
       await transcribeBatch({
         audio,

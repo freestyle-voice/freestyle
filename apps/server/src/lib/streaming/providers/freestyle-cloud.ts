@@ -61,6 +61,7 @@ export class FreestyleCloudTranscriptionProvider
     const data = await transcribeWithFreestyleCloud({
       token: opts.apiKey,
       audio: opts.audio,
+      signal: opts.signal,
       ...(opts.languages !== undefined
         ? { languages: opts.languages }
         : opts.language

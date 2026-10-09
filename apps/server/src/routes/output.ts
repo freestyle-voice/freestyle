@@ -34,6 +34,13 @@ const outputRoute = new Hono()
   // safely proceed on a transient server error.
   .get("/hook", (c) => c.json({ present: plugins().has("beforeOutput") }))
   .post("/deliver", zValidator("json", deliverSchema), async (c) => {
+    const signal = c.req.raw.signal;
+    const canceledResponse = () =>
+      c.json({
+        output: { text: "", mode: OutputMode.None },
+        disposition: "aborted" as const,
+      });
+    if (signal.aborted) return canceledResponse();
     const { text, mode, appContext } = c.req.valid("json");
     // `beforeOutput` never receives the LLM capability (SDK contract), so skip
     // resolving a chat model for this stage.
@@ -52,6 +59,7 @@ const outputRoute = new Hono()
     // even when it left `text`/`mode` untouched) or implicitly by setting mode
     // "none"/emptying the text. Explicit terminal state wins so an `abort()` is
     // reported as aborted rather than a plain suppression.
+    if (signal.aborted) return canceledResponse();
     const disposition =
       api.control.state !== "running"
         ? dispositionFromControl(api.control.state)

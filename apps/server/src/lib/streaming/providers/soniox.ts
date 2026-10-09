@@ -75,6 +75,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = "soniox";
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
+    opts.signal?.throwIfAborted();
     return new Promise((resolve, reject) => {
       const finalTokens: SonioxToken[] = [];
       let closed = false;
@@ -85,9 +86,24 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
         languages: opts.language ? [opts.language] : undefined,
       });
 
+      let timeout: ReturnType<typeof setTimeout>;
+      const cleanup = () => {
+        clearTimeout(timeout);
+        opts.signal?.removeEventListener("abort", onAbort);
+      };
+      const fail = (error: unknown) => {
+        if (closed) return;
+        closed = true;
+        cleanup();
+        ws.terminate();
+        reject(error);
+      };
+      const onAbort = () =>
+        fail(opts.signal?.reason ?? new DOMException("Canceled", "AbortError"));
       const finish = (text: string) => {
         if (closed) return;
         closed = true;
+        cleanup();
         try {
           ws.close();
         } catch {}
@@ -95,6 +111,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
       };
 
       ws.on("open", () => {
+        if (closed) return;
         ws.send(JSON.stringify(config));
         ws.send(Buffer.from(opts.audio));
         ws.send(JSON.stringify({ type: "finalize" }));
@@ -115,7 +132,7 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
         }
 
         if (msg.error_code) {
-          reject(
+          fail(
             new Error(msg.error_message ?? `Soniox error ${msg.error_code}`),
           );
           return;
@@ -134,12 +151,14 @@ export class SonioxTranscriptionProvider implements TranscriptionProvider {
       });
 
       ws.on("error", (err) => {
-        if (!closed) reject(err);
+        fail(err);
       });
 
-      setTimeout(() => {
+      timeout = setTimeout(() => {
         if (!closed) finish(renderTokens(finalTokens, []).trim());
       }, COMMIT_TIMEOUT_MS);
+      opts.signal?.addEventListener("abort", onAbort, { once: true });
+      if (opts.signal?.aborted) onAbort();
     });
   }
 

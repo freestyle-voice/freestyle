@@ -19,6 +19,10 @@ const postProcessRoute = new Hono().post(
   "/",
   zValidator("json", postProcessSchema),
   async (c) => {
+    const signal = c.req.raw.signal;
+    const canceledResponse = () =>
+      c.json({ cleaned: "", disposition: "aborted" as const });
+    if (signal.aborted) return canceledResponse();
     const body = c.req.valid("json");
 
     const appContext: string | null = body.appContext ?? null;
@@ -30,9 +34,11 @@ const postProcessRoute = new Hono().post(
       pp = await postProcess(body.text, appContext, {
         languages,
         source: "multi_segment",
+        signal,
         api,
       });
     } catch (err) {
+      if (signal.aborted) return canceledResponse();
       if (err instanceof FreestyleCloudAuthError) {
         invalidateSession();
         return c.json({ error: "cloud_auth_required" }, 401);
@@ -47,6 +53,7 @@ const postProcessRoute = new Hono().post(
     // merge too; surface the disposition (blanking the text when terminal) and
     // emit the abort event, so the renderer suppresses delivery just like the
     // single-segment `/transcribe` path.
+    if (signal.aborted) return canceledResponse();
     const suppressed = api.control.state !== "running";
     emitAbortEvent(api, PipelineStage.Cleanup);
     return c.json({

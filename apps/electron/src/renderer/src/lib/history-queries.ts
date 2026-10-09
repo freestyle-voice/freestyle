@@ -1,5 +1,6 @@
 import { keepPreviousData } from "@tanstack/react-query";
 import { getClient } from "./api";
+import { checkedJson } from "./checked-response";
 import { queryKeys } from "./query";
 
 export const HISTORY_PAGE_SIZE = 20;
@@ -59,13 +60,10 @@ export function historyListQueryOptions(
       if (search) query.search = search;
       if (startDate) query.start_date = startDate;
       if (endDate) query.end_date = endDate;
-      const res = await getClient().api.history.$get(
-        { query },
-        { init: { signal } },
+      return checkedJson<{ items: HistoryEntry[]; total: number }>(
+        getClient().api.history.$get({ query }, { init: { signal } }),
+        "Could not load history",
       );
-      return res.ok
-        ? ((await res.json()) as { items: HistoryEntry[]; total: number })
-        : { items: [] as HistoryEntry[], total: 0 };
     },
     placeholderData: keepPreviousData,
   };
@@ -78,11 +76,10 @@ export function historyStatsQueryOptions(startDate: string, endDate: string) {
       const query: Record<string, string> = {};
       if (startDate) query.start_date = startDate;
       if (endDate) query.end_date = endDate;
-      const res = await getClient().api.history.stats.$get(
-        { query },
-        { init: { signal } },
+      return checkedJson<Stats>(
+        getClient().api.history.stats.$get({ query }, { init: { signal } }),
+        "Could not load history statistics",
       );
-      return res.ok ? ((await res.json()) as Stats) : null;
     },
     placeholderData: keepPreviousData,
   };
@@ -92,12 +89,10 @@ export function historyDailyQueryOptions() {
   return {
     queryKey: queryKeys.history.daily,
     queryFn: async ({ signal }: { signal: AbortSignal }) => {
-      const res = await getClient().api.history.daily.$get(
-        {},
-        { init: { signal } },
+      const data = await checkedJson<{ days: DayActivity[] }>(
+        getClient().api.history.daily.$get({}, { init: { signal } }),
+        "Could not load daily activity",
       );
-      if (!res.ok) return [] as DayActivity[];
-      const data = (await res.json()) as { days: DayActivity[] };
       return data.days;
     },
   };

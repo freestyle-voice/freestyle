@@ -5,6 +5,7 @@ import {
   parseHistoryFilters,
 } from "@freestyle-voice/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { QueryErrorNotice } from "@renderer/components/query-error-notice";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";
 import { Label } from "@renderer/components/ui/label";
@@ -36,6 +37,7 @@ import {
   usePersistentState,
 } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
+import { checkedResponse } from "@renderer/lib/checked-response";
 import { formatNumber } from "@renderer/lib/format";
 import {
   getLocalDateString,
@@ -357,12 +359,18 @@ export default function HistoryPage(): React.JSX.Element {
 
   const queryClient = useQueryClient();
 
-  const { data: historyData, isLoading: loading } = useQuery(
-    historyListQueryOptions(page, querySearch, startDate, endDate),
-  );
-  const { data: statsData, isLoading: statsLoading } = useQuery(
-    historyStatsQueryOptions(startDate, endDate),
-  );
+  const {
+    data: historyData,
+    isLoading: loading,
+    error: historyError,
+    refetch: refetchHistory,
+  } = useQuery(historyListQueryOptions(page, querySearch, startDate, endDate));
+  const {
+    data: statsData,
+    isLoading: statsLoading,
+    error: statsError,
+    refetch: refetchStats,
+  } = useQuery(historyStatsQueryOptions(startDate, endDate));
 
   const apiEntries = historyData?.items ?? [];
   const devSeedEntry = useMemo<HistoryEntry | null>(() => {
@@ -423,7 +431,11 @@ export default function HistoryPage(): React.JSX.Element {
   // Per-day usage for the heatmap. Fixed lookback window on the server, so it
   // ignores the list filters; shares the "history" key prefix so a completed
   // transcription invalidates it along with the feed.
-  const { data: dailyData } = useQuery(historyDailyQueryOptions());
+  const {
+    data: dailyData,
+    error: dailyError,
+    refetch: refetchDaily,
+  } = useQuery(historyDailyQueryOptions());
 
   // Refetch when the pill reports a completed transcription.
   useEffect(() => {
@@ -457,12 +469,23 @@ export default function HistoryPage(): React.JSX.Element {
     [queryClient],
   );
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteEntry = useCallback(
     async (id: number) => {
-      await getClient().api.history[":id"].$delete({
-        param: { id: String(id) },
-      });
-      void invalidate();
+      setDeleteError(null);
+      try {
+        await checkedResponse(
+          getClient().api.history[":id"].$delete({ param: { id: String(id) } }),
+          "Could not delete history entry",
+        );
+        void invalidate();
+      } catch (error) {
+        setDeleteError(
+          error instanceof Error
+            ? error.message
+            : "Could not delete history entry",
+        );
+      }
     },
     [invalidate],
   );
@@ -509,7 +532,11 @@ export default function HistoryPage(): React.JSX.Element {
     return out;
   }, [dailyData, hasDevSeedEntry]);
 
-  const isGenuineEmpty = stats?.unfiltered_total_sessions === 0;
+  const isGenuineEmpty =
+    !historyError &&
+    !statsError &&
+    !!historyData &&
+    stats?.unfiltered_total_sessions === 0;
 
   const hero = heroReady && !heroDismissed && !isGenuineEmpty && (
     <div className="relative mb-7">
@@ -614,7 +641,7 @@ export default function HistoryPage(): React.JSX.Element {
   );
 
   const feed =
-    entries.length === 0 ? (
+    historyError && !historyData ? null : entries.length === 0 ? (
       <NoSearchResults
         hasSearch={!!querySearch}
         hasDates={hasCustomRange}
@@ -715,6 +742,10 @@ export default function HistoryPage(): React.JSX.Element {
           style={{ scrollbarWidth: "none" } as React.CSSProperties}
         >
           {historyPaused && <HistoryPausedNotice />}
+          <QueryErrorNotice
+            error={dailyError}
+            onRetry={() => void refetchDaily()}
+          />
           {hero}
           <EmptyState />
         </div>
@@ -771,7 +802,28 @@ export default function HistoryPage(): React.JSX.Element {
             {!loading && historyPaused && <HistoryPausedNotice />}
             {!loading && hero}
             {searchRow}
-            {loading ? <HistoryFeedSkeleton /> : feed}
+            <QueryErrorNotice
+              error={statsError}
+              onRetry={() => void refetchStats()}
+            />
+            <QueryErrorNotice
+              error={historyError}
+              onRetry={() => void refetchHistory()}
+            />
+            <QueryErrorNotice
+              error={dailyError}
+              onRetry={() => void refetchDaily()}
+            />
+            {deleteError && (
+              <p role="alert" className="text-destructive mb-4 text-sm">
+                {deleteError}
+              </p>
+            )}
+            {loading ? (
+              <HistoryFeedSkeleton />
+            ) : historyError && !historyData ? null : (
+              feed
+            )}
             {!loading && pagination}
           </div>
           <div className="relative min-h-0 min-w-0">

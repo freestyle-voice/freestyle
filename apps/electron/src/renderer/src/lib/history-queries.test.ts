@@ -140,3 +140,25 @@ describe("history query efficiency", () => {
     }
   });
 });
+
+describe("history failures remain errors", () => {
+  it("retains cached history when a refresh fails", async () => {
+    const options = historyListQueryOptions(0, "", "", "");
+    const cached = await client.fetchQuery(options);
+    getList.mockResolvedValue(new Response("failed", { status: 500 }));
+    await expect(
+      client.fetchQuery({ ...options, staleTime: 0 }),
+    ).rejects.toThrow("HTTP 500");
+    expect(client.getQueryData(options.queryKey)).toEqual(cached);
+    expect(client.getQueryState(options.queryKey)?.status).toBe("error");
+  });
+  it("isolates a failed stats request from a successful history list", async () => {
+    getStats.mockResolvedValue(new Response("failed", { status: 503 }));
+    await expect(
+      client.fetchQuery(historyStatsQueryOptions("", "")),
+    ).rejects.toThrow("HTTP 503");
+    await expect(
+      client.fetchQuery(historyListQueryOptions(0, "", "", "")),
+    ).resolves.toMatchObject({ total: 40 });
+  });
+});

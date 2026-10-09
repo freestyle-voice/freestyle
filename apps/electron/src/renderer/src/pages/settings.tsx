@@ -19,6 +19,7 @@ import {
 import { LanguageSelector } from "@renderer/components/language-selector";
 import { McpConnections } from "@renderer/components/mcp-connections";
 import { NotificationsHistory } from "@renderer/components/notifications-history";
+import { QueryErrorNotice } from "@renderer/components/query-error-notice";
 import { useRemixSession } from "@renderer/components/remix-session-context";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
@@ -58,6 +59,7 @@ import {
 } from "@renderer/lib/api";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import { resetBrainCache } from "@renderer/lib/brain-fs";
+import { checkedResponse } from "@renderer/lib/checked-response";
 import {
   setDeletionConfirmationSkipped,
   shouldSkipDeletionConfirmation,
@@ -70,6 +72,8 @@ import {
   queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
+import { replaceSetting } from "@renderer/lib/settings";
+import { saveSetting } from "@renderer/lib/settings-api";
 import { getThread } from "@renderer/lib/threads";
 import { useCloudConfig } from "@renderer/lib/use-cloud-config";
 import {
@@ -361,39 +365,67 @@ export default function SettingsPage(): React.JSX.Element {
     }, 30000);
   }, []);
 
-  const handleHotkeyModeChange = useCallback((mode: "hold" | "toggle") => {
-    setHotkeyMode(mode);
-    window.api?.setHotkeyMode?.(mode);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.hotkeyMode },
-        json: { value: mode },
-      })
-      .catch(() => {});
-  }, []);
+  const queryClient = useQueryClient();
+  const [settingsActionError, setSettingsActionError] = useState<string | null>(
+    null,
+  );
+  const [hotkeySaving, setHotkeySaving] = useState(false);
+  const hotkeySavingRef = useRef(false);
 
-  const handleHotkeyRecorded = useCallback((accelerator: string) => {
-    setHotkey(accelerator);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.hotkey },
-        json: { value: accelerator },
-      })
-      .catch(() => {});
-  }, []);
+  const persistHotkeySetting = useCallback(
+    async (key: string, value: string, apply: () => void) => {
+      if (hotkeySavingRef.current) return;
+      hotkeySavingRef.current = true;
+      setHotkeySaving(true);
+      setSettingsActionError(null);
+      try {
+        await saveSetting(key, value);
+        queryClient.setQueryData<Record<string, string>>(
+          queryKeys.settings,
+          (settings) => replaceSetting(settings ?? {}, key, value),
+        );
+        apply();
+      } catch (error) {
+        setSettingsActionError(
+          error instanceof Error ? error.message : "Could not save setting",
+        );
+      } finally {
+        hotkeySavingRef.current = false;
+        setHotkeySaving(false);
+      }
+    },
+    [queryClient],
+  );
 
-  // The remix listener re-reads its accelerator from the server rather than
-  // being handed one, so the reload has to wait for the write to land.
-  const handleRemixHotkeyRecorded = useCallback((accelerator: string) => {
-    setRemixHotkey(accelerator);
-    getClient()
-      .api.settings[":key"].$put({
-        param: { key: SETTINGS_KEYS.remixHotkey },
-        json: { value: accelerator },
-      })
-      .then(() => window.api?.reloadRemixHotkey?.())
-      .catch(() => {});
-  }, []);
+  const handleHotkeyModeChange = useCallback(
+    (mode: "hold" | "toggle") => {
+      void persistHotkeySetting(SETTINGS_KEYS.hotkeyMode, mode, () => {
+        setHotkeyMode(mode);
+        window.api?.setHotkeyMode?.(mode);
+      });
+    },
+    [persistHotkeySetting],
+  );
+
+  const handleHotkeyRecorded = useCallback(
+    (accelerator: string) => {
+      void persistHotkeySetting(SETTINGS_KEYS.hotkey, accelerator, () => {
+        setHotkey(accelerator);
+        window.api?.stopHotkeyRecording?.(accelerator);
+      });
+    },
+    [persistHotkeySetting],
+  );
+
+  const handleRemixHotkeyRecorded = useCallback(
+    (accelerator: string) => {
+      void persistHotkeySetting(SETTINGS_KEYS.remixHotkey, accelerator, () => {
+        setRemixHotkey(accelerator);
+        window.api?.reloadRemixHotkey?.();
+      });
+    },
+    [persistHotkeySetting],
+  );
 
   const {
     state: recorderState,
@@ -406,6 +438,7 @@ export default function SettingsPage(): React.JSX.Element {
     startRecording: startHotkeyRecording,
     cancelRecording: cancelHotkeyRecording,
   } = useHotkeyRecorder(handleHotkeyRecorded, {
+    deferActivationUntilSaved: true,
     isBlocked: (accel) => acceleratorsEqual(accel, remixHotkey),
   });
 
@@ -422,8 +455,6 @@ export default function SettingsPage(): React.JSX.Element {
     target: "remix",
     isBlocked: (accel) => acceleratorsEqual(accel, hotkey),
   });
-
-  const queryClient = useQueryClient();
 
   // All persisted settings in one request (replaces ~10 individual GETs).
   const settingsQuery = useQuery(settingsQueryOptions());
@@ -632,8 +663,18 @@ export default function SettingsPage(): React.JSX.Element {
     if (!confirm(t("settings.data.clearHistoryConfirm"))) {
       return;
     }
-    await getClient().api.history.$delete();
-    void queryClient.invalidateQueries({ queryKey: queryKeys.history.all });
+    setSettingsActionError(null);
+    try {
+      await checkedResponse(
+        getClient().api.history.$delete(),
+        "Could not clear history",
+      );
+      void queryClient.invalidateQueries({ queryKey: queryKeys.history.all });
+    } catch (error) {
+      setSettingsActionError(
+        error instanceof Error ? error.message : "Could not clear history",
+      );
+    }
   }, [t, queryClient]);
 
   const clearConversations = useCallback(async () => {
@@ -836,6 +877,20 @@ export default function SettingsPage(): React.JSX.Element {
             </h1>
           </header>
 
+          <QueryErrorNotice
+            error={settingsQuery.error}
+            onRetry={() => void settingsQuery.refetch()}
+          />
+          {settingsActionError && (
+            <p role="alert" className="text-destructive mb-4 text-sm">
+              {settingsActionError}
+            </p>
+          )}
+          {hotkeySaving && (
+            <p role="status" className="text-muted-foreground mb-4 text-sm">
+              Saving hotkey setting…
+            </p>
+          )}
           <div className="min-h-0 px-1 -mx-1">
             {activeSection === "application" && (
               <SettingsPanel>
@@ -889,6 +944,7 @@ export default function SettingsPage(): React.JSX.Element {
                     <div className="relative inline-flex">
                       <Button
                         variant="outline"
+                        disabled={hotkeySaving || !settingsQuery.data}
                         onClick={startHotkeyRecording}
                         className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
                       >
@@ -946,22 +1002,24 @@ export default function SettingsPage(): React.JSX.Element {
                       : t("settings.recording.activationDescHold")
                   }
                 >
-                  <SegmentedControl
-                    value={hotkeyMode}
-                    onValueChange={(v) =>
-                      handleHotkeyModeChange(v as "hold" | "toggle")
-                    }
-                    options={[
-                      {
-                        value: "hold",
-                        label: t("settings.recording.activationHold"),
-                      },
-                      {
-                        value: "toggle",
-                        label: t("settings.recording.activationToggle"),
-                      },
-                    ]}
-                  />
+                  <fieldset disabled={hotkeySaving || !settingsQuery.data}>
+                    <SegmentedControl
+                      value={hotkeyMode}
+                      onValueChange={(v) =>
+                        handleHotkeyModeChange(v as "hold" | "toggle")
+                      }
+                      options={[
+                        {
+                          value: "hold",
+                          label: t("settings.recording.activationHold"),
+                        },
+                        {
+                          value: "toggle",
+                          label: t("settings.recording.activationToggle"),
+                        },
+                      ]}
+                    />
+                  </fieldset>
                 </Row>
 
                 <Row
@@ -1109,6 +1167,7 @@ export default function SettingsPage(): React.JSX.Element {
                     <div className="relative inline-flex">
                       <Button
                         variant="outline"
+                        disabled={hotkeySaving || !settingsQuery.data}
                         onClick={startRemixHotkeyRecording}
                         className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
                       >

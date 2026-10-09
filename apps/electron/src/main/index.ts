@@ -4642,16 +4642,11 @@ function cleanupBeforeQuit(): Promise<void> {
       audioPlaybackController.restoreSync();
       stopLinuxPasteHelper();
       destroyPanelWindow();
-      if (keyListener) {
-        void keyListener.stop();
-        keyListener = null;
-      }
-      if (remixKeyListener) {
-        void remixKeyListener.stop();
-        remixKeyListener = null;
-      }
       stopHotkeyRecorderProcess();
       globalShortcut.unregisterAll();
+      // Native event-tap helpers must exit before Electron terminates, otherwise
+      // they continue intercepting system keys after their parent has gone.
+      await stopNativeHotkeyListeners();
     } finally {
       await stopOwnedServer();
     }

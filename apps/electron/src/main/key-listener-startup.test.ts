@@ -60,6 +60,49 @@ describe("NativeKeyListener startup", () => {
     expect(child.kill).toHaveBeenCalledWith("SIGTERM");
     await expect(started).resolves.toBe(false);
     expect(errors).toContain("Key listener timed out waiting for READY.");
+    emit("close", null, "SIGTERM");
+  });
+
+  it("kills a listener ignoring SIGTERM and waits for its actual close", async () => {
+    vi.useFakeTimers();
+    const listener = new NativeKeyListener({
+      hotkey: "Fn",
+      onKeyDown: () => {},
+      onKeyUp: () => {},
+    });
+    void listener.start();
+    let stopped = false;
+    const termination = listener.stop();
+    expect(listener.stop()).toBe(termination);
+    const completed = termination.then(() => {
+      stopped = true;
+    });
+    await vi.advanceTimersByTimeAsync(999);
+    expect(child.kill).toHaveBeenCalledTimes(1);
+    expect(stopped).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(child.kill).toHaveBeenLastCalledWith("SIGKILL");
+    expect(stopped).toBe(false);
+    emit("close", null, "SIGKILL");
+    await completed;
+    expect(stopped).toBe(true);
+  });
+
+  it("rejects within a bounded deadline if even SIGKILL never closes the child", async () => {
+    vi.useFakeTimers();
+    const listener = new NativeKeyListener({
+      hotkey: "Fn",
+      onKeyDown: () => {},
+      onKeyUp: () => {},
+    });
+    void listener.start();
+    const failed = expect(listener.stop()).rejects.toThrow(
+      "did not exit after SIGKILL",
+    );
+    await vi.advanceTimersByTimeAsync(2_000);
+    await failed;
+    expect(child.kill).toHaveBeenLastCalledWith("SIGKILL");
+    emit("close", null, "SIGKILL");
   });
 
   it("waits for the child to exit before allowing a replacement listener", async () => {

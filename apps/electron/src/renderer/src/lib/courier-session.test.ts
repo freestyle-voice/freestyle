@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  COURIER_ERROR_RETRY_MS,
   COURIER_TOKEN_REFRESH_MS,
   CourierSessionManager,
-  SIGNED_OUT_RETRY_MS,
 } from "./courier-session";
 
 afterEach(() => {
@@ -43,7 +43,7 @@ describe("CourierSessionManager", () => {
     manager.stop();
   });
 
-  it("signs out locally and retries without contacting Courier while Cloud auth is absent", async () => {
+  it("pauses signed-out requests until an auth-change refresh", async () => {
     vi.useFakeTimers();
     const load = vi
       .fn()
@@ -65,12 +65,68 @@ describe("CourierSessionManager", () => {
     await vi.waitFor(() => expect(onSignedOut).toHaveBeenCalledOnce());
     expect(onSession).not.toHaveBeenCalled();
 
-    await vi.advanceTimersByTimeAsync(SIGNED_OUT_RETRY_MS);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(load).toHaveBeenCalledOnce();
+    expect(onSession).not.toHaveBeenCalled();
+
+    manager.refresh();
+    await vi.waitFor(() => expect(onSession).toHaveBeenCalledOnce());
 
     expect(onSession).toHaveBeenCalledWith({
       userId: "user-1",
       token: "jwt-1",
     });
+    manager.stop();
+  });
+
+  it("continues retrying temporary failures", async () => {
+    vi.useFakeTimers();
+    const load = vi
+      .fn()
+      .mockResolvedValueOnce({ status: "unavailable" })
+      .mockResolvedValueOnce({
+        status: "ready",
+        userId: "user-1",
+        token: "jwt",
+      });
+    const onSession = vi.fn(async () => {});
+    const onUnavailable = vi.fn();
+    const manager = new CourierSessionManager({
+      load,
+      onSession,
+      onUnavailable,
+    });
+
+    manager.start();
+    await vi.waitFor(() => expect(onUnavailable).toHaveBeenCalledOnce());
+    await vi.advanceTimersByTimeAsync(COURIER_ERROR_RETRY_MS);
+
+    expect(onSession).toHaveBeenCalledWith({ userId: "user-1", token: "jwt" });
+    manager.stop();
+  });
+
+  it("cancels token refreshes when a signed-in session becomes signed out", async () => {
+    vi.useFakeTimers();
+    const load = vi
+      .fn()
+      .mockResolvedValueOnce({
+        status: "ready",
+        userId: "user-1",
+        token: "jwt",
+      })
+      .mockResolvedValue({ status: "signed-out" });
+    const onSession = vi.fn(async () => {});
+    const onSignedOut = vi.fn();
+    const manager = new CourierSessionManager({ load, onSession, onSignedOut });
+
+    manager.start();
+    await vi.waitFor(() => expect(onSession).toHaveBeenCalledOnce());
+    manager.refresh();
+    await vi.waitFor(() => expect(onSignedOut).toHaveBeenCalledOnce());
+    await vi.advanceTimersByTimeAsync(COURIER_TOKEN_REFRESH_MS * 2);
+
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(onSession).toHaveBeenCalledOnce();
     manager.stop();
   });
 

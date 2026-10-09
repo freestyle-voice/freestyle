@@ -555,6 +555,7 @@ jobs:
       - build-mac
       - build-windows
       - build-server-image
+      - test-dictation-http
     runs-on: ubuntu-latest
     steps:
       - name: Check CI result
@@ -562,3 +563,24 @@ jobs:
         run: |
           echo "CI failed or was cancelled"
           exit 1
+
+  test-dictation-http:
+    name: Dictation HTTP (${{ matrix.os }})
+    needs: [changes]
+    if: needs.changes.outputs.run_electron == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Exercise recorded audio through real local HTTP and SQLite
+        run: pnpm --filter @freestyle-voice/server exec vitest run tests/dictation-http-integration.test.ts

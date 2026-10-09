@@ -96,6 +96,14 @@ function useCloudAuthState(): UseCloudAuth {
   const user = phase === "authenticated" ? (status?.user ?? null) : null;
   const loading = phase === "checking";
   const canRequestData = phase !== "signed_out";
+  const notificationAuthKey = loading ? null : (user?.id ?? "signed-out");
+
+  useEffect(() => {
+    if (notificationAuthKey === null) return;
+    // The hidden inbox pauses after a 401. Wake it from every page that can
+    // change the Cloud session, including onboarding and Settings.
+    window.api.notificationAuthChanged();
+  }, [notificationAuthKey]);
 
   useEffect(() => {
     if (!status?.reached) return;

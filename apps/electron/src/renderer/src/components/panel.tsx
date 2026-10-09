@@ -877,22 +877,6 @@ function RemixWorkspaceLoadingSkeleton(): React.JSX.Element {
   );
 }
 
-export function PanelNotificationAuthBridge({
-  children,
-}: {
-  children: React.ReactNode;
-}): React.JSX.Element {
-  const auth = useCloudAuth();
-  const authChangeKey = auth.loading ? null : (auth.user?.id ?? "signed-out");
-
-  useEffect(() => {
-    if (authChangeKey === null) return;
-    window.api.notificationAuthChanged();
-  }, [authChangeKey]);
-
-  return <>{children}</>;
-}
-
 function RemixChatHeader({
   thread,
   title,

@@ -8,7 +8,7 @@ on:
       - main
       - "release/**"
   pull_request:
-    branches: [main]
+    branches: [main, "codex/**"]
 
 concurrency:
   group: build-${{ github.ref_name }}

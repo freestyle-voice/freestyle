@@ -354,6 +354,8 @@ export interface UseHotkeyRecorderOptions {
    * recording one must not overwrite the other.
    */
   target?: "dictation" | "remix";
+  /** Restore the current listener; the caller applies the new key after saving. */
+  deferActivationUntilSaved?: boolean;
   /**
    * Rejects a completed combo (e.g. it's already the other feature's hotkey).
    * A blocked combo is not handed to `onRecord`; the previously registered
@@ -369,6 +371,8 @@ export function useHotkeyRecorder(
   const target = options.target ?? "dictation";
   const targetRef = useRef(target);
   targetRef.current = target;
+  const deferActivationRef = useRef(options.deferActivationUntilSaved);
+  deferActivationRef.current = options.deferActivationUntilSaved;
   const isBlockedRef = useRef(options.isBlocked);
   isBlockedRef.current = options.isBlocked;
   const [state, setState] = useState<RecorderState>("idle");
@@ -484,12 +488,13 @@ export function useHotkeyRecorder(
     if (accel) {
       onRecordRef.current(accel);
     }
-    // Re-register the global listener with the new accelerator (single IPC).
-    // The remix key only stops the recorder here: main re-reads that one
-    // from settings, so re-registering is `onRecord`'s job — it is the only
-    // caller that knows when the write has actually landed.
+    // Stop capture and restore the current listener when activation is deferred.
+    // The caller applies the captured key only after its setting is saved.
+    // Remix also re-registers separately by re-reading its persisted setting.
     window.api?.stopHotkeyRecording?.(
-      targetRef.current === "remix" ? undefined : accel,
+      targetRef.current === "remix" || deferActivationRef.current
+        ? undefined
+        : accel,
     );
     recordingActiveRef.current = false;
     setState("idle");

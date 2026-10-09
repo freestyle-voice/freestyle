@@ -5,6 +5,7 @@ import {
   parseHistoryFilters,
 } from "@freestyle-voice/validations";
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { QueryErrorNotice } from "@renderer/components/query-error-notice";
 import { TutorialDemo } from "@renderer/components/tutorial-demo";
 import { Button } from "@renderer/components/ui/button";
 import { Label } from "@renderer/components/ui/label";
@@ -35,6 +36,7 @@ import {
   usePersistentState,
 } from "@renderer/hooks/use-persistent-state";
 import { getClient } from "@renderer/lib/api";
+import { checkedJson, checkedResponse } from "@renderer/lib/checked-response";
 import { formatNumber } from "@renderer/lib/format";
 import {
   getLocalDateString,
@@ -391,7 +393,12 @@ export default function HistoryPage(): React.JSX.Element {
 
   const queryClient = useQueryClient();
 
-  const { data: historyData, isLoading: loading } = useQuery({
+  const {
+    data: historyData,
+    isLoading: loading,
+    error: historyError,
+    refetch: refetchHistory,
+  } = useQuery({
     queryKey: queryKeys.history.list(page, search, startDate, endDate),
     queryFn: async () => {
       const q: Record<string, string> = {
@@ -408,14 +415,16 @@ export default function HistoryPage(): React.JSX.Element {
       if (endDate) statsQ.end_date = endDate;
 
       const client = getClient();
-      const [histRes, statsRes] = await Promise.all([
-        client.api.history.$get({ query: q }),
-        client.api.history.stats.$get({ query: statsQ }),
+      const [items, statsData] = await Promise.all([
+        checkedJson<{ items: HistoryEntry[]; total: number }>(
+          client.api.history.$get({ query: q }),
+          "Could not load history",
+        ),
+        checkedJson<Stats>(
+          client.api.history.stats.$get({ query: statsQ }),
+          "Could not load history statistics",
+        ),
       ]);
-      const items = histRes.ok
-        ? ((await histRes.json()) as { items: HistoryEntry[]; total: number })
-        : { items: [] as HistoryEntry[], total: 0 };
-      const statsData = statsRes.ok ? ((await statsRes.json()) as Stats) : null;
       return { ...items, stats: statsData };
     },
     // Keep showing the previous results while a new filter/page/search query
@@ -481,12 +490,17 @@ export default function HistoryPage(): React.JSX.Element {
   // Per-day usage for the heatmap. Fixed lookback window on the server, so it
   // ignores the list filters; shares the "history" key prefix so a completed
   // transcription invalidates it along with the feed.
-  const { data: dailyData } = useQuery({
+  const {
+    data: dailyData,
+    error: dailyError,
+    refetch: refetchDaily,
+  } = useQuery({
     queryKey: queryKeys.history.daily,
     queryFn: async () => {
-      const res = await getClient().api.history.daily.$get();
-      if (!res.ok) return [] as DayActivity[];
-      const data = (await res.json()) as { days: DayActivity[] };
+      const data = await checkedJson<{ days: DayActivity[] }>(
+        getClient().api.history.daily.$get(),
+        "Could not load daily activity",
+      );
       return data.days;
     },
   });
@@ -523,12 +537,23 @@ export default function HistoryPage(): React.JSX.Element {
     [queryClient],
   );
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteEntry = useCallback(
     async (id: number) => {
-      await getClient().api.history[":id"].$delete({
-        param: { id: String(id) },
-      });
-      void invalidate();
+      setDeleteError(null);
+      try {
+        await checkedResponse(
+          getClient().api.history[":id"].$delete({ param: { id: String(id) } }),
+          "Could not delete history entry",
+        );
+        void invalidate();
+      } catch (error) {
+        setDeleteError(
+          error instanceof Error
+            ? error.message
+            : "Could not delete history entry",
+        );
+      }
     },
     [invalidate],
   );
@@ -838,7 +863,24 @@ export default function HistoryPage(): React.JSX.Element {
             {!loading && historyPaused && <HistoryPausedNotice />}
             {!loading && hero}
             {searchRow}
-            {loading ? <HistoryFeedSkeleton /> : feed}
+            <QueryErrorNotice
+              error={historyError}
+              onRetry={() => void refetchHistory()}
+            />
+            <QueryErrorNotice
+              error={dailyError}
+              onRetry={() => void refetchDaily()}
+            />
+            {deleteError && (
+              <p role="alert" className="text-destructive mb-4 text-sm">
+                {deleteError}
+              </p>
+            )}
+            {loading ? (
+              <HistoryFeedSkeleton />
+            ) : historyError && !historyData ? null : (
+              feed
+            )}
             {!loading && pagination}
           </div>
           <div className="relative min-h-0 min-w-0">

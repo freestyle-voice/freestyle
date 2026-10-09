@@ -5,9 +5,11 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { DictionaryLikeEntriesSkeleton } from "@renderer/components/page-loading-skeleton";
+import { QueryErrorNotice } from "@renderer/components/query-error-notice";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { getClient } from "@renderer/lib/api";
+import { checkedJson, checkedResponse } from "@renderer/lib/checked-response";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
@@ -45,7 +47,12 @@ export default function VocabularyPage(): React.JSX.Element {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
 
-  const { data, isLoading: loading } = useQuery({
+  const {
+    data,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
     queryKey: queryKeys.vocabulary.list(page, search),
     queryFn: async () => {
       const q: Record<string, string> = {
@@ -54,15 +61,17 @@ export default function VocabularyPage(): React.JSX.Element {
         orderBy: "-created_at",
       };
       if (search) q.search = search;
-      const res = await getClient().api.vocabulary.$get({ query: q });
-      if (!res.ok) return { items: [] as VocabularyEntry[], total: 0 };
-      return (await res.json()) as { items: VocabularyEntry[]; total: number };
+      return checkedJson<{ items: VocabularyEntry[]; total: number }>(
+        getClient().api.vocabulary.$get({ query: q }),
+        "Could not load vocabulary",
+      );
     },
   });
 
   const entries = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const invalidate = useCallback(
     () => queryClient.invalidateQueries({ queryKey: queryKeys.vocabulary.all }),
@@ -132,7 +141,7 @@ export default function VocabularyPage(): React.JSX.Element {
       // If the whole page was cleared and it wasn't the first page, step back
       // so the user doesn't land on an empty page.
       if (ids.length >= entries.length && page > 0) setPage(page - 1);
-      else void invalidate();
+      void invalidate();
       clearSelection();
     } catch {
       setBulkError(t("vocabulary.deleteSelectedFailed"));
@@ -207,17 +216,22 @@ export default function VocabularyPage(): React.JSX.Element {
 
   const deleteEntry = useCallback(
     async (id: number) => {
+      setActionError(null);
       try {
-        await getClient().api.vocabulary[":id"].$delete({
-          param: { id: String(id) },
-        });
-        if (entries.length === 1 && page > 0) {
-          setPage(page - 1);
-        } else {
-          void invalidate();
-        }
-      } catch (err) {
-        console.error("Failed to delete vocabulary entry:", err);
+        await checkedResponse(
+          getClient().api.vocabulary[":id"].$delete({
+            param: { id: String(id) },
+          }),
+          "Could not delete vocabulary entry",
+        );
+        if (entries.length === 1 && page > 0) setPage(page - 1);
+        void invalidate();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Could not delete vocabulary entry",
+        );
       }
     },
     [invalidate, entries.length, page],
@@ -292,13 +306,20 @@ export default function VocabularyPage(): React.JSX.Element {
     [invalidate, t],
   );
 
-  const isEmpty = !loading && total === 0 && !search;
+  const isEmpty = !loading && !queryError && total === 0 && !search;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       <div className="responsive-page-scroll flex-1 overflow-auto">
         <PageHeader title={t("vocabulary.title")} />
+
+        <QueryErrorNotice error={queryError} onRetry={() => void refetch()} />
+        {actionError && (
+          <p role="alert" className="text-destructive mb-4 text-sm">
+            {actionError}
+          </p>
+        )}
 
         {isEmpty && !showForm ? (
           <EmptyState
@@ -451,7 +472,7 @@ export default function VocabularyPage(): React.JSX.Element {
 
             {loading ? (
               <DictionaryLikeEntriesSkeleton />
-            ) : entries.length === 0 ? (
+            ) : queryError && !data ? null : entries.length === 0 ? (
               <NoSearchResults search={search} />
             ) : (
               <>

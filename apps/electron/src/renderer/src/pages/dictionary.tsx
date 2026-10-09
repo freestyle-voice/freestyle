@@ -5,10 +5,12 @@ import {
 import { zodResolver } from "@hookform/resolvers/zod";
 import { DragSpacer } from "@renderer/components/drag-spacer";
 import { DictionaryLikeEntriesSkeleton } from "@renderer/components/page-loading-skeleton";
+import { QueryErrorNotice } from "@renderer/components/query-error-notice";
 import { Button } from "@renderer/components/ui/button";
 import { Input } from "@renderer/components/ui/input";
 import { Textarea } from "@renderer/components/ui/textarea";
 import { getClient } from "@renderer/lib/api";
+import { checkedJson, checkedResponse } from "@renderer/lib/checked-response";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
@@ -46,7 +48,12 @@ export default function DictionaryPage(): React.JSX.Element {
   const [page, setPage] = useState(0);
   const [search, setSearch] = useState("");
 
-  const { data, isLoading: loading } = useQuery({
+  const {
+    data,
+    isLoading: loading,
+    error: queryError,
+    refetch,
+  } = useQuery({
     queryKey: queryKeys.dictionary.list(page, search),
     queryFn: async () => {
       const q: Record<string, string> = {
@@ -55,15 +62,17 @@ export default function DictionaryPage(): React.JSX.Element {
         orderBy: "-created_at",
       };
       if (search) q.search = search;
-      const res = await getClient().api.dictionary.$get({ query: q });
-      if (!res.ok) return { items: [] as DictionaryEntry[], total: 0 };
-      return (await res.json()) as { items: DictionaryEntry[]; total: number };
+      return checkedJson<{ items: DictionaryEntry[]; total: number }>(
+        getClient().api.dictionary.$get({ query: q }),
+        "Could not load dictionary",
+      );
     },
   });
 
   const entries = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const invalidate = useCallback(
     () => queryClient.invalidateQueries({ queryKey: queryKeys.dictionary.all }),
@@ -132,10 +141,22 @@ export default function DictionaryPage(): React.JSX.Element {
 
   const deleteEntry = useCallback(
     async (id: number) => {
-      await getClient().api.dictionary[":id"].$delete({
-        param: { id: String(id) },
-      });
-      void invalidate();
+      setActionError(null);
+      try {
+        await checkedResponse(
+          getClient().api.dictionary[":id"].$delete({
+            param: { id: String(id) },
+          }),
+          "Could not delete dictionary entry",
+        );
+        void invalidate();
+      } catch (error) {
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : "Could not delete dictionary entry",
+        );
+      }
     },
     [invalidate],
   );
@@ -199,7 +220,7 @@ export default function DictionaryPage(): React.JSX.Element {
     [invalidate],
   );
 
-  const isEmpty = !loading && total === 0 && !search;
+  const isEmpty = !loading && !queryError && total === 0 && !search;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -209,6 +230,13 @@ export default function DictionaryPage(): React.JSX.Element {
           title={t("dictionary.title")}
           subtitle={t("dictionary.subtitle")}
         />
+
+        <QueryErrorNotice error={queryError} onRetry={() => void refetch()} />
+        {actionError && (
+          <p role="alert" className="text-destructive mb-4 text-sm">
+            {actionError}
+          </p>
+        )}
 
         {isEmpty && !showForm ? (
           <EmptyState
@@ -339,7 +367,7 @@ export default function DictionaryPage(): React.JSX.Element {
             {/* Entries list */}
             {loading ? (
               <DictionaryLikeEntriesSkeleton />
-            ) : entries.length === 0 ? (
+            ) : queryError && !data ? null : entries.length === 0 ? (
               <NoSearchResults search={search} />
             ) : (
               <div className="border-border bg-card overflow-hidden rounded-[12px] border">

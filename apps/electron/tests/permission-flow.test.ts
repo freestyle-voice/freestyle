@@ -51,19 +51,15 @@ async function closePermissionApp(app: ElectronApplication): Promise<void> {
   if (childProcess.exitCode !== null || childProcess.signalCode !== null)
     return;
 
-  // This fixture validates startup permissions, not production shutdown.
-  // Avoid app.close(), which runs native cleanup that intermittently wedges
-  // macOS CI and leaves Playwright waiting through two 60-second timeouts.
+  // Exercise production teardown so native key helpers are reaped as well.
   const exited = new Promise<void>((resolve) => {
     childProcess.once("exit", () => resolve());
   });
-  childProcess.kill("SIGKILL");
-  await Promise.race([
-    exited,
-    new Promise<void>((resolve) => {
-      setTimeout(resolve, 5_000);
-    }),
-  ]);
+  await app.evaluate(({ app }) => {
+    setTimeout(() => app.quit(), 25);
+  });
+  await expect.poll(() => childProcess.exitCode, { timeout: 15_000 }).toBe(0);
+  await exited;
 }
 
 async function waitForPill(app: ElectronApplication): Promise<Page> {

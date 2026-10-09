@@ -399,7 +399,9 @@ function isValidConfig(value: unknown): value is CleanupPromptConfig {
  * timeout, non-2xx, malformed body) the last-good copy is kept — this function
  * never throws and never clears an existing cloud copy.
  */
-export function refreshCleanupPromptConfig(): Promise<void> {
+export function refreshCleanupPromptConfig(
+  signal?: AbortSignal,
+): Promise<void> {
   if (refreshPromise) return refreshPromise;
 
   refreshPromise = (async () => {
@@ -410,7 +412,12 @@ export function refreshCleanupPromptConfig(): Promise<void> {
       // 6h TTL + stale-on-error + bundled fallback contract unchanged.
       const url = `${freestyleCloudUrl()}/v2/config`;
       const res = await fetch(url, {
-        signal: AbortSignal.timeout(CONFIG_FETCH_TIMEOUT_MS),
+        signal: signal
+          ? AbortSignal.any([
+              signal,
+              AbortSignal.timeout(CONFIG_FETCH_TIMEOUT_MS),
+            ])
+          : AbortSignal.timeout(CONFIG_FETCH_TIMEOUT_MS),
       });
       if (!res.ok) {
         log.warn(`Cleanup prompt config fetch failed: HTTP ${res.status}`);

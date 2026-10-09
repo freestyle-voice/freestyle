@@ -3,6 +3,11 @@ import { createServer } from "node:net";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { getDb } from "../db.js";
 import {
+  assertDatabaseOwner,
+  assertServerCaller,
+  isDatabaseOwner,
+} from "../db-ownership.js";
+import {
   findWhisperServer,
   WIN_DLL_NOT_FOUND_EXIT,
   WIN_DLL_NOT_FOUND_MESSAGE,
@@ -28,7 +33,7 @@ let restartCount = 0;
 let stabilityTimer: ReturnType<typeof setTimeout> | null = null;
 let serverFailed = false;
 let activePort = WHISPER_SERVER_PORT;
-let activeUses = 0;
+let activeUses = { count: 0 };
 let unloadTimer: ReturnType<typeof setTimeout> | null = null;
 
 function stopServerOnExit(): void {
@@ -52,6 +57,7 @@ export function isServerFailed(): boolean {
 }
 
 export function getServerPort(): number {
+  assertDatabaseOwner();
   return activePort;
 }
 
@@ -79,9 +85,10 @@ function clearUnloadTimer(): void {
 }
 
 function scheduleUnload(): void {
+  if (!isDatabaseOwner()) return;
   clearUnloadTimer();
   if (!serverProcess) return;
-  if (activeUses > 0 || startPromise) return;
+  if (activeUses.count > 0 || startPromise) return;
   const delayMs = getWhisperKeepAliveMinutes() * 60_000;
 
   if (delayMs <= 0) {
@@ -92,7 +99,7 @@ function scheduleUnload(): void {
   }
 
   unloadTimer = setTimeout(() => {
-    if (activeUses > 0) return;
+    if (activeUses.count > 0 || !isDatabaseOwner()) return;
     log.info("Unloading idle whisper-server");
     stopServer().catch((err: Error) => {
       log.error(`Failed to unload idle server: ${err.message}`);
@@ -107,17 +114,20 @@ export function applyWhisperRetentionPolicy(): void {
 }
 
 export async function withServerUse<T>(fn: () => Promise<T>): Promise<T> {
-  activeUses++;
+  assertDatabaseOwner();
+  const uses = activeUses;
+  uses.count++;
   clearUnloadTimer();
   try {
     return await fn();
   } finally {
-    activeUses--;
-    scheduleUnload();
+    uses.count--;
+    if (uses === activeUses) scheduleUnload();
   }
 }
 
 export function startInBackground(modelId: string): void {
+  assertDatabaseOwner();
   if (getWhisperKeepAliveMinutes() === 0) return;
   if (serverProcess && currentModelId === modelId && serverReady) return;
   if (startPromise && currentModelId === modelId) return;
@@ -163,6 +173,7 @@ function findFreePort(): Promise<number> {
 }
 
 export async function ensureServerRunning(modelId: string): Promise<void> {
+  assertDatabaseOwner();
   if (serverProcess && currentModelId === modelId && serverReady) {
     return;
   }
@@ -172,6 +183,7 @@ export async function ensureServerRunning(modelId: string): Promise<void> {
   }
 
   await stopServer();
+  assertDatabaseOwner();
   autoRestart = true;
   serverFailed = false;
 
@@ -200,10 +212,12 @@ async function doStart(modelId: string): Promise<void> {
   currentModelId = modelId;
   serverReady = false;
 
-  if (await isPortFree(WHISPER_SERVER_PORT)) {
-    activePort = WHISPER_SERVER_PORT;
-  } else {
-    activePort = await findFreePort();
+  const defaultPortFree = await isPortFree(WHISPER_SERVER_PORT);
+  assertDatabaseOwner();
+  const port = defaultPortFree ? WHISPER_SERVER_PORT : await findFreePort();
+  assertDatabaseOwner();
+  activePort = port;
+  if (!defaultPortFree) {
     log.warn(
       `Port ${WHISPER_SERVER_PORT} is in use by another process, using ${activePort}`,
     );
@@ -218,6 +232,7 @@ async function doStart(modelId: string): Promise<void> {
     "127.0.0.1",
   ];
 
+  assertDatabaseOwner();
   const proc = spawn(serverBinary, args, {
     stdio: ["ignore", "pipe", "pipe"],
     ...whisperSpawnEnv(serverBinary),
@@ -245,7 +260,7 @@ async function doStart(modelId: string): Promise<void> {
     let healthCheckInterval: ReturnType<typeof setInterval> | null = null;
 
     function onReady() {
-      if (settled) return;
+      if (settled || serverProcess !== proc || !isDatabaseOwner()) return;
       settled = true;
       clearTimeout(timeout);
       if (healthCheckInterval) clearInterval(healthCheckInterval);
@@ -285,14 +300,23 @@ async function doStart(modelId: string): Promise<void> {
       settled = true;
       clearTimeout(timeout);
       if (healthCheckInterval) clearInterval(healthCheckInterval);
-      serverProcess = null;
-      currentModelId = null;
+      if (serverProcess === proc) {
+        serverProcess = null;
+        currentModelId = null;
+      }
       reject(new Error(`Failed to start whisper-server: ${err.message}`));
     });
 
     proc.on("close", (code) => {
       clearTimeout(timeout);
       if (healthCheckInterval) clearInterval(healthCheckInterval);
+      if (serverProcess !== proc) {
+        if (!settled) {
+          settled = true;
+          reject(new Error("whisper-server stopped during startup"));
+        }
+        return;
+      }
       clearStabilityTimer();
       const wasReady = serverReady;
       const modelForRestart = currentModelId;
@@ -319,6 +343,9 @@ async function doStart(modelId: string): Promise<void> {
     });
   });
 
+  assertDatabaseOwner();
+  if (serverProcess !== proc)
+    throw new Error("whisper-server startup superseded");
   startStabilityTimer();
   scheduleUnload();
 }
@@ -338,7 +365,7 @@ function scheduleRestart(modelId: string): void {
   );
 
   setTimeout(() => {
-    if (!autoRestart) return;
+    if (!autoRestart || !isDatabaseOwner()) return;
     ensureServerRunning(modelId).catch((err) => {
       log.error(`Restart failed: ${err.message}`);
     });
@@ -348,7 +375,7 @@ function scheduleRestart(modelId: string): void {
 function startStabilityTimer(): void {
   clearStabilityTimer();
   stabilityTimer = setTimeout(() => {
-    if (serverReady) {
+    if (serverReady && isDatabaseOwner()) {
       restartCount = 0;
     }
   }, STABILITY_THRESHOLD_MS);
@@ -362,6 +389,8 @@ function clearStabilityTimer(): void {
 }
 
 export async function stopServer(): Promise<void> {
+  assertServerCaller();
+  if (!isDatabaseOwner()) activeUses = { count: 0 };
   autoRestart = false;
   startPromise = null;
   clearStabilityTimer();

@@ -7,9 +7,11 @@ import { HTTPException } from "hono/http-exception";
 import { logger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { timeout } from "hono/timeout";
-import { WebSocketServer } from "ws";
+import type { WebSocketServer } from "ws";
 import { recordAppLaunch } from "./lib/app-lifecycle.js";
 import { authMiddleware, setAuthToken } from "./lib/auth.js";
+import { closeDb } from "./lib/db.js";
+import { acquireServerDatabase } from "./lib/db-ownership.js";
 import { refreshCleanupPromptConfig } from "./lib/editor/prompt-config.js";
 import { formatError } from "./lib/format-error.js";
 import { isTransientCloudError } from "./lib/freestyle-cloud.js";
@@ -17,6 +19,7 @@ import {
   startHistoryRetentionSweep,
   stopHistoryRetentionSweep,
 } from "./lib/history-store.js";
+import { stopMlxServer } from "./lib/mlx-asr/server.js";
 import { configureNetwork } from "./lib/network.js";
 import { pluginApiGuard } from "./lib/plugin-api-guard.js";
 import {
@@ -32,6 +35,11 @@ import {
   shutdownSentry,
 } from "./lib/sentry.js";
 import {
+  boundedCleanup,
+  connectionStopper,
+  ownedWebSocketServer,
+} from "./lib/server-lifecycle.js";
+import {
   startSessionKeepAlive,
   stopSessionKeepAlive,
 } from "./lib/session-keepalive.js";
@@ -45,12 +53,10 @@ import {
   isTrustedRendererOrigin,
   trustedOriginMiddleware,
 } from "./lib/trusted-origin.js";
+import { stopServer as stopWhisperServer } from "./lib/whisper/server.js";
 import routes from "./routes";
 
 const httpLog = createAppLogger("http");
-
-initSentry();
-removeLegacyTelemetryIdentity();
 
 // Lightweight CRUD routers get a request timeout. Transcription, post-process,
 // and the auth device-flow poll are intentionally excluded — they can
@@ -68,17 +74,6 @@ const TIMEOUT_PREFIXES = [
   "/api/org",
   "/api/agent/thread",
 ];
-
-async function shutdownServer(): Promise<void> {
-  stopSessionKeepAlive();
-  stopHistoryRetentionSweep();
-  stopOutboxDrain();
-  await disposeServerPlugins().catch(() => {});
-  await shutdownSentry();
-}
-
-process.on("SIGINT", () => shutdownServer().finally(() => process.exit(0)));
-process.on("SIGTERM", () => shutdownServer().finally(() => process.exit(0)));
 
 /**
  * A stable middleware that dispatches the *current* plugin middleware chain
@@ -211,7 +206,11 @@ export interface RunningServer {
   server: ServerType;
   /** The actual port bound (useful when `port` was 0). */
   port: number;
+  /** Idempotent, awaited teardown of resources owned by this server. */
+  stop(options?: { gracePeriodMs?: number }): Promise<void>;
 }
+
+let serverOwned = false;
 
 /**
  * Start the Freestyle HTTP server.
@@ -227,63 +226,134 @@ export async function startServer(
 ): Promise<RunningServer> {
   const { port = 4649, host = "127.0.0.1", token } = options;
 
-  // Configure bearer-token auth before the app is built so authMiddleware picks
-  // it up. Empty/undefined keeps the server open (loopback Electron default).
-  setAuthToken(token);
+  // The DB/plugin registry and background schedulers are process singletons.
+  // Never let a second start take ownership of a running (or starting) server.
+  if (serverOwned)
+    throw new Error("A Freestyle server is already owned by this process");
+  serverOwned = true;
+  const databaseOwner = acquireServerDatabase();
+  const activeRequests = new Set<Promise<Response>>();
+  const backgroundAbort = new AbortController();
+  const backgroundTasks: Promise<unknown>[] = [];
+  let closeConnections: ((gracePeriodMs: number) => Promise<void>) | undefined;
+  let wss: WebSocketServer | undefined;
+  let stopPromise: Promise<void> | undefined;
+  let startupSucceeded = false;
+  const stop: RunningServer["stop"] = (stopOptions = {}) => {
+    if (stopPromise) return stopPromise;
+    const requestedGrace = stopOptions.gracePeriodMs ?? 5_000;
+    const gracePeriodMs = Number.isFinite(requestedGrace)
+      ? Math.max(0, Math.min(requestedGrace, 5_000))
+      : 5_000;
+    stopPromise = (async () => {
+      const errors: unknown[] = [];
+      const cleanup = async (
+        fn: () => unknown,
+        name: string,
+        timeoutMs?: number,
+      ) => {
+        try {
+          await boundedCleanup(fn, name, timeoutMs);
+        } catch (error) {
+          errors.push(error);
+        }
+      };
+      // Stop schedulers immediately; requests retain the DB/plugins until drained.
+      backgroundAbort.abort();
+      stopHistoryRetentionSweep();
+      const pendingJobs = [
+        stopSessionKeepAlive(),
+        stopOutboxDrain(),
+        ...backgroundTasks,
+      ];
+      try {
+        if (closeConnections) await closeConnections(gracePeriodMs);
+        else if (wss)
+          await new Promise<void>((resolve) => wss!.close(() => resolve()));
+      } catch (error) {
+        errors.push(error);
+      }
+      await cleanup(() => Promise.allSettled([...activeRequests]), "Requests");
+      await cleanup(() => Promise.allSettled(pendingJobs), "Background jobs");
+      await cleanup(() => databaseOwner.run(disposeServerPlugins), "Plugins");
+      // A route/plugin which ignored cancellation or exceeded its deadline must
+      // never reopen the released DB or write into a later server instance.
+      databaseOwner.revoke();
+      await cleanup(
+        () => Promise.all([stopWhisperServer(), stopMlxServer()]),
+        "Inference workers",
+        6_000,
+      );
+      await cleanup(closeDb, "Database");
+      // Electron initializes its shared telemetry client before startup. A bind
+      // failure must not disable that client before the random-port retry.
+      if (startupSucceeded || !process.versions.electron)
+        await cleanup(shutdownSentry, "Telemetry", 3_000);
+      serverOwned = false;
+      if (errors.length)
+        throw new AggregateError(errors, "Server shutdown failed");
+    })();
+    return stopPromise;
+  };
 
-  // Install the global network dispatcher (corporate proxy + custom CA) before
-  // anything issues a fetch, so model downloads and cloud/API calls honor it.
-  configureNetwork();
+  return databaseOwner.run(async () => {
+    try {
+      initSentry();
+      removeLegacyTelemetryIdentity();
+      setAuthToken(token);
+      // Configure proxy/custom CA before any fetch.
+      configureNetwork();
+      recordAppLaunch();
+      await initServerPlugins();
+      const app = createApp();
+      wss = ownedWebSocketServer(databaseOwner.run);
+      const running = await new Promise<RunningServer>((resolve, reject) => {
+        const server = serve(
+          {
+            fetch: (request, env) =>
+              databaseOwner.run(() => {
+                const pending = Promise.resolve(app.fetch(request, env));
+                activeRequests.add(pending);
+                void pending
+                  .finally(() => activeRequests.delete(pending))
+                  .catch(() => {});
+                return pending;
+              }),
+            port,
+            hostname: host,
+            websocket: { server: wss! },
+          },
+          (info) => {
+            server.off("error", reject);
+            resolve({ server, port: info.port, stop });
+          },
+        );
+        closeConnections = connectionStopper(server, wss!);
+        server.once("error", reject);
+      });
 
-  // Warm the cleanup-prompt config from Freestyle Cloud so the latest presets
-  // and tone blocks are in memory before the first dictation. Fire-and-forget:
-  // it never throws and falls back to the bundled copy when offline.
-  void refreshCleanupPromptConfig();
-
-  // Push edits queued while offline before pulling the cloud snapshot, so a
-  // pending local change is never overwritten by the copy it was meant to
-  // update. Both are no-ops when signed out and never throw.
-  void drainOutbox().then(() => pullCloudPreferences());
-
-  // Keep the cloud profile's timezone current so scheduled tasks fire on this
-  // machine's clock. No-op when signed out or unchanged; never throws.
-  void syncTimezoneToCloud();
-
-  // Install / update / launch, emitted once per process start.
-  recordAppLaunch();
-
-  // Load plugins (built-in + user) before serving. The app dispatches plugin
-  // middleware from the live registry per request, so later runtime reloads
-  // (enable/disable/install) take effect without reconstructing the app.
-  await initServerPlugins();
-
-  const app = createApp();
-
-  startHistoryRetentionSweep();
-
-  // Retry any preference syncs that fail (offline / server down); rows persist
-  // across restarts, so a change made offline eventually reaches the cloud.
-  startOutboxDrain();
-
-  // Keep the Freestyle Cloud session alive by sliding its expiry before the
-  // local token lapses (the cloud issues no refresh token). Fire-and-forget.
-  startSessionKeepAlive();
-
-  return new Promise((resolve, reject) => {
-    const wss = new WebSocketServer({ noServer: true });
-    const server = serve(
-      {
-        fetch: app.fetch,
-        port,
-        hostname: host,
-        websocket: { server: wss },
-      },
-      (info) => {
-        resolve({ server, port: info.port });
-      },
-    );
-    // Reject if the server fails to bind (e.g. EADDRINUSE) before listening.
-    server.once("error", reject);
+      // Launch network jobs only after binding succeeds, so a port collision does
+      // not leave work behind while Electron retries on a random port.
+      startHistoryRetentionSweep();
+      startOutboxDrain();
+      startSessionKeepAlive();
+      backgroundTasks.push(refreshCleanupPromptConfig(backgroundAbort.signal));
+      backgroundTasks.push(
+        drainOutbox().then(() => {
+          if (!backgroundAbort.signal.aborted)
+            return pullCloudPreferences(backgroundAbort.signal);
+        }),
+      );
+      backgroundTasks.push(syncTimezoneToCloud(backgroundAbort.signal));
+      startupSucceeded = true;
+      return running;
+    } catch (error) {
+      // Keep the bind/start error intact while rolling back every acquired resource.
+      await stop().catch((cleanupError) =>
+        httpLog.warn(formatError(cleanupError)),
+      );
+      throw error;
+    }
   });
 }
 

@@ -567,21 +567,38 @@ export class NativeKeyListener {
     this.process = null;
 
     let finishTermination: (() => void) | undefined;
-    const termination = new Promise<void>((resolve) => {
+    const termination = new Promise<void>((resolve, reject) => {
       let finished = false;
-      const finish = (): void => {
+      let timeout: ReturnType<typeof setTimeout> | undefined;
+      let killDeadline: ReturnType<typeof setTimeout> | undefined;
+      const finish = (error?: Error): void => {
         if (finished) return;
         finished = true;
         clearTimeout(timeout);
-        resolve();
+        clearTimeout(killDeadline);
+        if (error) reject(error);
+        else resolve();
       };
-      finishTermination = finish;
-      child.once("close", finish);
-      child.once("error", finish);
-      const timeout = setTimeout(finish, KEY_LISTENER_STOP_TIMEOUT_MS);
-      timeout.unref();
+      finishTermination = () => finish();
+      child.once("close", () => finish());
+      child.once("error", (error) => finish(error));
+      timeout = setTimeout(() => {
+        // Some native loops can ignore SIGTERM while blocked in OS APIs. Do
+        // not report successful teardown until close confirms the child exited.
+        killDeadline = setTimeout(() => {
+          finish(new Error("Native key listener did not exit after SIGKILL"));
+        }, KEY_LISTENER_STOP_TIMEOUT_MS);
+        try {
+          child.kill("SIGKILL");
+        } catch (error) {
+          finish(error instanceof Error ? error : new Error(String(error)));
+        }
+      }, KEY_LISTENER_STOP_TIMEOUT_MS);
     });
     this.termination = termination;
+    // Some event callbacks initiate stop without awaiting it. Observe failures
+    // locally while preserving rejection for callers which await teardown.
+    void termination.catch((error) => log.error(String(error)));
 
     try {
       // Send SIGTERM for graceful shutdown.

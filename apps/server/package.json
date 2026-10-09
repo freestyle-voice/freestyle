@@ -5,7 +5,8 @@
     "build": "tsc --emitDeclarationOnly && pkgroll --tsconfig tsconfig.build.json --minify",
     "start": "node dist/startup.js",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:e2e:lifecycle": "pnpm --workspace-root exec turbo build --filter=@freestyle-voice/server... && vitest run --config vitest.lifecycle.config.ts"
   },
   "exports": {
     ".": {

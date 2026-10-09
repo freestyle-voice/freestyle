@@ -102,7 +102,9 @@ export const SYNCED_SETTING_KEYS: ReadonlySet<string> = new Set(
  * Returns `true` when at least one field was applied from the cloud snapshot,
  * `false` otherwise (signed out, offline, no active org, or an empty snapshot).
  */
-export async function pullCloudPreferences(): Promise<boolean> {
+export async function pullCloudPreferences(
+  signal?: AbortSignal,
+): Promise<boolean> {
   const token = getSessionToken();
   if (!token) return false;
 
@@ -122,6 +124,7 @@ export async function pullCloudPreferences(): Promise<boolean> {
     return false;
   }
 
+  if (signal?.aborted) return false;
   const pending = pendingOutboxFields();
   let applied = false;
   for (const field of FIELD_MAP) {

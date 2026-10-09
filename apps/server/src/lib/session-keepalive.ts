@@ -32,7 +32,20 @@ export type RenewResult = "renewed" | "not-needed" | "no-session" | "expired";
  * @param force - renew regardless of remaining time (used by tests / manual
  *   refresh). When false, renews only within {@link RENEW_THRESHOLD_MS}.
  */
-export async function renewSession(force = false): Promise<RenewResult> {
+let renewalGeneration = 0;
+const renewals = new Set<Promise<RenewResult>>();
+
+export function renewSession(force = false): Promise<RenewResult> {
+  const pending = renewSessionOnce(force, renewalGeneration);
+  renewals.add(pending);
+  void pending.finally(() => renewals.delete(pending)).catch(() => {});
+  return pending;
+}
+
+async function renewSessionOnce(
+  force: boolean,
+  generation: number,
+): Promise<RenewResult> {
   const session = getSession();
   if (!session) return "no-session";
 
@@ -45,9 +58,11 @@ export async function renewSession(force = false): Promise<RenewResult> {
   try {
     // Touching an authenticated endpoint slides the cloud session window.
     await fetchCloudUser(session.token);
+    if (generation !== renewalGeneration) return "not-needed";
     touchSessionExpiry(Date.now() + SESSION_LIFETIME_MS);
     return "renewed";
   } catch (err) {
+    if (generation !== renewalGeneration) return "not-needed";
     if (err instanceof FreestyleCloudAuthError) {
       // The cloud already rejected the token; drop it so the UI can prompt
       // a fresh sign-in rather than retrying a dead token forever.
@@ -80,9 +95,11 @@ export function startSessionKeepAlive(): void {
   keepAliveTimer.unref();
 }
 
-export function stopSessionKeepAlive(): void {
+export async function stopSessionKeepAlive(): Promise<void> {
+  renewalGeneration++;
   if (keepAliveTimer) {
     clearInterval(keepAliveTimer);
     keepAliveTimer = null;
   }
+  await Promise.allSettled([...renewals]);
 }

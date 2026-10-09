@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -235,4 +236,59 @@ test("workspace uses the restored legacy dark visual system", async () => {
 
   expect(visual.primary).toBe("#8ab62a");
   expect(visual.canvas).toBe("#16140f");
+});
+
+test("application quit exits cleanly and releases its embedded server port", async () => {
+  const runningApp = app!;
+  const process = runningApp.process();
+  const nativePids: number[] = [];
+  if (globalThis.process.platform !== "win32" && process.pid) {
+    try {
+      nativePids.push(
+        ...execFileSync(
+          "pgrep",
+          ["-P", String(process.pid), "-f", "key-listener"],
+          { encoding: "utf8" },
+        )
+          .trim()
+          .split(/\s+/)
+          .map(Number),
+      );
+    } catch (error) {
+      // pgrep exits 1 when native helpers are unavailable in a headless runner.
+      if ((error as { status?: number }).status !== 1) throw error;
+    }
+  }
+  const exited = new Promise<{ code: number | null; signal: string | null }>(
+    (resolve) => {
+      process.once("exit", (code, signal) => resolve({ code, signal }));
+    },
+  );
+  // Schedule quit so the evaluate response arrives before Electron tears down
+  // Playwright's connection. Unlike afterAll, this assertion permits no forced kill.
+  await runningApp.evaluate(({ app }) => {
+    setTimeout(() => app.quit(), 25);
+  });
+  await expect.poll(() => process.exitCode, { timeout: 15_000 }).toBe(0);
+  expect(await exited).toEqual({ code: 0, signal: null });
+  for (const pid of nativePids) {
+    await expect
+      .poll(
+        () => {
+          try {
+            globalThis.process.kill(pid, 0);
+            return true;
+          } catch (error) {
+            if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
+            return false;
+          }
+        },
+        { timeout: 5_000 },
+      )
+      .toBe(false);
+  }
+  await expect(
+    fetch(`http://127.0.0.1:${serverPort}/api/health`),
+  ).rejects.toThrow();
+  app = undefined;
 });

@@ -13,7 +13,7 @@ const SETTING_KEY = "cloud_synced_timezone";
  * and triage run on the user's clock. Skips the round-trip when the zone
  * already synced for this account; safe to fire-and-forget.
  */
-export async function syncTimezoneToCloud(): Promise<void> {
+export async function syncTimezoneToCloud(signal?: AbortSignal): Promise<void> {
   const session = getSession();
   if (!session) return;
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -22,7 +22,7 @@ export async function syncTimezoneToCloud(): Promise<void> {
   if (readSetting(SETTING_KEY) === marker) return;
   try {
     await putCloudUserProfile(session.token, { timezone: zone });
-    writeSetting(SETTING_KEY, marker);
+    if (!signal?.aborted) writeSetting(SETTING_KEY, marker);
   } catch (err) {
     log.debug(
       `Timezone sync failed: ${err instanceof Error ? err.message : String(err)}`,

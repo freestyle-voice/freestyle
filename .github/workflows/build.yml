@@ -179,6 +179,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Run standalone server lifecycle E2E
+        run: pnpm --filter @freestyle-voice/server run test:e2e:lifecycle
+
       - name: Run server tests
         run: pnpm --filter @freestyle-voice/server run test
 

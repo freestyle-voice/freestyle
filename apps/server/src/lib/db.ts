@@ -1,4 +1,5 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { assertDatabaseOwner } from "./db-ownership.js";
 import { initSchema } from "./schema.js";
 
 let db: DatabaseSync | null = null;
@@ -12,6 +13,7 @@ let db: DatabaseSync | null = null;
 const statementCache = new Map<string, StatementSync>();
 
 export function getDb(): DatabaseSync {
+  assertDatabaseOwner();
   if (db) return db;
 
   const dbPath = process.env.FREESTYLE_DB_PATH;
@@ -45,6 +47,7 @@ export function getDb(): DatabaseSync {
  * is compiled once per process rather than on every call.
  */
 export function prepareCached(sql: string): StatementSync {
+  assertDatabaseOwner();
   const cached = statementCache.get(sql);
   if (cached) return cached;
   const stmt = getDb().prepare(sql);

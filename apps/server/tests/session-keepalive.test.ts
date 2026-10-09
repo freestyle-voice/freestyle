@@ -3,7 +3,10 @@ import {
   FreestyleCloudAuthError,
   SESSION_LIFETIME_MS,
 } from "../src/lib/freestyle-cloud.js";
-import { renewSession } from "../src/lib/session-keepalive.js";
+import {
+  renewSession,
+  stopSessionKeepAlive,
+} from "../src/lib/session-keepalive.js";
 import { clearSession, getSession, setSession } from "../src/lib/sessions.js";
 
 vi.mock("../src/lib/freestyle-cloud.js", async (importOriginal) => {
@@ -96,6 +99,30 @@ describe("renewSession", () => {
     await expect(renewSession()).resolves.toBe("not-needed");
     // Session survives so the next tick can retry.
     expect(getSession()?.token).toBe("token");
+  });
+
+  it("awaits an active renewal and suppresses its late database update after stop", async () => {
+    signInWithRemaining(60 * 60 * 1000);
+    const before = getSession()?.expiresAt;
+    let release!: () => void;
+    vi.mocked(cloud.fetchCloudUser).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ ...USER, name: "User", image: null });
+        }),
+    );
+    const renewal = renewSession();
+    const stopped = stopSessionKeepAlive();
+    let finished = false;
+    void stopped.then(() => {
+      finished = true;
+    });
+    await Promise.resolve();
+    expect(finished).toBe(false);
+    release();
+    await stopped;
+    await expect(renewal).resolves.toBe("not-needed");
+    expect(getSession()?.expiresAt).toBe(before);
   });
 
   it("treats a session with no local expiry as not needing renewal", async () => {

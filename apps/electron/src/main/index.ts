@@ -53,8 +53,8 @@ import {
   type AppType,
   captureException,
   closeDb,
-  disposeServerPlugins,
   isTelemetryEnabled,
+  type RunningServer,
   removeLegacyTelemetryIdentity,
   setTelemetrySettingChangeHandler,
   shutdownSentry,
@@ -160,6 +160,7 @@ import {
   relayEvent,
 } from "./plugins/index";
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
+import { boundedQuitCleanup } from "./quit-cleanup.js";
 import { isRemixTargetAllowed } from "./remix-target";
 import { rendererUrl } from "./renderer-url";
 import { SerializedRegistration } from "./serialized-registration";
@@ -510,8 +511,20 @@ function broadcastUpdateStatus(): void {
   panelWindow?.webContents.send("updater:status", status);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let httpServer: any = null;
+let ownedServer: RunningServer | null = null;
+let serverStartup: Promise<boolean> | null = null;
+
+async function stopOwnedServer(): Promise<void> {
+  await serverStartup;
+  const running = ownedServer;
+  ownedServer = null;
+  if (running) await running.stop();
+  else {
+    // Reusing an external server gives us no ownership of its resources.
+    closeDb();
+    await shutdownSentry();
+  }
+}
 let serverPort = DEFAULT_PORT;
 let mainWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -1440,14 +1453,7 @@ async function factoryReset(): Promise<void> {
       globalShortcut.unregisterAll();
     }
 
-    try {
-      closeDb();
-    } catch {}
-
-    if (httpServer) {
-      httpServer.close();
-      httpServer = null;
-    }
+    await stopOwnedServer();
 
     const userData = app.getPath("userData");
     for (const f of [
@@ -1603,8 +1609,16 @@ function showMoveToApplicationsDialog(): void {
 }
 
 function restartAndUpdate(): void {
-  isUpdaterQuitting = true;
-  autoUpdater.quitAndInstall();
+  if (isQuitting) return;
+  isQuitting = true;
+  void boundedQuitCleanup(cleanupBeforeQuit())
+    .catch((err) =>
+      log.warn(`cleanup before updater quit failed: ${String(err)}`),
+    )
+    .finally(() => {
+      isUpdaterQuitting = true;
+      autoUpdater.quitAndInstall();
+    });
 }
 
 /** Mark state as downloading, notify the settings window, and kick off the download. */
@@ -2250,11 +2264,16 @@ app.whenReady().then(async () => {
   // app already listening on 4649 can leak its data into the test window.
   const startServer = async (port: number): Promise<boolean> => {
     try {
-      const { server, port: boundPort } = await startFreestyleServer({
+      const running = await startFreestyleServer({
         port,
         host: "127.0.0.1",
       });
-      httpServer = server;
+      if (isQuitting) {
+        await running.stop();
+        return false;
+      }
+      ownedServer = running;
+      const boundPort = running.port;
       const changed = serverPort !== boundPort;
       serverPort = boundPort;
       log.info(`Server running on http://localhost:${boundPort}`);
@@ -2269,6 +2288,12 @@ app.whenReady().then(async () => {
       log.error(`Server failed to start: ${err}`);
       return false;
     }
+  };
+
+  const launchServer = (port: number): Promise<boolean> => {
+    if (isQuitting) return Promise.resolve(false);
+    serverStartup = startServer(port);
+    return serverStartup;
   };
 
   // Check if a Freestyle server is already running on the default port. The
@@ -2291,7 +2316,7 @@ app.whenReady().then(async () => {
       `Reusing existing Freestyle server on http://localhost:${DEFAULT_PORT}`,
     );
     const watchdog = setInterval(async () => {
-      if (httpServer || getServerUrl()) {
+      if (ownedServer || getServerUrl() || isQuitting) {
         clearInterval(watchdog);
         return;
       }
@@ -2299,15 +2324,15 @@ app.whenReady().then(async () => {
         return;
       clearInterval(watchdog);
       log.warn("Reused Freestyle server went away; starting our own.");
-      startServer(DEFAULT_PORT);
+      void launchServer(DEFAULT_PORT);
     }, EXTERNAL_SERVER_POLL_MS);
     watchdog.unref();
   } else if (process.env.FREESTYLE_E2E === "1") {
     // Start on a random port and wait before creating the first renderer. The
     // preload bridge then reports the correct target from its first request.
-    await startServer(0);
+    await launchServer(0);
   } else {
-    void startServer(DEFAULT_PORT);
+    void launchServer(DEFAULT_PORT);
   }
 
   createPillWindow();
@@ -4583,7 +4608,9 @@ async function registerHotkey(
 
 // Clean up key listener and mic listener on quit
 app.on("will-quit", () => {
-  cleanupBeforeQuit();
+  void cleanupBeforeQuit().catch((err) =>
+    log.warn(`cleanup before quit failed: ${String(err)}`),
+  );
 });
 
 // Keep app running in background when windows are closed (tray stays active)
@@ -4618,65 +4645,35 @@ let isQuitting = false;
 let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 let updateAvailableVersion: string | null = null;
 
-function cleanupBeforeQuit(): void {
-  // No app-host plugin registry to dispose anymore — every hook (including
-  // `dispose`) runs server-side, and the server has its own shutdown path.
-  remixInitialized = false;
-  listenerRegistration.shutdown();
-  void disposeServerPlugins().catch(() => {});
-  audioPlaybackController.restoreSync();
-  stopLinuxPasteHelper();
-  destroyPanelWindow();
-  if (keyListener) {
-    keyListener.stop();
-    keyListener = null;
-  }
-  if (remixKeyListener) {
-    remixKeyListener.stop();
-    remixKeyListener = null;
-  }
-  stopHotkeyRecorderProcess();
-  globalShortcut.unregisterAll();
-  if (httpServer) {
-    httpServer.close();
-    httpServer = null;
-  }
-  try {
-    closeDb();
-  } catch {}
+let quitCleanup: Promise<void> | undefined;
+function cleanupBeforeQuit(): Promise<void> {
+  if (quitCleanup) return quitCleanup;
+  quitCleanup = (async () => {
+    try {
+      remixInitialized = false;
+      listenerRegistration.shutdown();
+      audioPlaybackController.restoreSync();
+      stopLinuxPasteHelper();
+      destroyPanelWindow();
+      stopHotkeyRecorderProcess();
+      globalShortcut.unregisterAll();
+      // Native event-tap helpers must exit before Electron terminates, otherwise
+      // they continue intercepting system keys after their parent has gone.
+      await stopNativeHotkeyListeners();
+    } finally {
+      await stopOwnedServer();
+    }
+  })();
+  return quitCleanup;
 }
 
 app.on("before-quit", (event) => {
-  if (isUpdaterQuitting) {
-    try {
-      cleanupBeforeQuit();
-    } catch (err) {
-      log.warn(
-        `cleanup before updater quit failed: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
-    }
-    return;
-  }
+  // quitAndInstall runs only after the same awaited cleanup has completed.
+  if (isUpdaterQuitting) return;
+  event.preventDefault();
   if (isQuitting) return;
   isQuitting = true;
-  event.preventDefault();
-  // We preventDefault above, so `app.exit(0)` is the only thing that ends the
-  // process. Keep it in a `finally` — if any cleanup step throws (a native
-  // listener already torn down, a dead child process), the app would otherwise
-  // stay alive forever with no windows, which is what a hung quit looks like.
-  try {
-    cleanupBeforeQuit();
-  } catch (err) {
-    log.warn(
-      `cleanup before quit failed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-  } finally {
-    void shutdownSentry()
-      .catch(() => {})
-      .finally(() => app.exit(0));
-  }
+  void boundedQuitCleanup(cleanupBeforeQuit())
+    .catch((err) => log.warn(`cleanup before quit failed: ${String(err)}`))
+    .finally(() => app.exit(0));
 });

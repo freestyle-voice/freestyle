@@ -8,7 +8,8 @@
     "enumMembers": "off",
     "namespaceMembers": "off"
   },
-  "ignoreBinaries": ["pkg-config", "powershell.exe", "python3"],
+  // pgrep is a POSIX system utility used to assert native child-process cleanup.
+  "ignoreBinaries": ["pkg-config", "powershell.exe", "python3", "pgrep"],
   "ignoreFiles": [
     "apps/electron/src/preload/*.d.ts",
     "apps/electron/src/renderer/src/env.d.ts",

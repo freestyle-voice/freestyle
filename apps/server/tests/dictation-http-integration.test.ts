@@ -95,6 +95,16 @@ describe("recorded audio through the real local HTTP pipeline", () => {
       cleaned: "we use Freestyle",
     });
     expect(inference.mock.calls[0][0].audio).toEqual(recordedWav());
+    const delivery = await fetch(`${base}/api/output/deliver`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: "we use Freestyle", mode: "clipboard" }),
+    });
+    expect(delivery.status).toBe(200);
+    expect(await delivery.json()).toMatchObject({
+      disposition: "deliver",
+      output: { text: "we use Freestyle", mode: "clipboard" },
+    });
     const history = await fetch(`${base}/api/history`).then((res) =>
       res.json(),
     );

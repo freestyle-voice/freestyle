@@ -1,3 +1,5 @@
+import { startEventLoopMonitor } from "./event-loop-monitor";
+
 // A GUI process can outlive its development runner (or a detached terminal).
 // In that case Node emits an error on stdout/stderr rather than making a
 // normal log call fail.  These streams are only diagnostic output — file
@@ -4597,6 +4599,17 @@ app.on("window-all-closed", () => {
 app.on("activate", () => {
   openPanel({ focusComposer: true });
 });
+
+let stopEventLoopMonitor: (() => void) | undefined;
+void app.whenReady().then(() => {
+  stopEventLoopMonitor = startEventLoopMonitor((sample) => {
+    log.warn(
+      `Main event loop stalled: max=${sample.maxMs.toFixed(0)}ms p99=${sample.p99Ms.toFixed(0)}ms utilization=${(sample.utilization * 100).toFixed(1)}% (60s window)`,
+    );
+  });
+});
+
+app.once("before-quit", () => stopEventLoopMonitor?.());
 
 // Gracefully shut down the HTTP server and flush Sentry before quitting
 let isUpdaterQuitting = false;

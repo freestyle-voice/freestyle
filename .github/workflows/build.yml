@@ -237,7 +237,9 @@ jobs:
         run: test -f apps/electron/out/main/index.js
 
       - name: Run Electron E2E tests
-        timeout-minutes: 5
+        # The serial suite includes native app launches and up to two retries.
+        # Allow those retries to finish without cancelling the remaining tests.
+        timeout-minutes: 10
         run: xvfb-run --auto-servernum --server-args="-screen 0 1280x720x24" pnpm --filter @freestyle-voice/electron run test:e2e
 
   build-plugins:

@@ -29,6 +29,12 @@ export type QueryInput = z.infer<typeof querySchema>;
 const dateStringSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/)
+  .refine((value) => {
+    const date = new Date(`${value}T00:00:00Z`);
+    return (
+      !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value
+    );
+  }, "Expected a valid calendar date")
   .optional()
   .catch(undefined);
 

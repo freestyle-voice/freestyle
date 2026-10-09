@@ -6,6 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { getDb } from "../db.js";
+import {
+  assertDatabaseOwner,
+  assertServerCaller,
+  isDatabaseOwner,
+} from "../db-ownership.js";
 import { getMlxAsrModel, isAppleSiliconMac } from "./constants.js";
 import {
   describeMlxSetupBlocker,
@@ -111,6 +116,7 @@ export function getMlxAsrKeepAliveMinutes(): number {
 }
 
 export function startMlxInBackground(modelId: string): void {
+  assertDatabaseOwner();
   if (getMlxAsrKeepAliveMinutes() === 0) return;
   if (workerProcess && currentModelId === modelId && workerReady) return;
   if (startPromise && currentModelId === modelId) return;
@@ -132,6 +138,11 @@ export function applyMlxAsrRetentionPolicy(): void {
 }
 
 export function ensureMlxServerRunning(modelId: string): Promise<void> {
+  try {
+    assertDatabaseOwner();
+  } catch (error) {
+    return Promise.reject(error);
+  }
   const run = lifecyclePromise.then(() =>
     ensureMlxServerRunningLocked(modelId),
   );
@@ -140,6 +151,7 @@ export function ensureMlxServerRunning(modelId: string): Promise<void> {
 }
 
 async function ensureMlxServerRunningLocked(modelId: string): Promise<void> {
+  assertDatabaseOwner();
   clearUnloadTimer();
   if (workerProcess && currentModelId === modelId && workerReady) {
     return;
@@ -149,6 +161,7 @@ async function ensureMlxServerRunningLocked(modelId: string): Promise<void> {
   }
 
   await stopMlxServer();
+  assertDatabaseOwner();
   workerFailed = false;
   currentModelId = modelId;
 
@@ -259,6 +272,7 @@ async function spawnWorkerProcess(
   command: string,
   spawnArgs: string[],
 ): Promise<void> {
+  assertDatabaseOwner();
   const proc = spawn(command, spawnArgs, {
     stdio: ["pipe", "pipe", "pipe"],
     env: { ...process.env, PYTHONUNBUFFERED: "1" },
@@ -269,6 +283,7 @@ async function spawnWorkerProcess(
   stdoutBuffer = "";
 
   proc.stdout?.on("data", (data: Buffer) => {
+    if (workerProcess !== proc) return;
     stdoutBuffer += data.toString();
     let newline = stdoutBuffer.indexOf("\n");
     while (newline >= 0) {
@@ -302,6 +317,10 @@ async function spawnWorkerProcess(
       const err = new Error(
         "mlx-asr worker failed to start within 120 seconds.",
       );
+      if (workerProcess !== proc) {
+        reject(err);
+        return;
+      }
       readyResolve = null;
       readyReject = null;
       failWorker(err);
@@ -338,6 +357,7 @@ async function startWorker(modelId: string): Promise<void> {
     );
   });
 
+  assertDatabaseOwner();
   const candidates = workerLaunchCandidates(def.hfId);
   if (candidates.length === 0) {
     throw new Error(
@@ -349,9 +369,11 @@ async function startWorker(modelId: string): Promise<void> {
   let lastError: Error | null = null;
 
   for (const candidate of candidates) {
+    assertDatabaseOwner();
     workerFailed = false;
     try {
       await spawnWorkerProcess(candidate.command, candidate.spawnArgs);
+      assertDatabaseOwner();
       const releaseTag = process.env.FREESTYLE_MLX_ASR_RELEASE_TAG;
       if (releaseTag && isManagedMlxRuntimeAvailable()) {
         markManagedMlxRuntimeSyncedForAppVersion(releaseTag);
@@ -359,12 +381,15 @@ async function startWorker(modelId: string): Promise<void> {
       log.debug(`started via ${candidate.label}`);
       return;
     } catch (err) {
+      assertDatabaseOwner();
       lastError = err instanceof Error ? err : new Error(String(err));
       await stopMlxServer().catch(() => undefined);
+      assertDatabaseOwner();
       log.debug(`${candidate.label} failed: ${lastError.message}`);
     }
   }
 
+  assertDatabaseOwner();
   workerFailed = true;
   throw (
     lastError ??
@@ -413,6 +438,7 @@ function sendTranscribeRequest(opts: {
   language?: string;
   context?: string;
 }): Promise<string> {
+  assertDatabaseOwner();
   clearUnloadTimer();
 
   const proc = workerProcess;
@@ -477,6 +503,7 @@ function clearUnloadTimer(): void {
 }
 
 function scheduleUnload(): void {
+  if (!isDatabaseOwner()) return;
   clearUnloadTimer();
   if (!workerProcess) return;
   if (pending.size > 0) return;
@@ -497,7 +524,7 @@ function scheduleUnload(): void {
   }
 
   unloadTimer = setTimeout(() => {
-    if (pending.size > 0) return;
+    if (pending.size > 0 || !isDatabaseOwner()) return;
     stopMlxServer().catch((err: Error) => {
       log.error(`Failed to unload idle worker: ${err.message}`);
     });
@@ -506,6 +533,7 @@ function scheduleUnload(): void {
 }
 
 export async function stopMlxServer(): Promise<void> {
+  assertServerCaller();
   if (!workerProcess) return;
   clearUnloadTimer();
 

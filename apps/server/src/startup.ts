@@ -12,7 +12,7 @@
  *     (except /api/health). Strongly recommended when binding to 0.0.0.0.
  */
 
-import { closeDb, disposeServerPlugins, startServer } from "./index.js";
+import { startServer } from "./index.js";
 
 const port = process.env.PORT ? Number(process.env.PORT) : 4649;
 const host = process.env.HOST ?? "0.0.0.0";
@@ -30,32 +30,40 @@ if (!process.env.FREESTYLE_DB_PATH) {
   process.exit(1);
 }
 
-const { server, port: boundPort } = await startServer({
+const startup = startServer({
   port,
   host,
   token,
-}).catch((err) => {
+});
+let shutdownPromise: Promise<void> | undefined;
+function shutdown(signal: string): void {
+  if (shutdownPromise) return;
+  console.log(`Received ${signal}, shutting down...`);
+  const deadline = setTimeout(() => {
+    console.error("Server shutdown timed out while waiting for startup");
+    process.exit(1);
+  }, 25_000);
+  deadline.unref();
+  shutdownPromise = startup
+    .then((running) => running.stop())
+    .finally(() => clearTimeout(deadline));
+  void shutdownPromise.then(
+    () => process.exit(0),
+    (err) => {
+      console.error(`Server shutdown failed: ${String(err)}`);
+      process.exit(1);
+    },
+  );
+}
+
+// Only executable entrypoints own process signals, including during startup.
+process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+const running = await startup.catch((err) => {
   console.error(
     `Failed to start server: ${err instanceof Error ? err.message : String(err)}`,
   );
   process.exit(1);
 });
-console.log(`Freestyle server running on http://${host}:${boundPort}`);
-
-function shutdown(signal: string): void {
-  console.log(`Received ${signal}, shutting down...`);
-  void disposeServerPlugins().catch(() => {});
-  server.close(() => {
-    try {
-      closeDb();
-    } catch {
-      // ignore
-    }
-    process.exit(0);
-  });
-  // Don't wait forever for in-flight connections (e.g. open WebSockets).
-  setTimeout(() => process.exit(0), 10_000).unref();
-}
-
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+console.log(`Freestyle server running on http://${host}:${running.port}`);

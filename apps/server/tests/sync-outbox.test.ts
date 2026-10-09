@@ -18,8 +18,14 @@ vi.mock("../src/lib/freestyle-cloud.js", async (importOriginal) => {
   };
 });
 
-const { clearOutbox, enqueueOutbox, drainOutbox, outboxBackoffMs } =
-  await import("../src/lib/sync-outbox.js");
+const {
+  clearOutbox,
+  enqueueOutbox,
+  drainOutbox,
+  outboxBackoffMs,
+  stopOutboxDrain,
+  startOutboxDrain,
+} = await import("../src/lib/sync-outbox.js");
 
 interface Row {
   cloud_field: string;
@@ -54,19 +60,22 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 }
 
-beforeEach(() => {
+beforeEach(async () => {
   getDb().exec("DELETE FROM sync_outbox");
   // Reset mock implementations each test (clearAllMocks clears call history but
   // not mockResolvedValue implementations, which would otherwise leak).
   putCloudPreferences.mockReset().mockResolvedValue({ syncedAt: "now" });
   resolveActiveOrgSlug.mockReset().mockResolvedValue("acme");
   signIn();
+  startOutboxDrain();
+  await settle();
 });
 
 afterEach(async () => {
   // Let any fire-and-forget immediate drain (from enqueueOutbox) settle so its
   // module-level in-flight guard is released before the next test.
   await settle();
+  await stopOutboxDrain();
   getDb().exec("DELETE FROM sync_outbox");
   clearSession();
   vi.clearAllMocks();
@@ -241,6 +250,34 @@ describe("drainOutbox", () => {
 
     expect(putCloudPreferences).not.toHaveBeenCalled();
     expect(rows()).toHaveLength(1);
+  });
+
+  it("awaits an active drain and preserves its row when stopped during the cloud PUT", async () => {
+    insertDue("languages", { languages: ["en"] });
+    let release!: () => void;
+    putCloudPreferences.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ syncedAt: "now" });
+        }),
+    );
+    const pending = drainOutbox();
+    await settle();
+    const stopped = stopOutboxDrain();
+    let finished = false;
+    void stopped.then(() => {
+      finished = true;
+    });
+    await settle();
+    expect(finished).toBe(false);
+    release();
+    await Promise.all([pending, stopped]);
+    expect(rows()).toHaveLength(1);
+    // Restarting resumes the durable row rather than dropping the offline edit.
+    startOutboxDrain();
+    await settle();
+    expect(rows()).toHaveLength(0);
+    await stopOutboxDrain();
   });
 
   it("stops draining after the first transient error (server is down)", async () => {

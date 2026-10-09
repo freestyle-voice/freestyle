@@ -76,5 +76,6 @@ export function pluginConfig(): PluginConfig {
 
 /** Run every plugin's `dispose` hook (best-effort, on shutdown). */
 export function disposeServerPlugins(): Promise<void> {
+  initialized = false;
   return registry.dispose();
 }

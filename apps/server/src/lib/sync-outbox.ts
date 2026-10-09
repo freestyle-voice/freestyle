@@ -88,7 +88,9 @@ export function enqueueOutbox(
 
 // Guards against overlapping drains (the periodic timer + an immediate
 // enqueue-triggered drain could otherwise run concurrently and double-send).
-let draining = false;
+let drainPromise: Promise<void> | null = null;
+let drainGeneration = 0;
+let drainStopped = false;
 
 /**
  * Attempt to deliver every due outbox row to the cloud. Never throws. No-op when
@@ -106,9 +108,20 @@ export function pendingOutboxFields(): Set<string> {
   }
 }
 
-export async function drainOutbox(): Promise<void> {
-  if (draining) return;
+export function drainOutbox(): Promise<void> {
+  if (drainStopped) return Promise.resolve();
+  if (drainPromise) return drainPromise;
+  const pending = drainOutboxOnce(drainGeneration);
+  drainPromise = pending;
+  void pending
+    .finally(() => {
+      if (drainPromise === pending) drainPromise = null;
+    })
+    .catch(() => {});
+  return pending;
+}
 
+async function drainOutboxOnce(generation: number): Promise<void> {
   const token = getSessionToken();
   if (!token) return;
 
@@ -127,10 +140,9 @@ export async function drainOutbox(): Promise<void> {
   }[];
   if (due.length === 0) return;
 
-  draining = true;
   try {
     const orgSlug = await resolveActiveOrgSlug(token);
-    if (!orgSlug) return; // no active org yet — keep rows, try again later
+    if (!orgSlug || generation !== drainGeneration) return; // no active org yet — keep rows, try again later
 
     for (const row of due) {
       let patch: MemberPreferencesInput;
@@ -145,8 +157,10 @@ export async function drainOutbox(): Promise<void> {
 
       try {
         await putCloudPreferences(token, orgSlug, patch);
+        if (generation !== drainGeneration) return;
         dropRow(row.cloud_field, row.updated_at);
       } catch (err) {
+        if (generation !== drainGeneration) return;
         const message = err instanceof Error ? err.message : String(err);
         if (isTransientCloudError(err)) {
           // Server/network is down — back off and stop this tick; the rest of
@@ -166,8 +180,6 @@ export async function drainOutbox(): Promise<void> {
     log.debug(
       `Outbox drain aborted: ${err instanceof Error ? err.message : String(err)}`,
     );
-  } finally {
-    draining = false;
   }
 }
 
@@ -205,17 +217,21 @@ let drainTimer: NodeJS.Timeout | null = null;
  */
 export function startOutboxDrain(): void {
   if (drainTimer) return;
+  drainStopped = false;
   void drainOutbox();
   drainTimer = setInterval(() => void drainOutbox(), OUTBOX_DRAIN_INTERVAL_MS);
   drainTimer.unref();
 }
 
 /** Stop the periodic outbox drain. */
-export function stopOutboxDrain(): void {
+export async function stopOutboxDrain(): Promise<void> {
+  drainStopped = true;
+  drainGeneration++;
   if (drainTimer) {
     clearInterval(drainTimer);
     drainTimer = null;
   }
+  await drainPromise;
 }
 
 /**

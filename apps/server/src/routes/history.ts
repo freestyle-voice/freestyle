@@ -3,6 +3,7 @@ import { zValidator } from "@hono/zod-validator";
 import { Hono } from "hono";
 import { getDb } from "../lib/db.js";
 import { likePattern } from "../lib/like-pattern.js";
+import { localDayBounds } from "../lib/local-day-bounds.js";
 import { capture } from "../lib/sentry.js";
 
 interface HistoryRow {
@@ -77,14 +78,17 @@ const history = new Hono()
       params.push(pattern, pattern, pattern);
     }
 
+    // Convert local calendar boundaries once, keeping created_at indexable.
+    // Use the runtime's timezone rules on every platform; SQLite's Windows
+    // localtime/utc modifiers do not reliably invert DST calendar boundaries.
     if (start_date) {
-      conditions.push("date(created_at,'localtime') >= ? ");
-      params.push(start_date);
+      conditions.push("created_at >= ?");
+      params.push(localDayBounds(start_date).start);
     }
 
     if (end_date) {
-      conditions.push("date(created_at,'localtime') <= ? ");
-      params.push(end_date);
+      conditions.push("created_at < ?");
+      params.push(localDayBounds(end_date).end);
     }
 
     const whereClause =
@@ -117,12 +121,12 @@ const history = new Hono()
     const params: string[] = [];
 
     if (startDate) {
-      conditions.push("date(created_at, 'localtime') >= ?");
-      params.push(startDate);
+      conditions.push("created_at >= ?");
+      params.push(localDayBounds(startDate).start);
     }
     if (endDate) {
-      conditions.push("date(created_at, 'localtime') <= ?");
-      params.push(endDate);
+      conditions.push("created_at < ?");
+      params.push(localDayBounds(endDate).end);
     }
 
     const whereClause =
@@ -159,14 +163,18 @@ const history = new Hono()
       .prepare("SELECT COUNT(*) as count FROM transcription_history")
       .get() as { count: number };
 
-    // Use localtime to match the user's timezone for "today" boundary
+    // Local midnight to the next local midnight, with the same indexed bounds.
+    const todayBounds = localDayBounds(new Date());
     const today = db
       .prepare(
         `SELECT COUNT(*) as sessions, COALESCE(SUM(cost_usd), 0) as cost
          FROM transcription_history
-         WHERE date(created_at, 'localtime') = date('now', 'localtime')`,
+         WHERE created_at >= ? AND created_at < ?`,
       )
-      .get() as { sessions: number; cost: number };
+      .get(todayBounds.start, todayBounds.end) as {
+      sessions: number;
+      cost: number;
+    };
 
     return c.json({
       ...stats,

@@ -1,6 +1,8 @@
 import { createAppLogger } from "@freestyle-voice/utils";
 import type { Plugin, PluginConfig } from "freestyle-voice";
 import { PluginRegistry } from "freestyle-voice";
+import { assertDatabaseOwner, assertServerCaller } from "../db-ownership.js";
+import { boundedCleanup } from "../server-lifecycle.js";
 import { loadServerPlugins } from "./loader.js";
 
 export {
@@ -27,6 +29,7 @@ let builtinPlugins: Plugin[] = [];
  * so the previous cloud-sync plugin is no longer needed.
  */
 export async function initServerPlugins(): Promise<void> {
+  assertDatabaseOwner();
   if (initialized) return;
   initialized = true;
   builtinPlugins = [];
@@ -46,19 +49,43 @@ export async function initServerPlugins(): Promise<void> {
  * responding on the next request — no restart required.
  */
 export async function reloadServerPlugins(): Promise<void> {
+  assertDatabaseOwner();
   const previous = registry;
-  await loadIntoRegistry();
-  await previous.dispose().catch(() => {});
+  try {
+    await loadIntoRegistry();
+  } finally {
+    if (previous !== registry) await previous.dispose().catch(() => {});
+  }
+  assertDatabaseOwner();
+}
+
+async function disposeUnusedRegistry(candidate: PluginRegistry): Promise<void> {
+  // A superseded async load may finish after another server has installed its
+  // registry. Dispose only the captured candidate, never the live successor.
+  if (candidate === registry) return;
+  await boundedCleanup(() => candidate.dispose(), "Discarded plugins").catch(
+    () => {},
+  );
 }
 
 async function loadIntoRegistry(): Promise<void> {
+  assertDatabaseOwner();
+  let candidate: PluginRegistry | undefined;
   try {
-    registry = await loadServerPlugins(builtinPlugins);
-    resolvedConfig = await registry.resolveConfig({});
-    if (Object.keys(resolvedConfig).length > 0) {
-      log.info(`plugin config resolved: ${JSON.stringify(resolvedConfig)}`);
+    candidate = await loadServerPlugins(builtinPlugins);
+    assertDatabaseOwner();
+    const config = await candidate.resolveConfig({});
+    assertDatabaseOwner();
+    if (Object.keys(config).length > 0) {
+      log.info(`plugin config resolved: ${JSON.stringify(config)}`);
     }
+    // Commit together only after loading/configuration and ownership validation.
+    registry = candidate;
+    resolvedConfig = config;
   } catch {
+    if (candidate) await disposeUnusedRegistry(candidate);
+    // A stale failure must not clear the successor's registry/config either.
+    assertDatabaseOwner();
     registry = new PluginRegistry();
     resolvedConfig = {};
   }
@@ -66,16 +93,19 @@ async function loadIntoRegistry(): Promise<void> {
 
 /** The active registry. Returns an empty one before init runs. */
 export function plugins(): PluginRegistry {
+  assertDatabaseOwner();
   return registry;
 }
 
 /** The configuration contributed by plugins' `config` hooks at boot. */
 export function pluginConfig(): PluginConfig {
+  assertDatabaseOwner();
   return resolvedConfig;
 }
 
 /** Run every plugin's `dispose` hook (best-effort, on shutdown). */
 export function disposeServerPlugins(): Promise<void> {
+  assertServerCaller();
   initialized = false;
   return registry.dispose();
 }

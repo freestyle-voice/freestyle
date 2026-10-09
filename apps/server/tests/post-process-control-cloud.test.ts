@@ -43,6 +43,9 @@ vi.mock("../src/lib/plugins/index.js", async (importOriginal) => {
 
 const { postProcess } = await import("../src/lib/post-process.js");
 const { createHookApi } = await import("../src/lib/plugins/pipeline.js");
+const { FreestyleCloudUsageError } = await import(
+  "../src/lib/freestyle-cloud.js"
+);
 
 describe("postProcess — beforeCleanup control state (cloud cleanup)", () => {
   beforeEach(() => {
@@ -91,5 +94,15 @@ describe("postProcess — beforeCleanup control state (cloud cleanup)", () => {
     await postProcess("hello world", null, { api });
 
     expect(cloudPostProcessSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("propagates cloud usage limits instead of falling back to raw text", async () => {
+    cloudPostProcessSpy.mockRejectedValueOnce(
+      new FreestyleCloudUsageError("2026-10-06T00:00:00.000Z"),
+    );
+
+    await expect(postProcess("hello world", null)).rejects.toBeInstanceOf(
+      FreestyleCloudUsageError,
+    );
   });
 });

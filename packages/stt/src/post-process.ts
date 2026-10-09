@@ -2,7 +2,7 @@ import type { ProviderOptions } from "@ai-sdk/provider-utils";
 import type { LanguageModel } from "ai";
 import { generateText } from "ai";
 import { sanitizeTranscriptText } from "./text.js";
-import { maxOutputTokensForCleanup } from "./tokens.js";
+import { estimateTokenCount, maxOutputTokensForCleanup } from "./tokens.js";
 
 /**
  * Default user-prompt wrapper: quotes the transcript inside `<transcript>`
@@ -45,6 +45,13 @@ export interface PostProcessParams {
   prompt?: string;
   /** Defaults to a heuristic scaled off input length (see {@link maxOutputTokensForCleanup}). */
   maxOutputTokens?: number;
+  /**
+   * Skip cleanup when the complete prompt is estimated to exceed this provider
+   * input-token budget. This is useful for providers with a per-request or
+   * per-minute input limit: a raw transcript is better than repeatedly
+   * submitting a request the provider will reject.
+   */
+  maxInputTokens?: number;
   /** Defaults to 0 (deterministic). */
   temperature?: number;
   /**
@@ -77,6 +84,8 @@ export interface PostProcessResult {
   model: string | null;
   inputTokens: number;
   outputTokens: number;
+  /** Present when cleanup deliberately did not call the model. */
+  skipReason?: "input_too_large";
 }
 
 function describeModel(model: LanguageModel): string | null {
@@ -115,6 +124,19 @@ export async function postProcess(
   }
 
   const prompt = params.prompt ?? defaultPrompt(normalizedRawText);
+
+  if (
+    params.maxInputTokens !== undefined &&
+    estimateTokenCount(`${params.system}\n${prompt}`) > params.maxInputTokens
+  ) {
+    return {
+      cleaned: normalizedRawText,
+      model: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      skipReason: "input_too_large",
+    };
+  }
 
   try {
     const result = await generateText({

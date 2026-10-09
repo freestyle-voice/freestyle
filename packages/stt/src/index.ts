@@ -11,7 +11,7 @@ export {
   stripTrailingDuplicate,
   stripWrappingQuotes,
 } from "./text.js";
-export { maxOutputTokensForCleanup } from "./tokens.js";
+export { estimateTokenCount, maxOutputTokensForCleanup } from "./tokens.js";
 export type {
   TranscribeAudio,
   TranscribeParams,

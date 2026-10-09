@@ -179,11 +179,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Run server tests
-        run: pnpm --filter @freestyle-voice/server run test
-
       - name: Run standalone server lifecycle E2E
         run: pnpm --filter @freestyle-voice/server run test:e2e:lifecycle
+
+      - name: Run server tests
+        run: pnpm --filter @freestyle-voice/server run test
 
   test-electron:
     name: Test (Electron E2E)

@@ -533,6 +533,7 @@ jobs:
       - build-mac
       - build-windows
       - build-server-image
+      - test-dictation-http
     runs-on: ubuntu-latest
     steps:
       - name: Check CI result

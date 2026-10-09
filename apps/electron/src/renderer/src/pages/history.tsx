@@ -30,6 +30,7 @@ import {
   TooltipTrigger,
 } from "@renderer/components/ui/tooltip";
 import { useDismissible } from "@renderer/hooks/use-dismissible";
+import { useHistorySearch } from "@renderer/hooks/use-history-search";
 import {
   usePersistentJsonState,
   usePersistentState,
@@ -41,14 +42,19 @@ import {
   getRecentDateRange,
 } from "@renderer/lib/history-dates";
 import { type DiffSegment, diffWords } from "@renderer/lib/history-diff";
+import {
+  type DayActivity,
+  HISTORY_PAGE_SIZE,
+  type HistoryEntry,
+  historyDailyQueryOptions,
+  historyListQueryOptions,
+  historyStatsQueryOptions,
+  type Stats,
+} from "@renderer/lib/history-queries";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   ChartColumnIncreasing,
@@ -71,44 +77,6 @@ import { type DateRange, DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
-
-interface HistoryEntry {
-  id: number;
-  raw_text: string;
-  cleaned_text: string | null;
-  voice_provider: string;
-  voice_model: string;
-  llm_provider: string | null;
-  llm_model: string | null;
-  duration_ms: number;
-  audio_duration_ms: number;
-  input_tokens: number;
-  output_tokens: number;
-  cost_usd: number;
-  created_at: string;
-}
-
-interface Stats {
-  total_sessions: number;
-  total_duration_ms: number;
-  total_input_tokens: number;
-  total_output_tokens: number;
-  total_cost_usd: number;
-  avg_duration_ms: number;
-  total_audio_ms: number;
-  total_fixes: number;
-  total_words: number;
-  today_sessions: number;
-  today_cost: number;
-  unfiltered_total_sessions: number;
-}
-
-/** One local day of usage from GET /api/history/daily, feeding the heatmap. */
-interface DayActivity {
-  day: string;
-  words: number;
-  sessions: number;
-}
 
 function formatClock(iso: string): string {
   return new Date(`${iso}Z`)
@@ -175,15 +143,13 @@ function getDateGroup(iso: string): string {
   });
 }
 
-const PAGE_SIZE = 20;
 const DEV_HISTORY_SEED_ENABLED = import.meta.env.DEV;
 const STATS_WIDTH_MIN = 260;
 const STATS_WIDTH_MAX = 480;
 
 export default function HistoryPage(): React.JSX.Element {
   const { t } = useTranslation();
-  const [page, setPage] = useState(0);
-  const [search, setSearch] = useState("");
+  const { page, setPage, search, setSearch, querySearch } = useHistorySearch();
   // The filter sidebar is transient UI, not persisted state.
   const [filtersOpen, setFiltersOpen] = useState(false);
 
@@ -372,7 +338,7 @@ export default function HistoryPage(): React.JSX.Element {
       });
       setPage(0);
     },
-    [patchFilters],
+    [patchFilters, setPage],
   );
 
   // Stable setters for the filter panel's view toggles (memoized child).
@@ -391,44 +357,20 @@ export default function HistoryPage(): React.JSX.Element {
 
   const queryClient = useQueryClient();
 
-  const { data: historyData, isLoading: loading } = useQuery({
-    queryKey: queryKeys.history.list(page, search, startDate, endDate),
-    queryFn: async () => {
-      const q: Record<string, string> = {
-        limit: String(PAGE_SIZE),
-        offset: String(page * PAGE_SIZE),
-        orderBy: "-created_at",
-      };
-      if (search) q.search = search;
-      if (startDate) q.start_date = startDate;
-      if (endDate) q.end_date = endDate;
-
-      const statsQ: Record<string, string> = {};
-      if (startDate) statsQ.start_date = startDate;
-      if (endDate) statsQ.end_date = endDate;
-
-      const client = getClient();
-      const [histRes, statsRes] = await Promise.all([
-        client.api.history.$get({ query: q }),
-        client.api.history.stats.$get({ query: statsQ }),
-      ]);
-      const items = histRes.ok
-        ? ((await histRes.json()) as { items: HistoryEntry[]; total: number })
-        : { items: [] as HistoryEntry[], total: 0 };
-      const statsData = statsRes.ok ? ((await statsRes.json()) as Stats) : null;
-      return { ...items, stats: statsData };
-    },
-    // Keep showing the previous results while a new filter/page/search query
-    // loads. Without this every filter change is a brand-new query key with no
-    // cache, so `isLoading` flips true and the whole page blanks to the loading
-    // spinner — the "page re-renders" flash.
-    placeholderData: keepPreviousData,
-  });
+  const { data: historyData, isLoading: loading } = useQuery(
+    historyListQueryOptions(page, querySearch, startDate, endDate),
+  );
+  const { data: statsData, isLoading: statsLoading } = useQuery(
+    historyStatsQueryOptions(startDate, endDate),
+  );
 
   const apiEntries = historyData?.items ?? [];
   const devSeedEntry = useMemo<HistoryEntry | null>(() => {
     if (!DEV_HISTORY_SEED_ENABLED) return null;
-    if (search && !"inline filter panel visual test".includes(search)) {
+    if (
+      querySearch &&
+      !"inline filter panel visual test".includes(querySearch)
+    ) {
       return null;
     }
     if (startDate && todayStr < startDate) return null;
@@ -450,7 +392,7 @@ export default function HistoryPage(): React.JSX.Element {
       cost_usd: 0,
       created_at: new Date().toISOString().replace("T", " ").slice(0, 19),
     };
-  }, [endDate, search, startDate, todayStr]);
+  }, [endDate, querySearch, startDate, todayStr]);
   const hasDevSeedEntry = apiEntries.length === 0 && devSeedEntry !== null;
   const entries = hasDevSeedEntry ? [devSeedEntry] : apiEntries;
   const total = hasDevSeedEntry ? 1 : (historyData?.total ?? 0);
@@ -469,8 +411,8 @@ export default function HistoryPage(): React.JSX.Element {
         today_cost: 0,
         unfiltered_total_sessions: 1,
       }
-    : (historyData?.stats ?? null);
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+    : (statsData ?? null);
+  const totalPages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
 
   // `history_paused` lives in the shared settings map — read it from the same
   // cached ["settings-all"] query the settings pages use instead of a separate
@@ -481,15 +423,7 @@ export default function HistoryPage(): React.JSX.Element {
   // Per-day usage for the heatmap. Fixed lookback window on the server, so it
   // ignores the list filters; shares the "history" key prefix so a completed
   // transcription invalidates it along with the feed.
-  const { data: dailyData } = useQuery({
-    queryKey: queryKeys.history.daily,
-    queryFn: async () => {
-      const res = await getClient().api.history.daily.$get();
-      if (!res.ok) return [] as DayActivity[];
-      const data = (await res.json()) as { days: DayActivity[] };
-      return data.days;
-    },
-  });
+  const { data: dailyData } = useQuery(historyDailyQueryOptions());
 
   // Refetch when the pill reports a completed transcription.
   useEffect(() => {
@@ -610,7 +544,6 @@ export default function HistoryPage(): React.JSX.Element {
           value={search}
           onChange={(e) => {
             setSearch(e.target.value);
-            setPage(0);
           }}
           placeholder={
             total === 1
@@ -683,7 +616,7 @@ export default function HistoryPage(): React.JSX.Element {
   const feed =
     entries.length === 0 ? (
       <NoSearchResults
-        hasSearch={!!search}
+        hasSearch={!!querySearch}
         hasDates={hasCustomRange}
         onClear={() => {
           setSearch("");
@@ -723,7 +656,7 @@ export default function HistoryPage(): React.JSX.Element {
       )
     );
 
-  const pagination = total > PAGE_SIZE && (
+  const pagination = total > HISTORY_PAGE_SIZE && (
     <div className="border-border mt-4 flex items-center justify-between border-t pt-4">
       <span className="text-muted-foreground text-[11px]">
         {total}{" "}
@@ -890,7 +823,7 @@ export default function HistoryPage(): React.JSX.Element {
                 </header>
                 {displayedSidebar === "filters" ? (
                   filtersPanel
-                ) : loading ? (
+                ) : statsLoading ? (
                   <HistoryStatsSkeleton />
                 ) : (
                   <StatsPanel

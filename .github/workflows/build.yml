@@ -182,6 +182,27 @@ jobs:
       - name: Run server tests
         run: pnpm --filter @freestyle-voice/server run test
 
+  test-history-platforms:
+    name: History dates (${{ matrix.os }})
+    needs: [changes]
+    if: needs.changes.outputs.run_electron == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - name: Verify native SQLite timezone boundaries and indexed queries
+        run: pnpm --filter @freestyle-voice/server exec vitest run tests/history-query.test.ts
+
   test-electron:
     name: Test (Electron E2E)
     needs: [changes, test-server]
@@ -525,6 +546,7 @@ jobs:
       - knip
       - typecheck
       - test-server
+      - test-history-platforms
       - test-electron
       - build-plugins
       - mobile

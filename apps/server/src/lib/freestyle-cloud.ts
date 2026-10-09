@@ -22,6 +22,7 @@ import type {
   ProfileInput,
 } from "@freestyle-voice/validations";
 import { createAuthClient } from "better-auth/client";
+import { requestSignal } from "./request-abort.js";
 
 export {
   FreestyleCloudAuthError,
@@ -349,6 +350,7 @@ function cloudJson<T>(
 }
 
 export async function transcribeWithFreestyleCloud(opts: {
+  signal?: AbortSignal;
   token: string;
   audio: Uint8Array;
   /**
@@ -400,10 +402,12 @@ export async function transcribeWithFreestyleCloud(opts: {
     method: "POST",
     // Do not set content-type: fetch adds the multipart boundary itself.
     body: form,
+    signal: requestSignal(opts.signal, CLOUD_TRANSCRIBE_TIMEOUT_MS),
   });
 }
 
 export async function postProcessWithFreestyleCloud(opts: {
+  signal?: AbortSignal;
   token: string;
   text: string;
   appContext?: string | null;
@@ -444,6 +448,7 @@ export async function postProcessWithFreestyleCloud(opts: {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
+    signal: requestSignal(opts.signal, CLOUD_TRANSCRIBE_TIMEOUT_MS),
   });
 }
 

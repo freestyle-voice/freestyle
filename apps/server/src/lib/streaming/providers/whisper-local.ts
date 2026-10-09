@@ -1,5 +1,6 @@
 import { collapseAsrLineBreaks } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
+import { abortable, requestSignal } from "../../request-abort.js";
 import { isServerBinaryAvailable } from "../../whisper/binary.js";
 import { WHISPER_PROVIDER_ID } from "../../whisper/constants.js";
 import { ensureBinariesDownloaded } from "../../whisper/models.js";
@@ -53,36 +54,51 @@ export class WhisperLocalTranscriptionProvider
   }
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
+    opts.signal?.throwIfAborted();
     const modelId = stripProviderPrefix(opts.model);
 
     if (!isServerBinaryAvailable()) {
       try {
-        await ensureBinariesDownloaded();
+        await abortable(ensureBinariesDownloaded(), opts.signal);
       } catch (err) {
+        opts.signal?.throwIfAborted();
         throw new Error(
           `whisper-server binary not found and automatic setup failed: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
 
-    return withServerUse(async () => {
-      // Restarts the server if it is not running or loaded a different model.
-      await ensureServerRunning(modelId);
-
-      const t0 = Date.now();
-      try {
-        return await transcribeViaServer(opts);
-      } catch (err) {
-        // The server may have crashed mid-request; restart it and retry once.
-        log.warn(
-          `inference failed, restarting server: ${err instanceof Error ? err.message : String(err)}`,
-        );
+    // Keep ownership of shared startup until it settles, even if the caller
+    // stops awaiting it. withServerUse then applies the normal retention policy.
+    return abortable(
+      withServerUse(async () => {
+        // Restarts the server if it is not running or loaded a different model.
         await ensureServerRunning(modelId);
-        return await transcribeViaServer(opts);
-      } finally {
-        log.debug(`server inference took ${Date.now() - t0}ms`);
-      }
-    });
+        opts.signal?.throwIfAborted();
+
+        const t0 = Date.now();
+        try {
+          return await transcribeViaServer(opts);
+        } catch (err) {
+          opts.signal?.throwIfAborted();
+          if (
+            err instanceof Error &&
+            (err.name === "AbortError" || err.name === "TimeoutError")
+          )
+            throw err;
+          // The server may have crashed mid-request; restart it and retry once.
+          log.warn(
+            `inference failed, restarting server: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          await ensureServerRunning(modelId);
+          opts.signal?.throwIfAborted();
+          return await transcribeViaServer(opts);
+        } finally {
+          log.debug(`server inference took ${Date.now() - t0}ms`);
+        }
+      }),
+      opts.signal,
+    );
   }
 }
 
@@ -106,7 +122,7 @@ async function transcribeViaServer(
   const res = await fetch(`http://127.0.0.1:${getServerPort()}/inference`, {
     method: "POST",
     body: form,
-    signal: AbortSignal.timeout(120_000),
+    signal: requestSignal(opts.signal, 120_000),
   });
 
   if (!res.ok) {

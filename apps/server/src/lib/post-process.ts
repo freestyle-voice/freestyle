@@ -74,6 +74,7 @@ export type PostProcessSource =
   | "streaming_handoff";
 
 export interface PostProcessOptions {
+  signal?: AbortSignal;
   source?: PostProcessSource;
   languages?: string[];
   /** Return handoff/llm timing breakdown for pipeline logs. */
@@ -163,9 +164,12 @@ export async function applyFinalRewrites(
   appContext: string | null,
   rawForCleanedEvent?: string,
   api?: HookApi,
+  signal?: AbortSignal,
 ): Promise<string> {
+  signal?.throwIfAborted();
   const effectiveAppContext = resolveAppContextForCleanup(appContext);
   const hookApi = api ?? (await createHookApi());
+  signal?.throwIfAborted();
   let out = text;
   if (out.trim()) {
     out = applyDictionaryReplacements(out, getDb());
@@ -180,6 +184,7 @@ export async function applyFinalRewrites(
     )
   ).text;
 
+  signal?.throwIfAborted();
   if (rawForCleanedEvent !== undefined && out !== rawForCleanedEvent) {
     void plugins().emit({
       type: FreestyleEventType.Cleaned,
@@ -200,6 +205,7 @@ export async function postProcess(
   appContext: string | null,
   options: PostProcessOptions = {},
 ): Promise<PostProcessResult> {
+  options.signal?.throwIfAborted();
   // Opportunistically refresh the cleanup-prompt config if the cached copy has
   // aged past its TTL. Fire-and-forget: the current dictation uses whatever is
   // already in memory (fresh, stale, or bundled); this only warms the next one.
@@ -212,6 +218,7 @@ export async function postProcess(
   const parsedContext = parseAppContext(effectiveAppContext);
   const defaults = getDefaultModels();
   const api = options.api ?? (await createHookApi());
+  options.signal?.throwIfAborted();
   let inputTokens = 0;
   let outputTokens = 0;
   let llmProvider: string | null = null;
@@ -290,6 +297,7 @@ export async function postProcess(
         try {
           const result = await postProcessWithFreestyleCloud({
             token,
+            signal: options.signal,
             text: normalizedRawText,
             appContext: effectiveAppContext,
             ...(promptHook.system.length > 0
@@ -302,6 +310,7 @@ export async function postProcess(
           llmModel = llm.model_id;
           cleanedText = sanitizeTranscriptText(result.cleaned);
         } catch (err) {
+          options.signal?.throwIfAborted();
           if (err instanceof FreestyleCloudAuthError) throw err;
           // Transient network faults / upstream 5xx aren't app defects.
           if (!isTransientCloudError(err)) captureException(err);
@@ -322,6 +331,7 @@ export async function postProcess(
         `Skipping LLM cleanup: unsupported cleanup model ${llm.provider}/${llm.model_id}`,
       );
     } else {
+      options.signal?.throwIfAborted();
       const { personalSurface } = getRewritePromptContext(
         effectiveAppContext,
         getCleanupAppAssignments(),
@@ -363,7 +373,9 @@ export async function postProcess(
 
         const chatModel = await createCleanupModel(llm.provider, llm.model_id);
         let cleanupError: unknown;
+        options.signal?.throwIfAborted();
         const result = await cleanupWithModel({
+          signal: options.signal,
           model: chatModel,
           text: normalizedRawText,
           system: pluginSystem,
@@ -377,6 +389,7 @@ export async function postProcess(
           },
         });
 
+        options.signal?.throwIfAborted();
         if (result.model) {
           inputTokens = result.inputTokens;
           outputTokens = result.outputTokens;
@@ -406,6 +419,7 @@ export async function postProcess(
     }
   }
 
+  options.signal?.throwIfAborted();
   const llmMs = Date.now() - llmStart;
   // Dictionary replacement + `afterCleanup` plugin hook + `Cleaned` event. Runs
   // on the full raw -> final transformation for this dictation.
@@ -414,6 +428,7 @@ export async function postProcess(
     appContext,
     normalizedRawText,
     api,
+    options.signal,
   );
 
   if (inputTokens > 0 || outputTokens > 0) {
@@ -428,6 +443,7 @@ export async function postProcess(
     }
   }
 
+  options.signal?.throwIfAborted();
   capture("post process completed", {
     source,
     duration_ms: Date.now() - ppStart,

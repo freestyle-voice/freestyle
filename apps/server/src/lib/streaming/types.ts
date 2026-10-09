@@ -27,6 +27,7 @@ export interface StreamSession {
 }
 
 export interface TranscribeOptions {
+  signal?: AbortSignal;
   audio: Uint8Array;
   model: string;
   apiKey: string;

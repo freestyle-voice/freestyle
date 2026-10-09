@@ -48,6 +48,7 @@ export async function transcribeBatch(
     headers["x-app-context"] = encodeURIComponent(options.appContext);
   if (options.skipPostProcess) headers["x-skip-post-process"] = "true";
   try {
+    options.signal?.throwIfAborted();
     const res = await apiFetch("/api/transcribe", {
       method: "POST",
       body: options.audio,
@@ -93,6 +94,7 @@ export async function transcribeBatch(
       provider_category?: string;
       disposition?: TranscribeResult["disposition"];
     };
+    options.signal?.throwIfAborted();
     return {
       raw: (data.raw || "").trim(),
       cleaned: (data.cleaned || data.raw || "").trim(),
@@ -100,8 +102,18 @@ export async function transcribeBatch(
       disposition: data.disposition,
     };
   } catch (err) {
-    if (options.signal?.aborted)
+    if (options.signal?.aborted) {
+      if (
+        options.signal.reason instanceof Error &&
+        options.signal.reason.name === "TimeoutError"
+      )
+        return {
+          raw: "",
+          cleaned: "",
+          error: "Transcription timed out. Try again.",
+        };
       return { raw: "", cleaned: "", disposition: "aborted" };
+    }
     const msg = err instanceof Error ? err.message : "Transcription failed";
     const hint =
       msg.includes("fetch") || msg.includes("Failed")

@@ -1,6 +1,8 @@
 import { sanitizeTranscriptText } from "@freestyle-voice/stt";
 import { createAppLogger } from "@freestyle-voice/utils";
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
+import { HTTPException } from "hono/http-exception";
 import { readSetting } from "../lib/db.js";
 import { getRewritePromptContext } from "../lib/editor/rewrite-context.js";
 import { formatError } from "../lib/format-error.js";
@@ -64,7 +66,22 @@ function decodeAppContext(raw: string | undefined): string | null {
   }
 }
 
-const transcribeRoute = new Hono().post("/", async (c) => {
+// 64 MiB allows over 30 minutes of 16 kHz mono PCM, including multipart overhead.
+export const MAX_TRANSCRIBE_BYTES = 64 * 1024 * 1024;
+const transcribeRouter = new Hono();
+transcribeRouter.use("/", bodyLimit({ maxSize: MAX_TRANSCRIBE_BYTES }));
+transcribeRouter.onError((error, c) => {
+  // Keep cancellation local to this route; other faults reach the host's handler.
+  if (c.req.raw.signal.aborted)
+    return c.json({ raw: "", cleaned: "", disposition: "aborted" as const });
+  if (error instanceof HTTPException) return error.getResponse();
+  throw error;
+});
+const transcribeRoute = transcribeRouter.post("/", async (c) => {
+  const signal = c.req.raw.signal;
+  const canceledResponse = () =>
+    c.json({ raw: "", cleaned: "", disposition: "aborted" as const });
+  if (signal.aborted) return canceledResponse();
   const start = Date.now();
 
   const contentType = c.req.header("content-type") ?? "";
@@ -81,6 +98,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     audioData = new Uint8Array(await c.req.arrayBuffer());
   }
 
+  signal.throwIfAborted();
   if (audioData.length === 0) {
     return c.json({ error: "Empty audio data" }, 400);
   }
@@ -124,6 +142,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
   let transcribeDurationInSeconds: number | undefined;
   const languages = getLanguagesSetting();
   const api = await createHookApi();
+  signal.throwIfAborted();
 
   // Plugin hook: preprocess the recorded audio, or override which provider,
   // model, language, or ASR vocabulary bias transcribes this dictation.
@@ -144,6 +163,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     },
     api,
   );
+  signal.throwIfAborted();
   audioData = beforeTranscribeOutput.audio;
   const voiceProvider = beforeTranscribeOutput.providerId;
   const voiceModel = beforeTranscribeOutput.modelId;
@@ -266,6 +286,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         : undefined;
       const result = await transcribeWithFreestyleCloud({
         token: apiKey,
+        signal,
         audio: audioData,
         appContext,
         mode: useCombined ? "combined" : "raw",
@@ -275,6 +296,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           ? { systemFragments }
           : {}),
       });
+      signal.throwIfAborted();
       rawText = sanitizeTranscriptText(result.raw ?? "");
 
       if (useCombined) {
@@ -294,13 +316,16 @@ const transcribeRoute = new Hono().post("/", async (c) => {
           appContext,
           rawText,
           api,
+          signal,
         );
+        signal.throwIfAborted();
         // An `afterCleanup` plugin can consume/abort here too. Terminal
         // control state suppresses delivery on every path, so blank the
         // output rather than returning text the pipeline decided to drop.
         if (api.control.state !== "running") {
           return suppressedResponse();
         }
+        signal.throwIfAborted();
         const durationMs = Date.now() - start;
         const inputTokens = result.usage?.inputTokens ?? 0;
         const outputTokens = result.usage?.outputTokens ?? 0;
@@ -365,6 +390,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         )
       ).text;
     } catch (err) {
+      if (signal.aborted) return canceledResponse();
       if (err instanceof FreestyleCloudAuthError) {
         invalidateSession();
         return c.json({ error: "cloud_auth_required" }, 401);
@@ -378,7 +404,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       // Transient network faults / upstream 5xx aren't app defects — surface
       // them to the user but don't report them to error tracking.
       if (!isTransientCloudError(err)) {
-        captureException(err, { provider: voiceProvider, model: voiceModel });
+        captureException(err, {
+          provider: voiceProvider,
+          model: voiceModel,
+        });
       }
       return c.json(
         {
@@ -404,6 +433,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
       log.debug(`bias=${JSON.stringify(bias)}`);
       const t0 = Date.now();
       const result = await provider.transcribe({
+        signal,
         audio: audioData,
         model: voiceModel,
         apiKey,
@@ -415,6 +445,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         bias,
         appContext,
       });
+      signal.throwIfAborted();
       rawText = sanitizeTranscriptText(result.text);
 
       // Plugin hook: rewrite the raw transcript before cleanup.
@@ -436,6 +467,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         `STT took ${Date.now() - t0}ms | rawText=${JSON.stringify(rawText).slice(0, 120)}`,
       );
     } catch (err) {
+      if (signal.aborted) return canceledResponse();
       // Expired/invalid cloud session — ask the desktop app to re-authenticate.
       if (err instanceof CloudAuthError) {
         invalidateSession();
@@ -449,7 +481,10 @@ const transcribeRoute = new Hono().post("/", async (c) => {
         return c.json(localWhisperSetupFailure, 422);
       }
       if (!isTransientCloudError(err)) {
-        captureException(err, { provider: voiceProvider, model: voiceModel });
+        captureException(err, {
+          provider: voiceProvider,
+          model: voiceModel,
+        });
       }
       void plugins().emit({
         type: FreestyleEventType.PipelineError,
@@ -474,6 +509,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
 
   const durationMs = Date.now() - start;
 
+  signal.throwIfAborted();
   if (!rawText.trim() || api.control.state !== "running") {
     return suppressedResponse();
   }
@@ -526,9 +562,11 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     pp = await postProcess(rawText, appContext, {
       languages: effectiveLanguages,
       source: "batch",
+      signal,
       api,
     });
   } catch (err) {
+    if (signal.aborted) return canceledResponse();
     if (err instanceof FreestyleCloudAuthError) {
       invalidateSession();
       return c.json({ error: "cloud_auth_required" }, 401);
@@ -538,6 +576,7 @@ const transcribeRoute = new Hono().post("/", async (c) => {
     }
     throw err;
   }
+  signal.throwIfAborted();
   log.debug(
     `post-process took ${Date.now() - ppStart}ms | cleaned=${JSON.stringify(pp.cleaned).slice(0, 120)}`,
   );

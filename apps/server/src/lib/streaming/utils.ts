@@ -1,6 +1,7 @@
 import type { TranscribeParams } from "@freestyle-voice/stt";
 import { transcribe } from "@freestyle-voice/stt";
 import type { TranscriptionModel } from "ai";
+import { requestSignal } from "../request-abort.js";
 import type { AsrVocabularyBias } from "../vocabulary-bias.js";
 import { providerOptionsFromBias } from "./transcribe-bias.js";
 import type {
@@ -83,7 +84,7 @@ export async function transcribeWithAiSdk(
   const result = await transcribe({
     model,
     audio: opts.audio,
-    signal: AbortSignal.timeout(CLOUD_TRANSCRIBE_TIMEOUT_MS),
+    signal: requestSignal(opts.signal, CLOUD_TRANSCRIBE_TIMEOUT_MS),
     ...(providerOptions ? { providerOptions } : {}),
   });
   return {

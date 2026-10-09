@@ -14,6 +14,7 @@ import {
   transcribePcmWithMlxAsr,
   transcribeWithMlxAsr,
 } from "../../mlx-asr/server.js";
+import { abortable } from "../../request-abort.js";
 import type {
   StreamCallbacks,
   StreamingSessionOptions,
@@ -31,6 +32,7 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
   readonly providerId = MLX_ASR_PROVIDER_ID;
 
   async transcribe(opts: TranscribeOptions): Promise<TranscribeResult> {
+    opts.signal?.throwIfAborted();
     const modelId = stripProviderPrefix(opts.model);
 
     if (!canRunMlxAsr()) {
@@ -44,15 +46,19 @@ export class MlxLocalTranscriptionProvider implements TranscriptionProvider {
     }
 
     const t0 = Date.now();
-    const text = await transcribeWithMlxAsr({
-      modelId,
-      audio: opts.audio,
-      language:
-        opts.languages !== undefined
-          ? resolveMlxLanguageSelection(modelId, opts.languages)
-          : resolveMlxLanguage(modelId, opts.language),
-      context: opts.bias?.kind === "prompt" ? opts.bias.text : undefined,
-    });
+    const text = await abortable(
+      transcribeWithMlxAsr({
+        modelId,
+        audio: opts.audio,
+        signal: opts.signal,
+        language:
+          opts.languages !== undefined
+            ? resolveMlxLanguageSelection(modelId, opts.languages)
+            : resolveMlxLanguage(modelId, opts.language),
+        context: opts.bias?.kind === "prompt" ? opts.bias.text : undefined,
+      }),
+      opts.signal,
+    );
 
     log.debug(`inference took ${Date.now() - t0}ms`);
 

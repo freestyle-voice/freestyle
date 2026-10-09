@@ -164,27 +164,34 @@ async function ensureMlxServerRunningLocked(modelId: string): Promise<void> {
 }
 
 export async function transcribeWithMlxAsr(opts: {
+  signal?: AbortSignal;
   modelId: string;
   audio: Uint8Array;
   language?: string;
   context?: string;
   deferUnload?: boolean;
 }): Promise<string> {
-  await ensureMlxServerRunning(opts.modelId);
-
-  const dir = join(tmpdir(), "freestyle-mlx-asr");
-  await mkdir(dir, { recursive: true });
-  const audioPath = join(dir, `${randomUUID()}.wav`);
-  await writeFile(audioPath, opts.audio);
-
+  opts.signal?.throwIfAborted();
+  // The shared worker may keep loading after cancellation. Own its retention
+  // cleanup until startup and any already-dispatched inference have settled.
   try {
-    return await sendTranscribeRequest({
-      audioPath,
-      language: opts.language,
-      context: opts.context,
-    });
+    await ensureMlxServerRunning(opts.modelId);
+    opts.signal?.throwIfAborted();
+    const dir = join(tmpdir(), "freestyle-mlx-asr");
+    await mkdir(dir, { recursive: true });
+    const audioPath = join(dir, `${randomUUID()}.wav`);
+    try {
+      await writeFile(audioPath, opts.audio);
+      opts.signal?.throwIfAborted();
+      return await sendTranscribeRequest({
+        audioPath,
+        language: opts.language,
+        context: opts.context,
+      });
+    } finally {
+      await unlink(audioPath).catch(() => undefined);
+    }
   } finally {
-    await unlink(audioPath).catch(() => undefined);
     if (!opts.deferUnload) scheduleUnload();
   }
 }

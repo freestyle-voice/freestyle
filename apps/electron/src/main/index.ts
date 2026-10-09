@@ -4609,6 +4609,8 @@ void app.whenReady().then(() => {
   });
 });
 
+app.once("before-quit", () => stopEventLoopMonitor?.());
+
 // Gracefully shut down the HTTP server and flush Sentry before quitting
 let isUpdaterQuitting = false;
 let isQuitting = false;
@@ -4617,7 +4619,6 @@ let updateDownloadState: "idle" | "downloading" | "downloaded" = "idle";
 let updateAvailableVersion: string | null = null;
 
 function cleanupBeforeQuit(): void {
-  stopEventLoopMonitor?.();
   // No app-host plugin registry to dispose anymore — every hook (including
   // `dispose`) runs server-side, and the server has its own shutdown path.
   remixInitialized = false;

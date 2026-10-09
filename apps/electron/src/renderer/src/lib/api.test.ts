@@ -74,6 +74,58 @@ describe("typed API client startup routing", () => {
     unsubscribe();
   });
 
+  it("keeps caller auth, request options, and cancellation when rerouting JSON", async () => {
+    fetchMock.mockResolvedValue(Response.json({ ok: true }));
+    const { getClient } = await import("./api");
+    const controller = new AbortController();
+
+    await getClient().api.auth.device.token.$post(
+      { json: { device_code: "device-code" } },
+      {
+        init: {
+          headers: {
+            authorization: "Bearer caller-token",
+            "content-type": "application/json",
+            "x-request-id": "caller-request",
+          },
+          signal: controller.signal,
+          credentials: "include",
+          redirect: "error",
+          cache: "no-store",
+          keepalive: true,
+        },
+      },
+    );
+
+    const request = fetchMock.mock.calls[0]?.[0] as Request;
+    expect(request.headers.get("authorization")).toBe("Bearer caller-token");
+    expect(request.headers.get("x-request-id")).toBe("caller-request");
+    expect(request.credentials).toBe("include");
+    expect(request.redirect).toBe("error");
+    expect(request.cache).toBe("no-store");
+    expect(request.keepalive).toBe(true);
+    expect(request.signal.aborted).toBe(false);
+    controller.abort();
+    expect(request.signal.aborted).toBe(true);
+    await expect(request.json()).resolves.toEqual({
+      device_code: "device-code",
+    });
+  });
+
+  it("preserves bodyless device-code POST requests", async () => {
+    fetchMock.mockResolvedValue(Response.json({ ok: true }));
+    const { getClient } = await import("./api");
+
+    await getClient().api.auth.device.code.$post();
+
+    const request = fetchMock.mock.calls[0]?.[0] as Request;
+    expect(request.url).toBe(
+      "https://desktop.example.test/api/auth/device/code",
+    );
+    expect(request.method).toBe("POST");
+    expect(request.body).toBeNull();
+  });
+
   it("does not sign out for a stale Remix ownership response", async () => {
     fetchMock.mockResolvedValue(
       Response.json({ error: "remix_account_changed" }, { status: 401 }),

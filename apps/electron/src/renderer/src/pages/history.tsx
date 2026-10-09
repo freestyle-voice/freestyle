@@ -532,7 +532,11 @@ export default function HistoryPage(): React.JSX.Element {
     return out;
   }, [dailyData, hasDevSeedEntry]);
 
-  const isGenuineEmpty = stats?.unfiltered_total_sessions === 0;
+  const isGenuineEmpty =
+    !historyError &&
+    !statsError &&
+    !!historyData &&
+    stats?.unfiltered_total_sessions === 0;
 
   const hero = heroReady && !heroDismissed && !isGenuineEmpty && (
     <div className="relative mb-7">
@@ -637,7 +641,7 @@ export default function HistoryPage(): React.JSX.Element {
   );
 
   const feed =
-    entries.length === 0 ? (
+    historyError && !historyData ? null : entries.length === 0 ? (
       <NoSearchResults
         hasSearch={!!querySearch}
         hasDates={hasCustomRange}
@@ -738,6 +742,10 @@ export default function HistoryPage(): React.JSX.Element {
           style={{ scrollbarWidth: "none" } as React.CSSProperties}
         >
           {historyPaused && <HistoryPausedNotice />}
+          <QueryErrorNotice
+            error={dailyError}
+            onRetry={() => void refetchDaily()}
+          />
           {hero}
           <EmptyState />
         </div>

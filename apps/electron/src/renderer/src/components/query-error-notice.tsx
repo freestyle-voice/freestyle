@@ -1,4 +1,5 @@
 import { Button } from "@renderer/components/ui/button";
+import { useTranslation } from "react-i18next";
 
 export function QueryErrorNotice({
   error,
@@ -7,6 +8,7 @@ export function QueryErrorNotice({
   error: Error | null;
   onRetry: () => void;
 }): React.JSX.Element | null {
+  const { t } = useTranslation();
   if (!error) return null;
   return (
     <div
@@ -15,7 +17,7 @@ export function QueryErrorNotice({
     >
       <span>{error.message}</span>
       <Button variant="outline" size="sm" onClick={onRetry}>
-        Try again
+        {t("common.errors.retry")}
       </Button>
     </div>
   );

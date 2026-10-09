@@ -71,6 +71,8 @@ async function installDashboardFixtures(page: Page): Promise<void> {
         __visualReviewErrors?: string[];
         __visualReviewRequests?: string[];
         __visualReviewHistoryQueries?: string[];
+        __failHistoryReads?: boolean;
+        __failSettingWrites?: boolean;
         __holdLocalReply?: boolean;
         __releaseLocalReply?: () => void;
         __holdLocalCreate?: boolean;
@@ -87,11 +89,15 @@ async function installDashboardFixtures(page: Page): Promise<void> {
         "visual",
       );
       const pluginLayoutScenario = scenario?.startsWith("guest-plugin-layout-");
-      if (scenario === "guest-history-filters") {
+      if (scenario?.startsWith("guest-history-")) {
         localStorage.setItem("today.heroDismissed", "1");
         localStorage.setItem("today.statsOpen", "1");
         localStorage.removeItem("history.filters");
       }
+      visualReviewWindow.__failHistoryReads =
+        scenario === "guest-history-error";
+      visualReviewWindow.__failSettingWrites =
+        scenario === "guest-hotkey-error";
       let releasePluginData: () => void = () => {};
       const pluginDataReady = new Promise<void>((resolve) => {
         releasePluginData = resolve;
@@ -156,6 +162,34 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             : input instanceof Request
               ? input.clone().text()
               : "";
+        if (
+          scenario?.startsWith("guest-history-") &&
+          ((url.pathname === "/api/history" &&
+            visualReviewWindow.__failHistoryReads) ||
+            (url.pathname.startsWith("/api/history/") && method === "DELETE"))
+        ) {
+          return Response.json(
+            { error: "fixture_unavailable" },
+            { status: 503 },
+          );
+        }
+        if (
+          scenario === "guest-hotkey-error" &&
+          url.pathname === "/api/settings/hotkey_mode" &&
+          method === "PUT"
+        ) {
+          if (visualReviewWindow.__failSettingWrites) {
+            return Response.json(
+              { error: "fixture_unavailable" },
+              { status: 503 },
+            );
+          }
+          localStorage.setItem(
+            "visual.fixtureHotkeyMode",
+            JSON.parse(await requestBody()).value,
+          );
+          return Response.json({ ok: true });
+        }
         if (url.pathname === "/api/remix/sessions/runtime") {
           return Response.json(
             personalScenario && selectedModel
@@ -443,7 +477,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             };
           }
           if (url.pathname === "/api/history") {
-            if (scenario === "guest-history-filters") {
+            if (scenario?.startsWith("guest-history-")) {
               visualReviewWindow.__visualReviewHistoryQueries!.push(url.search);
               const search = url.searchParams.get("search") ?? "";
               const items = Array.from({ length: 40 }, (_, index) => ({
@@ -482,8 +516,9 @@ async function installDashboardFixtures(page: Page): Promise<void> {
               total_words: 0,
               today_sessions: 0,
               today_cost: 0,
-              unfiltered_total_sessions:
-                scenario === "guest-history-filters" ? 40 : 0,
+              unfiltered_total_sessions: scenario?.startsWith("guest-history-")
+                ? 40
+                : 0,
             };
           }
           if (url.pathname === "/api/history/daily") return { days: [] };
@@ -496,6 +531,13 @@ async function installDashboardFixtures(page: Page): Promise<void> {
               return {};
             return {
               onboarding: JSON.stringify({ v: 2, done: true }),
+              ...(scenario === "guest-hotkey-error"
+                ? {
+                    hotkey_mode:
+                      localStorage.getItem("visual.fixtureHotkeyMode") ??
+                      "hold",
+                  }
+                : {}),
               ...(scenario === "cloud-expiry" ||
               scenario === "guest-models-cloud"
                 ? { llm_cleanup: String(!signedOut) }
@@ -1188,6 +1230,131 @@ test("keeps history interactive while live filters are open in the right rail", 
       .find((window) => window.webContents.getURL().includes("index.html"))
       ?.setSize(1080, 760);
   });
+});
+
+test("retries a failed history load without reporting an empty search", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-error#/today`);
+  const error = dashboard
+    .getByRole("alert")
+    .filter({ hasText: "Could not load history (HTTP 503)" });
+  await expect(error).toBeVisible();
+  await expect(dashboard.getByText(/No results/)).toHaveCount(0);
+  await dashboard.evaluate(() => {
+    (
+      window as typeof window & { __failHistoryReads?: boolean }
+    ).__failHistoryReads = false;
+  });
+  await error.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(
+    dashboard.getByText("“Edited note 1”", { exact: true }),
+  ).toBeVisible();
+  await expect(error).toHaveCount(0);
+});
+
+test("keeps cached history through a failed refresh and rejected deletion", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-cache#/today`);
+  const note = dashboard.getByText("“Edited note 1”", { exact: true });
+  await expect(note).toBeVisible();
+  await dashboard.evaluate(() => {
+    (
+      window as typeof window & { __failHistoryReads?: boolean }
+    ).__failHistoryReads = true;
+  });
+  await app!.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()
+      .find((window) => window.webContents.getURL().includes("index.html"))
+      ?.webContents.send("transcription:done");
+  });
+  const error = dashboard
+    .getByRole("alert")
+    .filter({ hasText: "Could not load history (HTTP 503)" });
+  await expect(error).toBeVisible();
+  await expect(note).toBeVisible();
+  await dashboard
+    .getByRole("button", { name: "Delete", exact: true })
+    .first()
+    .click();
+  await expect(
+    dashboard
+      .getByRole("alert")
+      .filter({ hasText: "Could not delete history entry (HTTP 503)" }),
+  ).toBeVisible();
+  await expect(note).toBeVisible();
+  await dashboard.evaluate(() => {
+    (
+      window as typeof window & { __failHistoryReads?: boolean }
+    ).__failHistoryReads = false;
+  });
+  await error.getByRole("button", { name: "Try again", exact: true }).click();
+  await expect(error).toHaveCount(0);
+});
+
+test("debounces history typing and pagination without refetching statistics", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-history-queries#/today`);
+  await expect(
+    dashboard.getByText("“Edited note 1”", { exact: true }),
+  ).toBeVisible();
+  await dashboard.getByRole("button", { name: "Next page" }).click();
+  await expect(
+    dashboard.getByText("“Edited note 21”", { exact: true }),
+  ).toBeVisible();
+  const search = dashboard.getByPlaceholder(/Search.*transcript/i);
+  await search.pressSequentially("note 2", { delay: 20 });
+  await expect(
+    dashboard.getByText("“Edited note 2”", { exact: true }),
+  ).toBeVisible();
+  const requests = await dashboard.evaluate(() => {
+    const fixture = window as typeof window & {
+      __visualReviewHistoryQueries?: string[];
+      __visualReviewRequests?: string[];
+    };
+    return {
+      queries: fixture.__visualReviewHistoryQueries ?? [],
+      requests: fixture.__visualReviewRequests ?? [],
+    };
+  });
+  const filtered = requests.queries
+    .map((query) => new URLSearchParams(query))
+    .filter((query) => query.has("search"));
+  expect(filtered).toHaveLength(1);
+  expect(filtered[0].get("search")).toBe("note 2");
+  expect(filtered[0].get("offset")).toBe("0");
+  expect(
+    requests.requests.filter((path) => path === "/api/history/stats"),
+  ).toHaveLength(1);
+  expect(
+    requests.requests.filter((path) => path === "/api/history/daily"),
+  ).toHaveLength(1);
+});
+
+test("keeps activation unchanged after a failed save and persists a retry", async () => {
+  await dashboard.evaluate(() =>
+    localStorage.removeItem("visual.fixtureHotkeyMode"),
+  );
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=guest-hotkey-error#/settings/transcription`,
+  );
+  const hold = dashboard.getByRole("radio", { name: "Hold", exact: true });
+  const toggle = dashboard.getByRole("radio", { name: "Toggle", exact: true });
+  await expect(hold).toHaveAttribute("data-state", "on");
+  await expect(toggle).toBeEnabled();
+  await toggle.click();
+  const error = dashboard
+    .getByRole("alert")
+    .filter({ hasText: "Could not save setting (HTTP 503)" });
+  await expect(error).toBeVisible();
+  await expect(hold).toHaveAttribute("data-state", "on");
+  await expect(toggle).toHaveAttribute("data-state", "off");
+  await dashboard.evaluate(() => {
+    (
+      window as typeof window & { __failSettingWrites?: boolean }
+    ).__failSettingWrites = false;
+  });
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("data-state", "on");
+  await expect(error).toHaveCount(0);
+  await dashboard.reload();
+  await expect(toggle).toHaveAttribute("data-state", "on");
 });
 
 test("keeps Plugins toolbar and row geometry stable as Browse and Installed finish loading", async ({

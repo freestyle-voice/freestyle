@@ -44,6 +44,10 @@ import {
   type RemixSelectionPayload,
 } from "../../../shared/remix";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
+import {
+  type TranscribeResult,
+  transcribeBatch,
+} from "../lib/batch-transcription";
 
 // Lazy: keep Motion/agent chat out of the dictation entry chunk.
 const RemixChat = lazy(() =>
@@ -375,43 +379,6 @@ const pillInnerStyle: React.CSSProperties = {
   cursor: "grab",
   WebkitAppRegion: "drag",
 } as React.CSSProperties;
-
-interface TranscribeResult {
-  raw: string;
-  cleaned: string;
-  error?: string;
-  cloudAuthRequired?: boolean;
-  usageExceeded?: boolean;
-  localWhisperSetupRequired?: boolean;
-  providerCategory?: string;
-  /**
-   * Terminal pipeline disposition from the server. A plugin that called
-   * `api.control.consume()`/`abort()` in a server hook resolves to
-   * `"suppressed"`/`"aborted"` here, and the dictation is dropped without
-   * delivery. Defaults to `"deliver"` for older server responses.
-   */
-  disposition?: "deliver" | "suppressed" | "aborted";
-}
-
-/**
- * Error text attached to usage-limit results. The interactive prompt (with an
- * "Upgrade to Pro" action) is shown by the main process via
- * `window.api.cloudPromptUpgrade()` — this string only surfaces where a plain
- * error message is needed.
- */
-const USAGE_LIMIT_DIALOG_MESSAGE =
-  "You've used your free Freestyle Cloud dictation for this week. Upgrade to Pro for unlimited dictation, or switch to a local or bring-your-own-key model in Settings > Models.";
-
-/**
- * The app context (process name + window title) can contain characters
- * outside ISO-8859-1 — e.g. a Cyrillic file path in the Notepad++ title
- * bar. HTTP header values only allow Latin-1, so passing the raw JSON
- * makes fetch() throw "Failed to execute 'fetch'". Percent-encode it so
- * the header is always byte-safe; the server decodes it back.
- */
-function encodeAppContext(context: string): string {
-  return encodeURIComponent(context);
-}
 
 interface QueueEntry {
   promise: Promise<TranscribeResult>;
@@ -978,66 +945,13 @@ export default function AppPage(): React.JSX.Element {
     (errorMsg: string): Promise<TranscribeResult> | null => {
       const wavBlob = streamerRef.current?.getWavBlob() ?? null;
       if (!wavBlob) return null;
-      const headers: Record<string, string> = {
-        "Content-Type": "audio/wav",
-        "x-audio-duration-ms": String(lastRecordingDurationRef.current),
-      };
-      if (appContextRef.current)
-        headers["x-app-context"] = encodeAppContext(appContextRef.current);
-      if (queueRef.current.length > 0 || drainingRef.current)
-        headers["x-skip-post-process"] = "true";
-      return apiFetch("/api/transcribe", {
-        method: "POST",
-        body: wavBlob,
-        headers,
-      })
-        .then(async (res) => {
-          if (!res.ok) {
-            const body = (await res.json().catch(() => null)) as {
-              error?: string;
-              detail?: string;
-            } | null;
-            if (res.status === 401 && body?.error === "cloud_auth_required") {
-              return {
-                raw: "",
-                cleaned: "",
-                error: "Sign in to Freestyle Transcribe",
-                cloudAuthRequired: true,
-              };
-            }
-            if (res.status === 429 && body?.error === "usage_exceeded") {
-              return {
-                raw: "",
-                cleaned: "",
-                error: USAGE_LIMIT_DIALOG_MESSAGE,
-                usageExceeded: true,
-              };
-            }
-            if (
-              res.status === 422 &&
-              body?.error === "local_whisper_setup_failed"
-            ) {
-              return {
-                raw: "",
-                cleaned: "",
-                error: body.detail ?? "Local Whisper needs setup",
-                localWhisperSetupRequired: true,
-              };
-            }
-            return { raw: "", cleaned: "", error: errorMsg };
-          }
-          const data = (await res.json()) as {
-            raw?: string;
-            cleaned?: string;
-            provider_category?: string;
-          };
-          return {
-            raw: (data.raw || "").trim(),
-            cleaned: (data.cleaned || data.raw || "").trim(),
-            providerCategory: data.provider_category,
-          };
-        })
-        .catch(() => ({ raw: "", cleaned: "", error: errorMsg }));
+      return transcribeBatch({
+        audio: wavBlob,
+        durationMs: lastRecordingDurationRef.current,
+        appContext: appContextRef.current,
+        skipPostProcess: queueRef.current.length > 0 || drainingRef.current,
+        fallbackError: errorMsg,
+      });
     },
     [],
   );
@@ -1928,13 +1842,6 @@ export default function AppPage(): React.JSX.Element {
     }
 
     const isSubsequent = queueRef.current.length > 0 || drainingRef.current;
-    const headers: Record<string, string> = {
-      "Content-Type": "audio/wav",
-      "x-audio-duration-ms": String(recordingDuration),
-    };
-    if (appContextRef.current)
-      headers["x-app-context"] = encodeAppContext(appContextRef.current);
-    if (isSubsequent) headers["x-skip-post-process"] = "true";
 
     const serverOk = await refreshApiBase();
     if (!serverOk) {
@@ -1948,75 +1855,14 @@ export default function AppPage(): React.JSX.Element {
     }
 
     setPendingCount((c) => c + 1);
-    const transcribePromise: Promise<TranscribeResult> = apiFetch(
-      "/api/transcribe",
-      { method: "POST", body: wavBlob, headers },
-    )
-      .then(async (res) => {
-        if (!res.ok) {
-          const body = (await res.json().catch(() => null)) as {
-            error?: string;
-            detail?: string;
-          } | null;
-          if (res.status === 401 && body?.error === "cloud_auth_required") {
-            return {
-              raw: "",
-              cleaned: "",
-              error: "Sign in to Freestyle Transcribe",
-              cloudAuthRequired: true,
-            };
-          }
-          if (res.status === 429 && body?.error === "usage_exceeded") {
-            return {
-              raw: "",
-              cleaned: "",
-              error: USAGE_LIMIT_DIALOG_MESSAGE,
-              usageExceeded: true,
-            };
-          }
-          if (
-            res.status === 422 &&
-            body?.error === "local_whisper_setup_failed"
-          ) {
-            return {
-              raw: "",
-              cleaned: "",
-              error: body.detail ?? "Local Whisper needs setup",
-              localWhisperSetupRequired: true,
-            };
-          }
-          const msg =
-            body?.detail ||
-            body?.error ||
-            `Transcription failed (${res.status})`;
-          return { raw: "", cleaned: "", error: msg };
-        }
-        const data = (await res.json()) as {
-          raw?: string;
-          cleaned?: string;
-          provider_category?: string;
-          disposition?: "deliver" | "suppressed" | "aborted";
-        };
-        return {
-          raw: (data.raw || "").trim(),
-          cleaned: (data.cleaned || data.raw || "").trim(),
-          providerCategory: data.provider_category,
-          disposition: data.disposition,
-        };
-      })
-      .catch((err) => {
-        const msg = err instanceof Error ? err.message : "Transcription failed";
-        const hint =
-          msg.includes("fetch") || msg.includes("Failed")
-            ? isRemoteServer()
-              ? ` (${getApiBase()} unreachable — check Settings → Network)`
-              : ` (${getApiBase()} unreachable — quit and reopen the app)`
-            : "";
-        return { raw: "", cleaned: "", error: `${msg}${hint}` };
-      })
-      .finally(() => {
-        setPendingCount((c) => Math.max(0, c - 1));
-      });
+    const transcribePromise = transcribeBatch({
+      audio: wavBlob,
+      durationMs: recordingDuration,
+      appContext: appContextRef.current,
+      skipPostProcess: isSubsequent,
+    }).finally(() => {
+      setPendingCount((c) => Math.max(0, c - 1));
+    });
 
     queueRef.current.push({ promise: transcribePromise });
     drainQueue();

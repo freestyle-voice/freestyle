@@ -1842,6 +1842,7 @@ export default function AppPage(): React.JSX.Element {
     }
 
     const isSubsequent = queueRef.current.length > 0 || drainingRef.current;
+    const batchAppContext = appContextRef.current;
 
     const serverOk = await refreshApiBase();
     if (!serverOk) {
@@ -1858,7 +1859,7 @@ export default function AppPage(): React.JSX.Element {
     const transcribePromise = transcribeBatch({
       audio: wavBlob,
       durationMs: recordingDuration,
-      appContext: appContextRef.current,
+      appContext: batchAppContext,
       skipPostProcess: isSubsequent,
     }).finally(() => {
       setPendingCount((c) => Math.max(0, c - 1));

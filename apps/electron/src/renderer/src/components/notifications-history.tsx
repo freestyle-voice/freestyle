@@ -1,4 +1,5 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
+import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { CourierNotificationItem } from "@renderer/lib/courier-notifications";
 import {
   CourierNotificationsProvider,
@@ -108,8 +109,11 @@ export function NotificationsHistory({
 }: {
   onOpenThread?: (threadId: string) => void;
 }): React.JSX.Element {
+  const auth = useCloudAuth();
   return (
-    <CourierNotificationsProvider>
+    <CourierNotificationsProvider
+      refreshKey={`${auth.phase}:${auth.user?.id ?? ""}`}
+    >
       <NotificationsHistoryContent
         {...(onOpenThread ? { onOpenThread } : {})}
       />

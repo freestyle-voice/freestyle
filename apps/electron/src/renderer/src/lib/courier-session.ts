@@ -1,7 +1,6 @@
 import { getClient, resolveApiBase } from "./api";
 
 export const COURIER_TOKEN_REFRESH_MS = 50 * 60 * 1000;
-export const SIGNED_OUT_RETRY_MS = 5_000;
 export const COURIER_ERROR_RETRY_MS = 30_000;
 
 export interface CourierClientSession {
@@ -52,8 +51,8 @@ interface CourierSessionManagerOptions {
 /**
  * Owns Courier's short-lived client credential without putting timer and retry
  * policy inside React effects. A refresh replaces the Courier client before
- * the one-hour JWT expires; signed-out retries hit only the loopback proxy,
- * which returns before contacting Cloud when no session exists.
+ * the one-hour JWT expires. A signed-out result pauses requests until an
+ * auth or server change explicitly refreshes the session.
  */
 export class CourierSessionManager {
   private running = false;
@@ -100,7 +99,6 @@ export class CourierSessionManager {
 
     if (result.status === "signed-out") {
       this.options.onSignedOut?.();
-      this.schedule(SIGNED_OUT_RETRY_MS);
       return;
     }
     if (result.status === "unavailable") {

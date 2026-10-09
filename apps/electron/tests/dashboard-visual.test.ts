@@ -2251,3 +2251,59 @@ test("refreshes cleanup state when a session expires while Models is open", asyn
   ).toBeVisible();
   await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
 });
+
+test("resumes paused notifications after sign-in outside Remix and pauses again on sign-out", async () => {
+  const notifications = app!
+    .windows()
+    .find((page) => page.url().includes("notification.html"));
+  expect(notifications).toBeDefined();
+  let requests = 0;
+  await notifications!.route("**/api/notifications/token", async (route) => {
+    requests += 1;
+    await route.fulfill({
+      status: 401,
+      json: { ok: false, reason: "cloud_auth_required" },
+    });
+  });
+  try {
+    await notifications!.reload();
+    await expect.poll(() => requests).toBeGreaterThan(0);
+    await dashboard.goto(`${DASHBOARD_URL}?visual=guest-sidebar#/today`);
+    const sidebar = dashboard.locator(".glass-sidebar");
+    await expect(
+      sidebar.getByRole("button", { name: "Sign in", exact: true }),
+    ).toBeVisible();
+    const signedOutRequests = requests;
+    await notifications!.clock.install();
+    await notifications!.clock.fastForward(60_000);
+    expect(requests).toBe(signedOutRequests);
+
+    await app!.evaluate(({ shell }) => {
+      Object.defineProperty(shell, "openExternal", {
+        configurable: true,
+        value: async () => {},
+      });
+    });
+    await sidebar.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(
+      sidebar.getByRole("button", { name: "Visual review" }),
+    ).toBeVisible();
+    await expect.poll(() => requests).toBeGreaterThan(signedOutRequests);
+    const signedInRequests = requests;
+
+    await sidebar.getByRole("button", { name: "Visual review" }).click();
+    await dashboard
+      .getByRole("menuitem", { name: "Sign out", exact: true })
+      .click();
+    await expect(
+      sidebar.getByRole("button", { name: "Sign in", exact: true }),
+    ).toBeVisible();
+    await expect.poll(() => requests).toBeGreaterThan(signedInRequests);
+    const finalRequests = requests;
+    await notifications!.clock.fastForward(60_000);
+    expect(requests).toBe(finalRequests);
+  } finally {
+    await notifications!.clock.resume();
+    await notifications!.unroute("**/api/notifications/token");
+  }
+});

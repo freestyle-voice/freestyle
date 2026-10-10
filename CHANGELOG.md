@@ -1,4 +1,26 @@
 # Changelog
+## 0.9.4
+
+### Bug Fixes 🐛
+
+- (desktop) Surface failed reads and persist hotkeys safely by @MathurAditya724 in [#701](https://github.com/freestyle-voice/freestyle/pull/701)
+- (dictation) Cancel requests and reject stale delivery by @MathurAditya724 in [#702](https://github.com/freestyle-voice/freestyle/pull/702)
+- (electron) Send replayable bodies to the local API by @MathurAditya724 in [#706](https://github.com/freestyle-voice/freestyle/pull/706)
+- (notifications) Pause token requests while signed out by @MathurAditya724 in [#704](https://github.com/freestyle-voice/freestyle/pull/704)
+- (server) Own startup and graceful shutdown resources by @MathurAditya724 in [#703](https://github.com/freestyle-voice/freestyle/pull/703)
+
+### Internal Changes 🔧
+
+#### Dictation
+
+- Add cross-platform local HTTP coverage by @MathurAditya724 in [#699](https://github.com/freestyle-voice/freestyle/pull/699)
+- Share batch transcription transport by @MathurAditya724 in [#697](https://github.com/freestyle-voice/freestyle/pull/697)
+
+#### Other
+
+- (desktop) Measure main-process event-loop stalls by @MathurAditya724 in [#698](https://github.com/freestyle-voice/freestyle/pull/698)
+- (history) Reuse queries and index local date ranges by @MathurAditya724 in [#700](https://github.com/freestyle-voice/freestyle/pull/700)
+
 ## 0.9.3
 
 ### New Features ✨

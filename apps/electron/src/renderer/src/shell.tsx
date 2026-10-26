@@ -819,6 +819,7 @@ export default function AppShell(): React.JSX.Element {
     Record<Workspace, boolean>
   >({ dictate: false, remix: false });
   const isRemixRoute = location.pathname === "/remix";
+  const isOnboardingRoute = location.pathname === "/onboarding";
   const isSettingsRoute =
     location.pathname === "/settings" ||
     location.pathname.startsWith("/settings/");
@@ -942,7 +943,7 @@ export default function AppShell(): React.JSX.Element {
   // Cmd/Ctrl+1..9 jumps between sidebar items
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (isSettingsRoute) return;
+      if (isSettingsRoute || isOnboardingRoute) return;
       if (!(e.metaKey || e.ctrlKey)) return;
       const idx = Number(e.key) - 1;
       if (idx >= 0 && idx < staticNav.length) {
@@ -952,11 +953,11 @@ export default function AppShell(): React.JSX.Element {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isSettingsRoute, navigate, staticNav]);
+  }, [isSettingsRoute, isOnboardingRoute, navigate, staticNav]);
 
   return (
     <div className="glass-window-shell flex h-screen min-h-0">
-      {!isSidebarHidden ? (
+      {isOnboardingRoute ? null : !isSidebarHidden ? (
         <>
           <aside
             className="glass-sidebar flex min-h-0 shrink-0 flex-col border-r"
@@ -1110,7 +1111,11 @@ export default function AppShell(): React.JSX.Element {
       ) : null}
 
       <div className="glass-content relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
-        <ContentTitlebar sidebarCollapsed={isSidebarHidden && !isFullscreen} />
+        <ContentTitlebar
+          sidebarCollapsed={
+            (isSidebarHidden || isOnboardingRoute) && !isFullscreen
+          }
+        />
         <UpdateBanner className="relative z-50 mt-4 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
         <main

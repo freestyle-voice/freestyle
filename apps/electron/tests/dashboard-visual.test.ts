@@ -2682,7 +2682,7 @@ test("captures cleanup model selection for the UI clarity review", async ({
   await expect(dialog).toBeVisible();
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   await expect(dialog.getByPlaceholder(/Search/)).toBeVisible();
@@ -2728,7 +2728,7 @@ test("configures an OpenRouter cleanup model omitted from discovery", async ({
   const dialog = dashboard.getByRole("dialog");
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   await dialog.locator("summary").filter({ hasText: "Use a model ID" }).click();
@@ -2765,7 +2765,7 @@ test("configures an OpenRouter cleanup model omitted from discovery", async ({
   await dashboard.getByRole("button", { name: "Change cleanup model" }).click();
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   await expect(
@@ -2914,7 +2914,7 @@ test("recovers rejected manual model selection after connecting a provider", asy
   await dashboard.getByRole("button", { name: "Change cleanup model" }).click();
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   await dialog.locator("summary").filter({ hasText: "Use a model ID" }).click();
@@ -2976,7 +2976,7 @@ test("captures the connected provider catalog for comparison", async ({
   const dialog = dashboard.getByRole("dialog");
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   await expect(dialog.getByPlaceholder("Search models…")).toBeVisible();
@@ -3026,7 +3026,7 @@ test("filters and searches the combined connected provider catalog", async () =>
   const dialog = dashboard.getByRole("dialog");
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   const connections = dialog.getByRole("region", {
@@ -3102,7 +3102,7 @@ test("connects several providers without changing the active cleanup model", asy
   const dialog = dashboard.getByRole("dialog");
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   const connections = dialog.getByRole("region", {
@@ -3197,7 +3197,7 @@ test("repairs invalid provider keys and previews disconnected catalogs", async (
   const dialog = dashboard.getByRole("dialog");
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   const connections = dialog.getByRole("region", {
@@ -3251,7 +3251,7 @@ test("renders large model catalogs incrementally and searches all results", asyn
   const dialog = dashboard.getByRole("dialog");
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   const rows = dialog.getByTestId("model-option");
@@ -3273,7 +3273,7 @@ test("keeps filter edits made while a provider connection is pending", async () 
   const dialog = dashboard.getByRole("dialog");
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   const connections = dialog.getByRole("region", {
@@ -3335,7 +3335,7 @@ test("focuses and restores connection controls opened far down the model list", 
   const dialog = dashboard.getByRole("dialog");
   await dialog
     .getByRole("button", {
-      name: "Browse cloud cleanup models with your API key",
+      name: "Browse cleanup models with your API key",
     })
     .click();
   await dialog

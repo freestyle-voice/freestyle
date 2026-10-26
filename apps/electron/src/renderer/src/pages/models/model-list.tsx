@@ -469,9 +469,7 @@ export function ModelList({
             : "All Remix models"
         : localOnly
           ? "Cleanup endpoint models"
-          : cloudOnly
-            ? "Cloud cleanup models"
-            : "All cleanup models";
+          : "Cleanup models";
 
   return (
     <>

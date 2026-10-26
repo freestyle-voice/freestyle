@@ -707,7 +707,7 @@
       "browseLocalVoice": "Browse on-device transcription models",
       "browseByokVoice": "Browse cloud transcription models with your API key",
       "browseLocalCleanup": "Browse on-device cleanup models",
-      "browseByokCleanup": "Browse cloud cleanup models with your API key",
+      "browseByokCleanup": "Browse cleanup models with your API key",
       "openModelSource": "Open model source"
     },
     "keyUpdate": "Update API key",

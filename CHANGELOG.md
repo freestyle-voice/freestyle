@@ -1,4 +1,17 @@
 # Changelog
+## 0.9.5
+
+### New Features ✨
+
+#### Ui
+
+- Make settings and task failures recoverable by @MathurAditya724 in [#710](https://github.com/freestyle-voice/freestyle/pull/710)
+- Clarify workflows and expand cleanup model choice by @MathurAditya724 in [#708](https://github.com/freestyle-voice/freestyle/pull/708)
+
+#### Other
+
+- (dev) Add browser development mode for the desktop UI by @MathurAditya724 in [#709](https://github.com/freestyle-voice/freestyle/pull/709)
+
 ## 0.9.4
 
 ### Bug Fixes 🐛

@@ -193,7 +193,7 @@ test("workspace opens as a primary application window", async () => {
   });
   const workspace = await waitForWorkspaceWindow(app!);
   await expect(
-    workspace.getByRole("button", { name: "Continue without an account" }),
+    workspace.getByRole("button", { name: "Set up local models or API keys" }),
   ).toBeVisible();
 
   const properties = await app!.evaluate(({ BrowserWindow }) => {

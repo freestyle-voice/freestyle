@@ -2,6 +2,7 @@ import { Button } from "@renderer/components/ui/button";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogTitle,
 } from "@renderer/components/ui/dialog";
 import { useCloudAuth } from "@renderer/lib/auth-context";
@@ -23,6 +24,10 @@ export function CloudSignInModal(): React.JSX.Element | null {
           <DialogTitle className="text-[15px] font-semibold">
             Finish signing in
           </DialogTitle>
+          <DialogDescription className="text-sm leading-5">
+            Complete sign-in in your browser, then return to Freestyle. Enter
+            this code if asked. This window will update automatically.
+          </DialogDescription>
           <div className="border-border bg-secondary/60 w-full rounded-[10px] border py-3">
             <span className="mono text-foreground text-[20px] tracking-[0.3em]">
               {userCode ?? "····-····"}

@@ -1917,7 +1917,7 @@ test("lets a first-time guest finish onboarding and set up dictation", async ({
   });
   await dashboard.goto(`${DASHBOARD_URL}?visual=guest-first-run#/today`);
   await expect(
-    dashboard.getByRole("button", { name: "Continue without an account" }),
+    dashboard.getByRole("button", { name: "Set up local models or API keys" }),
   ).toBeVisible();
   const welcome = testInfo.outputPath("guest-onboarding.png");
   await dashboard.screenshot({ path: welcome });
@@ -1926,12 +1926,16 @@ test("lets a first-time guest finish onboarding and set up dictation", async ({
     contentType: "image/png",
   });
   await dashboard
-    .getByRole("button", { name: "Continue without an account" })
+    .getByRole("button", { name: "Set up local models or API keys" })
     .click();
-  await expect(dashboard).toHaveURL(/#\/settings\/models$/);
   await expect(
-    dashboard.getByRole("heading", { name: "Models", exact: true }),
+    dashboard.getByRole("list", { name: "Dictation setup checklist" }),
   ).toBeVisible();
+  await expect(dashboard.locator(".glass-sidebar")).toBeHidden();
+  await dashboard
+    .getByRole("button", { name: "Finish setup later", exact: true })
+    .click();
+  await expect(dashboard).toHaveURL(/#\/today$/);
   await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
 
   // Completion survives a renderer restart while the user remains signed out.
@@ -1940,7 +1944,7 @@ test("lets a first-time guest finish onboarding and set up dictation", async ({
     dashboard.getByRole("button", { name: "Sign in", exact: true }),
   ).toBeVisible();
   await expect(
-    dashboard.getByRole("button", { name: "Continue without an account" }),
+    dashboard.getByRole("button", { name: "Set up local models or API keys" }),
   ).toBeHidden();
   await expect(dashboard).toHaveURL(/#\/today$/);
 });
@@ -1951,13 +1955,19 @@ test("completes signed-in onboarding and restores its local save without Cloud h
   });
   await dashboard.goto(`${DASHBOARD_URL}?visual=signed-in-first-run#/today`);
   const continueButton = dashboard.getByRole("button", {
-    name: "Continue to Freestyle",
+    name: "Continue with Freestyle Cloud",
   });
   await expect(continueButton).toBeVisible();
   await expect(
-    dashboard.getByRole("button", { name: "Continue without an account" }),
-  ).toBeHidden();
+    dashboard.getByRole("button", { name: "Set up local models or API keys" }),
+  ).toBeVisible();
   await continueButton.click();
+  await expect(
+    dashboard.getByRole("list", { name: "Dictation setup checklist" }),
+  ).toBeVisible();
+  await dashboard
+    .getByRole("button", { name: "Finish setup later", exact: true })
+    .click();
   await expect(dashboard).toHaveURL(/#\/today$/);
   await expect(continueButton).toBeHidden();
 

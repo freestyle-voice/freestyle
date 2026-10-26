@@ -73,6 +73,9 @@ function hasActiveDownload(
 }
 
 export interface UseModels {
+  /** Setup must distinguish unavailable configuration from an empty selection. */
+  setupError: string | null;
+  setupChecking: boolean;
   /** True while the selected configuration required to render the page loads. */
   loading: boolean;
   /** True while optional picker catalog and local engine discovery loads. */
@@ -136,6 +139,7 @@ export interface UseModels {
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   deleteProvider: (provider: string) => Promise<void>;
   reload: (refreshCleanup?: boolean) => Promise<void>;
+  retrySetupCheck: () => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -753,6 +757,33 @@ export function useModels(): UseModels {
   );
 
   return {
+    setupError:
+      configuredQuery.isError ||
+      settingsQuery.isError ||
+      (!!defaultVoice &&
+        !defaultVoice.provider.startsWith("local-") &&
+        defaultVoice?.provider !== "freestyle-cloud" &&
+        !(
+          defaultVoice?.provider === "openai" &&
+          settingsQuery.data?.[SETTINGS_KEYS.openaiSttBaseUrl]?.trim()
+        ) &&
+        keysQuery.isError) ||
+      (defaultVoice?.provider === "local-whisper" && whisperQuery.isError) ||
+      (defaultVoice?.provider === "local-mlx" && mlxQuery.isError)
+        ? "Couldn’t check your model configuration. Try again."
+        : null,
+    setupChecking:
+      loading ||
+      (!!defaultVoice &&
+        !defaultVoice.provider.startsWith("local-") &&
+        defaultVoice?.provider !== "freestyle-cloud" &&
+        !(
+          defaultVoice?.provider === "openai" &&
+          settingsQuery.data?.[SETTINGS_KEYS.openaiSttBaseUrl]?.trim()
+        ) &&
+        keysLoading) ||
+      (defaultVoice?.provider === "local-whisper" && whisperQuery.isPending) ||
+      (defaultVoice?.provider === "local-mlx" && mlxQuery.isPending),
     loading,
     catalogLoading,
     keysLoading,
@@ -789,5 +820,12 @@ export function useModels(): UseModels {
     saveMlxKeepAliveMinutes,
     deleteProvider,
     reload: loadData,
+    retrySetupCheck: async () => {
+      await Promise.all([
+        loadData(),
+        whisperQuery.refetch(),
+        mlxQuery.refetch(),
+      ]);
+    },
   };
 }

@@ -1,9 +1,9 @@
 import "../overlay.css";
 import "../notification.css";
 
+import { NotificationCard } from "@renderer/components/notification-card";
 import { capture } from "@renderer/lib/analytics";
 import { refreshApiBase } from "@renderer/lib/api";
-import type { CourierNotificationItem } from "@renderer/lib/courier-notifications";
 import {
   CourierNotificationsProvider,
   useCourierNotifications,
@@ -12,52 +12,6 @@ import { installGlobalErrorHandlers } from "@renderer/lib/report-error";
 import type React from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-
-function NotificationCard({
-  item,
-  onOpen,
-  onDismiss,
-  badge,
-  onExpand,
-}: {
-  item: CourierNotificationItem;
-  onOpen: (id: string) => void;
-  onDismiss: (id: string) => void;
-  badge: number;
-  onExpand: () => void;
-}): React.JSX.Element {
-  return (
-    <div className="remix-notification">
-      <div className="remix-notification-row">
-        <button
-          type="button"
-          className="remix-notification-main"
-          onClick={() => onOpen(item.id)}
-        >
-          <span className="remix-notification-title">{item.title}</span>
-          <span className="remix-notification-body">{item.body}</span>
-        </button>
-        <button
-          type="button"
-          className="remix-notification-dismiss"
-          aria-label="Dismiss"
-          onClick={() => onDismiss(item.id)}
-        >
-          ×
-        </button>
-      </div>
-      {badge > 0 ? (
-        <button
-          type="button"
-          className="remix-notification-more"
-          onClick={onExpand}
-        >
-          +{badge} more
-        </button>
-      ) : null}
-    </div>
-  );
-}
 
 function NotificationStack(): React.JSX.Element | null {
   const {

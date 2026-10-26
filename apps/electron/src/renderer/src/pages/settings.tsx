@@ -66,7 +66,12 @@ import {
 } from "@renderer/lib/deletion-confirmation";
 import { formatNumber } from "@renderer/lib/format";
 import { requestMicAccess, resolveMicStatus } from "@renderer/lib/permissions";
-import { IS_LINUX, IS_MAC, IS_WINDOWS } from "@renderer/lib/platform";
+import {
+  HAS_NATIVE_DESKTOP,
+  IS_LINUX,
+  IS_MAC,
+  IS_WINDOWS,
+} from "@renderer/lib/platform";
 import {
   invalidateThreads,
   queryKeys,
@@ -307,7 +312,7 @@ export default function SettingsPage(): React.JSX.Element {
   const isWindows = IS_WINDOWS;
   const supportsBackgroundAudio = isMac || isLinux || isWindows;
   // macOS and Windows can deep-link to the OS mic privacy settings.
-  const canOpenMicSettings = isMac || isWindows;
+  const canOpenMicSettings = HAS_NATIVE_DESKTOP && (isMac || isWindows);
 
   const checkPermissions = useCallback(async () => {
     try {
@@ -906,6 +911,7 @@ export default function SettingsPage(): React.JSX.Element {
                 >
                   <Switch
                     checked={autoUpdate}
+                    disabled={!HAS_NATIVE_DESKTOP}
                     onCheckedChange={handleAutoUpdateToggle}
                   />
                 </Row>
@@ -915,6 +921,7 @@ export default function SettingsPage(): React.JSX.Element {
                 >
                   <Switch
                     checked={launchAtStartup}
+                    disabled={!HAS_NATIVE_DESKTOP}
                     onCheckedChange={handleLaunchAtStartupToggle}
                   />
                 </Row>
@@ -924,6 +931,7 @@ export default function SettingsPage(): React.JSX.Element {
                 >
                   <Switch
                     checked={showOnLaunch}
+                    disabled={!HAS_NATIVE_DESKTOP}
                     onCheckedChange={handleShowOnLaunchToggle}
                   />
                 </Row>
@@ -944,7 +952,11 @@ export default function SettingsPage(): React.JSX.Element {
                     <div className="relative inline-flex">
                       <Button
                         variant="outline"
-                        disabled={hotkeySaving || !settingsQuery.data}
+                        disabled={
+                          !HAS_NATIVE_DESKTOP ||
+                          hotkeySaving ||
+                          !settingsQuery.data
+                        }
                         onClick={startHotkeyRecording}
                         className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
                       >
@@ -1167,7 +1179,11 @@ export default function SettingsPage(): React.JSX.Element {
                     <div className="relative inline-flex">
                       <Button
                         variant="outline"
-                        disabled={hotkeySaving || !settingsQuery.data}
+                        disabled={
+                          !HAS_NATIVE_DESKTOP ||
+                          hotkeySaving ||
+                          !settingsQuery.data
+                        }
                         onClick={startRemixHotkeyRecording}
                         className="h-auto max-w-full flex-wrap gap-3 px-3.5 py-2"
                       >
@@ -1312,9 +1328,11 @@ export default function SettingsPage(): React.JSX.Element {
                     onAction={openAccessibility}
                     onManage={isMac ? openAccessibility : undefined}
                     note={
-                      !isMac && accessibilityStatus !== true
-                        ? t("settings.permissions.autoGranted")
-                        : undefined
+                      !HAS_NATIVE_DESKTOP
+                        ? "Requires the desktop application"
+                        : !isMac && accessibilityStatus !== true
+                          ? t("settings.permissions.autoGranted")
+                          : undefined
                     }
                   />
                 </Row>

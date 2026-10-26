@@ -7,6 +7,8 @@ export const PLATFORM: string =
 export const IS_MAC = PLATFORM === "darwin";
 export const IS_WINDOWS = PLATFORM === "win32";
 export const IS_LINUX = PLATFORM === "linux";
+export const HAS_NATIVE_DESKTOP =
+  typeof window !== "undefined" && !!window.electron;
 
 export const MOD_LABEL = IS_MAC ? "⌘" : "Ctrl+";
 export const SEARCH_SHORTCUT_LABEL = IS_MAC ? "⌘ K" : "Ctrl+K";

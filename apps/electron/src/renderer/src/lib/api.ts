@@ -5,6 +5,7 @@ import { bearerAuthHeaders } from "../../../shared/server-auth";
 const DEFAULT_PORT = 4649;
 const HEALTH_TIMEOUT_MS = 3000;
 let resolvedPort: number = DEFAULT_PORT;
+let localApiBaseOverride = "";
 // Configured external server URL ("" = use the local server).
 let serverUrl = "";
 // Optional bearer token for a configured server ("" = none).
@@ -100,7 +101,12 @@ async function resolvedClientFetch(
 
 /** Base URL of the locally-run server (used when no server URL is configured). */
 export function getLocalApiBase(): string {
-  return `http://127.0.0.1:${resolvedPort}`;
+  return localApiBaseOverride || `http://127.0.0.1:${resolvedPort}`;
+}
+
+/** Host-provided local transport, installed before browser renderer startup. */
+export function configureLocalApiBase(base: string): void {
+  localApiBaseOverride = new URL(base).origin;
 }
 
 /** Base URL the app talks to: the configured server, or the local one. */

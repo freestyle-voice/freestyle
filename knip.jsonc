@@ -24,6 +24,8 @@
     "apps/electron": {
       "entry": [
         "electron.vite.config.ts",
+        "browser.vite.config.ts",
+        "src/renderer/src/browser/bootstrap.ts",
         "src/main/index.ts",
         "src/preload/index.ts",
         "src/preload/plugin-bridge.ts",
@@ -33,12 +35,14 @@
         "src/renderer/src/components/pill.tsx",
         "src/**/*.test.{ts,tsx}",
         "tests/**/*.ts",
+        "browser-tests/**/*.ts",
         "scripts/**/*.{js,mjs}"
       ],
       "project": [
         "src/**/*.{ts,tsx,d.ts,css}",
         "scripts/**/*.{js,mjs,ts}",
         "tests/**/*.ts",
+        "browser-tests/**/*.ts",
         "*.config.ts"
       ],
       "paths": {

@@ -20,6 +20,13 @@ describe("typed API client startup routing", () => {
     vi.unstubAllGlobals();
   });
 
+  it("allows a browser host to keep device-local API calls on its isolated proxy", async () => {
+    const { configureLocalApiBase, getLocalApiBase } = await import("./api");
+    expect(getLocalApiBase()).toBe("http://127.0.0.1:4649");
+    configureLocalApiBase("http://127.0.0.1:5174");
+    expect(getLocalApiBase()).toBe("http://127.0.0.1:5174");
+  });
+
   it("resolves the configured target and bearer token at request dispatch", async () => {
     fetchMock.mockResolvedValue(
       new Response(JSON.stringify({}), {

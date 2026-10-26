@@ -57,6 +57,8 @@ Mobile support on iOS and Android is coming soon.
 
 Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup, local development, and opening up a PR. 
 
+For UI work without launching Electron, run `pnpm dev:browser`. See [browser development](apps/electron/BROWSER_DEVELOPMENT.md) for fixture scenarios, a separate development backend, and browser tests.
+
 Consider joining our [Discord server](https://discord.gg/Fmgt5yZCDu)! That's where project contributors communicate.
 
 ## License

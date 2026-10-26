@@ -255,13 +255,15 @@ const api = {
   },
   onDashboardNavigate: (
     callback: (route: "/settings" | "/settings/models" | "/remix") => void,
-  ) => {
+  ): (() => void) => {
     const handler = (
       _e: unknown,
       route: "/settings" | "/settings/models" | "/remix",
     ): void => callback(route);
     ipcRenderer.on("dashboard:navigate", handler);
-    return () => ipcRenderer.removeListener("dashboard:navigate", handler);
+    return () => {
+      ipcRenderer.removeListener("dashboard:navigate", handler);
+    };
   },
   notificationPresent: (payload: {
     messageId: string;
@@ -514,6 +516,9 @@ const api = {
   },
 };
 
+/** Shared contract for desktop preload and the browser development adapter. */
+export type PlatformApi = typeof api;
+
 // Use `contextBridge` APIs to expose Electron APIs to
 // renderer only if context isolation is enabled, otherwise
 // just add to the DOM global.
@@ -525,8 +530,10 @@ if (process.contextIsolated) {
     console.error(error);
   }
 } else {
-  // @ts-expect-error (define in dts)
-  window.electron = electronAPI;
-  // @ts-expect-error (define in dts)
-  window.api = api;
+  const preloadWindow = window as unknown as {
+    electron: typeof electronAPI;
+    api: PlatformApi;
+  };
+  preloadWindow.electron = electronAPI;
+  preloadWindow.api = api;
 }

@@ -185,6 +185,29 @@ jobs:
       - name: Run server tests
         run: pnpm --filter @freestyle-voice/server run test
 
+  test-browser:
+    name: Test (Browser UI)
+    needs: [changes]
+    if: needs.changes.outputs.run_electron == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: "package.json"
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @freestyle-voice/electron exec playwright install --with-deps chromium
+      - run: pnpm test:browser
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-ui-failures
+          path: apps/electron/test-results/
+          retention-days: 7
+
   test-history-platforms:
     name: History dates (${{ matrix.os }})
     needs: [changes]

@@ -7,6 +7,7 @@ import {
   BreadcrumbSeparator,
 } from "@renderer/components/ui/breadcrumb";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
+import { useRemixTaskEditor } from "@renderer/hooks/use-remix-task-editor";
 import { listBrainFiles, writeBrainFile } from "@renderer/lib/brain-fs";
 import {
   brainFileQueryOptions,
@@ -15,12 +16,7 @@ import {
   queryKeys,
 } from "@renderer/lib/query";
 import type { RemixRunState } from "@renderer/lib/remix-run-state";
-import {
-  appendRemixTodo,
-  parseRemixTodos,
-  REMIX_TODOS_PATH,
-  toggleRemixTodo,
-} from "@renderer/lib/remix-tasks";
+import { parseRemixTodos } from "@renderer/lib/remix-tasks";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Brain,
@@ -32,6 +28,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
+import { TaskSaveFeedback } from "./task-save-feedback";
 
 const INSPECTOR_WIDTH_MIN = 360;
 const INSPECTOR_WIDTH_MAX = 760;
@@ -213,27 +210,10 @@ function InspectorFile({ path }: { path: string }): React.JSX.Element {
 }
 
 function InspectorTasks(): React.JSX.Element {
-  const queryClient = useQueryClient();
-  const tasksQuery = useQuery(brainFileQueryOptions(REMIX_TODOS_PATH));
-  const [draft, setDraft] = useState("");
-  const { lines, items } = parseRemixTodos(tasksQuery.data);
-
-  const save = (next: string[]): void => {
-    const text = next.join("\n");
-    queryClient.setQueryData(queryKeys.brain.file(REMIX_TODOS_PATH), text);
-    void writeBrainFile(REMIX_TODOS_PATH, text)
-      .then((saved) => {
-        if (saved) return;
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.brain.file(REMIX_TODOS_PATH),
-        });
-      })
-      .catch(() => {
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.brain.file(REMIX_TODOS_PATH),
-        });
-      });
-  };
+  const editor = useRemixTaskEditor();
+  const tasksQuery = editor.query;
+  const { draft, setDraft } = editor;
+  const { items } = parseRemixTodos(tasksQuery.data);
 
   if (tasksQuery.isLoading) {
     return <DataSkeleton label="Loading tasks" variant="tasks" />;
@@ -258,7 +238,8 @@ function InspectorTasks(): React.JSX.Element {
               <input
                 type="checkbox"
                 checked={item.done}
-                onChange={() => save(toggleRemixTodo(lines, item))}
+                disabled={editor.pending}
+                onChange={() => editor.toggle(item)}
               />
               <span>{item.text}</span>
             </label>
@@ -267,11 +248,15 @@ function InspectorTasks(): React.JSX.Element {
       ) : (
         <p className="remix-inspector-empty-copy">Nothing waiting on you.</p>
       )}
+      <TaskSaveFeedback editor={editor} />
       <label className="remix-inspector-task-add">
         <span>+</span>
         <input
           aria-label="Add a task"
           value={draft}
+          disabled={
+            editor.pending || (!tasksQuery.data && !tasksQuery.isSuccess)
+          }
           placeholder="Add a task…"
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -279,8 +264,7 @@ function InspectorTasks(): React.JSX.Element {
             const text = draft.trim();
             if (!text) return;
             event.preventDefault();
-            setDraft("");
-            save(appendRemixTodo(lines, text));
+            editor.add();
           }}
         />
       </label>

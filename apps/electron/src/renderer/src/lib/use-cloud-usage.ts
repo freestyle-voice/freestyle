@@ -101,6 +101,8 @@ export interface UseCloudUsageResult {
   updatedAt: number | null;
   /** True while a (re)fetch is in flight. */
   isFetching: boolean;
+  /** A refresh failed; balance can still contain the last verified plan. */
+  isError: boolean;
   /** Force an immediate refetch of the balance. */
   refresh: () => void;
   /**
@@ -261,6 +263,7 @@ export function useCloudUsage(signedIn: boolean): UseCloudUsageResult {
     trialDaysLeft,
     updatedAt: query.dataUpdatedAt || null,
     isFetching: query.isFetching,
+    isError: query.isError,
     refresh: () => void query.refetch(),
     startCheckout,
     checkoutStatus,

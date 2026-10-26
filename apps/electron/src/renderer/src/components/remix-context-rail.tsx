@@ -1,20 +1,12 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
 import type { RemixInspectorTarget } from "@renderer/components/remix-inspector";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
-import {
-  listBrainFiles,
-  readBrainFile,
-  writeBrainFile,
-} from "@renderer/lib/brain-fs";
+import { useRemixTaskEditor } from "@renderer/hooks/use-remix-task-editor";
+import { listBrainFiles } from "@renderer/lib/brain-fs";
 import { notesQueryOptions, queryKeys } from "@renderer/lib/query";
 import type { RemixRunState } from "@renderer/lib/remix-run-state";
-import {
-  appendRemixTodo,
-  parseRemixTodos,
-  REMIX_TODOS_PATH,
-  toggleRemixTodo,
-} from "@renderer/lib/remix-tasks";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { parseRemixTodos, REMIX_TODOS_PATH } from "@renderer/lib/remix-tasks";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Brain,
@@ -25,6 +17,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useMemo, useState } from "react";
+import { TaskSaveFeedback } from "./task-save-feedback";
 
 export type RemixContextKind = "tasks" | "notes" | "brain" | "run";
 
@@ -117,34 +110,13 @@ function ContextTasks({
   attention: boolean;
   onOpenInspector?: (target: RemixInspectorTarget) => void;
 }): React.JSX.Element {
-  const queryClient = useQueryClient();
-  const todosQuery = useQuery({
-    queryKey: queryKeys.brain.file(REMIX_TODOS_PATH),
-    queryFn: () => readBrainFile(REMIX_TODOS_PATH),
-  });
+  const editor = useRemixTaskEditor();
+  const tasksQuery = editor.query;
+  const { draft, setDraft } = editor;
   const [expanded, setExpanded] = useState(false);
-  const [draft, setDraft] = useState("");
-  const { lines, items } = parseRemixTodos(todosQuery.data);
+  const { items } = parseRemixTodos(tasksQuery.data);
   const openItems = items.filter((item) => !item.done);
   const shown = expanded ? items : openItems.slice(0, PREVIEW_LIMIT);
-
-  const save = (next: string[]): void => {
-    const text = next.join("\n");
-    queryClient.setQueryData(queryKeys.brain.file(REMIX_TODOS_PATH), text);
-    void writeBrainFile(REMIX_TODOS_PATH, text)
-      .then((ok) => {
-        if (!ok) {
-          void queryClient.invalidateQueries({
-            queryKey: queryKeys.brain.file(REMIX_TODOS_PATH),
-          });
-        }
-      })
-      .catch(() => {
-        void queryClient.invalidateQueries({
-          queryKey: queryKeys.brain.file(REMIX_TODOS_PATH),
-        });
-      });
-  };
 
   return (
     <ContextCard
@@ -153,15 +125,15 @@ function ContextTasks({
       count={openItems.length}
       attention={attention}
       empty={
-        !todosQuery.isLoading && !todosQuery.isError && openItems.length === 0
+        !tasksQuery.isLoading && !tasksQuery.isError && openItems.length === 0
       }
       onOpen={
         onOpenInspector ? () => onOpenInspector({ kind: "tasks" }) : undefined
       }
     >
-      {todosQuery.isLoading ? (
+      {tasksQuery.isLoading ? (
         <DataSkeleton label="Loading tasks" variant="tasks" />
-      ) : todosQuery.isError ? (
+      ) : tasksQuery.isError ? (
         <p className="remix-context-empty">Couldn&apos;t load tasks.</p>
       ) : shown.length > 0 ? (
         <div className="remix-context-list">
@@ -173,9 +145,8 @@ function ContextTasks({
               <input
                 type="checkbox"
                 checked={item.done}
-                onChange={() => {
-                  save(toggleRemixTodo(lines, item));
-                }}
+                disabled={editor.pending}
+                onChange={() => editor.toggle(item)}
               />
               <span>{item.text}</span>
             </label>
@@ -197,11 +168,15 @@ function ContextTasks({
           />
         </button>
       ) : null}
+      <TaskSaveFeedback editor={editor} />
       <label className="remix-context-add">
         <Plus aria-hidden="true" />
         <input
           aria-label="Add a task"
           value={draft}
+          disabled={
+            editor.pending || (!tasksQuery.data && !tasksQuery.isSuccess)
+          }
           placeholder="Add a task…"
           onChange={(event) => setDraft(event.target.value)}
           onKeyDown={(event) => {
@@ -209,8 +184,7 @@ function ContextTasks({
             const text = draft.trim();
             if (!text) return;
             event.preventDefault();
-            setDraft("");
-            save(appendRemixTodo(lines, text));
+            editor.add();
           }}
         />
       </label>

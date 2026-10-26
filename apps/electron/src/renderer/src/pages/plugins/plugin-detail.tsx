@@ -1,4 +1,5 @@
 import { DragSpacer } from "@renderer/components/drag-spacer";
+import { QueryErrorNotice } from "@renderer/components/query-error-notice";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,12 +38,12 @@ export default function PluginDetailPage(): React.JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: allPlugins, isLoading: loading } = useQuery({
+  const pluginsQuery = useQuery({
     queryKey: queryKeys.plugins,
     queryFn: () => listPlugins(),
   });
 
-  const plugin = allPlugins?.find((p) => p.slug === slug) ?? null;
+  const plugin = pluginsQuery.data?.find((p) => p.slug === slug) ?? null;
 
   const toggle = async (enabled: boolean): Promise<void> => {
     if (!plugin) return;
@@ -57,14 +58,25 @@ export default function PluginDetailPage(): React.JSX.Element {
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       <div className="responsive-page-scroll flex-1 overflow-auto">
-        {loading ? (
+        {pluginsQuery.isError && (
+          <QueryErrorNotice
+            error={
+              new Error(
+                "Couldn’t load this plugin. Check your connection and try again.",
+              )
+            }
+            onRetry={() => void pluginsQuery.refetch()}
+          />
+        )}
+        {pluginsQuery.isLoading ? (
           <PluginDetailSkeleton />
-        ) : !plugin ? (
+        ) : !plugin && !pluginsQuery.isError ? (
           <p className="text-muted-foreground py-10 text-center text-sm">
             {t("plugins.detail.notFound")}
           </p>
-        ) : (
+        ) : plugin ? (
           <Detail
+            key={plugin.specifier}
             plugin={plugin}
             onToggle={toggle}
             onUninstall={async () => {
@@ -74,7 +86,7 @@ export default function PluginDetailPage(): React.JSX.Element {
             }}
             update={update}
           />
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -94,30 +106,48 @@ function Detail({
   const { t } = useTranslation();
   const queryClient = useQueryClient();
   const isDev = plugin.slug.endsWith("-dev");
-  const [updating, setUpdating] = useState(false);
-  const [uninstalling, setUninstalling] = useState(false);
+  type Operation = "update" | "enable" | "disable" | "uninstall";
+  const [busy, setBusy] = useState<Operation | null>(null);
+  const lock = useRef(false);
+  const [failure, setFailure] = useState<{
+    message: string;
+    operation: Operation;
+  } | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
 
-  const doUpdate = async (): Promise<void> => {
-    setUpdating(true);
+  const operate = async (operation: Operation): Promise<void> => {
+    if (lock.current) return;
+    lock.current = true;
+    setBusy(operation);
+    setFailure(null);
+    setSaved(null);
     try {
-      const all = await installPlugin(plugin.specifier);
-      queryClient.setQueryData(queryKeys.plugins, all);
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.pluginUpdates.all,
+      if (operation === "update") {
+        const all = await installPlugin(plugin.specifier);
+        queryClient.setQueryData(queryKeys.plugins, all);
+        void queryClient.invalidateQueries({
+          queryKey: queryKeys.pluginUpdates.all,
+        });
+        setSaved("Plugin updated.");
+      } else if (operation === "uninstall") {
+        await onUninstall();
+      } else {
+        await onToggle(operation === "enable");
+        setSaved(
+          operation === "enable" ? "Plugin enabled." : "Plugin disabled.",
+        );
+      }
+    } catch (error) {
+      setFailure({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Couldn’t complete this action. Try again.",
+        operation,
       });
-    } catch {
-      // Install errors surface via the server; no UI toast needed here.
     } finally {
-      setUpdating(false);
-    }
-  };
-
-  const doUninstall = async (): Promise<void> => {
-    setUninstalling(true);
-    try {
-      await onUninstall();
-    } finally {
-      setUninstalling(false);
+      lock.current = false;
+      setBusy(null);
     }
   };
 
@@ -177,11 +207,11 @@ function Detail({
             <Button
               variant="outline"
               size="sm"
-              disabled={updating}
-              onClick={() => void doUpdate()}
+              disabled={busy !== null}
+              onClick={() => void operate("update")}
             >
-              {updating ? <Loader2 className="animate-spin" /> : null}
-              {updating ? t("plugins.updating") : t("plugins.update")}
+              {busy === "update" ? <Loader2 className="animate-spin" /> : null}
+              {busy === "update" ? t("plugins.updating") : t("plugins.update")}
             </Button>
           ) : null}
 
@@ -200,18 +230,42 @@ function Detail({
               id="plugin-enabled-toggle"
               size="sm"
               checked={plugin.enabled}
-              onCheckedChange={(checked) => void onToggle(checked)}
+              disabled={busy !== null}
+              onCheckedChange={(checked) =>
+                void operate(checked ? "enable" : "disable")
+              }
             />
           </div>
 
           <UninstallButton
             pluginName={pluginDisplayName(plugin)}
-            uninstalling={uninstalling}
-            onConfirm={() => void doUninstall()}
+            uninstalling={busy === "uninstall"}
+            disabled={busy !== null}
+            onConfirm={() => void operate("uninstall")}
           />
         </div>
       </div>
 
+      {busy && (
+        <p role="status" className="text-muted-foreground mb-4 text-sm">
+          {busy === "update"
+            ? "Updating plugin…"
+            : busy === "uninstall"
+              ? "Uninstalling plugin…"
+              : "Saving plugin state…"}
+        </p>
+      )}
+      {failure && (
+        <QueryErrorNotice
+          error={new Error(failure.message)}
+          onRetry={() => void operate(failure.operation)}
+        />
+      )}
+      {saved && (
+        <p role="status" className="text-primary mb-4 text-sm">
+          {saved}
+        </p>
+      )}
       <hr className="border-border" />
 
       {plugin.readme ? (
@@ -230,10 +284,12 @@ function Detail({
 function UninstallButton({
   pluginName,
   uninstalling,
+  disabled,
   onConfirm,
 }: {
   pluginName: string;
   uninstalling: boolean;
+  disabled: boolean;
   onConfirm: () => void;
 }): React.JSX.Element {
   const { t } = useTranslation();
@@ -273,7 +329,7 @@ function UninstallButton({
       <Button
         variant="outline"
         size="sm"
-        disabled={uninstalling}
+        disabled={disabled}
         onClick={handleClick}
         className="text-destructive hover:bg-destructive/10 hover:text-destructive border-destructive/30"
       >

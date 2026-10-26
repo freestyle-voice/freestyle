@@ -1,21 +1,21 @@
-export type ToneSaveState = {
+export type SettingSaveState = {
   phase: "saving" | "saved" | "error";
   retry?: () => Promise<boolean>;
 };
-export type ToneSaveStates = Record<string, ToneSaveState>;
+export type SettingSaveStates = Record<string, SettingSaveState>;
 
 // Writes outlive the page that started them. Share tails across page mounts so
 // an older request cannot overwrite a choice made after navigating back.
 const tails = new Map<string, Promise<boolean>>();
 
 /** Serialize writes per control: a slow old choice must never win on the server. */
-export function createToneSaveQueue(
-  onChange: (states: ToneSaveStates) => void,
+export function createSettingSaveQueue(
+  onChange: (states: SettingSaveStates) => void,
 ) {
-  let states: ToneSaveStates = {};
+  let states: SettingSaveStates = {};
   const versions = new Map<string, number>();
 
-  function update(key: string, state: ToneSaveState) {
+  function update(key: string, state: SettingSaveState) {
     states = { ...states, [key]: state };
     onChange(states);
   }

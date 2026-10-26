@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createToneSaveQueue, type ToneSaveStates } from "./tone-save-queue";
+import {
+  createSettingSaveQueue,
+  type SettingSaveStates,
+} from "./setting-save-queue";
 
 function deferred() {
   let resolve!: () => void;
@@ -14,8 +17,8 @@ function deferred() {
 
 describe("Tone setting persistence", () => {
   it("serializes rapid choices so the newest value is the last persisted value", async () => {
-    let state: ToneSaveStates = {};
-    const queue = createToneSaveQueue((next) => {
+    let state: SettingSaveStates = {};
+    const queue = createSettingSaveQueue((next) => {
       state = next;
     });
     const firstRequest = deferred();
@@ -37,9 +40,9 @@ describe("Tone setting persistence", () => {
   });
 
   it("preserves newer choices when navigation creates another queue during a slow save", async () => {
-    const oldPage = createToneSaveQueue(() => {});
-    let newPageState: ToneSaveStates = {};
-    const newPage = createToneSaveQueue((next) => {
+    const oldPage = createSettingSaveQueue(() => {});
+    let newPageState: SettingSaveStates = {};
+    const newPage = createSettingSaveQueue((next) => {
       newPageState = next;
     });
     const oldRequest = deferred();
@@ -63,8 +66,8 @@ describe("Tone setting persistence", () => {
   });
 
   it("keeps a rejected choice unsaved and retries its actual write", async () => {
-    let state: ToneSaveStates = {};
-    const queue = createToneSaveQueue((next) => {
+    let state: SettingSaveStates = {};
+    const queue = createSettingSaveQueue((next) => {
       state = next;
     });
     const persisted: string[] = [];
@@ -82,8 +85,8 @@ describe("Tone setting persistence", () => {
   });
 
   it("does not let an older failure replace the state or retry of a newer choice", async () => {
-    let state: ToneSaveStates = {};
-    const queue = createToneSaveQueue((next) => {
+    let state: SettingSaveStates = {};
+    const queue = createSettingSaveQueue((next) => {
       state = next;
     });
     const request = deferred();
@@ -96,8 +99,8 @@ describe("Tone setting persistence", () => {
   });
 
   it("retains an error in one control while another control saves successfully", async () => {
-    let state: ToneSaveStates = {};
-    const queue = createToneSaveQueue((next) => {
+    let state: SettingSaveStates = {};
+    const queue = createSettingSaveQueue((next) => {
       state = next;
     });
     await queue.save("cloud", async () => {

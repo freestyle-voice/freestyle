@@ -19,6 +19,7 @@ import {
   startRunNow,
   subscribeRunNow,
 } from "@renderer/lib/run-now-store";
+import { schedulePreview } from "@renderer/lib/schedule-preview";
 import {
   createScheduledTask,
   deleteScheduledTask,
@@ -29,7 +30,13 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarClock, Pencil, Play, Plus, Trash2 } from "lucide-react";
 import type React from "react";
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 
 type Editor = { id: string | null; draft: ScheduledTaskInput };
 type ScheduledTasksVariant = "compact" | "workspace";
@@ -98,6 +105,16 @@ function TaskForm({
   onCancel: () => void;
   busy: boolean;
 }): React.JSX.Element {
+  const [advanced, setAdvanced] = useState(Boolean(draft.cron));
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  const preview = useMemo(
+    () => schedulePreview(draft.cron, draft.timezone, now),
+    [draft.cron, draft.timezone, now],
+  );
   const field = (
     label: string,
     key: "name" | "schedule" | "cron" | "timezone",
@@ -108,6 +125,7 @@ function TaskForm({
       <input
         className="tavern-editor-name"
         value={draft[key] ?? ""}
+        disabled={busy}
         placeholder={placeholder}
         onChange={(e) =>
           onDraft({
@@ -130,13 +148,76 @@ function TaskForm({
     <div className="tavern-sched-form">
       {field("Name", "name", "Morning brief")}
       {field("Schedule, in your words", "schedule", "every weekday at 8am")}
-      {field("Cron (optional, blank = fuzzy)", "cron", "0 8 * * 1-5")}
-      {field("Timezone", "timezone", "America/Los_Angeles")}
+      <p className="text-muted-foreground text-xs">
+        Timezone: {draft.timezone || "Choose a timezone below"}
+      </p>
+      <details
+        open={advanced}
+        onToggle={(event) => setAdvanced(event.currentTarget.open)}
+        className="border-border rounded-lg border px-3 py-2"
+      >
+        <summary className="text-foreground cursor-pointer text-sm">
+          Advanced timing
+        </summary>
+        <div className="mt-3 flex flex-col gap-3">
+          <p className="text-muted-foreground text-xs">
+            An optional cron expression sets exact recurring times instead of
+            interpreting your schedule. Leave it empty to use your words.
+          </p>
+          {field("Cron expression", "cron", "0 8 * * 1-5")}
+          {field("Timezone", "timezone", "America/Los_Angeles")}
+        </div>
+      </details>
+      {preview.kind === "error" ? (
+        <p role="alert" className="text-destructive text-xs">
+          {preview.message}
+        </p>
+      ) : (
+        <div
+          role="status"
+          className="border-border bg-secondary/30 rounded-lg border p-3 text-sm"
+        >
+          {preview.kind === "cron" ? (
+            <>
+              <p className="text-foreground font-medium">Next scheduled time</p>
+              <p>
+                {new Date(preview.next).toLocaleString(undefined, {
+                  timeZone: draft.timezone,
+                  weekday: "short",
+                  month: "short",
+                  day: "numeric",
+                  hour: "numeric",
+                  minute: "2-digit",
+                })}{" "}
+                · {draft.timezone}
+              </p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                Estimated from cron. Work starts on a following Cloud check,
+                about every five minutes.
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="text-foreground font-medium">Timing preview</p>
+              <p className="text-muted-foreground mt-1 text-xs">
+                Freestyle interprets{" "}
+                {draft.schedule.trim()
+                  ? `“${draft.schedule.trim()}”`
+                  : "your schedule"}{" "}
+                in {draft.timezone} when checking for due work, about every five
+                minutes. A fixed next-run time is not available before that
+                check.
+              </p>
+            </>
+          )}
+        </div>
+      )}
       <label className="tavern-sched-field">
         <span className="tavern-sched-label">What Freestyle does</span>
         <textarea
           className="tavern-editor"
           value={draft.instruction}
+          disabled={busy}
           placeholder="Check the markets and tell me anything worth knowing."
           onChange={(e) => onDraft({ ...draft, instruction: e.target.value })}
           onKeyDown={(e) => {
@@ -151,12 +232,17 @@ function TaskForm({
         <button
           type="button"
           className="tavern-approve-btn tavern-approve-allow"
-          disabled={busy || !valid}
+          disabled={busy || !valid || preview.kind === "error"}
           onClick={onSave}
         >
           {busy ? "Saving…" : "Save"}
         </button>
-        <button type="button" className="tavern-approve-btn" onClick={onCancel}>
+        <button
+          type="button"
+          className="tavern-approve-btn"
+          disabled={busy}
+          onClick={onCancel}
+        >
           Cancel
         </button>
       </div>
@@ -170,12 +256,14 @@ function ScheduleEditorDialog({
   onDraft,
   onSave,
   onClose,
+  error,
 }: {
   editor: Editor | null;
   busy: boolean;
   onDraft: (draft: ScheduledTaskInput) => void;
   onSave: () => void;
   onClose: () => void;
+  error: string | null;
 }): React.JSX.Element {
   const creating = editor?.id === null;
   return (
@@ -196,6 +284,11 @@ function ScheduleEditorDialog({
               : "Change what runs and when it should happen."}
           </DialogDescription>
         </DialogHeader>
+        {error && (
+          <p role="alert" className="text-destructive text-sm">
+            {error}
+          </p>
+        )}
         {editor ? (
           <TaskForm
             draft={editor.draft}
@@ -583,6 +676,7 @@ export function ScheduledTasks({
         </section>
       )}
       <ScheduleEditorDialog
+        error={error}
         editor={editor}
         busy={busy === (editor?.id ?? "new")}
         onDraft={(draft) => {

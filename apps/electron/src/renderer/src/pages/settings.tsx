@@ -77,6 +77,10 @@ import {
   queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
+import {
+  createSettingSaveQueue,
+  type SettingSaveStates,
+} from "@renderer/lib/setting-save-queue";
 import { replaceSetting } from "@renderer/lib/settings";
 import { saveSetting } from "@renderer/lib/settings-api";
 import { getThread } from "@renderer/lib/threads";
@@ -303,6 +307,8 @@ export default function SettingsPage(): React.JSX.Element {
   const [accessibilityStatus, setAccessibilityStatus] = useState<
     boolean | null
   >(null);
+  const [waitingForMic, setWaitingForMic] = useState(false);
+  const micSettingsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const micPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const accessibilityPollRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
@@ -331,17 +337,21 @@ export default function SettingsPage(): React.JSX.Element {
   }, []);
 
   const openMicSettings = useCallback(() => {
-    window.api?.openMicSettings?.();
+    void window.api?.openMicSettings?.();
+    setWaitingForMic(true);
+    if (micSettingsTimer.current) clearTimeout(micSettingsTimer.current);
     if (micPollRef.current) clearInterval(micPollRef.current);
     micPollRef.current = setInterval(async () => {
-      const mic = await window.api?.checkMicPermission?.();
+      const mic = await window.api?.checkMicPermission?.().catch(() => null);
+      if (mic) setMicStatus(mic as MicStatus);
       if (mic === "granted") {
-        setMicStatus("granted");
+        setWaitingForMic(false);
         if (micPollRef.current) clearInterval(micPollRef.current);
         micPollRef.current = null;
       }
     }, 1000);
-    setTimeout(() => {
+    micSettingsTimer.current = setTimeout(() => {
+      setWaitingForMic(false);
       if (micPollRef.current) {
         clearInterval(micPollRef.current);
         micPollRef.current = null;
@@ -567,6 +577,7 @@ export default function SettingsPage(): React.JSX.Element {
     return () => {
       removePillPos?.();
       if (micPollRef.current) clearInterval(micPollRef.current);
+      if (micSettingsTimer.current) clearTimeout(micSettingsTimer.current);
       if (accessibilityPollRef.current)
         clearInterval(accessibilityPollRef.current);
     };
@@ -1286,24 +1297,58 @@ export default function SettingsPage(): React.JSX.Element {
                   label={t("settings.permissions.microphone")}
                   desc={t("settings.permissions.microphoneDesc")}
                 >
-                  <PermissionControl
-                    granted={micStatus === "granted"}
-                    checking={micStatus === "unknown"}
-                    actionLabel={
-                      micStatus === "denied" && canOpenMicSettings
-                        ? t("common.openSettings")
-                        : micStatus === "granted"
-                          ? null
-                          : t("common.allow")
-                    }
-                    external={micStatus === "denied" && canOpenMicSettings}
-                    onAction={
-                      micStatus === "denied" && canOpenMicSettings
-                        ? openMicSettings
-                        : requestMic
-                    }
-                    onManage={canOpenMicSettings ? openMicSettings : undefined}
-                  />
+                  {micStatus === "restricted" ? (
+                    <div className="flex flex-col items-start gap-2">
+                      <span className="text-foreground text-xs font-medium">
+                        Restricted
+                      </span>
+                      <p className="text-muted-foreground max-w-md text-xs leading-relaxed">
+                        Microphone access is restricted by your system or
+                        administrator. Check your device’s privacy or parental
+                        controls, or ask your administrator to allow Freestyle.
+                      </p>
+                      {canOpenMicSettings && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={openMicSettings}
+                        >
+                          Open Settings
+                          <ExternalLink data-icon="inline-end" />
+                        </Button>
+                      )}
+                    </div>
+                  ) : (
+                    <PermissionControl
+                      granted={micStatus === "granted"}
+                      checking={micStatus === "unknown"}
+                      actionLabel={
+                        micStatus === "denied" && canOpenMicSettings
+                          ? t("common.openSettings")
+                          : micStatus === "granted"
+                            ? null
+                            : t("common.allow")
+                      }
+                      external={micStatus === "denied" && canOpenMicSettings}
+                      onAction={
+                        micStatus === "denied" && canOpenMicSettings
+                          ? openMicSettings
+                          : requestMic
+                      }
+                      onManage={
+                        canOpenMicSettings ? openMicSettings : undefined
+                      }
+                    />
+                  )}
+                  {waitingForMic && micStatus !== "granted" && (
+                    <p
+                      role="status"
+                      className="text-muted-foreground mt-2 text-xs"
+                    >
+                      Waiting for a change in system Settings. Return here after
+                      allowing microphone access.
+                    </p>
+                  )}
                 </Row>
                 <Row
                   label={t("settings.permissions.accessibility")}
@@ -1557,6 +1602,7 @@ function BillingPanel(): React.JSX.Element {
     balance,
     isPro,
     isFetching,
+    isError,
     refresh,
     startCheckout,
     checkoutStatus,
@@ -1569,7 +1615,17 @@ function BillingPanel(): React.JSX.Element {
   return (
     <SettingsPanel>
       <div className="flex flex-col gap-6 pb-24">
-        {!isPro && (
+        {isError && balance && (
+          <QueryErrorNotice
+            error={
+              new Error(
+                "Couldn’t refresh your plan. Showing your last verified membership.",
+              )
+            }
+            onRetry={refresh}
+          />
+        )}
+        {!isPro && (!user || balance) && (
           <UsageSummary
             signedIn={!!user}
             balance={balance}
@@ -1582,11 +1638,26 @@ function BillingPanel(): React.JSX.Element {
             openBillingPortal={openBillingPortal}
             portalOpening={portalOpening}
           />
-        ) : user && !balance && isFetching ? (
-          <div className="glass-card flex items-center gap-2.5 rounded-[12px] border px-4 py-4 text-muted-foreground text-[12px]">
-            <Loader2 className="size-4 animate-spin" />
-            Checking your membership…
-          </div>
+        ) : user && !balance ? (
+          isFetching ? (
+            <div className="glass-card flex items-center gap-2.5 rounded-[12px] border px-4 py-4 text-muted-foreground text-[12px]">
+              <Loader2 className="size-4 animate-spin" />
+              Checking your membership…
+            </div>
+          ) : (
+            <div className="border-border rounded-lg border p-5" role="alert">
+              <p className="text-foreground text-sm font-medium">
+                Couldn’t verify your plan
+              </p>
+              <p className="text-muted-foreground mt-1 mb-3 text-sm">
+                Your membership hasn’t changed. Retry to load your plan and
+                usage.
+              </p>
+              <Button variant="outline" size="sm" onClick={refresh}>
+                Retry
+              </Button>
+            </div>
+          )
         ) : (
           <PricingPlans
             isPro={false}
@@ -1729,10 +1800,8 @@ function NetworkPanel(): React.JSX.Element {
     defaultValues: { proxyUrl: "", caCertPath: "" },
     mode: "onBlur",
   });
-  const [savedField, setSavedField] = useState<
-    keyof NetworkSettingsForm | null
-  >(null);
-  const savedTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [saveStates, setSaveStates] = useState<SettingSaveStates>({});
+  const saveQueue = useMemo(() => createSettingSaveQueue(setSaveStates), []);
   // Track the last value that was actually persisted so we skip redundant saves
   // (and the "Saved" flash) when the user blurs without changing anything.
   const lastCommitted = useRef<NetworkSettingsForm>({
@@ -1742,7 +1811,8 @@ function NetworkPanel(): React.JSX.Element {
 
   // Hydrate from the shared settings cache (deduped with every other
   // ["settings-all"] consumer) instead of two dedicated single-key GETs.
-  const { data: settings } = useQuery(settingsQueryOptions());
+  const settingsQuery = useQuery(settingsQueryOptions());
+  const settings = settingsQuery.data;
 
   // Seed the form once, when the settings first resolve. react-hook-form then
   // owns the state; later cache changes don't re-seed (mutations patch the
@@ -1757,51 +1827,40 @@ function NetworkPanel(): React.JSX.Element {
     lastCommitted.current = { proxyUrl, caCertPath };
   }, [settings, reset]);
 
-  useEffect(
-    () => () => {
-      if (savedTimer.current) clearTimeout(savedTimer.current);
-    },
-    [],
-  );
-
-  const flashSaved = useCallback((field: keyof NetworkSettingsForm) => {
-    setSavedField(field);
-    if (savedTimer.current) clearTimeout(savedTimer.current);
-    savedTimer.current = setTimeout(() => setSavedField(null), 1500);
-  }, []);
-
-  // Persist on blur — only when the value actually changed and passes the
-  // shared schema, so we never send redundant or invalid requests.
   const persistField = useCallback(
     async (field: keyof NetworkSettingsForm, key: string) => {
       const value = getValues(field).trim();
-      if (value === lastCommitted.current[field]) return;
-
-      const valid = await trigger(field);
-      if (!valid) return;
-      try {
+      if (
+        !settings ||
+        (value === lastCommitted.current[field] &&
+          saveStates[key]?.phase !== "saving")
+      )
+        return;
+      if (!(await trigger(field))) return;
+      await saveQueue.save(key, async () => {
         const res = await getClient().api.settings[":key"].$put({
           param: { key },
           json: { value },
         });
-        if (res.ok) {
-          lastCommitted.current[field] = value;
-          // Keep the shared settings cache truthful without a refetch.
-          queryClient.setQueryData<Record<string, string>>(
-            queryKeys.settings,
-            (prev) => ({ ...(prev ?? {}), [key]: value }),
-          );
-          flashSaved(field);
-        }
-      } catch {
-        // Network/API errors surface via the field's onChange retry; swallow.
-      }
+        if (!res.ok) throw new Error("Could not apply network settings.");
+        lastCommitted.current[field] = value;
+        queryClient.setQueryData<Record<string, string>>(
+          queryKeys.settings,
+          (prev) => ({ ...(prev ?? {}), [key]: value }),
+        );
+      });
     },
-    [trigger, getValues, flashSaved, queryClient],
+    [trigger, getValues, saveQueue, queryClient, settings, saveStates],
   );
 
   return (
     <SettingsPanel>
+      {settingsQuery.isError && (
+        <QueryErrorNotice
+          error={new Error("Couldn’t load network settings.")}
+          onRetry={() => void settingsQuery.refetch()}
+        />
+      )}
       <p className="text-muted-foreground border-border border-b pb-5 text-[13px] leading-[1.6]">
         {t("settings.network.intro")}
       </p>
@@ -1821,8 +1880,10 @@ function NetworkPanel(): React.JSX.Element {
               error={
                 errors.proxyUrl ? t("settings.network.invalidProxy") : undefined
               }
-              saved={savedField === "proxyUrl"}
-              savedLabel={t("settings.network.saved")}
+              state={saveStates[SETTINGS_KEYS.networkProxyUrl]?.phase}
+              committed={lastCommitted.current.proxyUrl}
+              disabled={!settings}
+              label={t("settings.network.proxy")}
               onCommit={() =>
                 persistField("proxyUrl", SETTINGS_KEYS.networkProxyUrl)
               }
@@ -1849,8 +1910,10 @@ function NetworkPanel(): React.JSX.Element {
                   ? t("settings.network.invalidCaCert")
                   : undefined
               }
-              saved={savedField === "caCertPath"}
-              savedLabel={t("settings.network.saved")}
+              state={saveStates[SETTINGS_KEYS.networkCaCertPath]?.phase}
+              committed={lastCommitted.current.caCertPath}
+              disabled={!settings}
+              label={t("settings.network.caCert")}
               onCommit={() =>
                 persistField("caCertPath", SETTINGS_KEYS.networkCaCertPath)
               }
@@ -1883,28 +1946,35 @@ function NetworkField({
   field,
   placeholder,
   error,
-  saved,
-  savedLabel,
+  state,
+  committed,
+  disabled,
+  label,
   onCommit,
 }: {
   id: string;
   field: ControllerRenderProps<NetworkSettingsForm, keyof NetworkSettingsForm>;
   placeholder: string;
   error?: string;
-  saved: boolean;
-  savedLabel: string;
+  state?: "saving" | "saved" | "error";
+  committed: string;
+  disabled: boolean;
+  label: string;
   onCommit: () => void;
 }): React.JSX.Element {
+  const changed = field.value.trim() !== committed;
   return (
-    <div className="flex max-w-md flex-col gap-1.5">
+    <div className="flex max-w-md flex-col gap-2">
       <Input
         id={id}
+        aria-label={label}
         type="text"
         spellCheck={false}
         autoComplete="off"
         name={field.name}
         ref={field.ref}
         value={field.value}
+        disabled={disabled}
         onChange={field.onChange}
         onBlur={() => {
           field.onBlur();
@@ -1913,16 +1983,31 @@ function NetworkField({
         placeholder={placeholder}
         aria-invalid={error ? true : undefined}
       />
-      <div className="flex min-h-[16px] items-center">
-        {error ? (
-          <span className="text-destructive text-xs">{error}</span>
-        ) : saved ? (
-          <span className="text-primary inline-flex items-center gap-1 text-xs">
-            <Check className="h-3 w-3" />
-            {savedLabel}
-          </span>
-        ) : null}
-      </div>
+      {error ? (
+        <p role="alert" className="text-destructive text-xs">
+          {error}
+        </p>
+      ) : state === "error" && changed ? (
+        <div
+          role="alert"
+          className="text-destructive flex items-center justify-between gap-3 text-xs"
+        >
+          <span>This setting wasn’t saved. Your draft is still here.</span>
+          <Button variant="outline" size="sm" onClick={onCommit}>
+            Retry
+          </Button>
+        </div>
+      ) : (
+        <p role="status" className="text-muted-foreground min-h-4 text-xs">
+          {state === "saving"
+            ? "Saving…"
+            : changed
+              ? "Unsaved changes · saved when you leave this field"
+              : state === "saved"
+                ? "Saved"
+                : ""}
+        </p>
+      )}
     </div>
   );
 }

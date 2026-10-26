@@ -1802,13 +1802,6 @@ function NetworkPanel(): React.JSX.Element {
   });
   const [saveStates, setSaveStates] = useState<SettingSaveStates>({});
   const saveQueue = useMemo(() => createSettingSaveQueue(setSaveStates), []);
-  // Track the last value that was actually persisted so we skip redundant saves
-  // (and the "Saved" flash) when the user blurs without changing anything.
-  const lastCommitted = useRef<NetworkSettingsForm>({
-    proxyUrl: "",
-    caCertPath: "",
-  });
-
   // Hydrate from the shared settings cache (deduped with every other
   // ["settings-all"] consumer) instead of two dedicated single-key GETs.
   const settingsQuery = useQuery(settingsQueryOptions());
@@ -1824,17 +1817,16 @@ function NetworkPanel(): React.JSX.Element {
     const proxyUrl = settings[SETTINGS_KEYS.networkProxyUrl] ?? "";
     const caCertPath = settings[SETTINGS_KEYS.networkCaCertPath] ?? "";
     reset({ proxyUrl, caCertPath });
-    lastCommitted.current = { proxyUrl, caCertPath };
   }, [settings, reset]);
 
   const persistField = useCallback(
     async (field: keyof NetworkSettingsForm, key: string) => {
       const value = getValues(field).trim();
-      if (
-        !settings ||
-        (value === lastCommitted.current[field] &&
-          saveStates[key]?.phase !== "saving")
-      )
+      const committed =
+        queryClient.getQueryData<Record<string, string>>(queryKeys.settings)?.[
+          key
+        ] ?? "";
+      if (!settings || (value === committed && !saveQueue.isPending(key)))
         return;
       if (!(await trigger(field))) return;
       await saveQueue.save(key, async () => {
@@ -1843,14 +1835,13 @@ function NetworkPanel(): React.JSX.Element {
           json: { value },
         });
         if (!res.ok) throw new Error("Could not apply network settings.");
-        lastCommitted.current[field] = value;
         queryClient.setQueryData<Record<string, string>>(
           queryKeys.settings,
           (prev) => ({ ...(prev ?? {}), [key]: value }),
         );
       });
     },
-    [trigger, getValues, saveQueue, queryClient, settings, saveStates],
+    [trigger, getValues, saveQueue, queryClient, settings],
   );
 
   return (
@@ -1881,7 +1872,7 @@ function NetworkPanel(): React.JSX.Element {
                 errors.proxyUrl ? t("settings.network.invalidProxy") : undefined
               }
               state={saveStates[SETTINGS_KEYS.networkProxyUrl]?.phase}
-              committed={lastCommitted.current.proxyUrl}
+              committed={settings?.[SETTINGS_KEYS.networkProxyUrl] ?? ""}
               disabled={!settings}
               label={t("settings.network.proxy")}
               onCommit={() =>
@@ -1911,7 +1902,7 @@ function NetworkPanel(): React.JSX.Element {
                   : undefined
               }
               state={saveStates[SETTINGS_KEYS.networkCaCertPath]?.phase}
-              committed={lastCommitted.current.caCertPath}
+              committed={settings?.[SETTINGS_KEYS.networkCaCertPath] ?? ""}
               disabled={!settings}
               label={t("settings.network.caCert")}
               onCommit={() =>

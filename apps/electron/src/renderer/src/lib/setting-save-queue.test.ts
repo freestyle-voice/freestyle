@@ -16,6 +16,19 @@ function deferred() {
 }
 
 describe("Tone setting persistence", () => {
+  it("exposes pending writes to remounted controls until queued writes settle", async () => {
+    const oldPage = createSettingSaveQueue(() => {});
+    const newPage = createSettingSaveQueue(() => {});
+    const request = deferred();
+    const first = oldPage.save("network_remount", () => request.promise);
+    const second = newPage.save("network_remount", async () => {});
+    const pendingBeforeCompletion = newPage.isPending?.("network_remount");
+    request.resolve();
+    await Promise.all([first, second]);
+    expect(pendingBeforeCompletion).toBe(true);
+    expect(newPage.isPending("network_remount")).toBe(false);
+  });
+
   it("serializes rapid choices so the newest value is the last persisted value", async () => {
     let state: SettingSaveStates = {};
     const queue = createSettingSaveQueue((next) => {
@@ -77,6 +90,7 @@ describe("Tone setting persistence", () => {
       persisted.push("My custom prompt");
     });
     expect(state.prompt?.phase).toBe("error");
+    expect(queue.isPending("prompt")).toBe(false);
     expect(persisted).toEqual([]);
     unavailable = false;
     await state.prompt.retry?.();

@@ -26,6 +26,8 @@ Follow up on the seven opportunities identified after PR #708. Keep Freestyle's 
 
 - Base: main `5db6a33d`. Existing untracked local audio research is unrelated and remains untouched.
 - All seven areas implemented. Both task surfaces share drafts and a persistence lock; network writes reuse the setting queue previously used by Tone. Plugin settings reads/reloads now check responses before reporting success.
-- Verification: 476 Electron unit tests, all 43 browser scenarios (including 13 recovery scenarios), all 39 Electron dashboard scenarios, desktop main/renderer typechecks, Electron build, repository Biome and Knip passed. Knip reports two existing redundant-entry configuration hints.
+- Verification: 477 Electron unit tests, all 45 browser scenarios (including 15 recovery scenarios), all 39 Electron dashboard scenarios, desktop main/renderer typechecks, Electron build, repository Biome and Knip passed. Knip reports two existing redundant-entry configuration hints.
 - A fresh review found weekday normalization and repeated-hour DST differences between the preview library and Cloud. Regression tests reproduced both before the fixes; a scoped re-review closed both findings. A separate comparison against the owning Cloud implementation matched 168 schedule/timezone/date combinations. No Cloud code or deployment is required.
 - Screenshot evidence lives in `assets/ui-recovery/`; before/after pairs and additional failure/timing/layout states use disposable browser fixtures. No live billing, provider credentials, or native permission changes were performed.
+
+- Final merge review reproduced a Network save race across page remounts, including saves that finish before the next blur. Pending-write state is shared across queues, and saved-value comparisons use the shared settings cache without overwriting the draft. All three timing variants pass regression coverage; scoped review closed the finding.

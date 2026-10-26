@@ -389,39 +389,60 @@ test("schedule creation explains timing and previews advanced cron", async ({
   ).toBeDisabled();
 });
 
-test("a slow network save cannot overwrite a later reset to the saved value", async ({
-  page,
-}) => {
-  test.skip(baseline);
-  await fixtures(page, "network");
-  await page.goto("/index.html#/settings/network");
-  await recover(page);
-  await page.evaluate(() => {
-    (
-      window as unknown as { recoveryFixture: { hold: boolean } }
-    ).recoveryFixture.hold = true;
+for (const timing of [
+  "same page",
+  "across navigation",
+  "after completion",
+] as const)
+  test(`a slow network save cannot overwrite a later reset ${timing}`, async ({
+    page,
+  }) => {
+    test.skip(baseline);
+    await fixtures(page, "network");
+    await page.goto("/index.html#/settings/network");
+    await recover(page);
+    await page.evaluate(() => {
+      (
+        window as unknown as { recoveryFixture: { hold: boolean } }
+      ).recoveryFixture.hold = true;
+    });
+    const input = page.locator("#settings-network-proxy");
+    await input.fill("http://proxy.example.test:8080");
+    await input.blur();
+    await expect(page.getByText("Saving…", { exact: true })).toBeVisible();
+    if (timing !== "same page") {
+      await page.getByRole("link", { name: "Appearance", exact: true }).click();
+      await page.getByRole("link", { name: "Network", exact: true }).click();
+      await expect(input).toHaveValue("");
+    }
+    if (timing === "after completion") {
+      await page.evaluate(() => {
+        (
+          window as unknown as { recoveryFixture: { release?: () => void } }
+        ).recoveryFixture.release?.();
+      });
+      await expect(page.getByText(/Unsaved changes/)).toBeVisible();
+    }
+    await input.fill("");
+    await input.blur();
+    await page.evaluate(() => {
+      (
+        window as unknown as { recoveryFixture: { release?: () => void } }
+      ).recoveryFixture.release?.();
+    });
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          (
+            window as unknown as {
+              recoveryFixture: { networkValues: string[] };
+            }
+          ).recoveryFixture.networkValues,
+      ),
+    ).toEqual(["http://proxy.example.test:8080", ""]);
+    await expect(input).toHaveValue("");
   });
-  const input = page.locator("#settings-network-proxy");
-  await input.fill("http://proxy.example.test:8080");
-  await input.blur();
-  await expect(page.getByText("Saving…", { exact: true })).toBeVisible();
-  await input.fill("");
-  await input.blur();
-  await page.evaluate(() => {
-    (
-      window as unknown as { recoveryFixture: { release?: () => void } }
-    ).recoveryFixture.release?.();
-  });
-  await expect(page.getByText("Saved", { exact: true })).toBeVisible();
-  expect(
-    await page.evaluate(
-      () =>
-        (window as unknown as { recoveryFixture: { networkValues: string[] } })
-          .recoveryFixture.networkValues,
-    ),
-  ).toEqual(["http://proxy.example.test:8080", ""]);
-  await expect(input).toHaveValue("");
-});
 
 test("failed task toggles keep the saved state and share drafts between views", async ({
   page,

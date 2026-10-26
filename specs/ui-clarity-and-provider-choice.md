@@ -43,7 +43,17 @@ Make Freestyle explain what its controls do, reflect actual saved state, and kee
 - Save queues serialize per setting across page mounts as well as within one page. Account/managed-plugin execution boundaries are preserved.
 - New regression coverage includes OpenRouter namespace handling, catalog-independent selection, custom endpoint configuration, setting write races/retries, model-aware vocabulary, attention failure/recovery/expansion, and collapsed keyboard navigation.
 - Before/after captures and additional state evidence are in `assets/ui-clarity/`. All use disposable fixture accounts and isolated user data.
-- Verification: 443 Electron unit tests, 600 server tests, desktop main/renderer and server typechecks, Electron build, and repository-wide Biome checks passed. The full 30-scenario dashboard suite passed; the additional model-selection recovery regression and four affected model flows also passed after the final fix.
+- Verification: 449 Electron unit tests, 600 server tests, desktop main/renderer and server typechecks, Electron build, and repository-wide Biome checks passed. The full 38-scenario dashboard behavior/visual suite passed after the provider follow-up, including both review regressions.
 - Manual model selection recovers from rejected configuration writes with both newly saved and existing keys, preserving the form and displaying an actionable error.
 - Review found a cross-navigation save race, now covered by a regression and serialized writes. Visual checks also cover both sidebar widths and light/dark Models views.
 
+
+## Connected provider browsing
+
+The selector supports multiple saved provider connections at the same time. Cleanup and Remix browse all connected catalogs together, including non-curated gateway models, with multi-select provider filters and search. Provider connections are independent of the active model: adding a key leaves the selector open and preserves the current role until a model is selected.
+
+The connection flow distinguishes direct providers from gateways, displays saved/invalid key state, validates new keys, and retains actionable errors. Invalid keys are excluded from usable connections. Manual model IDs remain available for catalog omissions, including non-default configured models. Large lists render incrementally while search applies to the full catalog.
+
+Follow-up verification covers multiple connections without model selection, combined/filter/search behavior, gateway namespace routing, saved models omitted from discovery, invalid-key repair, and narrow/light/dark layouts. The backend already exposes all supported catalogs, so this extension reuses existing discovery and credential APIs.
+
+Provider review regressions were reproduced and fixed: asynchronous key validation now preserves later filter edits through functional state updates, and opening a connection from a distant model row focuses the key field and restores the trigger on cancel.

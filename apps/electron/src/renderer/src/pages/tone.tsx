@@ -46,6 +46,12 @@ import {
   queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
+import { replaceSetting } from "@renderer/lib/settings";
+import { saveSetting as persistSetting } from "@renderer/lib/settings-api";
+import {
+  createToneSaveQueue,
+  type ToneSaveStates,
+} from "@renderer/lib/tone-save-queue";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
@@ -59,7 +65,7 @@ import {
   DEFAULT_CLEANUP_WORK_TONE,
 } from "../../../shared/cleanup-tone-settings";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
-import { Eyebrow, PageHeader, PageShell } from "./models/page-chrome";
+import { Eyebrow, PageShell } from "./models/page-chrome";
 import type { ConfiguredModel } from "./models/types";
 
 // Settings that change whether the pill needs to capture the frontmost app for
@@ -244,7 +250,10 @@ export default function TonePage(): React.JSX.Element {
     useState<CleanupIntensity>("medium");
   const [cleanupCustomPrompt, setCleanupCustomPrompt] = useState("");
   const [savedCleanupCustomPrompt, setSavedCleanupCustomPrompt] = useState("");
-  const [savingCustomPrompt, setSavingCustomPrompt] = useState(false);
+  const [saveStates, setSaveStates] = useState<ToneSaveStates>({});
+  const saveQueue = useMemo(() => createToneSaveQueue(setSaveStates), []);
+  const savingCustomPrompt =
+    saveStates[SETTINGS_KEYS.cleanupCustomPrompt]?.phase === "saving";
   const [personalTone, setPersonalTone] = useState<CleanupPersonalTone>(
     DEFAULT_CLEANUP_PERSONAL_TONE,
   );
@@ -258,7 +267,7 @@ export default function TonePage(): React.JSX.Element {
     DEFAULT_CLEANUP_OVERALL_TONE,
   );
   const [assignments, setAssignments] = useState<CleanupAppAssignment[]>([]);
-  const [usingCloud, setUsingCloud] = useState(false);
+  const usingCloud = saveStates.cloudCleanup?.phase === "saving";
   const [activeTab, setActiveTab] = usePersistentState<ToneTab>(
     "tone.activeTab",
     "cleanup",
@@ -337,38 +346,36 @@ export default function TonePage(): React.JSX.Element {
     [queryClient],
   );
 
-  const saveSetting = useCallback(async (key: string, value: string) => {
-    // The Hono client does not throw on non-2xx — surface server rejections so
-    // callers' .catch handlers fire (and "Saved" state isn't shown on failure).
-    const res = await getClient().api.settings[":key"].$put({
-      param: { key },
-      json: { value },
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to save setting "${key}" (${res.status})`);
-    }
-    // Let the pill refresh its cached "needs frontmost app for routing" decision
-    // when a cleanup-relevant setting changes, so it doesn't re-fetch settings
-    // on every recording start.
-    if (CLEANUP_CONTEXT_KEYS.has(key)) {
-      window.api?.sendCleanupContextChanged?.();
-    }
-  }, []);
+  const saveSetting = useCallback(
+    async (key: string, value: string) => {
+      await persistSetting(key, value);
+      queryClient.setQueryData<Record<string, string>>(
+        queryKeys.settings,
+        (previous) => replaceSetting(previous ?? {}, key, value),
+      );
+      if (CLEANUP_CONTEXT_KEYS.has(key)) {
+        window.api?.sendCleanupContextChanged?.();
+      }
+    },
+    [queryClient],
+  );
 
-  // Turn cleanup on by wiring Freestyle Cloud as the cleanup model. Requires a
-  // signed-in cloud session; mirrors the Models page "Use Freestyle Cloud" flow.
-  const onUseCloud = useCallback(async () => {
+  // The preview updates immediately, but only a successful response marks it saved.
+  const saveChoice = useCallback(
+    (key: string, value: string) => {
+      void saveQueue.save(key, () => saveSetting(key, value));
+    },
+    [saveQueue, saveSetting],
+  );
+
+  const onUseCloud = useCallback(() => {
     if (usingCloud) return;
-    setUsingCloud(true);
-    try {
+    void saveQueue.save("cloudCleanup", async () => {
       const authed = cloudAuth.user
         ? !!(await cloudAuth.refresh())
         : !!(await cloudAuth.signIn());
-      if (!authed) return;
+      if (!authed) throw new Error("Sign in to enable cloud cleanup");
 
-      const client = getClient();
-      // Reuse the shared ["models","available"] cache when it's fresh instead of
-      // a redundant network round-trip; ensureQueryData fetches only on a miss.
       const models = await queryClient.ensureQueryData(
         availableModelsQueryOptions(),
       );
@@ -377,12 +384,9 @@ export default function TonePage(): React.JSX.Element {
           model.type === "llm" &&
           model.provider_id === FREESTYLE_CLOUD_PROVIDER,
       );
-      if (!cloudLlm) return;
+      if (!cloudLlm) throw new Error("Cloud cleanup is unavailable");
 
-      // Configure the cloud cleanup model first; only flip llm_cleanup on once
-      // the model is actually persisted, otherwise cleanup would be "enabled"
-      // with no model behind it (server silently returns raw text).
-      const configRes = await client.api.models.configured.$post({
+      const configRes = await getClient().api.models.configured.$post({
         json: {
           provider: cloudLlm.provider_id,
           model_id: cloudLlm.model_id,
@@ -391,22 +395,13 @@ export default function TonePage(): React.JSX.Element {
           is_default: true,
         },
       });
-      if (!configRes.ok) {
-        console.error(
-          `Failed to configure Freestyle Cloud cleanup model (${configRes.status})`,
-        );
-        return;
-      }
+      if (!configRes.ok) throw new Error("Could not configure cloud cleanup");
 
       await saveSetting(SETTINGS_KEYS.llmCleanup, "true");
       setLlmCleanup(true);
       await reload();
-    } catch (err) {
-      console.error("Failed to enable cleanup:", err);
-    } finally {
-      setUsingCloud(false);
-    }
-  }, [cloudAuth, queryClient, reload, saveSetting, usingCloud]);
+    });
+  }, [cloudAuth, queryClient, reload, saveQueue, saveSetting, usingCloud]);
 
   const selectCleanupMode = useCallback(
     (next: CleanupCardValue) => {
@@ -419,25 +414,18 @@ export default function TonePage(): React.JSX.Element {
       }
 
       setCleanupIntensity(next);
-      saveSetting(SETTINGS_KEYS.cleanupIntensity, next).catch((err) =>
-        console.error("Failed to save cleanup strength:", err),
-      );
+      saveChoice(SETTINGS_KEYS.cleanupIntensity, next);
     },
-    [cleanupCustomPrompt, cleanupIntensity, saveSetting],
+    [cleanupCustomPrompt, cleanupIntensity, saveChoice],
   );
 
-  const saveCleanupCustomPrompt = useCallback(async () => {
+  const saveCleanupCustomPrompt = useCallback(() => {
     const value = cleanupCustomPrompt;
-    setSavingCustomPrompt(true);
-    try {
+    return saveQueue.save(SETTINGS_KEYS.cleanupCustomPrompt, async () => {
       await saveSetting(SETTINGS_KEYS.cleanupCustomPrompt, value);
       setSavedCleanupCustomPrompt(value);
-    } catch (err) {
-      console.error("Failed to save cleanup custom prompt:", err);
-    } finally {
-      setSavingCustomPrompt(false);
-    }
-  }, [cleanupCustomPrompt, saveSetting]);
+    });
+  }, [cleanupCustomPrompt, saveQueue, saveSetting]);
 
   const resetToPresetMode = useCallback(() => {
     selectCleanupMode("low");
@@ -446,53 +434,45 @@ export default function TonePage(): React.JSX.Element {
   const savePersonalTone = useCallback(
     (value: CleanupPersonalTone) => {
       setPersonalTone(value);
-      saveSetting(SETTINGS_KEYS.cleanupPersonalTone, value).catch((err) =>
-        console.error("Failed to save personal tone:", err),
-      );
+      saveChoice(SETTINGS_KEYS.cleanupPersonalTone, value);
     },
-    [saveSetting],
+    [saveChoice],
   );
 
   const saveWorkTone = useCallback(
     (value: CleanupWorkTone) => {
       setWorkTone(value);
-      saveSetting(SETTINGS_KEYS.cleanupWorkTone, value).catch((err) =>
-        console.error("Failed to save work tone:", err),
-      );
+      saveChoice(SETTINGS_KEYS.cleanupWorkTone, value);
     },
-    [saveSetting],
+    [saveChoice],
   );
 
   const saveEmailTone = useCallback(
     (value: CleanupEmailTone) => {
       setEmailTone(value);
-      saveSetting(SETTINGS_KEYS.cleanupEmailTone, value).catch((err) =>
-        console.error("Failed to save email tone:", err),
-      );
+      saveChoice(SETTINGS_KEYS.cleanupEmailTone, value);
     },
-    [saveSetting],
+    [saveChoice],
   );
 
   const saveOverallTone = useCallback(
     (value: CleanupOverallTone) => {
       setOverallTone(value);
-      saveSetting(SETTINGS_KEYS.cleanupOverallTone, value).catch((err) =>
-        console.error("Failed to save everything-else tone:", err),
-      );
+      saveChoice(SETTINGS_KEYS.cleanupOverallTone, value);
     },
-    [saveSetting],
+    [saveChoice],
   );
 
   const persistAssignments = useCallback(
     (next: CleanupAppAssignment[]) => {
       const normalized = normalizeManagedAssignments(next);
       setAssignments(normalized);
-      saveSetting(
+      saveChoice(
         SETTINGS_KEYS.cleanupAppAssignments,
         JSON.stringify(normalized),
-      ).catch((err) => console.error("Failed to save app assignments:", err));
+      );
     },
-    [saveSetting],
+    [saveChoice],
   );
 
   const addAssignment = useCallback(
@@ -519,7 +499,10 @@ export default function TonePage(): React.JSX.Element {
     return (
       <PageShell>
         <div className="mx-auto w-full max-w-[1060px]">
-          <PageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
+          <TonePageHeader
+            title={t("tone.title")}
+            subtitle={t("tone.subtitle")}
+          />
           <TonePageLoadingSkeleton />
         </div>
       </PageShell>
@@ -529,7 +512,12 @@ export default function TonePage(): React.JSX.Element {
   return (
     <PageShell>
       <div className="mx-auto w-full max-w-[1060px]">
-        <PageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
+        <TonePageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
+
+        <ToneSaveFeedback
+          states={saveStates}
+          customPromptDirty={customPromptDirty}
+        />
 
         {!llmCleanup ? (
           <CleanupDisabledBanner
@@ -650,6 +638,105 @@ export default function TonePage(): React.JSX.Element {
         </Tabs>
       </div>
     </PageShell>
+  );
+}
+
+function TonePageHeader({
+  title,
+  subtitle,
+}: {
+  title: string;
+  subtitle: string;
+}): React.JSX.Element {
+  return (
+    <div className="mb-7">
+      <h1 className="serif text-foreground m-0 text-[30px] font-normal leading-[36px] tracking-[-0.025em]">
+        {title}
+      </h1>
+      <p className="text-muted-foreground mt-2 max-w-[560px] text-[14px] leading-[1.5]">
+        {subtitle}
+      </p>
+    </div>
+  );
+}
+
+function ToneSaveFeedback({
+  states,
+  customPromptDirty,
+}: {
+  states: ToneSaveStates;
+  customPromptDirty: boolean;
+}): React.JSX.Element | null {
+  const { t } = useTranslation();
+  const entries = Object.entries(states);
+  if (!entries.length && !customPromptDirty) return null;
+  const saving = entries.some(([, state]) => state.phase === "saving");
+  const failures = entries.filter(([, state]) => state.phase === "error");
+  const labels: Record<string, string> = {
+    [SETTINGS_KEYS.cleanupIntensity]: t("tone.save.strength", {
+      defaultValue: "Cleanup strength",
+    }),
+    [SETTINGS_KEYS.cleanupCustomPrompt]: t("tone.save.prompt", {
+      defaultValue: "Custom prompt",
+    }),
+    [SETTINGS_KEYS.cleanupPersonalTone]: t("tone.personal.title"),
+    [SETTINGS_KEYS.cleanupWorkTone]: t("tone.work.title"),
+    [SETTINGS_KEYS.cleanupEmailTone]: t("tone.email.title"),
+    [SETTINGS_KEYS.cleanupOverallTone]: t("tone.everythingElse.title"),
+    [SETTINGS_KEYS.cleanupAppAssignments]: t("tone.save.assignments", {
+      defaultValue: "App and site assignments",
+    }),
+    cloudCleanup: t("tone.save.cloud", { defaultValue: "Cloud cleanup" }),
+  };
+  return (
+    <div className="-mt-3 mb-3 min-h-5 text-[12px]">
+      <p
+        role={
+          saving || customPromptDirty || entries.length ? "status" : undefined
+        }
+        aria-live="polite"
+        className="text-muted-foreground flex items-center gap-1.5"
+      >
+        {saving ? (
+          <>
+            <Loader2 className="size-3 animate-spin" />
+            {t("tone.save.saving", { defaultValue: "Saving…" })}
+          </>
+        ) : failures.length ? null : customPromptDirty ? (
+          t("tone.save.unsavedPrompt", {
+            defaultValue: "Custom prompt has unsaved changes",
+          })
+        ) : entries.length ? (
+          <>
+            <Check className="size-3" />
+            {t("tone.save.saved", { defaultValue: "Saved" })}
+          </>
+        ) : null}
+      </p>
+      {failures.map(([key, state]) => (
+        <div
+          key={key}
+          role="alert"
+          className="text-destructive mt-1 flex flex-wrap items-center gap-x-3 gap-y-1"
+        >
+          <span>
+            {t("tone.save.failed", {
+              defaultValue:
+                "{{setting}} wasn’t saved. Your changes are still here.",
+              setting: labels[key],
+            })}
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-7 px-2 text-[12px]"
+            onClick={() => void state.retry?.()}
+          >
+            {t("tone.save.retry", { defaultValue: "Retry" })}
+          </Button>
+        </div>
+      ))}
+    </div>
   );
 }
 

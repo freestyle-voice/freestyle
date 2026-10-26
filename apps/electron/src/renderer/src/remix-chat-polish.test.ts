@@ -391,7 +391,7 @@ describe("Remix chat polish", () => {
     );
   });
 
-  it("uses rotating, shimmering pre-response copy instead of a static thinking label", async () => {
+  it("uses stable factual copy before a response arrives", async () => {
     const [chat, thinkingLabel] = await Promise.all([
       readFile(resolve(rendererRoot, "components/remix-chat.tsx"), "utf8"),
       readFile(
@@ -404,11 +404,9 @@ describe("Remix chat polish", () => {
     ]);
 
     expect(chat).toContain("<RotatingThinkingLabel");
-    expect(thinkingLabel).toContain("REMIX_THINKING_MESSAGES");
-    expect(thinkingLabel).toContain("Contemplating…");
-    expect(thinkingLabel).toContain("One moment — bringing it together…");
-    expect(thinkingLabel).toContain("setInterval");
-    expect(thinkingLabel).toContain("2_600");
+    expect(thinkingLabel).toContain("Working…");
+    expect(thinkingLabel).not.toContain("Contemplating…");
+    expect(thinkingLabel).not.toContain("setInterval");
     expect(thinkingLabel).toContain("ThinkingShimmer");
     expect(chat).toContain("LoaderCircle");
     expect(chat).toContain("<RemixThinkingState />");

@@ -11,13 +11,11 @@
   background: transparent;
 }
 
-/* Keep the restore control and macOS traffic lights above every route. The
- * collapsed header participates in layout on Windows/Linux too, so page
- * content never relies on its own top padding to avoid the button. */
-.glass-content-titlebar--sidebar-hidden {
+/* Traffic lights extend past a 56px rail, so reserve their row in both panes. */
+.glass-content-titlebar--sidebar-collapsed {
   position: relative;
-  flex: 0 0 54px;
-  height: 54px;
+  flex: 0 0 44px;
+  height: 44px;
 }
 
 .remix-sidebar-titlebar {
@@ -117,55 +115,135 @@
   stroke-width: 1.8;
 }
 
-/* The sidebar can leave the window entirely; both controls retain a compact,
- * predictable target without making the app chrome feel like a toolbar. */
-.sidebar-visibility-toggle,
-.sidebar-reveal-trigger {
+/* Collapsing preserves a quiet, fixed-width navigation rail. */
+.sidebar-visibility-toggle {
   display: grid;
   width: 30px;
   height: 30px;
+  margin-left: auto;
   place-items: center;
   border: 0;
   border-radius: 7px;
   padding: 0;
   background: transparent;
   color: var(--muted-foreground);
-  transition: color 120ms ease, background 120ms ease;
 }
 
-.sidebar-visibility-toggle {
-  margin-left: auto;
-}
-
-.sidebar-visibility-toggle:hover,
-.sidebar-reveal-trigger:hover {
+.sidebar-visibility-toggle:hover {
   background: var(--secondary);
   color: var(--foreground);
 }
 
 .sidebar-visibility-toggle:focus-visible,
-.sidebar-reveal-trigger:focus-visible {
+.sidebar-rail-button:focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
 }
 
 .sidebar-visibility-toggle svg,
-.sidebar-reveal-trigger svg {
+.sidebar-rail-button svg {
   width: 18px;
   height: 18px;
   stroke-width: 1.8;
 }
 
-.sidebar-reveal-trigger {
-  position: absolute;
-  z-index: 11;
-  top: 12px;
-  left: 12px;
+.glass-sidebar--collapsed {
+  display: flex;
+  flex: 0 0 56px;
+  width: 56px;
+  min-height: 0;
+  flex-direction: column;
+  border-right: 1px solid var(--sidebar-border);
+  -webkit-app-region: drag;
 }
 
-/* Native macOS controls start at (20, 16) and are 14px tall. Center the
- * 30px restore button beside them, leaving a clear gap after the green light. */
-.glass-content-titlebar--mac .sidebar-reveal-trigger {
-  top: 8px;
-  left: 104px;
+.sidebar-rail-chrome {
+  flex: 0 0 8px;
+}
+
+.sidebar-rail-chrome--mac {
+  flex-basis: 44px;
+}
+
+.sidebar-rail-group {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-rail-header {
+  flex-shrink: 0;
+  padding: 4px 0 12px;
+}
+
+.sidebar-rail-button {
+  display: inline-flex;
+  flex: 0 0 36px;
+  width: 36px;
+  height: 36px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: var(--muted-foreground);
+  transition: color 120ms ease, background 120ms ease;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-rail-button:is(:hover, [data-state="open"]):not(:disabled) {
+  background: var(--secondary);
+  color: var(--foreground);
+}
+
+.sidebar-rail-button[aria-current="page"] {
+  border-color: var(--border);
+  background: var(--secondary);
+  color: var(--primary);
+  box-shadow: inset 2px 0 0 var(--primary);
+}
+
+.sidebar-rail-workspace {
+  border-color: var(--border);
+  background: var(--card);
+  color: var(--foreground);
+}
+
+.sidebar-rail-button:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.sidebar-rail-navigation {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 2px 0;
+}
+
+.sidebar-rail-divider {
+  height: 1px;
+  margin: 9px 14px;
+  background: var(--sidebar-border);
+}
+
+.sidebar-rail-footer {
+  flex-shrink: 0;
+  margin-top: 8px;
+  padding: 8px 0 12px;
+  border-top: 1px solid var(--sidebar-border);
+}
+
+/* Very short windows scroll as one rail so no action becomes unreachable. */
+@media (max-height: 480px) {
+  .glass-sidebar--collapsed {
+    overflow-y: auto;
+  }
+  .sidebar-rail-navigation {
+    flex: 0 0 auto;
+    overflow: visible;
+  }
 }

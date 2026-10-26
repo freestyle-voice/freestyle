@@ -30,6 +30,7 @@ import {
 } from "@tanstack/react-query";
 import type React from "react";
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 
 function SearchIcon(): React.JSX.Element {
   return (
@@ -258,6 +259,8 @@ function ConnectedAppsSkeleton(): React.JSX.Element {
 }
 
 export function ConnectedApps(): React.JSX.Element {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusConnectionId = searchParams.get("connection");
   const cloudAuth = useCloudAuth();
   const [query, setQuery] = useState("");
   const [apiKeyConnector, setApiKeyConnector] =
@@ -277,6 +280,17 @@ export function ConnectedApps(): React.JSX.Element {
     ...connectorConnectionsQueryOptions(),
     enabled: !!cloudAuth.user,
   });
+  useEffect(() => {
+    if (!focusConnectionId || !connectionsQuery.data) return;
+    const connection = connectionsQuery.data.find(
+      (item) => item.id === focusConnectionId,
+    );
+    if (connection) setQuery(connection.toolkitName);
+    const next = new URLSearchParams(searchParams);
+    next.delete("connection");
+    setSearchParams(next, { replace: true });
+  }, [focusConnectionId, connectionsQuery.data, searchParams, setSearchParams]);
+
   const browseQuery = useInfiniteQuery(connectorCatalogInfiniteQueryOptions());
   const searchTerm = query.trim();
   const searchQuery = useInfiniteQuery(

@@ -45,6 +45,22 @@ export function PairCard({
           </Button>
         }
       >
+        <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+          {voice?.provider === "local-whisper" ||
+          voice?.provider === "local-mlx"
+            ? t("models.processing.localAudio", {
+                defaultValue: "Audio is processed on your Freestyle server.",
+              })
+            : voice
+              ? t("models.processing.cloudAudio", {
+                  defaultValue:
+                    "Audio is sent to {{provider}} for transcription.",
+                  provider: voiceProvider,
+                })
+              : t("models.processing.chooseVoice", {
+                  defaultValue: "Choose where your speech is transcribed.",
+                })}
+        </p>
         {onConfigureWarming && (
           <Button
             variant="link"
@@ -100,7 +116,30 @@ export function PairCard({
             </>
           )
         }
-      />
+      >
+        <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+          {cleanupLocked
+            ? t("models.processing.pairedCloud", {
+                defaultValue:
+                  "Freestyle Transcribe includes transcript cleanup in Cloud.",
+              })
+            : cleanupOn && llm
+              ? llm.provider === "local-llm"
+                ? t("models.processing.localText", {
+                    defaultValue:
+                      "Transcript text is sent to your configured endpoint, which may be local or remote.",
+                  })
+                : t("models.processing.cloudText", {
+                    defaultValue:
+                      "Transcript text is sent to {{provider}} for cleanup.",
+                    provider: displayName(llm.provider),
+                  })
+              : t("models.processing.noCleanup", {
+                  defaultValue:
+                    "Keep the text returned by your transcription model.",
+                })}
+        </p>
+      </ModelSettingRow>
     </section>
   );
 }

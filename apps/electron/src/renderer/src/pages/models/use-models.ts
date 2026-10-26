@@ -15,6 +15,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SETTINGS_KEYS } from "../../../../shared/settings-keys";
 import { DEFAULT_MLX_KEEP_ALIVE_MINUTES } from "./constants";
+import { connectedProviderIds } from "./provider-models";
 import type { ApiKeyEntry, ConfiguredModel } from "./types";
 import type {
   EndpointConnectConfig,
@@ -108,6 +109,8 @@ export interface UseModels {
   >;
 
   localLlm: EndpointConnectState;
+  /** Saved URL exists; the connect form's localhost placeholder is not configuration. */
+  localLlmConfigured: boolean;
   openaiStt: EndpointConnectState;
 
   // Actions — each refetches as needed
@@ -393,10 +396,7 @@ export function useModels(): UseModels {
   // Derived state
   // -------------------------------------------------------------------------
 
-  const keyProviders = useMemo(
-    () => new Set(apiKeys.map((k) => k.provider)),
-    [apiKeys],
-  );
+  const keyProviders = useMemo(() => connectedProviderIds(apiKeys), [apiKeys]);
   const defaultVoice = useMemo(
     () => configured.find((m) => m.type === "voice" && m.is_default === 1),
     [configured],
@@ -774,6 +774,8 @@ export function useModels(): UseModels {
     voiceItems,
     llmModelsByProvider,
     localLlm,
+    localLlmConfigured:
+      !!settingsQuery.data?.[SETTINGS_KEYS.localLlmUrl]?.trim(),
     openaiStt,
     configureModel,
     saveKey,

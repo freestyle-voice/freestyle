@@ -13,6 +13,8 @@ import { checkedJson, checkedResponse } from "@renderer/lib/checked-response";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { queryKeys } from "@renderer/lib/query";
 import { cn } from "@renderer/lib/utils";
+import { vocabularyGuidance } from "@renderer/lib/vocabulary-guidance";
+import type { ConfiguredModel } from "@renderer/pages/models/types";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Book,
@@ -30,6 +32,7 @@ import {
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { Trans, useTranslation } from "react-i18next";
+import { Link } from "react-router";
 
 interface VocabularyEntry {
   id: number;
@@ -67,6 +70,19 @@ export default function VocabularyPage(): React.JSX.Element {
       );
     },
   });
+
+  const modelsQuery = useQuery({
+    queryKey: queryKeys.models.configured,
+    queryFn: () =>
+      checkedJson<ConfiguredModel[]>(
+        getClient().api.models.configured.$get(),
+        "Could not load the active transcription model",
+      ),
+  });
+  const activeVoice = modelsQuery.data?.find(
+    (model) => model.type === "voice" && model.is_default,
+  );
+  const guidance = vocabularyGuidance(activeVoice);
 
   const entries = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -312,7 +328,38 @@ export default function VocabularyPage(): React.JSX.Element {
     <div className="flex h-full min-h-0 flex-col">
       <DragSpacer />
       <div className="responsive-page-scroll flex-1 overflow-auto">
-        <PageHeader title={t("vocabulary.title")} />
+        <PageHeader
+          title={t("vocabulary.title")}
+          subtitle="Help Freestyle recognize names, brands, and unfamiliar words."
+        />
+        <section
+          aria-label="Vocabulary support"
+          className="mb-6 max-w-2xl text-[13px] leading-relaxed text-muted-foreground"
+        >
+          <p>
+            {modelsQuery.isPending
+              ? "Checking your transcription model…"
+              : modelsQuery.isError
+                ? "Could not check your transcription model. Your vocabulary is still saved."
+                : guidance.detail}{" "}
+            <Link
+              className="text-foreground underline underline-offset-4"
+              to="/settings/models"
+            >
+              {guidance.supported ? "Change model" : "Choose a model"}
+            </Link>
+          </p>
+          <p className="mt-2">
+            For exact phrase replacement, use{" "}
+            <Link
+              className="text-foreground underline underline-offset-4"
+              to="/dictionary"
+            >
+              Shortcuts
+            </Link>{" "}
+            instead.
+          </p>
+        </section>
 
         <QueryErrorNotice error={queryError} onRetry={() => void refetch()} />
         {actionError && (
@@ -450,10 +497,7 @@ export default function VocabularyPage(): React.JSX.Element {
                     />
                   </FormField>
                 </div>
-                <p className="text-muted-foreground mt-3 text-xs leading-relaxed">
-                  Multi-word phrases work on Nova 3, OpenAI, and Groq. Nova 2
-                  boosts single words. Scribe v1 does not use vocabulary bias.
-                </p>
+
                 {formError && (
                   <p className="text-destructive mt-3 text-xs">{formError}</p>
                 )}
@@ -579,9 +623,8 @@ function PageHeader({
 }): React.JSX.Element {
   return (
     <div className="mb-7">
-      <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-        <span className="serif-italic text-primary">{title}</span>
-        <span>. </span>
+      <h1 className="serif text-foreground m-0 text-[30px] font-normal leading-none tracking-[-0.025em] sm:text-[36px]">
+        {title}
       </h1>
       {subtitle && (
         <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">

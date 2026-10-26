@@ -1142,6 +1142,8 @@ function PanelInner({
   /** Legacy prop retained while callers converge on the full-window workspace. */
   desktop?: boolean;
 }): React.JSX.Element {
+  const navigate = useNavigate();
+  const { openScheduledTasks } = useRemixSession();
   const [tab, setTab] = useState<WorkspaceView>("chat");
   const [scheduleCreateRequest, setScheduleCreateRequest] = useState(0);
   const [contextRailOpen, setContextRailOpen] = useRemixContextRailVisibility();
@@ -1918,9 +1920,7 @@ function PanelInner({
                       setNotice(null);
                       void sendMessage({ text });
                     }}
-                    onOpenApps={() => {
-                      window.api.openSettings();
-                    }}
+                    onOpenApps={() => navigate("/settings/apps")}
                   />
                 </section>
               ) : tab === "history" ? (
@@ -2104,7 +2104,12 @@ function PanelInner({
                         updatedAt: Date.parse(updatedAt),
                       })
                     }
-                    onOpenSettings={() => window.api.openSettings()}
+                    onOpenSettings={(connectionId) =>
+                      navigate(
+                        `/settings/apps?connection=${encodeURIComponent(connectionId)}`,
+                      )
+                    }
+                    onOpenScheduled={openScheduledTasks}
                   />
                   <OpenerCards
                     busy={busy}

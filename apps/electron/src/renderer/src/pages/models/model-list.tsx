@@ -14,13 +14,20 @@ import {
 } from "@renderer/components/ui/input-group";
 import { Progress } from "@renderer/components/ui/progress";
 import { RevealToggle } from "@renderer/components/ui/reveal-toggle";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@renderer/components/ui/select";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type {
   AvailableModel,
   WhisperModelDownloadState,
 } from "@renderer/lib/models";
 import { formatBytes, formatSpeed } from "@renderer/lib/models";
-import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
+import { cn } from "@renderer/lib/utils";
 import {
   ArrowLeft,
   Check,
@@ -36,14 +43,24 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 import { Controller, type Resolver, useForm } from "react-hook-form";
 import { useTranslation } from "react-i18next";
+import {
+  CLEANUP_API_PROVIDERS,
+  manualCleanupModel,
+  matchesCleanupModel,
+} from "./cleanup-model-choice";
 import {
   PICKER_MODAL_BODY,
   PickerModalHeader,
   PickerOption,
 } from "./picker-option";
+import { ProviderConnections } from "./provider-connections";
+import {
+  filterProviderModels,
+  withConfiguredCleanupModels,
+} from "./provider-models";
 import {
   FREESTYLE_CLOUD_CLEANUP,
   FREESTYLE_CLOUD_TIER,
@@ -66,8 +83,8 @@ interface Row {
   provider: string; // provider_id, for the provider filter
   meta: string;
   selected: boolean;
-  /** Shown by default; non-curated rows live behind "Show all models". */
   curated?: boolean;
+  modelId?: string;
   /** LLM gateway display name (e.g. "OpenRouter"); rendered as a meta badge. */
   gateway?: string;
   recommended?: boolean;
@@ -168,6 +185,8 @@ function buildLlmRows(
   },
   selectedModel: ConfiguredModel | undefined,
   type: "llm" | "remix",
+  inventory: AvailableModel[],
+  onConnect: (provider: string) => void,
 ): Row[] {
   const rows: Row[] = [];
 
@@ -192,36 +211,53 @@ function buildLlmRows(
     });
   }
 
-  for (const [providerId, { providerName, models }] of m.llmModelsByProvider) {
+  for (const model of inventory) {
+    const providerId = model.provider_id;
+    const providerName = displayName(providerId, model.provider_name);
     if (providerId === FREESTYLE_CLOUD_CLEANUP.provider_id) continue;
-    for (const model of models) {
-      // For gateway models the meta line reads "<vendor> via <gateway>"
-      // (e.g. "Microsoft via OpenRouter"). Vendor is the model_id prefix; some
-      // gateway IDs carry a "~" alias prefix ("~openai/...") — strip it.
-      const vendor = model.model_id.replace(/^~/, "").split("/")[0] ?? "";
-      const meta = model.gateway
-        ? vendor.charAt(0).toUpperCase() + vendor.slice(1)
-        : providerName;
-      rows.push({
-        key: model.model_id,
-        name: model.model_name,
-        source: "cloud",
-        provider: providerId,
-        meta,
-        curated: model.curated === true,
-        gateway: model.gateway,
-        selected:
-          selectedModel?.model_id === model.model_id &&
-          selectedModel?.provider === model.provider_id,
-        hasKey:
-          providerId === FREESTYLE_CLOUD_CLEANUP.provider_id ||
-          m.keyProviders.has(providerId),
-        onSelect: () => h.onPickCloud(model),
-      });
-    }
+    // For gateway models the meta line reads "<vendor> via <gateway>"
+    // (e.g. "Microsoft via OpenRouter"). Vendor is the model_id prefix; some
+    // gateway IDs carry a "~" alias prefix ("~openai/...") — strip it.
+    const vendor = model.model_id.replace(/^~/, "").split("/")[0] ?? "";
+    const meta = model.gateway
+      ? vendor.charAt(0).toUpperCase() + vendor.slice(1)
+      : providerName;
+    rows.push({
+      key: `${providerId}:${model.model_id}`,
+      name: model.model_name,
+      modelId: model.model_id,
+      source: "cloud",
+      provider: providerId,
+      meta,
+      curated:
+        model.curated === true || matchesCleanupModel(model, selectedModel),
+      gateway: model.gateway,
+      selected: matchesCleanupModel(model, selectedModel),
+      hasKey:
+        providerId === FREESTYLE_CLOUD_CLEANUP.provider_id ||
+        m.keyProviders.has(providerId),
+      onSelect: () => {
+        if (!m.keyProviders.has(providerId)) {
+          onConnect(providerId);
+          return;
+        }
+        h.onPickCloud({
+          ...model,
+          model_id: `${providerId}/${model.model_id}`,
+        });
+      },
+    });
   }
 
   const names = new Set(m.localLlm.models);
+  for (const configured of m.configured) {
+    if (
+      configured.provider === "local-llm" &&
+      (configured.type === "llm" || configured.type === "remix")
+    ) {
+      names.add(configured.model_id.replace(/^local-llm\//, ""));
+    }
+  }
   if (selectedModel?.provider === "local-llm") {
     names.add(selectedModel.model_id.replace(/^local-llm\//, ""));
   }
@@ -232,7 +268,7 @@ function buildLlmRows(
       name,
       source: "local",
       provider: "local",
-      meta: "On-device",
+      meta: "Configured endpoint",
       curated: true,
       selected:
         selectedModel?.provider === "local-llm" &&
@@ -306,7 +342,13 @@ export function ModelList({
     if (llmView === "all") return "all";
     return llmView ?? "tiers";
   });
-  const [showAllLlm, setShowAllLlm] = useState(false);
+  const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
+  const [browseAllProviders, setBrowseAllProviders] = useState(false);
+  const [connectingProvider, setConnectingProvider] = useState<string | null>(
+    null,
+  );
+  const [providerSaving, setProviderSaving] = useState(false);
+  const [page, setPage] = useState({ key: "", count: 50 });
 
   if (type === "voice" && view === "tiers") {
     return (
@@ -338,6 +380,18 @@ export function ModelList({
   const localOnly = view === "local";
   const scopedOnly = cloudOnly || localOnly;
 
+  const providerCatalog = withConfiguredCleanupModels(
+    [...m.llmModelsByProvider.values()].flatMap(({ models }) => models),
+    m.configured,
+  );
+  const providerModels = filterProviderModels(
+    providerCatalog,
+    m.keyProviders,
+    selectedProviders,
+    search,
+    browseAllProviders,
+  );
+
   const rows =
     type === "voice"
       ? buildVoiceRows(m, {
@@ -350,11 +404,13 @@ export function ModelList({
           { onPickCloud, onClose, onModelSelected },
           type === "remix" ? m.defaultRemix : m.defaultLlm,
           type,
+          providerModels,
+          (provider) => {
+            if (!providerSaving) setConnectingProvider(provider);
+          },
         );
 
-  const q = search.toLowerCase();
-  // Curated-only for LLM until expanded; searching always searches everything.
-  const curatedOnly = type === "llm" && !showAllLlm && !q;
+  const q = search.trim().toLowerCase();
   const filteredRows = rows.filter((r) => {
     if (localOnly && r.source !== "local") return false;
     if (cloudOnly) {
@@ -377,18 +433,22 @@ export function ModelList({
       return false;
     if (
       q &&
-      !`${r.name} ${r.meta} ${r.gateway ?? ""}`.toLowerCase().includes(q)
+      !`${r.name} ${r.modelId ?? ""} ${r.meta} ${r.gateway ?? ""}`
+        .toLowerCase()
+        .includes(q)
     )
       return false;
     return true;
   });
-  const visible = filteredRows.filter((r) => {
-    if (curatedOnly && !r.curated) return false;
-    return true;
-  });
-  const hiddenCount = curatedOnly
-    ? filteredRows.length - filteredRows.filter((r) => r.curated).length
-    : 0;
+  const paginationKey = JSON.stringify([
+    search,
+    filter,
+    view,
+    selectedProviders,
+    browseAllProviders,
+  ]);
+  const renderedCount = page.key === paginationKey ? page.count : 50;
+  const visible = filteredRows.slice(0, renderedCount);
 
   const showLocalLlmForm =
     type !== "voice" && (localOnly || filter === "local");
@@ -403,15 +463,13 @@ export function ModelList({
           : "All voice models"
       : type === "remix"
         ? localOnly
-          ? "On-device Remix models"
+          ? "Remix endpoint models"
           : cloudOnly
             ? "Cloud Remix models"
             : "All Remix models"
         : localOnly
-          ? "On-device cleanup"
-          : cloudOnly
-            ? "Cloud cleanup models"
-            : "All cleanup models";
+          ? "Cleanup endpoint models"
+          : "Cleanup models";
 
   return (
     <>
@@ -475,7 +533,13 @@ export function ModelList({
         </InputGroup>
       </header>
 
-      {!scopedOnly && <FilterBar active={filter} onChange={setFilter} />}
+      {!scopedOnly && (
+        <FilterBar
+          active={filter}
+          onChange={setFilter}
+          endpoint={type !== "voice"}
+        />
+      )}
 
       {type === "voice" && localOnly && m.whisperStatus?.binaryDownloading && (
         <div className="border-border flex items-center gap-2.5 border-b px-5 py-3">
@@ -487,7 +551,46 @@ export function ModelList({
       )}
 
       <div className="min-h-0 flex-1 overflow-y-auto">
+        {type !== "voice" && !localOnly && filter !== "local" && (
+          <>
+            <ProviderConnections
+              m={m}
+              models={providerCatalog}
+              selected={selectedProviders}
+              onSelectedChange={setSelectedProviders}
+              browseAll={browseAllProviders}
+              onBrowseChange={setBrowseAllProviders}
+              connecting={connectingProvider}
+              onConnectingChange={setConnectingProvider}
+              saving={providerSaving}
+              onSavingChange={setProviderSaving}
+            />
+            <details className="border-border border-b">
+              <summary className="text-muted-foreground hover:text-foreground cursor-pointer px-5 py-3 text-xs">
+                Can’t find a model? Use a model ID
+              </summary>
+              <ManualCleanupModel
+                onSelect={(model) => {
+                  if (m.keyProviders.has(model.provider_id)) onPickCloud(model);
+                  else if (!providerSaving)
+                    setConnectingProvider(model.provider_id);
+                }}
+              />
+            </details>
+            <p
+              className="text-muted-foreground px-5 pt-3 pb-1 text-[11px]"
+              aria-live="polite"
+            >
+              {catalogLoading
+                ? "Loading model catalog…"
+                : `${providerModels.length} models · ${browseAllProviders ? "all providers" : "connected providers"}${selectedProviders.length ? " · filtered" : ""}`}
+            </p>
+          </>
+        )}
         {showLocalLlmForm && <LocalLlmConnect m={m} />}
+        {showLocalLlmForm && m.localLlmConfigured && (
+          <ManualCleanupModel onSelect={onPickCloud} localEndpoint />
+        )}
         {showOpenaiSttForm && <OpenaiSttConnect m={m} />}
         {visible.length === 0 ? (
           <ListEmptyState
@@ -501,14 +604,21 @@ export function ModelList({
             <ModelRow key={row.key} row={row} first={i === 0} />
           ))
         )}
-        {hiddenCount > 0 && (
-          <Button
-            variant="ghost"
-            onClick={() => setShowAllLlm(true)}
-            className="border-border text-muted-foreground hover:text-foreground h-auto w-full justify-start rounded-none px-5 py-3 text-left text-[12.5px] font-normal border-x-0 border-b-0"
-          >
-            Show all models ({hiddenCount} more) →
-          </Button>
+        {filteredRows.length > visible.length && (
+          <div className="border-border flex items-center justify-between gap-2 border-t px-5 py-3">
+            <span className="text-muted-foreground text-xs">
+              Showing {visible.length} of {filteredRows.length} models
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setPage({ key: paginationKey, count: renderedCount + 50 })
+              }
+            >
+              Show {Math.min(50, filteredRows.length - visible.length)} more
+            </Button>
+          </div>
         )}
       </div>
     </>
@@ -522,14 +632,16 @@ export function ModelList({
 function FilterBar({
   active,
   onChange,
+  endpoint,
 }: {
   active: string;
   onChange: (id: string) => void;
+  endpoint: boolean;
 }): React.JSX.Element {
   const sources = [
     { id: "all", label: "All" },
     { id: "cloud", label: "Cloud" },
-    { id: "local", label: "On-device" },
+    { id: "local", label: endpoint ? "Custom endpoint" : "On-device" },
   ];
 
   return (
@@ -589,6 +701,8 @@ function ModelRow({
 
   return (
     <div
+      data-testid="model-option"
+      data-provider={row.provider}
       className={cn(
         "group grid grid-cols-[1fr_auto] items-center gap-4 px-5 py-3.5",
         !first && "border-border border-t",
@@ -624,6 +738,14 @@ function ModelRow({
             row.meta
           )}
         </div>
+        {row.modelId && row.modelId !== row.name && (
+          <div
+            className="text-muted-foreground/70 mt-0.5 truncate text-[10px]"
+            title={row.modelId}
+          >
+            {row.modelId}
+          </div>
+        )}
         {local && status === "error" && row.state?.error && (
           <div className="text-destructive mt-1 text-[11.5px] leading-snug">
             {row.state.error}
@@ -782,7 +904,9 @@ function ListEmptyState({
 
   return (
     <p className="text-muted-foreground px-5 py-10 text-center text-[13px]">
-      No models match.
+      {type === "voice"
+        ? "No models match."
+        : "No models match. Connect a provider, adjust filters, or use a model ID."}
     </p>
   );
 }
@@ -792,7 +916,7 @@ function LocalLlmConnect({ m }: { m: UseModels }): React.JSX.Element {
     <EndpointConnectForm
       connect={m.localLlm}
       resolver={zodResolver(localLlmConnectFormSchema)}
-      description="Connect to Ollama, LM Studio, or another OpenAI-compatible server running locally."
+      description="Connect to Ollama, LM Studio, or another OpenAI-compatible server. Transcript or chat text is sent to this URL; the server may be local or remote."
       urlPlaceholder="http://localhost:11434"
     />
   );
@@ -931,6 +1055,112 @@ const MANAGED_LLM_PROVIDERS = new Set([
   "local-llm",
 ]);
 
+/** Manual entry shares the same key validation and selection flow as catalog rows. */
+function ManualCleanupModel({
+  onSelect,
+  localEndpoint = false,
+}: {
+  onSelect: (model: AvailableModel) => void;
+  localEndpoint?: boolean;
+}): React.JSX.Element {
+  const { t } = useTranslation();
+  const id = useId();
+  const [provider, setProvider] = useState(
+    localEndpoint ? "local-llm" : "openrouter",
+  );
+  const [modelId, setModelId] = useState("");
+  const model = manualCleanupModel(provider, modelId, localEndpoint);
+  const gateway = provider === "openrouter" || provider === "vercel";
+  return (
+    <form
+      className="border-border space-y-3 border-b px-5 py-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (model) onSelect(model);
+      }}
+    >
+      <div>
+        <h3 className="text-foreground text-[13px] font-medium">
+          {t("models.manual.title", { defaultValue: "Use a model ID" })}
+        </h3>
+        <p className="text-muted-foreground mt-1 text-xs leading-relaxed">
+          {localEndpoint
+            ? t("models.manual.endpointHint", {
+                defaultValue:
+                  "Enter a text model ID served by your configured endpoint, even if it does not appear in discovery.",
+              })
+            : t("models.manual.hint", {
+                defaultValue:
+                  "Choose a provider and enter its exact text model ID, or browse the catalog below. An API key is required.",
+              })}
+        </p>
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        {!localEndpoint && (
+          <div className="space-y-1.5">
+            <label
+              htmlFor={`${id}-provider`}
+              className="text-muted-foreground text-xs"
+            >
+              {t("models.manual.provider", { defaultValue: "Provider" })}
+            </label>
+            <Select value={provider} onValueChange={setProvider}>
+              <SelectTrigger
+                id={`${id}-provider`}
+                className="h-9 min-w-[145px]"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CLEANUP_API_PROVIDERS.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {displayName(value)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+        <div className="min-w-[180px] flex-1 space-y-1.5">
+          <label
+            htmlFor={`${id}-model`}
+            className="text-muted-foreground text-xs"
+          >
+            {t("models.manual.modelId", { defaultValue: "Model ID" })}
+          </label>
+          <Input
+            id={`${id}-model`}
+            value={modelId}
+            onChange={(event) => setModelId(event.target.value)}
+            placeholder={gateway ? "vendor/model-name" : "model-name"}
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            className="mono h-9"
+          />
+        </div>
+        <Button
+          type="submit"
+          variant="secondary"
+          size="sm"
+          disabled={!model}
+          className="h-9"
+        >
+          {t("models.manual.use", { defaultValue: "Use model" })}
+        </Button>
+      </div>
+      {gateway && (
+        <p className="text-muted-foreground text-[11px]">
+          {t("models.manual.gatewayHint", {
+            defaultValue:
+              "Keep the vendor/model part exactly as shown by the gateway. Model availability and billing follow your provider account.",
+          })}
+        </p>
+      )}
+    </form>
+  );
+}
+
 function isLocalLlm(llm: ConfiguredModel | undefined): boolean {
   return llm?.provider === "local-llm";
 }
@@ -994,7 +1224,9 @@ function CleanupTierPicker({
         <div className="border-border divide-border overflow-hidden rounded-[12px] border divide-y">
           <PickerOption
             icon={Laptop}
-            title={t("models.picker.onDevice", { phrase: ON_DEVICE_PHRASE })}
+            title={t("models.picker.customEndpoint", {
+              defaultValue: "Custom endpoint",
+            })}
             hint={localHint}
             active={localActive}
             onClick={onBrowseLocal}

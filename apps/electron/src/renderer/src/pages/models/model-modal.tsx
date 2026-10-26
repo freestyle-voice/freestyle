@@ -85,6 +85,7 @@ export function ModelModal({
   m,
   saving,
   keyError,
+  selectionError,
   cloudBusy,
   catalogLoading,
   onClose,
@@ -99,6 +100,7 @@ export function ModelModal({
   m: UseModels;
   saving: boolean;
   keyError: string | null;
+  selectionError: string | null;
   cloudBusy?: boolean;
   catalogLoading: boolean;
   onClose: () => void;
@@ -126,6 +128,7 @@ export function ModelModal({
           onClose={onClose}
           onSave={onSaveKey}
         />
+        <ModelSelectionError error={selectionError} />
       </Backdrop>
     );
   }
@@ -154,16 +157,28 @@ export function ModelModal({
         onPickLocalVoice={onPickLocalVoice}
         onRequestDeleteLocal={onRequestDeleteLocal}
       />
-      {m.localActionError && (
-        <div
-          className="border-destructive/30 bg-destructive/10 text-destructive mx-5 mb-4 flex items-start gap-2 rounded-md px-3 py-2 text-xs"
-          role="alert"
-        >
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span>{m.localActionError}</span>
-        </div>
-      )}
+      <ModelSelectionError error={selectionError ?? m.localActionError} />
     </Backdrop>
+  );
+}
+
+function ModelSelectionError({
+  error,
+}: {
+  error: string | null;
+}): React.JSX.Element | null {
+  if (!error) return null;
+  return (
+    <div
+      className="border-destructive/30 bg-destructive/10 text-destructive mx-5 mb-4 flex items-start gap-2 rounded-md px-3 py-2 text-xs"
+      role="alert"
+    >
+      <AlertTriangle
+        className="mt-0.5 h-3.5 w-3.5 shrink-0"
+        aria-hidden="true"
+      />
+      <span>{error}</span>
+    </div>
   );
 }
 
@@ -261,7 +276,7 @@ function KeyStep({
         )}
         <div className="flex items-center justify-between">
           <p className="text-muted-foreground text-[11px] font-medium">
-            Stored in keychain · never logged
+            Saved on your Freestyle server · hidden from the model list
           </p>
           {PROVIDER_KEY_URLS[provider] && (
             <a

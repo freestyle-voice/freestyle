@@ -23,7 +23,7 @@ describe("workspace switcher", () => {
   it("keeps the workspace switcher as a plain, prominent titlebar control", async () => {
     const shell = await readFile(shellPath, "utf8");
 
-    expect(shell).toContain('className="remix-workspace-switcher"');
+    expect(shell).toContain('"remix-workspace-switcher"');
     expect(shell).toContain('className="remix-sidebar-titlebar"');
     expect(shell).toContain('aria-label="Switch workspace"');
     expect(shell).toContain("onFullscreenChanged(setIsFullscreen)");

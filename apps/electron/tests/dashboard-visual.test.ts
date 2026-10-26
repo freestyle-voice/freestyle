@@ -273,7 +273,9 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           window as typeof window & { __releasePluginData?: () => void }
         ).__releasePluginData = releasePluginData;
       }
-      let guest = scenario?.startsWith("guest") ?? false;
+      let guest =
+        (scenario?.startsWith("guest") ?? false) ||
+        scenario === "ui-clarity-endpoint-no-discovery";
       const fixtureUser = {
         id: "visual-review-user",
         email: "review@example.test",
@@ -325,6 +327,15 @@ async function installDashboardFixtures(page: Page): Promise<void> {
               ? input.clone().text()
               : "";
         if (uiClarity) {
+          if (
+            scenario === "ui-clarity-endpoint-no-discovery" &&
+            url.pathname === "/api/settings/local-llm/test"
+          ) {
+            return Response.json(
+              { error: "Server returned 404: model discovery unavailable" },
+              { status: 400 },
+            );
+          }
           if (url.pathname.startsWith("/api/settings/") && method === "PUT") {
             await new Promise((resolve) => setTimeout(resolve, 50));
             if (visualReviewWindow.__failToneWrites)
@@ -2771,6 +2782,34 @@ test("configures an OpenRouter cleanup model omitted from discovery", async ({
   await expect(
     dialog.getByText("openai/gpt-4o-mini", { exact: true }),
   ).toBeVisible();
+});
+
+test("allows manual cleanup selection after a fresh endpoint fails discovery", async () => {
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=ui-clarity-endpoint-no-discovery#/settings/models`,
+  );
+  await dashboard.getByRole("button", { name: "Change cleanup model" }).click();
+  const dialog = dashboard.getByRole("dialog");
+  await dialog
+    .getByRole("button", { name: "Browse on-device cleanup models" })
+    .click();
+  await dialog
+    .getByPlaceholder("http://localhost:11434")
+    .fill("http://localhost:1234");
+  await dialog
+    .getByPlaceholder("API key (optional)")
+    .fill("fixture-key-not-a-secret");
+  await dialog.getByRole("button", { name: "Test", exact: true }).click();
+  await expect(dialog.getByText(/model discovery unavailable/)).toBeVisible();
+  await expect(dialog.getByLabel("Model ID", { exact: true })).toBeVisible();
+  await dialog
+    .getByLabel("Model ID", { exact: true })
+    .fill("custom/chat-model");
+  await dialog.getByRole("button", { name: "Use model", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(dashboard.getByTestId("models-configuration")).toContainText(
+    "custom/chat-model",
+  );
 });
 
 test("shows attention failures, all pending items, and the affected connection", async ({

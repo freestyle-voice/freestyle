@@ -101,10 +101,12 @@ async function runEndpointTest(
     // Keep seed values in sync so the form re-seeds correctly on remount.
     status.setInitialUrl(url);
     status.setInitialApiKey(key);
+    // Persistence does not depend on model discovery. Refresh the saved
+    // endpoint even when /models is unavailable, so manual model IDs work.
+    await onDone();
 
     if (config.clearUrlWhenEmpty && !url) {
       status.setConnected(null);
-      await onDone();
       return;
     }
 
@@ -118,7 +120,6 @@ async function runEndpointTest(
       if (result.ok) {
         status.setConnected(true);
         status.setModels(result.models ?? []);
-        await onDone();
         return;
       }
       status.setConnected(false);
@@ -159,7 +160,7 @@ async function runEndpointTest(
  *
  * @param config  Static description of the endpoint (keys, default URL, probe).
  * @param settingsData  The resolved settings record from the shared query.
- * @param onDone  Called after a successful save/test (typically `loadData`).
+ * @param onDone  Called after settings are saved, before discovery (typically `loadData`).
  */
 export function useEndpointConnect(
   config: EndpointConnectConfig,

@@ -57,7 +57,16 @@ export default function ModelsPage(): React.JSX.Element {
   const [modal, setModal] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
   const [cloudBusy, setCloudBusy] = useState(false);
+
+  const reportSelectionError = (error: unknown): void => {
+    setSelectionError(
+      error instanceof Error
+        ? error.message
+        : "Could not save the selected model. Try again.",
+    );
+  };
 
   const [pendingLocalDelete, setPendingLocalDelete] = useState<{
     defId: string;
@@ -138,6 +147,7 @@ export default function ModelsPage(): React.JSX.Element {
   const closeModal = (): void => {
     setModal(null);
     setKeyError(null);
+    setSelectionError(null);
     setSaving(false);
   };
 
@@ -219,6 +229,7 @@ export default function ModelsPage(): React.JSX.Element {
 
   const onPickCloud = (model: AvailableModel): void => {
     if (modal?.kind !== "list") return;
+    setSelectionError(null);
     const type = modal.type;
 
     if (type === "voice") {
@@ -246,7 +257,7 @@ export default function ModelsPage(): React.JSX.Element {
           setCloudBusy(false);
         }
         finishSelection(type);
-      })();
+      })().catch(reportSelectionError);
       return;
     }
 
@@ -265,7 +276,10 @@ export default function ModelsPage(): React.JSX.Element {
       });
       return;
     }
-    void m.configureModel(model, type).then(() => finishSelection(type));
+    void m
+      .configureModel(model, type)
+      .then(() => finishSelection(type))
+      .catch(reportSelectionError);
   };
 
   const onPickLocalVoice = (
@@ -290,6 +304,8 @@ export default function ModelsPage(): React.JSX.Element {
 
   const onBack = (): void => {
     if (modal?.kind !== "key") return;
+    setSelectionError(null);
+    setKeyError(null);
     if (modal.type === "voice") {
       setModal({ kind: "list", type: "voice", voiceView: "tiers" });
     } else if (modal.type === "llm") {
@@ -306,6 +322,7 @@ export default function ModelsPage(): React.JSX.Element {
     const { provider, pendingModel, type } = modal;
     setSaving(true);
     setKeyError(null);
+    setSelectionError(null);
     void (async () => {
       const err = await m.saveKey(provider, key);
       if (err) {
@@ -324,7 +341,9 @@ export default function ModelsPage(): React.JSX.Element {
         }
       }
       finishSelection(type);
-    })();
+    })()
+      .catch(reportSelectionError)
+      .finally(() => setSaving(false));
   };
 
   const showMlxWarming = m.defaultVoice?.provider === "local-mlx";
@@ -355,6 +374,12 @@ export default function ModelsPage(): React.JSX.Element {
           subtitle={t("models.subtitle")}
         />
         <div className="space-y-5">
+          <p className="text-muted-foreground text-[12px] leading-relaxed">
+            {t("models.pipeline", {
+              defaultValue:
+                "Dictation: speech → transcription → optional cleanup. Remix uses its own model, selected independently below.",
+            })}
+          </p>
           <div className="@container border-border bg-card/55 overflow-hidden rounded-[12px] border">
             <section aria-label="Dictation models">
               <PairCard
@@ -422,6 +447,7 @@ export default function ModelsPage(): React.JSX.Element {
             m={m}
             saving={saving}
             keyError={keyError}
+            selectionError={selectionError}
             cloudBusy={cloudBusy}
             catalogLoading={m.catalogLoading}
             onClose={closeModal}

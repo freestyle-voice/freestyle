@@ -192,7 +192,7 @@ export function getLlmProvider(providerId: string): LlmProvider | null {
   const exact = providerMap.get(providerId);
   if (exact) return exact;
   for (const provider of PROVIDERS) {
-    if (providerId.startsWith(provider.providerId)) return provider;
+    if (providerId.startsWith(`${provider.providerId}/`)) return provider;
   }
   return null;
 }

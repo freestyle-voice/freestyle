@@ -30,8 +30,25 @@ describe("desktop content titlebar", () => {
       'import { IS_MAC, MOD_LABEL } from "@renderer/lib/platform"',
     );
     expect(shell).toContain('IS_MAC && !isFullscreen ? "h-8" : "h-0"');
-    expect(shell).toContain("if (!IS_MAC && !sidebarHidden) return null;");
-    expect(shell).toContain('className="sidebar-reveal-trigger"');
-    expect(shell).not.toContain("if (!IS_MAC) return null;");
+    expect(shell).toContain("if (!IS_MAC) return null;");
+    expect(shell).toContain('label="Show sidebar"');
+    expect(shell).toContain(
+      'className="glass-sidebar glass-sidebar--collapsed"',
+    );
+    expect(shell).toContain(
+      'IS_MAC && !isFullscreen && "sidebar-rail-chrome--mac"',
+    );
+    expect(shell).not.toContain('className="sidebar-reveal-trigger"');
+  });
+  it("reserves native control space above both collapsed panes and keeps the rail fixed at narrow widths", async () => {
+    const styles = await readFile(resolve(sourceDir, "shell.css"), "utf8");
+    expect(styles).toContain("flex: 0 0 56px;");
+    expect(styles).toContain(
+      ".sidebar-rail-chrome--mac {\n  flex-basis: 44px;",
+    );
+    expect(styles).toContain("flex: 0 0 44px;");
+    expect(styles).toContain(".sidebar-rail-navigation");
+    expect(styles).toContain("overflow-y: auto;");
+    expect(styles).toContain(".sidebar-rail-button:focus-visible");
   });
 });

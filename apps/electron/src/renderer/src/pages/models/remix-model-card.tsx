@@ -38,7 +38,25 @@ export function RemixModelCard({
             {personal || signedIn ? t("models.pair.change") : "Choose a model"}
           </Button>
         }
-      />
+      >
+        <p className="text-muted-foreground mt-1 text-[11px] leading-relaxed">
+          {personal
+            ? model.provider === "local-llm"
+              ? t("models.processing.remixEndpoint", {
+                  defaultValue:
+                    "Chat text goes to your configured endpoint, which may be local or remote.",
+                })
+              : t("models.processing.remixProvider", {
+                  defaultValue:
+                    "Chat text goes to {{provider}}. This choice does not change dictation cleanup.",
+                  provider: displayName(model.provider),
+                })
+            : t("models.processing.remixCloud", {
+                defaultValue:
+                  "Chat text is processed by Freestyle Cloud. This choice does not change dictation cleanup.",
+              })}
+        </p>
+      </ModelSettingRow>
     </section>
   );
 }

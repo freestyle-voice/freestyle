@@ -1,5 +1,6 @@
 import { capture, captureSuggestion } from "@renderer/lib/analytics";
 import { apiFetch } from "@renderer/lib/api";
+import { capabilityActionLabel } from "@renderer/lib/capability-action";
 import { applyOpenerTemplate } from "@renderer/lib/openers";
 import { ONE_HOUR, queryKeys } from "@renderer/lib/query";
 import { useQuery } from "@tanstack/react-query";
@@ -76,7 +77,7 @@ function CapabilitiesLoadingSkeleton(): React.JSX.Element {
     <div
       className="tavern-cap-loading"
       role="status"
-      aria-label="Loading shortcuts"
+      aria-label="Loading actions"
     >
       {[
         ["first", "second", "third"],
@@ -118,6 +119,7 @@ export function Capabilities({
     staleTime: ONE_HOUR,
   });
   const [applied, setApplied] = useState<ReadonlySet<string>>(new Set());
+  const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
   const [failed, setFailed] = useState<ReadonlySet<string>>(new Set());
   const groups = capabilitiesQuery.data ?? [];
 
@@ -135,7 +137,7 @@ export function Capabilities({
   if (capabilitiesQuery.isError)
     return (
       <div className="tavern-empty" role="alert">
-        <p>Couldn&apos;t load the available shortcuts.</p>
+        <p>Couldn&apos;t load the available actions.</p>
         <button
           type="button"
           className="tavern-retry"
@@ -149,13 +151,13 @@ export function Capabilities({
     return (
       <>
         <p className="tavern-set-hint is-lead">
-          Everything Freestyle can do for you. Tap one to run it.
+          Start a conversation, add an automation, or connect an app.
         </p>
         <CapabilitiesLoadingSkeleton />
       </>
     );
   if (groups.length === 0)
-    return <div className="tavern-empty">No shortcuts are available yet.</div>;
+    return <div className="tavern-empty">No actions are available yet.</div>;
 
   const run = (item: CapabilityItem): void => {
     captureSuggestion("accepted", "capability", { id: item.id });
@@ -165,6 +167,8 @@ export function Capabilities({
     }
     if (item.templateId) {
       const templateId = item.templateId;
+      if (pending.has(templateId) || applied.has(templateId)) return;
+      setPending((prev) => new Set(prev).add(templateId));
       setFailed((prev) => {
         const next = new Set(prev);
         next.delete(templateId);
@@ -181,7 +185,14 @@ export function Capabilities({
         })
         .catch(() => {
           setFailed((prev) => new Set(prev).add(templateId));
-        });
+        })
+        .finally(() =>
+          setPending((prev) => {
+            const next = new Set(prev);
+            next.delete(templateId);
+            return next;
+          }),
+        );
       return;
     }
     if (item.prompt) onPrompt(item.prompt);
@@ -190,7 +201,7 @@ export function Capabilities({
   return (
     <>
       <p className="tavern-set-hint is-lead">
-        Everything Freestyle can do for you. Tap one to run it.
+        Start a conversation, add an automation, or connect an app.
       </p>
       {groups.map((group) => (
         <div key={group.id} className="tavern-cap-group">
@@ -206,13 +217,19 @@ export function Capabilities({
               const hasFailed = Boolean(
                 item.templateId && failed.has(item.templateId),
               );
-              const action = item.locked
-                ? "Connect"
-                : hasFailed
-                  ? "Retry"
-                  : isApplied
-                    ? "Ready"
-                    : "Run";
+              const isPending = Boolean(
+                item.templateId && pending.has(item.templateId),
+              );
+              const action = capabilityActionLabel(
+                item,
+                isPending
+                  ? "pending"
+                  : hasFailed
+                    ? "failed"
+                    : isApplied
+                      ? "applied"
+                      : undefined,
+              );
 
               return (
                 <button
@@ -220,6 +237,8 @@ export function Capabilities({
                   type="button"
                   className={`tavern-cap${item.locked ? " is-locked" : ""}${isApplied ? " is-applied" : ""}${hasFailed ? " is-failed" : ""}`}
                   onClick={() => run(item)}
+                  disabled={isPending || isApplied}
+                  aria-busy={isPending}
                 >
                   <CapabilityGlyph item={item} groupId={group.id} />
                   <span className="tavern-cap-copy">

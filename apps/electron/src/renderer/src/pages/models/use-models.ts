@@ -108,6 +108,8 @@ export interface UseModels {
   >;
 
   localLlm: EndpointConnectState;
+  /** Saved URL exists; the connect form's localhost placeholder is not configuration. */
+  localLlmConfigured: boolean;
   openaiStt: EndpointConnectState;
 
   // Actions — each refetches as needed
@@ -774,6 +776,8 @@ export function useModels(): UseModels {
     voiceItems,
     llmModelsByProvider,
     localLlm,
+    localLlmConfigured:
+      !!settingsQuery.data?.[SETTINGS_KEYS.localLlmUrl]?.trim(),
     openaiStt,
     configureModel,
     saveKey,

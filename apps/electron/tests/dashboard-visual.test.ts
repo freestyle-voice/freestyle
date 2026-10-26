@@ -73,6 +73,9 @@ async function installDashboardFixtures(page: Page): Promise<void> {
         __visualReviewHistoryQueries?: string[];
         __failHistoryReads?: boolean;
         __failSettingWrites?: boolean;
+        __rejectClarityModel?: boolean;
+        __failToneWrites?: boolean;
+        __failAttentionReads?: boolean;
         __holdLocalReply?: boolean;
         __releaseLocalReply?: () => void;
         __holdLocalCreate?: boolean;
@@ -88,6 +91,38 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       const scenario = new URLSearchParams(window.location.search).get(
         "visual",
       );
+      const uiClarity = scenario?.startsWith("ui-clarity") ?? false;
+      visualReviewWindow.__failToneWrites =
+        scenario === "ui-clarity-tone-failure";
+      visualReviewWindow.__failAttentionReads =
+        scenario === "ui-clarity-attention-failure";
+      const claritySettings: Record<string, string> = {
+        onboarding: JSON.stringify({ v: 2, done: true }),
+        llm_cleanup: "true",
+        cleanup_intensity: "medium",
+        hotkey: "Alt+Space",
+        hotkey_mode: "toggle",
+        output_mode: "clipboard",
+      };
+      let clarityModels = [
+        {
+          id: 1,
+          provider: "openai",
+          model_id: "openai/whisper-1",
+          model_name: "Whisper",
+          type: "voice",
+          is_default: 1,
+        },
+        {
+          id: 2,
+          provider: "openai",
+          model_id: "openai/gpt-4o-mini",
+          model_name: "GPT-4o mini",
+          type: "llm",
+          is_default: 1,
+        },
+      ];
+      const clarityKeys = new Set<string>();
       const pluginLayoutScenario = scenario?.startsWith("guest-plugin-layout-");
       if (scenario?.startsWith("guest-history-")) {
         localStorage.setItem("today.heroDismissed", "1");
@@ -162,6 +197,144 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             : input instanceof Request
               ? input.clone().text()
               : "";
+        if (uiClarity) {
+          if (url.pathname.startsWith("/api/settings/") && method === "PUT") {
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            if (visualReviewWindow.__failToneWrites)
+              return Response.json(
+                { error: "fixture_unavailable" },
+                { status: 503 },
+              );
+            claritySettings[
+              decodeURIComponent(url.pathname.split("/").at(-1)!)
+            ] = JSON.parse(await requestBody()).value;
+            return Response.json({ ok: true });
+          }
+          if (url.pathname === "/api/models/configured") {
+            if (method === "POST") {
+              if (visualReviewWindow.__rejectClarityModel)
+                return Response.json(
+                  { error: "Could not save the selected model. Try again." },
+                  { status: 503 },
+                );
+              const configured = {
+                ...JSON.parse(await requestBody()),
+                id: 3,
+                is_default: 1,
+              };
+              clarityModels = [
+                ...clarityModels.filter(
+                  (model) => model.type !== configured.type,
+                ),
+                configured,
+              ];
+              return Response.json(configured);
+            }
+            return Response.json(clarityModels);
+          }
+          if (url.pathname === "/api/models/available")
+            return Response.json([]);
+          if (url.pathname === "/api/keys/validate")
+            return Response.json({ valid: true });
+          if (url.pathname === "/api/keys") {
+            if (method === "POST")
+              clarityKeys.add(JSON.parse(await requestBody()).provider);
+            return Response.json(
+              method === "POST"
+                ? { ok: true }
+                : [...clarityKeys].map((provider) => ({
+                    provider,
+                    status: "valid",
+                    created_at: "2026-10-26T00:00:00Z",
+                    hint: "…test",
+                  })),
+            );
+          }
+          if (url.pathname === "/api/attention") {
+            if (visualReviewWindow.__failAttentionReads)
+              return Response.json(
+                { error: "fixture_unavailable" },
+                { status: 503 },
+              );
+            return Response.json({
+              generatedAt: "2026-10-26T00:00:00Z",
+              items: Array.from({ length: 7 }, (_, index) => ({
+                id: `attention-${index}`,
+                kind: index === 0 ? "connection" : "agent_run",
+                priority: "important",
+                status: "failed",
+                title:
+                  index === 0 ? "Reconnect Gmail" : `Review work ${index + 1}`,
+                detail: "Open to review the next step.",
+                createdAt: "2026-10-26T00:00:00Z",
+                updatedAt: "2026-10-26T00:00:00Z",
+                target:
+                  index === 0
+                    ? { type: "connection", connectionId: "clarity-gmail" }
+                    : { type: "thread", threadId: `clarity-thread-${index}` },
+              })),
+            });
+          }
+          if (url.pathname === "/api/suggestions/apply-template") {
+            await new Promise((resolve) => setTimeout(resolve, 250));
+            return Response.json({
+              applied: [
+                {
+                  id: "briefing",
+                  path: "schedules/briefing",
+                  name: "Daily briefing",
+                },
+              ],
+              skipped: [],
+            });
+          }
+          if (url.pathname === "/api/suggestions/capabilities")
+            return Response.json({
+              groups: [
+                {
+                  id: "writing",
+                  title: "Write and plan",
+                  blurb: "Choose what to do next.",
+                  items: [
+                    {
+                      id: "draft",
+                      title: "Draft a reply",
+                      subtitle: "Start with a conversation.",
+                      prompt: "Help draft a reply",
+                    },
+                    {
+                      id: "brief",
+                      title: "Daily briefing",
+                      subtitle: "Create a recurring morning briefing.",
+                      templateId: "daily-brief",
+                    },
+                    {
+                      id: "email",
+                      title: "Search email",
+                      subtitle: "Connect Gmail to search your inbox.",
+                      locked: true,
+                      toolkitSlug: "gmail",
+                    },
+                  ],
+                },
+              ],
+            });
+          if (url.pathname === "/api/connectors")
+            return Response.json({
+              connections: [
+                {
+                  id: "clarity-gmail",
+                  toolkitSlug: "gmail",
+                  toolkitName: "Gmail",
+                  toolkitLogo: null,
+                  accountLabel: null,
+                  toolCount: 1,
+                  status: "needs_reconnect",
+                  statusReason: "Sign in again to reconnect.",
+                },
+              ],
+            });
+        }
         if (
           scenario?.startsWith("guest-history-") &&
           ((url.pathname === "/api/history" &&
@@ -427,13 +600,15 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           id: "visual-review-thread",
           type: "remote",
           title: "Sidebar layout",
-          messages: [
-            {
-              id: "visual-review-message",
-              role: "assistant",
-              parts: [{ type: "text", text: "Ready when you are." }],
-            },
-          ],
+          messages: uiClarity
+            ? []
+            : [
+                {
+                  id: "visual-review-message",
+                  role: "assistant",
+                  parts: [{ type: "text", text: "Ready when you are." }],
+                },
+              ],
         };
         const body = (() => {
           if (pluginLayoutScenario && url.pathname === "/api/plugins") {
@@ -523,6 +698,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           }
           if (url.pathname === "/api/history/daily") return { days: [] };
           if (url.pathname === "/api/settings") {
+            if (uiClarity) return claritySettings;
             if (
               (scenario === "guest-first-run" ||
                 scenario === "signed-in-first-run") &&
@@ -1436,14 +1612,21 @@ test("captures the desktop sidebar hidden and restored", async ({
   await expect(hideSidebar).toBeVisible();
   await hideSidebar.click();
 
-  await expect(dashboard.locator(".glass-sidebar")).toHaveCount(0);
+  await expect(dashboard.locator(".glass-sidebar--collapsed")).toBeVisible();
+  await expect(dashboard.locator(".glass-sidebar--collapsed")).toHaveCSS(
+    "width",
+    "56px",
+  );
   const showSidebar = dashboard.getByRole("button", { name: "Show sidebar" });
   await expect(showSidebar).toBeFocused();
   await expectDashboardWindowButtonPosition({ x: 20, y: 16 });
   const revealBounds = await showSidebar.boundingBox();
   expect(revealBounds).not.toBeNull();
-  expect(revealBounds?.x).toBe(process.platform === "darwin" ? 104 : 12);
-  expect(revealBounds?.y).toBe(process.platform === "darwin" ? 8 : 12);
+  expect(revealBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(revealBounds!.x + revealBounds!.width).toBeLessThanOrEqual(56);
+  expect(revealBounds!.y).toBeGreaterThanOrEqual(
+    process.platform === "darwin" ? 44 : 0,
+  );
   for (const width of [1080, 760]) {
     await app!.evaluate(({ BrowserWindow }, windowWidth) => {
       const panel = BrowserWindow.getAllWindows().find((window) =>
@@ -1468,9 +1651,9 @@ test("captures the desktop sidebar hidden and restored", async ({
           .locator(".glass-content > main")
           .boundingBox();
         expect(contentBounds).not.toBeNull();
-        expect(contentBounds!.y).toBeGreaterThanOrEqual(
-          bounds!.y + bounds!.height,
-        );
+        expect(contentBounds!.x).toBeGreaterThanOrEqual(56);
+        if (process.platform === "darwin")
+          expect(contentBounds!.y).toBeGreaterThanOrEqual(44);
         await expectDashboardWindowButtonPosition({ x: 20, y: 16 });
       };
       // Check before and after lazy route/data loading: neither state should
@@ -1806,7 +1989,7 @@ for (const mode of ["local", "byok"] as const) {
     await expect(picker).toBeVisible();
     if (mode === "local") {
       await picker
-        .getByRole("button", { name: "On-device", exact: true })
+        .getByRole("button", { name: "Custom endpoint", exact: true })
         .click();
       await picker.getByRole("button", { name: "Test", exact: true }).click();
     }
@@ -2306,4 +2489,290 @@ test("resumes paused notifications after sign-in outside Remix and pauses again 
     await notifications!.clock.resume();
     await notifications!.unroute("**/api/notifications/token");
   }
+});
+
+test("captures cleanup model selection for the UI clarity review", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=guest-settings#/settings/models`,
+  );
+  await dashboard
+    .locator("html")
+    .evaluate((html) => html.classList.add("dark"));
+  await expect(
+    dashboard.getByRole("heading", { level: 1, name: "Models" }),
+  ).toBeVisible();
+  await expect(dashboard.getByLabel("Loading models")).toHaveCount(0);
+  await dashboard.getByRole("switch", { name: "Enable cleanup" }).click();
+  const dialog = dashboard.getByRole("dialog");
+  await expect(dialog).toBeVisible();
+  await dialog
+    .getByRole("button", {
+      name: "Browse cloud cleanup models with your API key",
+    })
+    .click();
+  await expect(dialog.getByPlaceholder(/Search/)).toBeVisible();
+  await dashboard.screenshot({
+    path: testInfo.outputPath("cleanup-picker.png"),
+    animations: "disabled",
+  });
+});
+
+test("keeps unsaved Tone choices visible and retries failed writes", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(`${DASHBOARD_URL}?visual=ui-clarity-tone-failure#/tone`);
+  await expect(dashboard.getByLabel("Loading tone settings")).toHaveCount(0);
+  const low = dashboard.getByRole("radio", { name: /Low Punctuation/ });
+  await low.click();
+  await expect(dashboard.getByRole("alert")).toContainText("wasn’t saved");
+  await expect(low).toHaveAttribute("aria-checked", "true");
+  await dashboard.screenshot({
+    path: testInfo.outputPath("tone-save-error.png"),
+    animations: "disabled",
+  });
+  await dashboard.evaluate(() => {
+    (
+      window as typeof window & { __failToneWrites?: boolean }
+    ).__failToneWrites = false;
+  });
+  await dashboard.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(dashboard.getByRole("alert")).toHaveCount(0);
+  await expect(dashboard.getByText("Saved", { exact: true })).toBeVisible();
+  await expect(low).toHaveAttribute("aria-checked", "true");
+});
+
+test("configures an OpenRouter cleanup model omitted from discovery", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=ui-clarity-models#/settings/models`,
+  );
+  await dashboard.getByRole("button", { name: "Change cleanup model" }).click();
+  const dialog = dashboard.getByRole("dialog");
+  await dialog
+    .getByRole("button", {
+      name: "Browse cloud cleanup models with your API key",
+    })
+    .click();
+  await expect(
+    dialog.getByRole("combobox", { name: "Provider", exact: true }),
+  ).toContainText("OpenRouter");
+  await dialog
+    .getByLabel("Model ID", { exact: true })
+    .fill("openai/gpt-4o-mini");
+  await dashboard.screenshot({
+    path: testInfo.outputPath("openrouter-model-entry.png"),
+    animations: "disabled",
+  });
+  await dialog.getByRole("button", { name: "Use model", exact: true }).click();
+  await expect(dialog).toContainText("OpenRouter");
+  await dialog.getByPlaceholder("sk-…").fill("fixture-key-not-a-secret");
+  await dialog.getByRole("button", { name: "Save & use", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(dashboard.getByTestId("models-configuration")).toContainText(
+    "openai/gpt-4o-mini",
+  );
+  await expect(dashboard.getByTestId("models-configuration")).toContainText(
+    "OpenRouter",
+  );
+  await dashboard.getByRole("button", { name: "Change cleanup model" }).click();
+  await dialog
+    .getByRole("button", {
+      name: "Browse cloud cleanup models with your API key",
+    })
+    .click();
+  await expect(
+    dialog.getByText("openai/gpt-4o-mini", { exact: true }),
+  ).toBeVisible();
+});
+
+test("shows attention failures, all pending items, and the affected connection", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=ui-clarity-attention-failure#/remix`,
+  );
+  const attention = dashboard.getByRole("region", { name: "Needs attention" });
+  await expect(attention).toContainText(
+    "Couldn't refresh work that needs attention.",
+  );
+  await dashboard.evaluate(() => {
+    (
+      window as typeof window & { __failAttentionReads?: boolean }
+    ).__failAttentionReads = false;
+  });
+  await attention.getByRole("button", { name: "Try again" }).click();
+  await expect(
+    attention.getByText("Review work 7", { exact: true }),
+  ).toBeHidden();
+  await attention.getByText("View 2 more items", { exact: true }).click();
+  await expect(
+    attention.getByText("Review work 7", { exact: true }),
+  ).toBeVisible();
+  await dashboard.screenshot({
+    path: testInfo.outputPath("attention-all-items.png"),
+    animations: "disabled",
+  });
+  await attention.getByRole("button", { name: /Reconnect Gmail/ }).click();
+  await expect(dashboard).toHaveURL(/#\/settings\/apps/);
+  await expect(
+    dashboard.getByRole("textbox", { name: "Search all apps" }),
+  ).toHaveValue("Gmail");
+  await expect(
+    dashboard.getByText("Sign in again to reconnect.", { exact: true }),
+  ).toBeVisible();
+});
+
+test("teaches the configured dictation mode and keeps collapsed navigation usable", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(`${DASHBOARD_URL}?visual=ui-clarity-practice#/today`);
+  await expect(
+    dashboard.getByText(
+      /Press .* to start speaking, then press it again to finish/,
+    ),
+  ).toBeVisible();
+  await expect(
+    dashboard.getByText(/Your transcript is copied to the clipboard/),
+  ).toBeVisible();
+  await dashboard
+    .getByRole("button", { name: "Try dictation", exact: true })
+    .click();
+  await expect(
+    dashboard.getByRole("textbox", { name: "Practice dictation area" }),
+  ).toBeVisible();
+  await dashboard.getByRole("button", { name: "Hide sidebar" }).click();
+  const rail = dashboard.locator(".glass-sidebar--collapsed");
+  await expect(
+    rail.getByRole("button", { name: "Show sidebar", exact: true }),
+  ).toBeFocused();
+  await rail.getByRole("link", { name: /Vocabulary/ }).focus();
+  await expect(rail.getByRole("link", { name: /Vocabulary/ })).toBeFocused();
+  await expect(
+    dashboard.getByRole("tooltip", { name: "Vocabulary", exact: true }),
+  ).toBeVisible();
+  await dashboard.keyboard.press("Enter");
+  await expect(dashboard).toHaveURL(/#\/vocabulary$/);
+  await expect(rail.getByRole("link", { name: /Vocabulary/ })).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
+  await expect(
+    dashboard.getByRole("region", { name: "Vocabulary support" }),
+  ).toContainText("Whisper uses words and phrases");
+  await dashboard.screenshot({
+    path: testInfo.outputPath("collapsed-vocabulary.png"),
+    animations: "disabled",
+  });
+});
+
+test("distinguishes conversations, automations, and app connections in Actions", async ({
+  browserName,
+}, testInfo) => {
+  void browserName;
+  await dashboard.goto(`${DASHBOARD_URL}?visual=ui-clarity-actions#/remix`);
+  const collapse = dashboard.getByRole("button", {
+    name: "Hide sidebar",
+    exact: true,
+  });
+  if (await collapse.isVisible()) await collapse.click();
+  const rail = dashboard.locator(".glass-sidebar--collapsed");
+  const actions = rail.getByRole("button", { name: "Actions", exact: true });
+  await expect(actions).toBeDisabled();
+  await expect(actions).toBeEnabled();
+  await expect(
+    dashboard.getByRole("heading", { name: "Sidebar layout", exact: true }),
+  ).toBeVisible();
+  await actions.click();
+  await expect(
+    dashboard.getByRole("heading", { name: "What Freestyle can do" }),
+  ).toBeVisible();
+  await expect(
+    dashboard.getByRole("button", { name: /Draft a reply.*Start chat/ }),
+  ).toBeVisible();
+  await expect(
+    dashboard.getByRole("button", { name: /Search email.*Connect app/ }),
+  ).toBeVisible();
+  const automation = dashboard.getByRole("button", {
+    name: /Daily briefing.*Add automation/,
+  });
+  await expect(automation).toBeVisible();
+  await dashboard.screenshot({
+    path: testInfo.outputPath("remix-action-labels.png"),
+    animations: "disabled",
+  });
+  await automation.click();
+  await expect(
+    dashboard.getByRole("button", { name: /Daily briefing.*Adding/ }),
+  ).toBeDisabled();
+  await expect(
+    dashboard.getByRole("button", { name: /Daily briefing.*Added/ }),
+  ).toBeDisabled();
+  await dashboard
+    .getByRole("button", { name: /Search email.*Connect app/ })
+    .click();
+  await expect(dashboard).toHaveURL(/#\/settings\/apps$/);
+  await expect(
+    dashboard.getByRole("textbox", { name: "Search all apps" }),
+  ).toBeVisible();
+});
+
+test("recovers rejected manual model selections with new and saved API keys", async () => {
+  await dashboard.goto(
+    `${DASHBOARD_URL}?visual=ui-clarity-model-recovery#/settings/models`,
+  );
+  const dialog = dashboard.getByRole("dialog");
+  const openPicker = async () => {
+    await dashboard
+      .getByRole("button", { name: "Change cleanup model" })
+      .click();
+    await dialog
+      .getByRole("button", {
+        name: "Browse cloud cleanup models with your API key",
+      })
+      .click();
+    await dialog
+      .getByLabel("Model ID", { exact: true })
+      .fill("vendor/text-model");
+  };
+  const rejectSelection = async (reject: boolean) =>
+    dashboard.evaluate((value) => {
+      (
+        window as typeof window & { __rejectClarityModel?: boolean }
+      ).__rejectClarityModel = value;
+    }, reject);
+  await openPicker();
+  await rejectSelection(true);
+  await dialog.getByRole("button", { name: "Use model", exact: true }).click();
+  await dialog.getByPlaceholder("sk-…").fill("fixture-key-not-a-secret");
+  await dialog.getByRole("button", { name: "Save & use", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Could not save the selected model",
+  );
+  await expect(
+    dialog.getByRole("button", { name: "Save & use", exact: true }),
+  ).toBeEnabled();
+  await rejectSelection(false);
+  await dialog.getByRole("button", { name: "Save & use", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+
+  await openPicker();
+  await rejectSelection(true);
+  await dialog.getByRole("button", { name: "Use model", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText(
+    "Could not save the selected model",
+  );
+  await expect(dialog.getByLabel("Model ID", { exact: true })).toHaveValue(
+    "vendor/text-model",
+  );
+  await rejectSelection(false);
+  await dialog.getByRole("button", { name: "Use model", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
 });

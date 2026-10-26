@@ -5005,3 +5005,55 @@ button.tavern-attention-item:focus-visible {
 .tavern-opener {
   padding: 7px 10px;
 }
+
+.tavern-attention-error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--tavern-border);
+  border-radius: 8px;
+  color: var(--tavern-muted);
+  font-size: 12px;
+}
+
+.tavern-attention-error button,
+.tavern-attention-more summary {
+  color: var(--tavern-text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.tavern-attention-error button {
+  flex-shrink: 0;
+  border: 0;
+  padding: 3px;
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.tavern-attention-error button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.tavern-attention-more summary {
+  width: fit-content;
+  margin: 10px 0;
+  padding: 3px 0;
+}
+
+.tavern-attention-error button:focus-visible,
+.tavern-attention-more summary:focus-visible {
+  outline: 2px solid var(--tavern-accent);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+.tavern-cap:disabled {
+  cursor: default;
+}

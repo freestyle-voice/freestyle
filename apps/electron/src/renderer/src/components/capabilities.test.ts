@@ -7,7 +7,29 @@ const componentDir = dirname(fileURLToPath(import.meta.url));
 const sourcePath = resolve(componentDir, "capabilities.tsx");
 const stylesPath = resolve(componentDir, "../remix-foundation.css");
 
+import { capabilityActionLabel } from "../lib/capability-action";
+
 describe("Capabilities", () => {
+  it("distinguishes starting a chat, adding an automation, and connecting an app", () => {
+    expect(capabilityActionLabel({ prompt: "Draft a reply" })).toBe(
+      "Start chat",
+    );
+    expect(capabilityActionLabel({ templateId: "daily-brief" })).toBe(
+      "Add automation",
+    );
+    expect(capabilityActionLabel({ locked: true, toolkitSlug: "gmail" })).toBe(
+      "Connect app",
+    );
+    expect(
+      capabilityActionLabel({ templateId: "daily-brief" }, "pending"),
+    ).toBe("Adding…");
+    expect(
+      capabilityActionLabel({ templateId: "daily-brief" }, "applied"),
+    ).toBe("Added");
+    expect(capabilityActionLabel({ templateId: "daily-brief" }, "failed")).toBe(
+      "Retry setup",
+    );
+  });
   it("presents suggestions as a responsive action-card gallery", async () => {
     const [source, styles] = await Promise.all([
       readFile(sourcePath, "utf8"),

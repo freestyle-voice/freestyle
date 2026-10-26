@@ -11,6 +11,7 @@ import {
   applyFreestyleCloudDefaults,
   recordFreestyleCloudDefaultSelection,
 } from "../lib/freestyle-cloud-defaults.js";
+import { getLlmProvider } from "../lib/llm/registry.js";
 import {
   LEGACY_MLX_ASR_MODELS,
   MLX_ASR_MODELS,
@@ -334,6 +335,7 @@ export async function isCleanupModelSupported(
   providerId: string,
   modelId: string,
 ): Promise<boolean> {
+  if (getLlmProvider(providerId)?.providerId !== providerId) return false;
   if (providerId === "local-llm") return true;
   if (providerId in LLM_GATEWAYS) return true;
   if (providerId === FREESTYLE_CLOUD_PROVIDER_ID) return true;
@@ -341,13 +343,15 @@ export async function isCleanupModelSupported(
   try {
     const registry = await fetchModelsFromRegistry();
     const provider = registry[providerId] as RegistryProvider | undefined;
-    if (!provider?.models) return false;
+    if (!provider?.models) return true;
 
     const shortId = modelId.startsWith(`${providerId}/`)
       ? modelId.slice(providerId.length + 1)
       : modelId;
     const model = provider.models[modelId] ?? provider.models[shortId] ?? null;
-    if (!model) return false;
+    // Discovery is advisory: providers can offer new or private models that
+    // models.dev does not list yet. Keep rejecting known unsuitable models.
+    if (!model) return true;
 
     const inputMods = model.modalities?.input ?? [];
     const outputMods = model.modalities?.output ?? [];

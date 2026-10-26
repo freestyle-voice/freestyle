@@ -61,6 +61,8 @@ import {
   CreditCard,
   Database,
   FileText,
+  LogIn,
+  MessageCircle,
   Mic,
   Network,
   Paintbrush,
@@ -72,6 +74,8 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Sparkles,
+  UserRound,
   Wand2,
   Zap,
 } from "lucide-react";
@@ -79,6 +83,8 @@ import { Dialog as DialogPrimitive } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
+
+import { RailAction, RailNav, RailTooltip } from "./shell-sidebar-rail";
 
 type NavItem = {
   to: string;
@@ -257,7 +263,9 @@ function SettingsSidebar({
   workspace,
   onBack,
   onHideSidebar,
+  toggleRef,
 }: {
+  toggleRef?: React.RefObject<HTMLButtonElement | null>;
   workspace: Workspace;
   onBack: () => void;
   onHideSidebar: () => void;
@@ -288,7 +296,10 @@ function SettingsSidebar({
             <ArrowLeft className="size-3.5" aria-hidden="true" />
             Back to app
           </button>
-          <SidebarVisibilityToggle onClick={onHideSidebar} />
+          <SidebarVisibilityToggle
+            onClick={onHideSidebar}
+            buttonRef={toggleRef}
+          />
         </div>
         <p className="text-foreground mt-3 px-1 text-[17px] font-semibold tracking-[-0.02em]">
           Settings
@@ -352,11 +363,14 @@ function SettingsSidebar({
 
 function SidebarVisibilityToggle({
   onClick,
+  buttonRef,
 }: {
   onClick: () => void;
+  buttonRef?: React.RefObject<HTMLButtonElement | null>;
 }): React.JSX.Element {
   return (
     <button
+      ref={buttonRef}
       type="button"
       className="sidebar-visibility-toggle"
       aria-label="Hide sidebar"
@@ -493,22 +507,49 @@ function RemixSidebarSessions({
 function WorkspaceSwitcher({
   workspace,
   onWorkspaceChange,
+  compact = false,
 }: {
+  compact?: boolean;
   workspace: Workspace;
   onWorkspaceChange: (workspace: Workspace) => void;
 }): React.JSX.Element {
+  const trigger = (
+    <DropdownMenuTrigger asChild>
+      <button
+        type="button"
+        className={
+          compact
+            ? "sidebar-rail-button sidebar-rail-workspace"
+            : "remix-workspace-switcher"
+        }
+        aria-label="Switch workspace"
+      >
+        {compact ? (
+          workspace === "remix" ? (
+            <Wand2 aria-hidden="true" />
+          ) : (
+            <Mic aria-hidden="true" />
+          )
+        ) : (
+          <>
+            {workspace === "remix" ? "Remix" : "Dictate"}
+            <ChevronDown aria-hidden="true" />
+          </>
+        )}
+      </button>
+    </DropdownMenuTrigger>
+  );
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="remix-workspace-switcher"
-          aria-label="Switch workspace"
+      {compact ? (
+        <RailTooltip
+          label={`Switch workspace · ${workspace === "remix" ? "Remix" : "Dictate"}`}
         >
-          {workspace === "remix" ? "Remix" : "Dictate"}
-          <ChevronDown aria-hidden="true" />
-        </button>
-      </DropdownMenuTrigger>
+          {trigger}
+        </RailTooltip>
+      ) : (
+        trigger
+      )}
       <DropdownMenuContent className="w-60 rounded-[10px] p-1.5" align="start">
         <DropdownMenuRadioGroup
           value={workspace}
@@ -543,6 +584,81 @@ function WorkspaceSwitcher({
         </DropdownMenuRadioGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function RemixSidebarRail({
+  onSearch,
+}: {
+  onSearch: () => void;
+}): React.JSX.Element {
+  const {
+    openChat,
+    startNewThread,
+    openScheduledTasks,
+    openCapabilities,
+    workspaceSurface,
+  } = useRemixSession();
+  const { canChat, canUseCloud } = useRemixAvailability();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const inRemix = pathname === "/remix";
+  const openSurface = (action: () => void): void => {
+    action();
+    navigate("/remix");
+  };
+  return (
+    <nav className="sidebar-rail-group" aria-label="Remix navigation">
+      <RailAction
+        label="Chats"
+        icon={MessageCircle}
+        current={inRemix && workspaceSurface === "chat"}
+        onClick={() => openSurface(openChat)}
+      />
+      <RailAction
+        label="New chat"
+        icon={Plus}
+        disabled={!canChat}
+        onClick={() => openSurface(startNewThread)}
+      />
+      <RailAction
+        label="Search sessions"
+        icon={Search}
+        disabled={!canChat}
+        onClick={onSearch}
+      />
+      <RailAction
+        label="Actions"
+        icon={Sparkles}
+        disabled={!canUseCloud}
+        current={inRemix && workspaceSurface === "capabilities"}
+        onClick={() => openSurface(openCapabilities)}
+      />
+      <RailAction
+        label="Schedules"
+        icon={CalendarClock}
+        current={inRemix && workspaceSurface === "scheduled"}
+        disabled={!canUseCloud}
+        onClick={() => openSurface(openScheduledTasks)}
+      />
+    </nav>
+  );
+}
+
+function SidebarRailAccount(): React.JSX.Element {
+  const { user, phase, signIn, signingIn } = useCloudAuth();
+  return user ? (
+    <RailNav
+      label="Account"
+      items={[{ to: "/profile", label: "Profile", icon: UserRound }]}
+    />
+  ) : (
+    <RailAction
+      label={phase === "checking" ? "Loading profile" : "Sign in"}
+      icon={LogIn}
+      disabled={phase === "checking" || signingIn}
+      onClick={() => void signIn()}
+    />
   );
 }
 
@@ -722,6 +838,7 @@ export default function AppShell(): React.JSX.Element {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const sessionSearchRef = useRef<HTMLInputElement>(null);
   const sidebarRevealRef = useRef<HTMLButtonElement>(null);
+  const sidebarToggleRef = useRef<HTMLButtonElement>(null);
   const [sidebarWidthRaw, setSidebarWidthRaw] = usePersistentState<string>(
     "shell.sidebarWidth",
     "220",
@@ -745,6 +862,7 @@ export default function AppShell(): React.JSX.Element {
   }, [setSidebarVisibility]);
   const showSidebar = useCallback(() => {
     setSidebarVisibility("visible");
+    requestAnimationFrame(() => sidebarToggleRef.current?.focus());
   }, [setSidebarVisibility]);
 
   useEffect(() => {
@@ -861,6 +979,7 @@ export default function AppShell(): React.JSX.Element {
                 workspace={sidebarWorkspace}
                 onBack={() => navigate(workspaceHomeRoute(sidebarWorkspace))}
                 onHideSidebar={hideSidebar}
+                toggleRef={sidebarToggleRef}
               />
             ) : (
               <>
@@ -888,7 +1007,10 @@ export default function AppShell(): React.JSX.Element {
                       <Search aria-hidden="true" />
                     </button>
                   ) : null}
-                  <SidebarVisibilityToggle onClick={hideSidebar} />
+                  <SidebarVisibilityToggle
+                    onClick={hideSidebar}
+                    buttonRef={sidebarToggleRef}
+                  />
                 </div>
 
                 <div
@@ -929,7 +1051,53 @@ export default function AppShell(): React.JSX.Element {
             onWidthChange={setSidebarWidth}
           />
         </>
-      ) : null}
+      ) : (
+        <aside
+          className="glass-sidebar glass-sidebar--collapsed"
+          aria-label="Compact sidebar"
+          data-workspace={activeWorkspace}
+        >
+          <div
+            className={cn(
+              "sidebar-rail-chrome",
+              IS_MAC && !isFullscreen && "sidebar-rail-chrome--mac",
+            )}
+            aria-hidden="true"
+          />
+          <div className="sidebar-rail-group sidebar-rail-header">
+            <RailAction
+              label="Show sidebar"
+              icon={PanelLeftOpen}
+              ref={sidebarRevealRef}
+              onClick={showSidebar}
+            />
+            <WorkspaceSwitcher
+              compact
+              workspace={activeWorkspace}
+              onWorkspaceChange={changeWorkspace}
+            />
+          </div>
+          <div className="sidebar-rail-navigation no-scrollbar">
+            {isRemixSidebar ? (
+              <RemixSidebarRail
+                onSearch={() => handleSessionSearchOpenChange(true)}
+              />
+            ) : (
+              <>
+                <RailNav label="Dictate navigation" items={mainNav} />
+                {pluginNav.length > 0 ? (
+                  <div className="sidebar-rail-divider" />
+                ) : null}
+                <RailNav label="Plugin navigation" items={pluginNav} />
+              </>
+            )}
+          </div>
+          <div className="sidebar-rail-footer sidebar-rail-group">
+            <RailNav label="App navigation" items={footerNav} />
+            <SidebarRailAccount />
+          </div>
+        </aside>
+      )}
 
       {isRemixSidebar && canChat ? (
         <SessionSearchDialog
@@ -942,11 +1110,7 @@ export default function AppShell(): React.JSX.Element {
       ) : null}
 
       <div className="glass-content relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
-        <ContentTitlebar
-          sidebarHidden={isSidebarHidden}
-          onShowSidebar={showSidebar}
-          sidebarRevealRef={sidebarRevealRef}
-        />
+        <ContentTitlebar sidebarCollapsed={isSidebarHidden && !isFullscreen} />
         <UpdateBanner className="relative z-50 mt-4 w-[calc(100%-3rem)] max-w-2xl self-center" />
 
         <main
@@ -960,48 +1124,22 @@ export default function AppShell(): React.JSX.Element {
   );
 }
 
-/**
- * macOS needs a dedicated transparent titlebar for the content pane because
- * its native controls share the renderer's top edge. Windows and Linux keep
- * their system titlebars, while the sidebar restore control remains available
- * on every platform.
- */
+/** The collapsed rail leaves room for macOS traffic lights above the content. */
 function ContentTitlebar({
-  sidebarHidden = false,
-  onShowSidebar,
-  sidebarRevealRef,
+  sidebarCollapsed,
 }: {
-  sidebarHidden?: boolean;
-  onShowSidebar?: () => void;
-  sidebarRevealRef?: React.RefObject<HTMLButtonElement | null>;
+  sidebarCollapsed: boolean;
 }): React.JSX.Element | null {
-  if (!IS_MAC && !sidebarHidden) return null;
+  if (!IS_MAC) return null;
 
   return (
     <div
       className={cn(
         "glass-content-titlebar",
-        IS_MAC && "glass-content-titlebar--mac",
-        sidebarHidden && "glass-content-titlebar--sidebar-hidden",
+        sidebarCollapsed && "glass-content-titlebar--sidebar-collapsed",
       )}
-      aria-hidden={sidebarHidden ? undefined : true}
-      style={
-        { WebkitAppRegion: IS_MAC ? "drag" : undefined } as React.CSSProperties
-      }
-    >
-      {sidebarHidden && onShowSidebar ? (
-        <button
-          type="button"
-          className="sidebar-reveal-trigger"
-          ref={sidebarRevealRef}
-          aria-label="Show sidebar"
-          title="Show sidebar"
-          onClick={onShowSidebar}
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          <PanelLeftOpen aria-hidden="true" />
-        </button>
-      ) : null}
-    </div>
+      aria-hidden="true"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+    />
   );
 }

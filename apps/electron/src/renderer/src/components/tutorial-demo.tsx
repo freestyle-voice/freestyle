@@ -49,9 +49,6 @@ export function TutorialDemo({
   onDictation?: () => void;
 }): React.JSX.Element {
   const [phase, setPhase] = useState<DemoPhase>("idle");
-  const [hotkeyTokens, setHotkeyTokens] = useState<string[]>(() =>
-    formatAcceleratorKeys(hotkey ?? DEFAULT_HOTKEY),
-  );
   const stepRef = useRef(0);
   const timeoutRef = useRef<number | null>(null);
   // suspendedRef pauses the auto-loop while the real hotkey is held
@@ -92,21 +89,15 @@ export function TutorialDemo({
     return clearLoop;
   }, [tick, clearLoop, interactive]);
 
-  // Read the configured hotkey from the shared settings cache (deduped with
-  // every other settings consumer); skipped when the caller drives it.
-  const { data: settingsData } = useQuery({
-    ...settingsQueryOptions(),
-    enabled: hotkey === undefined,
-  });
-
-  // Resolve the hotkey: prefer the caller-provided accelerator, otherwise fall
-  // back to the configured one (default while it loads).
-  useEffect(() => {
-    const val =
-      hotkey ?? settingsData?.[SETTINGS_KEYS.hotkey] ?? DEFAULT_HOTKEY;
-    const tokens = formatAcceleratorKeys(val);
-    if (tokens.length > 0) setHotkeyTokens(tokens);
-  }, [hotkey, settingsData]);
+  // Shared settings keep the shortcut, activation, and delivery guidance in sync.
+  // Onboarding can override the shortcut while rebinding it live.
+  const { data: settingsData } = useQuery(settingsQueryOptions());
+  const hotkeyTokens = formatAcceleratorKeys(
+    hotkey ?? settingsData?.[SETTINGS_KEYS.hotkey] ?? DEFAULT_HOTKEY,
+  );
+  const toggleMode = settingsData?.[SETTINGS_KEYS.hotkeyMode] === "toggle";
+  const clipboardMode =
+    settingsData?.[SETTINGS_KEYS.outputMode] === "clipboard";
 
   // Real hotkey events override the loop while held.
   useEffect(() => {
@@ -139,6 +130,7 @@ export function TutorialDemo({
     return () => {
       removeDown?.();
       removeUp?.();
+      clearLoop();
     };
   }, [tick, clearLoop, interactive]);
 
@@ -166,7 +158,9 @@ export function TutorialDemo({
       {/* Instructional sentence */}
       <div className="select-none text-center">
         <div className="serif text-foreground text-[34px] leading-[1.1] font-normal tracking-tight">
-          <StepWord active={phase === "idle"}>Press</StepWord>{" "}
+          <StepWord active={phase === "idle"}>
+            {toggleMode ? "Press" : "Hold"}
+          </StepWord>{" "}
           <span className="inline-block align-middle">
             {hotkeyTokens.map((tok, i) => (
               <span key={`${tok}-${i}`} className="inline-block align-middle">
@@ -180,9 +174,17 @@ export function TutorialDemo({
             ))}
           </span>{" "}
           <StepWord active={pressed}>, speak,</StepWord>{" "}
-          <StepWord active={showResult}>release.</StepWord>
+          <StepWord active={showResult}>
+            {toggleMode ? "press again to stop." : "release."}
+          </StepWord>
         </div>
       </div>
+
+      <p className="text-muted-foreground -mt-2 max-w-[560px] text-center text-[13px] leading-relaxed">
+        {clipboardMode
+          ? "Your transcript is copied to the clipboard. Paste it where you need it."
+          : "Your transcript is pasted into the focused text field when it’s ready."}
+      </p>
 
       {/* Wave + status card */}
       <div
@@ -220,21 +222,26 @@ export function TutorialDemo({
               : pressed
                 ? "Listening…"
                 : interactive
-                  ? "Pasted below"
-                  : "Pasted to your app"}
+                  ? "Finishing…"
+                  : "Example result"}
           </span>
         </div>
 
         <Wave pressed={pressed} getLiveLevel={getLiveLevel} />
 
         {interactive ? (
-          // Real practice area — focus it, hold the hotkey, and the
-          // transcription pastes in just like in any other app.
+          // Practice uses the actual configured delivery mode, just like another app.
           <Textarea
             autoFocus
             rows={3}
             aria-label="Practice dictation area"
-            placeholder="Click here, hold your hotkey, and speak — your words land right here."
+            placeholder={
+              clipboardMode
+                ? "Try your hotkey, then paste your transcript here from the clipboard."
+                : toggleMode
+                  ? "Click here. Press your hotkey, speak, then press it again to finish."
+                  : "Click here. Hold your hotkey while you speak, then release to finish."
+            }
             className="placeholder:text-muted-foreground/70 text-foreground mt-2 block min-h-0 w-full resize-none border-none bg-transparent px-0 py-0 text-[17px] leading-[1.5] shadow-none outline-none focus-visible:border-none focus-visible:ring-0 dark:bg-transparent"
           />
         ) : (

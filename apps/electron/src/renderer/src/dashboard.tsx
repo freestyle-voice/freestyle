@@ -166,9 +166,8 @@ function RouteFallback(): React.JSX.Element {
             {eyebrow}
           </p>
         ) : null}
-        <h1 className="serif text-foreground m-0 text-[48px] font-normal leading-[0.95] tracking-[-0.025em]">
-          <span className="serif-italic text-primary">{title}</span>
-          <span>.</span>
+        <h1 className="serif text-foreground m-0 text-[30px] font-normal leading-none tracking-[-0.025em] sm:text-[36px]">
+          {title}
         </h1>
         {subtitle ? (
           <p className="text-muted-foreground mt-2.5 max-w-[580px] text-[14px] leading-[1.5]">

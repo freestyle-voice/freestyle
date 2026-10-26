@@ -371,7 +371,7 @@ export function OpenerCards({
           className="tavern-opener-more"
           onClick={onShowAll}
         >
-          See everything ↗
+          Browse actions
         </button>
       ) : null}
     </div>

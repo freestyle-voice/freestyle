@@ -32,6 +32,7 @@ import {
 } from "@renderer/components/ui/tooltip";
 import { useDismissible } from "@renderer/hooks/use-dismissible";
 import { useHistorySearch } from "@renderer/hooks/use-history-search";
+import { formatAcceleratorKeys } from "@renderer/hooks/use-hotkey-recorder";
 import {
   usePersistentJsonState,
   usePersistentState,
@@ -55,7 +56,7 @@ import {
 } from "@renderer/lib/history-queries";
 import { SEARCH_SHORTCUT_LABEL } from "@renderer/lib/platform";
 import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
-import { cn, ON_DEVICE_PHRASE } from "@renderer/lib/utils";
+import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
@@ -78,6 +79,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type DateRange, DayPicker } from "react-day-picker";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router";
+import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
 import { SETTINGS_KEYS } from "../../../shared/settings-keys";
 
 function formatClock(iso: string): string {
@@ -747,7 +749,7 @@ export default function HistoryPage(): React.JSX.Element {
             onRetry={() => void refetchDaily()}
           />
           {hero}
-          <EmptyState />
+          <EmptyState settings={settings} />
         </div>
       </div>
     );
@@ -1734,8 +1736,20 @@ function HistoryPausedNotice(): React.JSX.Element {
   );
 }
 
-function EmptyState(): React.JSX.Element {
+function EmptyState({
+  settings,
+}: {
+  settings?: Record<string, string>;
+}): React.JSX.Element {
   const { t } = useTranslation();
+  const [practicing, setPracticing] = useState(false);
+  const hotkey = formatAcceleratorKeys(
+    settings?.[SETTINGS_KEYS.hotkey] ??
+      window.api?.defaultHotkey ??
+      getDefaultHotkey(),
+  ).join(" + ");
+  const toggleMode = settings?.[SETTINGS_KEYS.hotkeyMode] === "toggle";
+  const clipboardMode = settings?.[SETTINGS_KEYS.outputMode] === "clipboard";
   return (
     <div className="border-border bg-card mt-4 rounded-[14px] border border-dashed px-9 py-[60px] text-center">
       <div className="bg-accent mx-auto mb-[18px] inline-flex h-16 w-16 items-center justify-center rounded-2xl">
@@ -1745,8 +1759,44 @@ function EmptyState(): React.JSX.Element {
         {t("history.emptyTitle")}
       </h2>
       <p className="text-muted-foreground mx-auto mt-2.5 max-w-[440px] text-[14px] leading-[1.55]">
-        {t("history.emptyDesc", { phrase: ON_DEVICE_PHRASE })}
+        {toggleMode
+          ? t("history.emptyToggleInstruction", {
+              defaultValue:
+                "Press {{hotkey}} to start speaking, then press it again to finish.",
+              hotkey,
+            })
+          : t("history.emptyHoldInstruction", {
+              defaultValue:
+                "Hold {{hotkey}} while you speak, then release to finish.",
+              hotkey,
+            })}{" "}
+        {clipboardMode
+          ? t("history.emptyClipboardInstruction", {
+              defaultValue:
+                "Your transcript is copied to the clipboard, ready to paste.",
+            })
+          : t("history.emptyPasteInstruction", {
+              defaultValue:
+                "Click in a text field first. Your transcript will be pasted there when it’s ready.",
+            })}
       </p>
+      <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+        <Button
+          variant="ink"
+          onClick={() => setPracticing(true)}
+          disabled={practicing}
+        >
+          {t("history.tryDictation", { defaultValue: "Try dictation" })}
+        </Button>
+        <Button asChild variant="link" size="sm">
+          <Link to="/settings#recording">{t("history.changeHotkey")}</Link>
+        </Button>
+      </div>
+      {practicing && (
+        <div className="mx-auto mt-6 max-w-[720px] text-left">
+          <TutorialDemo interactive />
+        </div>
+      )}
     </div>
   );
 }

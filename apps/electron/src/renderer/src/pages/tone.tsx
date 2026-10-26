@@ -46,12 +46,12 @@ import {
   queryKeys,
   settingsQueryOptions,
 } from "@renderer/lib/query";
+import {
+  createSettingSaveQueue,
+  type SettingSaveStates,
+} from "@renderer/lib/setting-save-queue";
 import { replaceSetting } from "@renderer/lib/settings";
 import { saveSetting as persistSetting } from "@renderer/lib/settings-api";
-import {
-  createToneSaveQueue,
-  type ToneSaveStates,
-} from "@renderer/lib/tone-save-queue";
 import { cn } from "@renderer/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Loader2 } from "lucide-react";
@@ -250,8 +250,8 @@ export default function TonePage(): React.JSX.Element {
     useState<CleanupIntensity>("medium");
   const [cleanupCustomPrompt, setCleanupCustomPrompt] = useState("");
   const [savedCleanupCustomPrompt, setSavedCleanupCustomPrompt] = useState("");
-  const [saveStates, setSaveStates] = useState<ToneSaveStates>({});
-  const saveQueue = useMemo(() => createToneSaveQueue(setSaveStates), []);
+  const [saveStates, setSaveStates] = useState<SettingSaveStates>({});
+  const saveQueue = useMemo(() => createSettingSaveQueue(setSaveStates), []);
   const savingCustomPrompt =
     saveStates[SETTINGS_KEYS.cleanupCustomPrompt]?.phase === "saving";
   const [personalTone, setPersonalTone] = useState<CleanupPersonalTone>(
@@ -514,7 +514,7 @@ export default function TonePage(): React.JSX.Element {
       <div className="mx-auto w-full max-w-[1060px]">
         <TonePageHeader title={t("tone.title")} subtitle={t("tone.subtitle")} />
 
-        <ToneSaveFeedback
+        <SettingSaveFeedback
           states={saveStates}
           customPromptDirty={customPromptDirty}
         />
@@ -660,11 +660,11 @@ function TonePageHeader({
   );
 }
 
-function ToneSaveFeedback({
+function SettingSaveFeedback({
   states,
   customPromptDirty,
 }: {
-  states: ToneSaveStates;
+  states: SettingSaveStates;
   customPromptDirty: boolean;
 }): React.JSX.Element | null {
   const { t } = useTranslation();

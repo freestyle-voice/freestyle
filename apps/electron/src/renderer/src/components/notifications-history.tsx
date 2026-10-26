@@ -1,4 +1,5 @@
 import { DataSkeleton } from "@renderer/components/data-skeleton";
+import { Button } from "@renderer/components/ui/button";
 import { useCloudAuth } from "@renderer/lib/auth-context";
 import type { CourierNotificationItem } from "@renderer/lib/courier-notifications";
 import {
@@ -35,18 +36,55 @@ function NotificationsHistoryContent({
 }: {
   onOpenThread?: (threadId: string) => void;
 }): React.JSX.Element {
-  const { status, notifications: rows, open } = useCourierNotifications();
+  const {
+    status,
+    notifications: rows,
+    open,
+    refresh,
+  } = useCourierNotifications();
+  const auth = useCloudAuth();
 
   if (status === "loading")
     return <DataSkeleton label="Loading notifications" />;
   if (status === "signed-out")
     return (
-      <div className="tavern-empty">Sign in to see your notifications.</div>
+      <div className="tavern-empty flex flex-col items-start gap-3">
+        <p>Sign in to see your notifications.</p>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={auth.signingIn}
+          onClick={() =>
+            void auth
+              .signIn()
+              .then((user) => {
+                if (user) refresh();
+              })
+              .catch(() => {})
+          }
+        >
+          {auth.signingIn ? "Signing in…" : "Sign in"}
+        </Button>
+        {auth.error && (
+          <p role="alert" className="text-destructive text-xs">
+            {auth.error}
+          </p>
+        )}
+      </div>
     );
   if (status === "unavailable")
     return (
-      <div className="tavern-empty">
-        Couldn't reach Freestyle Cloud. Try again in a moment.
+      <div
+        className="tavern-empty flex flex-col items-start gap-3"
+        role="alert"
+      >
+        <p>
+          Couldn't reach Freestyle Cloud. Your notification history couldn’t be
+          loaded.
+        </p>
+        <Button variant="outline" size="sm" onClick={refresh}>
+          Retry
+        </Button>
       </div>
     );
   if (rows.length === 0)

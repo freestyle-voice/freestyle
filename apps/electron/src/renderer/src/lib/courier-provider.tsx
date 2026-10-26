@@ -41,6 +41,7 @@ interface CourierNotificationsContextValue {
     routeThread?: (threadId: string) => void,
   ) => Promise<void>;
   archive: (item: CourierNotificationItem) => Promise<void>;
+  refresh: () => void;
 }
 
 const CourierNotificationsContext =
@@ -168,10 +169,21 @@ export function CourierNotificationsProvider({
       archiveCourierNotification(item, courierRef.current.inbox),
     [],
   );
+  const refresh = useCallback(() => {
+    setStatus((current) => (current === "ready" ? current : "loading"));
+    managerRef.current?.refresh();
+  }, []);
 
   const value = useMemo(
-    () => ({ status, notifications, activeNotifications, open, archive }),
-    [activeNotifications, archive, notifications, open, status],
+    () => ({
+      status,
+      notifications,
+      activeNotifications,
+      open,
+      archive,
+      refresh,
+    }),
+    [activeNotifications, archive, notifications, open, status, refresh],
   );
   return (
     <CourierNotificationsContext.Provider value={value}>

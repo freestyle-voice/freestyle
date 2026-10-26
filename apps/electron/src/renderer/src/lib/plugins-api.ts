@@ -42,9 +42,9 @@ export async function setPluginEnabled(
     {},
     timeout(FETCH_TIMEOUT_MS),
   );
-  const snapshot = settings.ok
-    ? ((await settings.json()) as Record<string, string>)
-    : {};
+  if (!settings.ok)
+    throw new Error("Couldn’t load plugin settings. Try again.");
+  const snapshot = (await settings.json()) as Record<string, string>;
   const disabled = new Set(parseDisabledPlugins(snapshot.disabled_plugins));
   if (enabled) disabled.delete(specifier);
   else disabled.add(specifier);
@@ -60,7 +60,14 @@ export async function setPluginEnabled(
     throw new Error(`failed to persist plugin state: HTTP ${put.status}`);
   }
   // Reload the server's registry so the change takes effect immediately.
-  await client.api.plugins.reload.$post({}, timeout(FETCH_TIMEOUT_MS));
+  const reloaded = await client.api.plugins.reload.$post(
+    {},
+    timeout(FETCH_TIMEOUT_MS),
+  );
+  if (!reloaded.ok)
+    throw new Error(
+      "Plugin settings were saved, but couldn’t be applied. Retry to reload plugins.",
+    );
   return listPlugins();
 }
 

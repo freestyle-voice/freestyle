@@ -158,11 +158,6 @@ export function dismissedNotificationsQueryOptions() {
 }
 
 /**
- * Connected-app catalog and status snapshot. Keep it warm across Settings
- * navigation, but refresh after five minutes so lifecycle changes made outside
- * the desktop app do not remain hidden for the full default cache lifetime.
- */
-/**
  * Shared QueryClient factory for the renderer. Defaults suit a desktop SPA:
  * - `refetchOnWindowFocus: false` — the user switches apps constantly; focus
  *   refetches would be noisy. Freshness is driven by explicit invalidation

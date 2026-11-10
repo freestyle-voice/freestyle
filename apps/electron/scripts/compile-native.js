@@ -58,6 +58,13 @@ function compileMacOS() {
 
   const swiftcArgs = (src, out, frameworks) => {
     const args = ["-O", src, "-o", out];
+    if (process.env.MACOSX_DEPLOYMENT_TARGET) {
+      const targetArch = arch === "x64" ? "x86_64" : arch;
+      args.push(
+        "-target",
+        `${targetArch}-apple-macosx${process.env.MACOSX_DEPLOYMENT_TARGET}`,
+      );
+    }
     for (const fw of frameworks) {
       args.push("-framework", fw);
     }

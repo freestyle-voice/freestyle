@@ -475,6 +475,7 @@ test("signed-in setup still offers account-free models and respects text deliver
   page,
 }) => {
   await fixtures(page, {
+    platform: "darwin",
     signedIn: true,
     ready: true,
     mic: "granted",

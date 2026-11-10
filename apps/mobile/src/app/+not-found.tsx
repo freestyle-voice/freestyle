@@ -14,6 +14,7 @@ import * as Sentry from "@sentry/react-native";
 import * as Clipboard from "expo-clipboard";
 import {
   Link,
+  Redirect,
   useGlobalSearchParams,
   usePathname,
   useSegments,
@@ -26,12 +27,17 @@ import { ThemedText } from "@/components/themed-text";
 import { ThemedView } from "@/components/themed-view";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
+import { redirectSystemPath } from "./+native-intent";
 
 export default function NotFound() {
   const theme = useTheme();
   // What the router actually tried to open — the single most useful thing to
   // see when a deep link misbehaves.
   const pathname = usePathname();
+  const legacyDestination = redirectSystemPath({
+    path: pathname,
+    initial: false,
+  });
   const segments = useSegments();
   const params = useGlobalSearchParams();
   const [copied, setCopied] = useState(false);
@@ -47,17 +53,20 @@ export default function NotFound() {
   useEffect(() => {
     // Report once per distinct path so a real-device miss is debuggable
     // remotely. Non-fatal — this screen is itself the user-facing handling.
+    if (legacyDestination !== pathname) return;
     Sentry.captureMessage(`Unmatched route: ${pathname}`, {
       level: "warning",
       extra: { pathname, segments, params },
     });
-  }, [pathname, segments, params]);
+  }, [pathname, segments, params, legacyDestination]);
 
   const copy = async () => {
     await Clipboard.setStringAsync(details);
     setCopied(true);
     setTimeout(() => setCopied(false), 1800);
   };
+
+  if (legacyDestination !== pathname) return <Redirect href="/(app)/(tabs)" />;
 
   return (
     <ThemedView style={styles.container}>

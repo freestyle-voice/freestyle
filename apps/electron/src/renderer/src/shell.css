@@ -1,7 +1,5 @@
 /*
- * AppShell renders before every route, including the cold Dictate route. Keep
- * titlebar rules here rather than in the lazy Remix chunk so the selector
- * cannot briefly fall back to unstyled inline content at startup.
+ * Shared titlebar and sidebar geometry stays present during route loading.
  */
 .glass-content-titlebar {
   position: absolute;
@@ -18,7 +16,7 @@
   height: 44px;
 }
 
-.remix-sidebar-titlebar {
+.sidebar-titlebar {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -26,49 +24,8 @@
   padding: 10px 20px 8px;
 }
 
-.remix-workspace-switcher {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: 0;
-  border-radius: 6px;
-  margin: -4px -6px;
-  padding: 6px;
-  background: transparent;
-  color: var(--foreground);
-  font-family: "DM Sans", system-ui, sans-serif;
-  font-size: 20px;
-  font-weight: 560;
-  letter-spacing: -0.035em;
-  line-height: 1;
-  outline: none;
-  transition: color 120ms ease, background 120ms ease, box-shadow 120ms ease;
-}
-
-.remix-workspace-switcher:is(:hover, [data-state="open"]) {
-  background: var(--secondary);
-  box-shadow: inset 0 0 0 1px var(--border);
-}
-
-.remix-workspace-switcher:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 4px;
-}
-
-.remix-workspace-switcher svg {
-  width: 16px;
-  height: 16px;
-  color: var(--muted-foreground);
-  stroke-width: 1.8;
-  transition: color 120ms ease;
-}
-
-.remix-workspace-switcher:is(:hover, [data-state="open"]) svg {
-  color: var(--primary);
-}
-
 /* A quiet environment marker that reads as part of the titlebar, not a button. */
-.remix-dev-badge {
+.dev-badge {
   display: inline-flex;
   height: 18px;
   flex: 0 0 auto;
@@ -83,36 +40,6 @@
   font-weight: 700;
   letter-spacing: 0.14em;
   line-height: 1;
-}
-
-.remix-session-search-trigger {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  margin-left: auto;
-  place-items: center;
-  border: 0;
-  border-radius: 7px;
-  padding: 0;
-  background: transparent;
-  color: var(--muted-foreground);
-  transition: color 120ms ease, background 120ms ease;
-}
-
-.remix-session-search-trigger:hover {
-  background: var(--secondary);
-  color: var(--foreground);
-}
-
-.remix-session-search-trigger:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
-
-.remix-session-search-trigger svg {
-  width: 20px;
-  height: 20px;
-  stroke-width: 1.8;
 }
 
 /* Collapsing preserves a quiet, fixed-width navigation rail. */
@@ -204,12 +131,6 @@
   background: var(--secondary);
   color: var(--primary);
   box-shadow: inset 2px 0 0 var(--primary);
-}
-
-.sidebar-rail-workspace {
-  border-color: var(--border);
-  background: var(--card);
-  color: var(--foreground);
 }
 
 .sidebar-rail-button:disabled {

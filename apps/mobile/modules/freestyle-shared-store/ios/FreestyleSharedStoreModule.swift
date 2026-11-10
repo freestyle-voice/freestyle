@@ -17,7 +17,6 @@ import ExpoModulesCore
 /// Team ID at runtime and is sandboxed to Freestyle's own targets.
 public class FreestyleSharedStoreModule: Module {
     private let bridge = FreestyleDictationBridge()
-    private let keyboardModeKey = "com.freestylevoice.keyboard.mode"
     /// Retained so the CFNotificationCenter observer can be removed on teardown.
     private var observing = false
 
@@ -117,14 +116,10 @@ public class FreestyleSharedStoreModule: Module {
             self.bridge.keyboardLastActive()
         }
 
-        /// The keyboard owns this tiny UI choice and writes it directly into
-        /// the App Group. Keeping it outside the dictation wire struct lets us
-        /// evolve keyboard affordances without breaking the paired protocol.
+        /// Compatibility for older JS callers; persisted modes are ignored.
         Function("keyboardMode") { () -> String in
-            let value = UserDefaults(suiteName: FreestyleDictationBridge.appGroupID)?.string(
-                forKey: self.keyboardModeKey
-            )
-            return value == "remix" ? "remix" : "dictate"
+            // Ignore historical stored mode without mutating user preferences.
+            return "dictate"
         }
 
         // MARK: Darwin command notification → JS event

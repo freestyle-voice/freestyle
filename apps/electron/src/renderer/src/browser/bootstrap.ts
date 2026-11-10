@@ -12,8 +12,7 @@ const scenario = parseScenario(
   new URLSearchParams(location.search).get("scenario"),
 );
 const diagnostics = { errors: [] as string[], missingFixtures: [] as string[] };
-// MCP deliberately uses the local transport. In this host it must use the
-// same isolated proxy, never a desktop process that happens to occupy 4649.
+// Browser previews use their isolated API host.
 configureLocalApiBase(location.origin);
 const unsupported = (action: string) => {
   window.dispatchEvent(
@@ -30,10 +29,7 @@ window.api = createBrowserApi(
       setItem: (key, value) => localStorage.setItem(key, value),
     },
     navigate: (route) => {
-      if (
-        location.pathname.endsWith("pill.html") ||
-        location.pathname.endsWith("notification.html")
-      ) {
+      if (location.pathname.endsWith("pill.html")) {
         location.href = `./index.html${location.search}#${route}`;
       } else location.hash = route;
     },
@@ -117,9 +113,6 @@ mountPreviewToolbar(mode, scenario);
 async function startRenderer(): Promise<void> {
   if (location.pathname.endsWith("pill.html")) {
     await import("../components/pill");
-  } else if (location.pathname.endsWith("notification.html")) {
-    if (mode === "fixtures") await import("./notification-preview");
-    else await import("../components/notification");
   } else {
     await import("../dashboard");
   }

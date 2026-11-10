@@ -75,19 +75,13 @@ describe("dashboard startup rendering", () => {
   });
 
   it("starts read-only data queries while authentication is still checking", async () => {
-    const [api, auth, history, panel, sessions, shell, upgrade] =
-      await Promise.all([
-        readFile(resolve(rendererRoot, "lib/api.ts"), "utf8"),
-        readFile(resolve(rendererRoot, "lib/auth-context.tsx"), "utf8"),
-        readFile(resolve(rendererRoot, "pages/history.tsx"), "utf8"),
-        readFile(resolve(rendererRoot, "components/panel.tsx"), "utf8"),
-        readFile(
-          resolve(rendererRoot, "components/remix-session-context.tsx"),
-          "utf8",
-        ),
-        readFile(resolve(rendererRoot, "shell.tsx"), "utf8"),
-        readFile(resolve(rendererRoot, "components/upgrade-modal.tsx"), "utf8"),
-      ]);
+    const [api, auth, history, shell, upgrade] = await Promise.all([
+      readFile(resolve(rendererRoot, "lib/api.ts"), "utf8"),
+      readFile(resolve(rendererRoot, "lib/auth-context.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "pages/history.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "shell.tsx"), "utf8"),
+      readFile(resolve(rendererRoot, "components/upgrade-modal.tsx"), "utf8"),
+    ]);
 
     expect(api).toContain("export function subscribeToUnauthorized");
     expect(api).toContain("fetch: resolvedClientFetch");
@@ -95,29 +89,11 @@ describe("dashboard startup rendering", () => {
     expect(auth).toContain("resetAccountCaches(queryClient)");
     expect(auth).toContain("refetchInterval");
     expect(auth).toContain("enabled: !forcedSignedOut");
-    expect(sessions).toContain("enabled: canChat");
     expect(shell).toContain("queryFn: () => listPlugins()");
-    expect(sessions).toContain("const availability = useRemixAvailability();");
     expect(history).toContain('aria-label="Loading transcription history"');
     expect(history).toContain("{searchRow}");
-    expect(panel).toContain("RemixWorkspaceLoadingSkeleton");
-    expect(panel).toContain('aria-label="Loading conversation"');
     expect(upgrade).toContain("useCheckoutState");
     expect(upgrade).toContain('open || checkoutStatus === "pending"');
-  });
-
-  it("lets the notification token request establish availability", async () => {
-    const [notification, courierSession] = await Promise.all([
-      readFile(resolve(rendererRoot, "components/notification.tsx"), "utf8"),
-      readFile(resolve(rendererRoot, "lib/courier-session.ts"), "utf8"),
-    ]);
-
-    expect(notification).not.toContain("initApiBase();");
-    expect(notification).toContain('import "../notification.css"');
-    expect(notification).not.toContain("tavern.css");
-    expect(notification).not.toContain("tavern-bub");
-    expect(courierSession).toContain("await resolveApiBase();");
-    expect(courierSession).not.toContain("await initApiBase();");
   });
 
   it("shares main-process readiness while startup consumers wait for the server", async () => {

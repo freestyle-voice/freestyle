@@ -6,10 +6,8 @@
  * The keycode is resolved from the active keyboard layout so this works
  * on non-QWERTY layouts (Dvorak, AZERTY, ...).
  *
- * Usage: macos-fast-paste [key]
- *   key — the letter to chord with Command. Defaults to "v" (paste), so
- *         existing callers that pass no argument are unaffected. Commands
- *         pass "c" to copy the focused app's selection.
+ * Usage: macos-fast-paste
+ * Injects Command+V using the active keyboard layout.
  *
  * Exit codes:
  *   0 - success
@@ -55,35 +53,19 @@ func keyCode(for character: Character) -> CGKeyCode? {
 /// QWERTY positions, used only when the layout lookup above comes up empty —
 /// on a layout where these are wrong, the chord is wrong either way, and
 /// posting the usual key is a better guess than posting nothing.
-let fallbackKeyCodes: [Character: CGKeyCode] = ["v": 0x09, "c": 0x08]
-
 if !AXIsProcessTrusted() {
     exit(2)
 }
 
-let arguments = Array(CommandLine.arguments.dropFirst())
-let requested = arguments.first?.lowercased() ?? "v"
-// An optional trailing "shift" widens the chord (Cmd+Shift+<key>) — used for
-// redo (Cmd+Shift+Z). No other modifiers are supported by design.
-let withShift = arguments.dropFirst().first?.lowercased() == "shift"
-guard requested.count == 1, let character = requested.first, character.isLetter else {
-    FileHandle.standardError.write("expected a single letter, got \"\(requested)\"\n".data(using: .utf8)!)
-    exit(1)
-}
-
-guard let chordKey = keyCode(for: character) ?? fallbackKeyCodes[character] else {
-    FileHandle.standardError.write("no key for \"\(character)\" on the active layout\n".data(using: .utf8)!)
-    exit(1)
-}
+let chordKey = keyCode(for: "v") ?? CGKeyCode(0x09)
 
 guard let keyDown = CGEvent(keyboardEventSource: nil, virtualKey: chordKey, keyDown: true),
       let keyUp = CGEvent(keyboardEventSource: nil, virtualKey: chordKey, keyDown: false) else {
     exit(1)
 }
 
-let chordFlags: CGEventFlags = withShift ? [.maskCommand, .maskShift] : .maskCommand
-keyDown.flags = chordFlags
-keyUp.flags = chordFlags
+keyDown.flags = .maskCommand
+keyUp.flags = .maskCommand
 
 // Tag these synthetic events so our own key listener can recognize and ignore
 // them. Without this, the listener sees the Cmd+V flag mask on the injected V

@@ -184,32 +184,10 @@ function buildLlmRows(
     onModelSelected?: () => void;
   },
   selectedModel: ConfiguredModel | undefined,
-  type: "llm" | "remix",
   inventory: AvailableModel[],
   onConnect: (provider: string) => void,
 ): Row[] {
   const rows: Row[] = [];
-
-  if (type === "remix") {
-    rows.push({
-      key: "freestyle-cloud/remix",
-      name: "Freestyle Cloud",
-      source: "cloud",
-      provider: "freestyle-cloud",
-      meta: "Managed · no API key needed",
-      curated: true,
-      selected: selectedModel?.provider === "freestyle-cloud",
-      hasKey: true,
-      onSelect: () =>
-        h.onPickCloud({
-          provider_id: "freestyle-cloud",
-          provider_name: "Freestyle Cloud",
-          model_id: "freestyle-cloud/remix",
-          model_name: "Freestyle Cloud",
-          type: "llm",
-        }),
-    });
-  }
 
   for (const model of inventory) {
     const providerId = model.provider_id;
@@ -251,10 +229,7 @@ function buildLlmRows(
 
   const names = new Set(m.localLlm.models);
   for (const configured of m.configured) {
-    if (
-      configured.provider === "local-llm" &&
-      (configured.type === "llm" || configured.type === "remix")
-    ) {
+    if (configured.provider === "local-llm" && configured.type === "llm") {
       names.add(configured.model_id.replace(/^local-llm\//, ""));
     }
   }
@@ -275,7 +250,7 @@ function buildLlmRows(
         selectedModel?.model_id === modelId,
       status: "ready",
       onSelect: () =>
-        void m.selectLocalLlmModel(name, type).then((selected) => {
+        void m.selectLocalLlmModel(name).then((selected) => {
           if (selected) (h.onModelSelected ?? h.onClose)();
         }),
     });
@@ -301,7 +276,7 @@ export function ModelList({
   onPickLocalVoice,
   onRequestDeleteLocal,
 }: {
-  type: "voice" | "llm" | "remix";
+  type: "voice" | "llm";
   voiceView?: "tiers" | "all" | "local" | "cloud";
   llmView?: "tiers" | "all" | "local" | "cloud";
   m: UseModels;
@@ -336,7 +311,6 @@ export function ModelList({
       if (voiceView === "all") return "all";
       return voiceView ?? "tiers";
     }
-    if (type === "remix") return "all";
     if (llmView === "cloud") return "cloud";
     if (llmView === "local") return "local";
     if (llmView === "all") return "all";
@@ -402,8 +376,7 @@ export function ModelList({
       : buildLlmRows(
           m,
           { onPickCloud, onClose, onModelSelected },
-          type === "remix" ? m.defaultRemix : m.defaultLlm,
-          type,
+          m.defaultLlm,
           providerModels,
           (provider) => {
             if (!providerSaving) setConnectingProvider(provider);
@@ -461,15 +434,9 @@ export function ModelList({
         : cloudOnly
           ? "Cloud models"
           : "All voice models"
-      : type === "remix"
-        ? localOnly
-          ? "Remix endpoint models"
-          : cloudOnly
-            ? "Cloud Remix models"
-            : "All Remix models"
-        : localOnly
-          ? "Cleanup endpoint models"
-          : "Cleanup models";
+      : localOnly
+        ? "Cleanup endpoint models"
+        : "Cleanup models";
 
   return (
     <>
@@ -880,7 +847,7 @@ function ListEmptyState({
   showLlmConnect,
   connected,
 }: {
-  type: "voice" | "llm" | "remix";
+  type: "voice" | "llm";
   localOnly: boolean;
   showLlmConnect: boolean;
   connected: boolean | null;

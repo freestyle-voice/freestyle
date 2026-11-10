@@ -28,8 +28,6 @@ interface WaveformProps {
   /** Live input level [0, 1], shared for smooth UI-thread animation. */
   level: SharedValue<number>;
   active: boolean;
-  /** A compact meter for the live chat composer. */
-  compact?: boolean;
 }
 
 function Bar({
@@ -90,7 +88,7 @@ function Bar({
  * flat when silent. Mirrors the desktop pill's level-driven, fast-attack /
  * slow-decay behavior.
  */
-export function Waveform({ level, active, compact = false }: WaveformProps) {
+export function Waveform({ level, active }: WaveformProps) {
   const activeSv = useSharedValue(0);
   const reduceMotion = useReducedMotion();
   // Smoothed loudness with asymmetric attack/decay. Kept in its own shared
@@ -112,11 +110,11 @@ export function Waveform({ level, active, compact = false }: WaveformProps) {
       : withTiming(active ? 1 : 0, { duration: 260 });
   }, [active, activeSv, reduceMotion]);
 
-  const barCount = compact ? 12 : DEFAULT_BAR_COUNT;
-  const minHeight = compact ? 3 : DEFAULT_MIN_HEIGHT;
-  const maxHeight = compact ? 18 : DEFAULT_MAX_HEIGHT;
+  const barCount = DEFAULT_BAR_COUNT;
+  const minHeight = DEFAULT_MIN_HEIGHT;
+  const maxHeight = DEFAULT_MAX_HEIGHT;
   return (
-    <View style={[styles.row, { height: maxHeight + 8, gap: compact ? 2 : 4 }]}>
+    <View style={[styles.row, { height: maxHeight + 8, gap: 4 }]}>
       {Array.from({ length: barCount }).map((_, i) => (
         <Bar
           key={i}

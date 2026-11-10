@@ -3,10 +3,8 @@ import "./fonts.css";
 
 import { CloudSignInModal } from "@renderer/components/cloud-signin-modal";
 import { ErrorBoundary } from "@renderer/components/error-boundary";
-import { RemixSessionProvider } from "@renderer/components/remix-session-context";
 import { TooltipProvider } from "@renderer/components/ui/tooltip";
 import { UpgradeModalProvider } from "@renderer/components/upgrade-modal";
-import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import i18n, { initI18n } from "@renderer/i18n";
 import { resolveApiBase } from "@renderer/lib/api";
 import { CloudAuthProvider, useCloudAuth } from "@renderer/lib/auth-context";
@@ -16,12 +14,6 @@ import {
   installGlobalErrorHandlers,
   reportError,
 } from "@renderer/lib/report-error";
-import {
-  DEFAULT_WORKSPACE,
-  isWorkspace,
-  WORKSPACE_STORAGE_KEY,
-  workspaceHomeRoute,
-} from "@renderer/lib/workspace";
 import HelpPage from "@renderer/pages/help";
 import HistoryPage from "@renderer/pages/history";
 import { ModelsPageLoadingSkeleton } from "@renderer/pages/models/models-page-layout";
@@ -54,7 +46,6 @@ const PluginDetailPage = lazy(
 const PluginPage = lazy(() => import("@renderer/pages/plugins/plugin-page"));
 const PluginsPage = lazy(() => import("@renderer/pages/plugins/plugins"));
 const ProfilePage = lazy(() => import("@renderer/pages/profile"));
-const RemixPage = lazy(() => import("@renderer/pages/remix-workspace"));
 const SettingsPage = lazy(() => import("@renderer/pages/settings"));
 const TonePage = lazy(() => import("@renderer/pages/tone"));
 const VocabularyPage = lazy(() => import("@renderer/pages/vocabulary"));
@@ -98,7 +89,6 @@ type RouteFallbackCopy = {
 };
 
 const PAGE_FALLBACKS: Record<string, RouteFallbackCopy> = {
-  "/remix": { title: "Remix" },
   "/dictionary": {
     title: "Shortcuts",
     subtitle: "Shortcuts that expand as you speak. Say the key, get the value.",
@@ -118,13 +108,9 @@ const PAGE_FALLBACKS: Record<string, RouteFallbackCopy> = {
 const SETTINGS_FALLBACKS: Record<string, RouteFallbackCopy> = {
   application: { eyebrow: "Settings", title: "Application" },
   recording: { eyebrow: "Settings", title: "Dictation" },
-  remix: { eyebrow: "Settings", title: "Remix" },
-  mcp: { eyebrow: "Settings", title: "MCP connections" },
   display: { eyebrow: "Settings", title: "Appearance" },
   permissions: { eyebrow: "Settings", title: "Permissions" },
   data: { eyebrow: "Settings", title: "Data" },
-  notifications: { eyebrow: "Settings", title: "Notifications" },
-  connectedApps: { eyebrow: "Settings", title: "Connected apps" },
   billing: { eyebrow: "Settings", title: "Usage & billing" },
   network: { eyebrow: "Settings", title: "Network" },
 };
@@ -210,8 +196,7 @@ function PagePad(): React.JSX.Element {
 
 /**
  * Onboarding is an application concern. Keeping this guard above every normal
- * workspace route means a direct Remix link cannot turn the chat into a
- * first-run wizard.
+ * application route keeps first-run setup available before dictation.
  */
 function OnboardingOutlet(): React.JSX.Element {
   const { phase } = useCloudAuth();
@@ -224,20 +209,6 @@ function OnboardingOutlet(): React.JSX.Element {
     return <Navigate to="/onboarding" replace state={{ from: pathname }} />;
   }
   return <Outlet />;
-}
-
-/**
- * Resolve the startup route from the same local preference as the sidebar.
- * This keeps a restored Dictate sidebar and its right-hand page in lockstep
- * from the very first render, while direct Remix links still open Remix.
- */
-function DashboardHomeRedirect(): React.JSX.Element {
-  const [workspace] = usePersistentState(
-    WORKSPACE_STORAGE_KEY,
-    DEFAULT_WORKSPACE,
-    isWorkspace,
-  );
-  return <Navigate to={workspaceHomeRoute(workspace)} replace />;
 }
 
 // Analytics is captured server-side (see apps/server/src/lib/sentry.ts);
@@ -275,183 +246,177 @@ function mount(): void {
                 <ThemePreferenceBridge />
                 <TooltipProvider>
                   <CloudAuthProvider>
-                    <RemixSessionProvider>
-                      <UpgradeModalProvider>
-                        <CloudSignInModal />
-                        <Routes>
-                          <Route path="/" element={<DashboardHomeRedirect />} />
-                          <Route element={<AppShell />}>
-                            <Route element={<PagePad />}>
-                              <Route
-                                path="/onboarding"
-                                element={
-                                  <LazyRoute>
-                                    <OnboardingPage />
-                                  </LazyRoute>
-                                }
-                              />
-                              <Route element={<OnboardingOutlet />}>
+                    <UpgradeModalProvider>
+                      <CloudSignInModal />
+                      <Routes>
+                        <Route
+                          path="/"
+                          element={<Navigate to="/today" replace />}
+                        />
+                        <Route element={<AppShell />}>
+                          <Route element={<PagePad />}>
+                            <Route
+                              path="/onboarding"
+                              element={
+                                <LazyRoute>
+                                  <OnboardingPage />
+                                </LazyRoute>
+                              }
+                            />
+                            <Route element={<OnboardingOutlet />}>
+                              <Route path="/today" element={<HistoryPage />} />
+                              <Route element={<PagePad />}>
                                 <Route
-                                  path="/today"
-                                  element={<HistoryPage />}
+                                  path="/remix"
+                                  element={<Navigate to="/today" replace />}
                                 />
-                                <Route element={<PagePad />}>
-                                  <Route
-                                    path="/remix"
-                                    element={
-                                      <LazyRoute>
-                                        <RemixPage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/settings"
-                                    element={
-                                      <Navigate
-                                        to="/settings/transcription"
-                                        replace
-                                      />
-                                    }
-                                  />
-                                  <Route
-                                    path="/settings/companion"
-                                    element={
-                                      <Navigate
-                                        to="/settings/transcription"
-                                        replace
-                                      />
-                                    }
-                                  />
-                                  <Route
-                                    path="/settings/:section"
-                                    element={
-                                      <LazyRoute>
-                                        <SettingsPage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/settings/general"
-                                    element={
-                                      <Navigate
-                                        to="/settings/application"
-                                        replace
-                                      />
-                                    }
-                                  />
-                                  <Route
-                                    path="/models"
-                                    element={
-                                      <Navigate to="/settings/models" replace />
-                                    }
-                                  />
-                                  <Route
-                                    path="/dictionary"
-                                    element={
-                                      <LazyRoute>
-                                        <DictionaryPage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/vocabulary"
-                                    element={
-                                      <LazyRoute>
-                                        <VocabularyPage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/settings/formats"
-                                    element={<Navigate to="/tone" replace />}
-                                  />
-                                  <Route
-                                    path="/tone"
-                                    element={
-                                      <LazyRoute>
-                                        <TonePage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/settings/models"
-                                    element={
-                                      <LazyRoute>
-                                        <ModelsPage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/settings/dictionary"
-                                    element={
-                                      <Navigate to="/dictionary" replace />
-                                    }
-                                  />
-                                  <Route
-                                    path="/settings/vocabulary"
-                                    element={
-                                      <Navigate to="/vocabulary" replace />
-                                    }
-                                  />
-                                  <Route
-                                    path="/settings/tone"
-                                    element={<Navigate to="/tone" replace />}
-                                  />
-                                  <Route
-                                    path="/settings/history"
-                                    element={
-                                      <Navigate to="/settings/data" replace />
-                                    }
-                                  />
-                                  <Route
-                                    path="/help"
-                                    element={
-                                      <LazyRoute>
-                                        <HelpPage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/profile"
-                                    element={
-                                      <LazyRoute>
-                                        <ProfilePage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/plugins"
-                                    element={
-                                      <LazyRoute>
-                                        <PluginsPage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/plugins/:slug"
-                                    element={
-                                      <LazyRoute>
-                                        <PluginDetailPage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                  <Route
-                                    path="/plugins/:slug/:pageId"
-                                    element={
-                                      <LazyRoute>
-                                        <PluginPage />
-                                      </LazyRoute>
-                                    }
-                                  />
-                                </Route>
+                                <Route
+                                  path="/settings"
+                                  element={
+                                    <Navigate
+                                      to="/settings/transcription"
+                                      replace
+                                    />
+                                  }
+                                />
+                                <Route
+                                  path="/settings/companion"
+                                  element={
+                                    <Navigate
+                                      to="/settings/transcription"
+                                      replace
+                                    />
+                                  }
+                                />
+                                <Route
+                                  path="/settings/:section"
+                                  element={
+                                    <LazyRoute>
+                                      <SettingsPage />
+                                    </LazyRoute>
+                                  }
+                                />
+                                <Route
+                                  path="/settings/general"
+                                  element={
+                                    <Navigate
+                                      to="/settings/application"
+                                      replace
+                                    />
+                                  }
+                                />
+                                <Route
+                                  path="/models"
+                                  element={
+                                    <Navigate to="/settings/models" replace />
+                                  }
+                                />
+                                <Route
+                                  path="/dictionary"
+                                  element={
+                                    <LazyRoute>
+                                      <DictionaryPage />
+                                    </LazyRoute>
+                                  }
+                                />
+                                <Route
+                                  path="/vocabulary"
+                                  element={
+                                    <LazyRoute>
+                                      <VocabularyPage />
+                                    </LazyRoute>
+                                  }
+                                />
+                                <Route
+                                  path="/settings/formats"
+                                  element={<Navigate to="/tone" replace />}
+                                />
+                                <Route
+                                  path="/tone"
+                                  element={
+                                    <LazyRoute>
+                                      <TonePage />
+                                    </LazyRoute>
+                                  }
+                                />
+                                <Route
+                                  path="/settings/models"
+                                  element={
+                                    <LazyRoute>
+                                      <ModelsPage />
+                                    </LazyRoute>
+                                  }
+                                />
+                                <Route
+                                  path="/settings/dictionary"
+                                  element={
+                                    <Navigate to="/dictionary" replace />
+                                  }
+                                />
+                                <Route
+                                  path="/settings/vocabulary"
+                                  element={
+                                    <Navigate to="/vocabulary" replace />
+                                  }
+                                />
+                                <Route
+                                  path="/settings/tone"
+                                  element={<Navigate to="/tone" replace />}
+                                />
+                                <Route
+                                  path="/settings/history"
+                                  element={
+                                    <Navigate to="/settings/data" replace />
+                                  }
+                                />
+                                <Route
+                                  path="/help"
+                                  element={
+                                    <LazyRoute>
+                                      <HelpPage />
+                                    </LazyRoute>
+                                  }
+                                />
+                                <Route
+                                  path="/profile"
+                                  element={
+                                    <LazyRoute>
+                                      <ProfilePage />
+                                    </LazyRoute>
+                                  }
+                                />
+                                <Route
+                                  path="/plugins"
+                                  element={
+                                    <LazyRoute>
+                                      <PluginsPage />
+                                    </LazyRoute>
+                                  }
+                                />
+                                <Route
+                                  path="/plugins/:slug"
+                                  element={
+                                    <LazyRoute>
+                                      <PluginDetailPage />
+                                    </LazyRoute>
+                                  }
+                                />
+                                <Route
+                                  path="/plugins/:slug/:pageId"
+                                  element={
+                                    <LazyRoute>
+                                      <PluginPage />
+                                    </LazyRoute>
+                                  }
+                                />
                               </Route>
                             </Route>
                           </Route>
+                        </Route>
 
-                          <Route path="*" element={<NotFoundPage />} />
-                        </Routes>
-                      </UpgradeModalProvider>
-                    </RemixSessionProvider>
+                        <Route path="*" element={<NotFoundPage />} />
+                      </Routes>
+                    </UpgradeModalProvider>
                   </CloudAuthProvider>
                 </TooltipProvider>
               </QueryClientProvider>

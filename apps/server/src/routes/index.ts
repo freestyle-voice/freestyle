@@ -11,34 +11,23 @@ import {
   captureException,
   setPersonProperties,
 } from "../lib/sentry.js";
-import agentRoute from "./agent.js";
-import agentOsRoute from "./agent-os.js";
-import agentThreadsRoute from "./agent-threads.js";
 import apiKeys from "./api-keys.js";
-import attentionRoute from "./attention.js";
 import auth from "./auth.js";
 import billing from "./billing.js";
-import brainRoute from "./brain.js";
 import configRoute from "./config.js";
-import connectorsRoute from "./connectors.js";
 import dictionary from "./dictionary.js";
 import dismissedNotifications from "./dismissed-notifications.js";
 import eventsRoute from "./events.js";
 import history from "./history.js";
-import mcpRoute from "./mcp.js";
 import mlxAsr from "./mlx-asr.js";
 import models from "./models.js";
-import notificationsRoute from "./notifications.js";
 import org from "./org.js";
 import outputRoute from "./output.js";
 import pluginsRoute from "./plugins.js";
 import postProcessRoute from "./post-process-route.js";
 import pricing from "./pricing.js";
-import remixRoute from "./remix.js";
-import scheduledRoute from "./scheduled.js";
 import settings from "./settings.js";
 import streamRoute from "./stream.js";
-import suggestionsRoute from "./suggestions.js";
 import transcribe, { transcribePreWarmRoute } from "./transcribe.js";
 import usage from "./usage.js";
 import vocabulary from "./vocabulary.js";
@@ -92,12 +81,8 @@ const apiRouter = new Hono()
   .route("/settings", settings)
   .route("/keys", apiKeys)
   .route("/config", configRoute)
-  .route("/connectors", connectorsRoute)
-  .route("/scheduled", scheduledRoute)
-  .route("/suggestions", suggestionsRoute)
   .route("/auth", auth)
   .route("/models", models)
-  .route("/mcp", mcpRoute)
   .route("/transcribe", transcribe)
   .route("/transcribe", transcribePreWarmRoute)
   .route("/history", history)
@@ -107,15 +92,6 @@ const apiRouter = new Hono()
   .route("/whisper", whisper)
   .route("/mlx-asr", mlxAsr)
   .route("/post-process", postProcessRoute)
-  // This must precede /agent: that router has a dynamic /thread/:threadId
-  // route which would otherwise treat the literal "list" and "latest" as ids.
-  .route("/agent/thread", agentThreadsRoute)
-  .route("/agent", agentRoute)
-  .route("/attention", attentionRoute)
-  .route("/remix", remixRoute)
-  .route("/agent-os", agentOsRoute)
-  .route("/brain", brainRoute)
-  .route("/notifications", notificationsRoute)
   .route("/output", outputRoute)
   .route("/events", eventsRoute)
   .route("/usage", usage)

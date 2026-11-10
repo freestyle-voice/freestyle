@@ -32,11 +32,6 @@ function setup() {
 describe("browser platform", () => {
   it("does not pretend native actions succeeded", async () => {
     const { api, host } = setup();
-    expect(await api.remixSelectAll()).toEqual({
-      ok: false,
-      reason: "desktop_required",
-    });
-    expect(await api.pasteRemixResult("hello")).toBe(false);
     await expect(api.pasteText("hello")).rejects.toThrow("desktop");
     expect(await api.checkAccessibilityPermission()).toBe(false);
     api.installUpdate();
@@ -67,26 +62,6 @@ describe("browser platform", () => {
     expect([...data.values()]).not.toContain("secret");
   });
 
-  it("persists local display titles and tolerates corrupt or inaccessible storage", async () => {
-    const { api, data, host } = setup();
-    await api.setRemixSessionTitle("thread-1", "Browser title");
-    expect(await api.getRemixSessionTitles()).toEqual({
-      "thread-1": "Browser title",
-    });
-    await api.setRemixSessionTitle("thread-1", null);
-    expect(await api.getRemixSessionTitles()).toEqual({});
-    data.set("freestyle.browser.titles", "not JSON");
-    expect(await api.getRemixSessionTitles()).toEqual({});
-    host.storage.getItem = () => {
-      throw new Error("blocked");
-    };
-    host.storage.setItem = () => {
-      throw new Error("blocked");
-    };
-    expect(await api.getRemixSessionTitles()).toEqual({});
-    expect(await api.setRemixSessionTitle("thread-1", "New")).toBe(false);
-  });
-
   it("unsubscribes events and uses browser clipboard and microphone permissions", async () => {
     const { api, host } = setup();
     const listener = vi.fn();
@@ -98,9 +73,5 @@ describe("browser platform", () => {
     await api.copyText("hello");
     expect(host.writeClipboard).toHaveBeenCalledWith("hello");
     expect(await api.requestMicPermission()).toBe("granted");
-    expect(await api.remixGetClipboard()).toEqual({
-      ok: true,
-      text: "copied text",
-    });
   });
 });

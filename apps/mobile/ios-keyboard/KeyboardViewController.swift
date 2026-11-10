@@ -63,7 +63,7 @@ extension Color {
     init(hex: UInt32) { self.init(UIColor(hex: hex)) }
 }
 
-/// Freestyle voice keyboard — a compact Dictate and Remix voice extension.
+/// Freestyle voice keyboard — a compact dictation extension.
 ///
 /// iOS blocks microphone capture inside keyboard extensions (every capture API —
 /// AVAudioEngine, RemoteIO, AVAudioRecorder — fails on-device, matching Apple's
@@ -81,15 +81,12 @@ extension Color {
 ///     `insertionToken` so each result inserts exactly once) and acks it.
 ///
 /// Users switch to their normal system keyboard (via the globe key) for regular
-/// typing. This keyboard is intentionally small: Dictate pastes speech, while
-/// Remix sends a spoken request to the cloud agent and only inserts its final
-/// result.
+/// typing. This keyboard pastes the final transcript into the current field.
 final class KeyboardViewController: UIInputViewController {
 
     // MARK: - Bridge / session state
 
     private let bridge = FreestyleDictationBridge()
-    private let keyboardModeKey = "com.freestylevoice.keyboard.mode"
     private var statePollTimer: Timer?
     private var observingSharedState = false
     private var lastInsertedToken = ""
@@ -104,7 +101,6 @@ final class KeyboardViewController: UIInputViewController {
     private var deleteRepeatCount = 0
 
     private var micHost: UIHostingController<MicControl>?
-    private var modeControl: UISegmentedControl?
     private let statusScroll = UIScrollView()
     private let statusLabel = UILabel()
     private var hintLabel: UILabel?
@@ -174,11 +170,6 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private var isDark: Bool { traitCollection.userInterfaceStyle == .dark }
-    private var isRemixMode: Bool {
-        UserDefaults(suiteName: FreestyleDictationBridge.appGroupID)?
-            .string(forKey: keyboardModeKey) == "remix"
-    }
-
     // MARK: - Layout
 
     /// Standard iOS keyboard height (4 rows × 46pt + 3 gaps × 9pt + toolbar 44pt
@@ -206,17 +197,6 @@ final class KeyboardViewController: UIInputViewController {
         statusScroll.translatesAutoresizingMaskIntoConstraints = false
         statusScroll.addSubview(statusLabel)
         view.addSubview(statusScroll)
-
-        // Two compact modes are all the extension needs: dictate inserts the
-        // transcript, Remix sends a spoken request to the agent and streams its
-        // question or finished result back into this same small status area.
-        let mode = UISegmentedControl(items: ["Remix", "Dictate"])
-        mode.selectedSegmentIndex = isRemixMode ? 0 : 1
-        mode.selectedSegmentTintColor = Freestyle.palette(dark: isDark).primary
-        mode.addTarget(self, action: #selector(handleModeChange), for: .valueChanged)
-        mode.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(mode)
-        modeControl = mode
 
         // --- Mic control (center, prominent). Depending on session state it
         // either deep-links (SwiftUI `Link`, to arm the session) or toggles
@@ -330,12 +310,8 @@ final class KeyboardViewController: UIInputViewController {
             // scroll frame is decoupled from its content size.
             statusScroll.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
             statusScroll.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            mode.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            mode.topAnchor.constraint(equalTo: view.topAnchor, constant: 6),
-            mode.widthAnchor.constraint(equalToConstant: 148),
-            mode.heightAnchor.constraint(equalToConstant: 26),
 
-            statusScroll.topAnchor.constraint(equalTo: mode.bottomAnchor, constant: 5),
+            statusScroll.topAnchor.constraint(equalTo: view.topAnchor, constant: 11),
             statusScroll.heightAnchor.constraint(equalToConstant: 30),
 
             // Status label — pinned to the scroll's content, width locked to the
@@ -419,7 +395,7 @@ final class KeyboardViewController: UIInputViewController {
         // No live session: deep-link to arm. Send the `start` command first so
         // the app has it waiting when it launches.
         return MicControl(
-            mode: .link(destination: URL(string: isRemixMode ? "freestyle://remix" : "freestyle://dictate")!),
+            mode: .link(destination: URL(string: "freestyle://dictate")!),
             dark: dark,
             onLinkActivate: { [weak self] in self?.bridge.sendCommand(.start) }
         )
@@ -447,16 +423,6 @@ final class KeyboardViewController: UIInputViewController {
     // MARK: - Actions
 
     @objc private func handleNextKeyboard() { advanceToNextInputMode() }
-
-    @objc private func handleModeChange() {
-        let remix = modeControl?.selectedSegmentIndex == 0
-        UserDefaults(suiteName: FreestyleDictationBridge.appGroupID)?
-            .set(remix ? "remix" : "dictate", forKey: keyboardModeKey)
-        // A mode change is deliberately a new turn. It prevents a half-finished
-        // dictation from being mistaken for an agent instruction (or vice versa).
-        bridge.sendCommand(.disarm)
-        syncSharedState()
-    }
 
     // MARK: - Delete (with hold-to-repeat)
 
@@ -588,17 +554,6 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
 
-        // In Remix mode the app publishes the generated response as it
-        // arrives. Keep that feedback in the compact status area while the
-        // keyboard waits for either a clarification or the final paste.
-        if isRemixMode,
-           state.phase == .transcribing,
-           !state.partialTranscript.isEmpty {
-            setStatus(state.partialTranscript, mono: false)
-            setHint("ONE SEC")
-            return
-        }
-
         let hint: String
         let status: String?
         if alive {
@@ -607,19 +562,19 @@ final class KeyboardViewController: UIInputViewController {
                 status = "Waking Freestyle…"; hint = "ONE SEC"
             case .armed:
                 status = state.statusMessage.isEmpty ? nil : state.statusMessage
-                hint = isRemixMode ? "TAP TO ASK REMIX" : "TAP TO SPEAK"
+                hint = "TAP TO SPEAK"
             case .capturing:
                 status = "Listening…"; hint = "TAP TO STOP"
             case .transcribing:
-                status = isRemixMode ? "Remix is thinking…" : "Polishing…"; hint = "ONE SEC"
+                status = "Polishing…"; hint = "ONE SEC"
             case .ready:
-                status = nil; hint = isRemixMode ? "PASTED ✓" : "INSERTED ✓"
+                status = nil; hint = "INSERTED ✓"
             case .idle, .failed:
                 status = nil; hint = "TAP TO DICTATE"
             }
         } else {
             status = nil
-            hint = isRemixMode ? "TAP TO ASK REMIX" : "TAP TO DICTATE"
+            hint = "TAP TO DICTATE"
         }
 
         if let status {
@@ -691,7 +646,6 @@ final class KeyboardViewController: UIInputViewController {
     private func applyColors() {
         let dark = isDark
         let c = Freestyle.palette(dark: dark)
-        modeControl?.selectedSegmentTintColor = c.primary
 
         // Match the default Apple keyboard appearance — use system colors for
         // the background and keys so it feels native. Only the mic button

@@ -25,15 +25,7 @@ const unauthorizedListeners = new Set<() => void>();
 async function isDefinitiveUnauthorized(response: Response): Promise<boolean> {
   if (response.status !== 401) return false;
 
-  // A durable Remix observer can outlive an account change. Its ownership
-  // boundary deliberately returns 401 to reject that stale observer, but the
-  // device may still have a valid current session. Keep that request scoped to
-  // its own recovery error instead of clearing the whole renderer into sign-in.
-  const body = await response
-    .clone()
-    .json()
-    .catch(() => null);
-  return body?.error !== "remix_account_changed";
+  return true;
 }
 
 /**

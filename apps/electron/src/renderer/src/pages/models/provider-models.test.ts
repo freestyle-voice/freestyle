@@ -107,12 +107,12 @@ describe("connected provider model inventory", () => {
     );
   });
 
-  it("keeps every configured text model missing from discovery with one routing prefix", () => {
+  it("keeps cleanup models missing from discovery and excludes legacy agent selections", () => {
     const models = withConfiguredCleanupModels(catalog, [
       {
         provider: "openrouter",
-        model_id: "openrouter/openai/gpt-shared",
-        model_name: "Duplicate",
+        model_id: "openrouter/private-agent",
+        model_name: "Retired agent model",
         type: "remix",
       },
       {

@@ -346,14 +346,6 @@ interface UseHotkeyRecorderReturn {
 }
 
 export interface UseHotkeyRecorderOptions {
-  /**
-   * Which hotkey is being recorded. Both use the same native recorder, but
-   * only "dictation" hands the captured accelerator back to
-   * `stopHotkeyRecording`, which is what re-registers the dictation listener.
-   * The remix listener is re-registered from its own setting instead, so
-   * recording one must not overwrite the other.
-   */
-  target?: "dictation" | "remix";
   /** Restore the current listener; the caller applies the new key after saving. */
   deferActivationUntilSaved?: boolean;
   /**
@@ -368,9 +360,6 @@ export function useHotkeyRecorder(
   onRecord: (accelerator: string) => void,
   options: UseHotkeyRecorderOptions = {},
 ): UseHotkeyRecorderReturn {
-  const target = options.target ?? "dictation";
-  const targetRef = useRef(target);
-  targetRef.current = target;
   const deferActivationRef = useRef(options.deferActivationUntilSaved);
   deferActivationRef.current = options.deferActivationUntilSaved;
   const isBlockedRef = useRef(options.isBlocked);
@@ -490,11 +479,8 @@ export function useHotkeyRecorder(
     }
     // Stop capture and restore the current listener when activation is deferred.
     // The caller applies the captured key only after its setting is saved.
-    // Remix also re-registers separately by re-reading its persisted setting.
     window.api?.stopHotkeyRecording?.(
-      targetRef.current === "remix" || deferActivationRef.current
-        ? undefined
-        : accel,
+      deferActivationRef.current ? undefined : accel,
     );
     recordingActiveRef.current = false;
     setState("idle");

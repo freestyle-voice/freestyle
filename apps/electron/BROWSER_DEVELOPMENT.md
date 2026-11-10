@@ -12,9 +12,8 @@ Open <http://127.0.0.1:5173>. This runs the actual desktop React UI with a brows
 - `http://127.0.0.1:5173/index.html#/tone`
 - `http://127.0.0.1:5173/index.html?scenario=error#/vocabulary`
 - `http://127.0.0.1:5173/pill.html`
-- `http://127.0.0.1:5173/notification.html`
 
-The development toolbar selects `default`, `empty`, `signed-out`, `loading`, `error`, or `onboarding` fixtures. API state is in memory and resets on reload. The loading scenario holds page data requests pending; the error scenario fails selected list endpoints while keeping settings/auth available so you can inspect the real error UI. These are UI previews, not a complete simulation of transcription or agent execution. Unknown API requests return 501 and appear in the toolbar instead of reaching a live backend. Add explicit fixtures in `src/renderer/src/browser/fixtures.ts` for additional interactions.
+The development toolbar selects `default`, `empty`, `signed-out`, `loading`, `error`, or `onboarding` fixtures. API state is in memory and resets on reload. The loading scenario holds page data requests pending; the error scenario fails selected list endpoints while keeping settings/auth available so you can inspect the real error UI. These are UI previews, not a complete simulation of transcription. Unknown API requests return 501 and appear in the toolbar instead of reaching a live backend. Add explicit fixtures in `src/renderer/src/browser/fixtures.ts` for additional interactions.
 
 ## Use a real development backend
 

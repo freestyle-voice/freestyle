@@ -103,8 +103,6 @@ export interface UseModels {
   keyProviders: Set<string>;
   defaultVoice: ConfiguredModel | undefined;
   defaultLlm: ConfiguredModel | undefined;
-  /** The explicit Remix role; absent means Freestyle Cloud manages Remix. */
-  defaultRemix: ConfiguredModel | undefined;
   voiceItems: VoiceItem[];
   llmModelsByProvider: Map<
     string,
@@ -119,7 +117,7 @@ export interface UseModels {
   // Actions — each refetches as needed
   configureModel: (
     model: AvailableModel,
-    type: "voice" | "llm" | "remix",
+    type: "voice" | "llm",
   ) => Promise<void>;
   saveKey: (provider: string, key: string) => Promise<string | null>;
   selectLocalVoice: (
@@ -131,10 +129,7 @@ export interface UseModels {
   downloadLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
   cancelLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
   deleteLocal: (defId: string, engine?: "whisper" | "mlx") => Promise<void>;
-  selectLocalLlmModel: (
-    modelName: string,
-    type?: "llm" | "remix",
-  ) => Promise<boolean>;
+  selectLocalLlmModel: (modelName: string, type?: "llm") => Promise<boolean>;
   setCleanup: (next: boolean) => void;
   saveMlxKeepAliveMinutes: (minutes: number) => void;
   deleteProvider: (provider: string) => Promise<void>;
@@ -409,10 +404,6 @@ export function useModels(): UseModels {
     () => configured.find((m) => m.type === "llm" && m.is_default === 1),
     [configured],
   );
-  const defaultRemix = useMemo(
-    () => configured.find((m) => m.type === "remix" && m.is_default === 1),
-    [configured],
-  );
   const llmModelsByProvider = useMemo(
     () => groupByProvider(available, "llm"),
     [available],
@@ -431,7 +422,7 @@ export function useModels(): UseModels {
   // -------------------------------------------------------------------------
 
   const configureModel = useCallback(
-    async (model: AvailableModel, type: "voice" | "llm" | "remix") => {
+    async (model: AvailableModel, type: "voice" | "llm") => {
       const response = await getClient().api.models.configured.$post({
         json: {
           provider: model.provider_id,
@@ -646,7 +637,7 @@ export function useModels(): UseModels {
   );
 
   const selectLocalLlmModel = useCallback(
-    async (modelName: string, type: "llm" | "remix" = "llm") => {
+    async (modelName: string, type: "llm" = "llm") => {
       setLocalActionError(null);
       try {
         const response = await getClient().api.models.configured.$post({
@@ -801,7 +792,6 @@ export function useModels(): UseModels {
     keyProviders,
     defaultVoice,
     defaultLlm,
-    defaultRemix,
     voiceItems,
     llmModelsByProvider,
     localLlm,

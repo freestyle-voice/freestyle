@@ -5,22 +5,7 @@ import {
   SignInCtaCard,
   UpgradeCtaCard,
 } from "@renderer/components/cloud-profile";
-import {
-  sidebarCurrentThreadId,
-  useRemixSession,
-} from "@renderer/components/remix-session-context";
-import {
-  SessionHistorySkeleton,
-  ThreadHistory,
-} from "@renderer/components/thread-history";
 import { Badge } from "@renderer/components/ui/badge";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger,
-} from "@renderer/components/ui/dropdown-menu";
 import { UpdateBanner } from "@renderer/components/update-banner";
 import { usePersistentState } from "@renderer/hooks/use-persistent-state";
 import { useCloudAuth } from "@renderer/lib/auth-context";
@@ -32,16 +17,7 @@ import {
   SIDEBAR_VISIBILITY_STORAGE_KEY,
   type SidebarVisibility,
 } from "@renderer/lib/sidebar-visibility";
-import { useRemixAvailability } from "@renderer/lib/use-remix-availability";
 import { cn } from "@renderer/lib/utils";
-import {
-  DEFAULT_WORKSPACE,
-  isWorkspace,
-  WORKSPACE_STORAGE_KEY,
-  type Workspace,
-  workspaceForAppPath,
-  workspaceHomeRoute,
-} from "@renderer/lib/workspace";
 import {
   pluginDisplayName,
   resolvePluginIcon,
@@ -51,40 +27,31 @@ import { useQuery } from "@tanstack/react-query";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
-  Bell,
   Book,
   BookOpen,
-  CalendarClock,
-  ChevronDown,
   CircleHelp,
   Cpu,
   CreditCard,
   Database,
   FileText,
   LogIn,
-  MessageCircle,
   Mic,
   Network,
   Paintbrush,
   PanelLeftClose,
   PanelLeftOpen,
-  PlugZap,
-  Plus,
   Puzzle,
   Search,
   Settings,
   ShieldCheck,
-  Sparkles,
   UserRound,
-  Wand2,
   Zap,
 } from "lucide-react";
-import { Dialog as DialogPrimitive } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router";
 
-import { RailAction, RailNav, RailTooltip } from "./shell-sidebar-rail";
+import { RailAction, RailNav } from "./shell-sidebar-rail";
 
 type NavItem = {
   to: string;
@@ -153,15 +120,6 @@ const SETTINGS_NAV_GROUPS: {
   {
     label: "Dictation",
     items: [{ to: "/settings/transcription", label: "Dictation", icon: Mic }],
-  },
-  {
-    label: "Remix",
-    items: [
-      { to: "/settings/remix", label: "Remix", icon: Wand2 },
-      { to: "/settings/mcp", label: "MCP connections", icon: PlugZap },
-      { to: "/settings/apps", label: "Connected apps", icon: PlugZap },
-      { to: "/settings/notifications", label: "Notifications", icon: Bell },
-    ],
   },
   {
     label: "General",
@@ -260,13 +218,11 @@ function SidebarFooter({ items }: { items: NavItem[] }): React.JSX.Element {
 }
 
 function SettingsSidebar({
-  workspace,
   onBack,
   onHideSidebar,
   toggleRef,
 }: {
   toggleRef?: React.RefObject<HTMLButtonElement | null>;
-  workspace: Workspace;
   onBack: () => void;
   onHideSidebar: () => void;
 }): React.JSX.Element {
@@ -282,7 +238,7 @@ function SettingsSidebar({
   })).filter((group) => group.items.length > 0);
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-workspace={workspace}>
+    <div className="flex min-h-0 flex-1 flex-col" data-workspace="dictate">
       <div
         className="px-4 pt-2 pb-3"
         style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -382,269 +338,6 @@ function SidebarVisibilityToggle({
   );
 }
 
-function RemixSidebarSessions({
-  searchQuery,
-}: {
-  searchQuery: string;
-}): React.JSX.Element | null {
-  const {
-    thread,
-    selectThread,
-    startNewThread,
-    openScheduledTasks,
-    workspaceSurface,
-    localTitles,
-    renameThread,
-    requestDeleteThread,
-    sessionActivity,
-    completedSessionIds,
-    markSessionSeen,
-  } = useRemixSession();
-  const availability = useRemixAvailability();
-  const listRef = useRef<HTMLDivElement>(null);
-  const [hasMoreSessions, setHasMoreSessions] = useState(false);
-
-  const updateMoreSessionsState = useCallback(() => {
-    const list = listRef.current;
-    if (!list) return;
-    setHasMoreSessions(
-      list.scrollTop + list.clientHeight < list.scrollHeight - 1,
-    );
-  }, []);
-
-  useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-
-    let frame = requestAnimationFrame(updateMoreSessionsState);
-    const scheduleUpdate = (): void => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(updateMoreSessionsState);
-    };
-    const mutationObserver = new MutationObserver(scheduleUpdate);
-    const resizeObserver = new ResizeObserver(scheduleUpdate);
-
-    list.addEventListener("scroll", updateMoreSessionsState, {
-      passive: true,
-    });
-    mutationObserver.observe(list, { childList: true, subtree: true });
-    resizeObserver.observe(list);
-
-    return () => {
-      cancelAnimationFrame(frame);
-      list.removeEventListener("scroll", updateMoreSessionsState);
-      mutationObserver.disconnect();
-      resizeObserver.disconnect();
-    };
-  }, [updateMoreSessionsState]);
-
-  return (
-    <section className="remix-sidebar-sessions" aria-label="Remix chats">
-      <div className="remix-sidebar-sessions-head">
-        <button
-          type="button"
-          className="remix-sidebar-new"
-          onClick={startNewThread}
-          disabled={!availability.canChat}
-        >
-          <Plus aria-hidden="true" />
-          New chat
-        </button>
-        <button
-          type="button"
-          className={`remix-sidebar-new remix-sidebar-scheduled${
-            workspaceSurface === "scheduled" ? " is-current" : ""
-          }`}
-          aria-current={workspaceSurface === "scheduled" ? "page" : undefined}
-          onClick={openScheduledTasks}
-          disabled={!availability.canUseCloud}
-        >
-          <CalendarClock aria-hidden="true" />
-          Schedules
-        </button>
-      </div>
-      <div
-        ref={listRef}
-        className="remix-sidebar-sessions-list"
-        data-has-more={hasMoreSessions || undefined}
-      >
-        {availability.checking ? (
-          <SessionHistorySkeleton />
-        ) : !availability.canChat ? (
-          <div className="tavern-empty tavern-thread-empty">
-            <strong>No sessions yet</strong>
-            <span>Choose your Remix model to start a chat.</span>
-          </div>
-        ) : (
-          <ThreadHistory
-            type={availability.historyType}
-            currentId={sidebarCurrentThreadId(
-              workspaceSurface,
-              thread?.id ?? "",
-            )}
-            searchQuery={searchQuery}
-            titleOverrides={localTitles}
-            onRename={(picked, title) =>
-              renameThread(picked.id, title, picked.type)
-            }
-            onDelete={(picked) =>
-              requestDeleteThread(picked.id, picked.title, picked.type)
-            }
-            sessionActions="context"
-            sessionActivity={sessionActivity}
-            completedSessionIds={completedSessionIds}
-            onSessionSeen={markSessionSeen}
-            onPick={(picked) => {
-              if (picked.id !== thread?.id) selectThread(picked);
-            }}
-          />
-        )}
-      </div>
-    </section>
-  );
-}
-
-function WorkspaceSwitcher({
-  workspace,
-  onWorkspaceChange,
-  compact = false,
-}: {
-  compact?: boolean;
-  workspace: Workspace;
-  onWorkspaceChange: (workspace: Workspace) => void;
-}): React.JSX.Element {
-  const trigger = (
-    <DropdownMenuTrigger asChild>
-      <button
-        type="button"
-        className={
-          compact
-            ? "sidebar-rail-button sidebar-rail-workspace"
-            : "remix-workspace-switcher"
-        }
-        aria-label="Switch workspace"
-      >
-        {compact ? (
-          workspace === "remix" ? (
-            <Wand2 aria-hidden="true" />
-          ) : (
-            <Mic aria-hidden="true" />
-          )
-        ) : (
-          <>
-            {workspace === "remix" ? "Remix" : "Dictate"}
-            <ChevronDown aria-hidden="true" />
-          </>
-        )}
-      </button>
-    </DropdownMenuTrigger>
-  );
-  return (
-    <DropdownMenu>
-      {compact ? (
-        <RailTooltip
-          label={`Switch workspace · ${workspace === "remix" ? "Remix" : "Dictate"}`}
-        >
-          {trigger}
-        </RailTooltip>
-      ) : (
-        trigger
-      )}
-      <DropdownMenuContent className="w-60 rounded-[10px] p-1.5" align="start">
-        <DropdownMenuRadioGroup
-          value={workspace}
-          onValueChange={(value) =>
-            onWorkspaceChange(value as "remix" | "dictate")
-          }
-        >
-          <DropdownMenuRadioItem
-            value="dictate"
-            className="items-start gap-2.5 rounded-[7px] px-2 py-2"
-          >
-            <Mic className="mt-0.5 size-3.5" />
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-[12px] font-medium">Dictate</span>
-              <span className="text-muted-foreground text-[10.5px] leading-snug">
-                Dictate into the app you're using
-              </span>
-            </span>
-          </DropdownMenuRadioItem>
-          <DropdownMenuRadioItem
-            value="remix"
-            className="items-start gap-2.5 rounded-[7px] px-2 py-2"
-          >
-            <Wand2 className="mt-0.5 size-3.5" />
-            <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="text-[12px] font-medium">Remix</span>
-              <span className="text-muted-foreground text-[10.5px] leading-snug">
-                Chat and automate your work
-              </span>
-            </span>
-          </DropdownMenuRadioItem>
-        </DropdownMenuRadioGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function RemixSidebarRail({
-  onSearch,
-}: {
-  onSearch: () => void;
-}): React.JSX.Element {
-  const {
-    openChat,
-    startNewThread,
-    openScheduledTasks,
-    openCapabilities,
-    workspaceSurface,
-  } = useRemixSession();
-  const { canChat, canUseCloud } = useRemixAvailability();
-  const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const inRemix = pathname === "/remix";
-  const openSurface = (action: () => void): void => {
-    action();
-    navigate("/remix");
-  };
-  return (
-    <nav className="sidebar-rail-group" aria-label="Remix navigation">
-      <RailAction
-        label="Chats"
-        icon={MessageCircle}
-        current={inRemix && workspaceSurface === "chat"}
-        onClick={() => openSurface(openChat)}
-      />
-      <RailAction
-        label="New chat"
-        icon={Plus}
-        disabled={!canChat}
-        onClick={() => openSurface(startNewThread)}
-      />
-      <RailAction
-        label="Search sessions"
-        icon={Search}
-        disabled={!canChat}
-        onClick={onSearch}
-      />
-      <RailAction
-        label="Actions"
-        icon={Sparkles}
-        disabled={!canUseCloud}
-        current={inRemix && workspaceSurface === "capabilities"}
-        onClick={() => openSurface(openCapabilities)}
-      />
-      <RailAction
-        label="Schedules"
-        icon={CalendarClock}
-        current={inRemix && workspaceSurface === "scheduled"}
-        disabled={!canUseCloud}
-        onClick={() => openSurface(openScheduledTasks)}
-      />
-    </nav>
-  );
-}
-
 function SidebarRailAccount(): React.JSX.Element {
   const { user, phase, signIn, signingIn } = useCloudAuth();
   return user ? (
@@ -659,63 +352,6 @@ function SidebarRailAccount(): React.JSX.Element {
       disabled={phase === "checking" || signingIn}
       onClick={() => void signIn()}
     />
-  );
-}
-
-function SessionSearchDialog({
-  open,
-  onOpenChange,
-  query,
-  onQueryChange,
-  inputRef,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  query: string;
-  onQueryChange: (query: string) => void;
-  inputRef: React.RefObject<HTMLInputElement | null>;
-}): React.JSX.Element | null {
-  const { thread, selectThread } = useRemixSession();
-  const availability = useRemixAvailability();
-  if (!thread) return null;
-
-  return (
-    <DialogPrimitive.Root open={open} onOpenChange={onOpenChange}>
-      <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-[rgba(12,11,8,0.62)] data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0" />
-        <DialogPrimitive.Content
-          aria-describedby={undefined}
-          className="remix-session-search-dialog"
-        >
-          <DialogPrimitive.Title className="sr-only">
-            Search Remix chats
-          </DialogPrimitive.Title>
-          <label className="remix-session-search-input">
-            <Search aria-hidden="true" />
-            <input
-              ref={inputRef}
-              type="search"
-              value={query}
-              onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Search sessions"
-              aria-label="Search sessions"
-            />
-            <kbd>Esc</kbd>
-          </label>
-          <div className="remix-session-search-results">
-            <ThreadHistory
-              type={availability.historyType}
-              currentId={thread.id}
-              searchQuery={query}
-              onPick={(picked) => {
-                if (picked.id !== thread.id) selectThread(picked);
-                onOpenChange(false);
-              }}
-            />
-          </div>
-        </DialogPrimitive.Content>
-      </DialogPrimitive.Portal>
-    </DialogPrimitive.Root>
   );
 }
 
@@ -813,31 +449,12 @@ export default function AppShell(): React.JSX.Element {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const { canChat } = useRemixAvailability();
-  // Keep dismissal in memory so the prompt returns on the next app launch.
-  const [dismissedSignInCards, setDismissedSignInCards] = useState<
-    Record<Workspace, boolean>
-  >({ dictate: false, remix: false });
-  const isRemixRoute = location.pathname === "/remix";
+  const [dismissedSignInCard, setDismissedSignInCard] = useState(false);
   const isOnboardingRoute = location.pathname === "/onboarding";
   const isSettingsRoute =
     location.pathname === "/settings" ||
     location.pathname.startsWith("/settings/");
-  const [sidebarWorkspace, setSidebarWorkspace] = usePersistentState<Workspace>(
-    WORKSPACE_STORAGE_KEY,
-    isRemixRoute ? "remix" : DEFAULT_WORKSPACE,
-    isWorkspace,
-  );
-  // Browser/Electron can restore a previous hash route before local storage
-  // hydrates. Derive the visible workspace from that route synchronously so a
-  // Dictate sidebar never appears next to the Remix chat (or vice versa).
-  const routeWorkspace = workspaceForAppPath(location.pathname);
-  const activeWorkspace = routeWorkspace ?? sidebarWorkspace;
-  const isRemixSidebar = activeWorkspace === "remix";
-  const [remixSessionSearch, setRemixSessionSearch] = useState("");
-  const [isSessionSearchOpen, setIsSessionSearchOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const sessionSearchRef = useRef<HTMLInputElement>(null);
   const sidebarRevealRef = useRef<HTMLButtonElement>(null);
   const sidebarToggleRef = useRef<HTMLButtonElement>(null);
   const [sidebarWidthRaw, setSidebarWidthRaw] = usePersistentState<string>(
@@ -870,14 +487,6 @@ export default function AppShell(): React.JSX.Element {
     window.api.setPanelSidebarHidden(isSidebarHidden);
   }, [isSidebarHidden]);
 
-  const changeWorkspace = useCallback(
-    (workspace: Workspace) => {
-      setSidebarWorkspace(workspace);
-      navigate(workspaceHomeRoute(workspace));
-    },
-    [navigate, setSidebarWorkspace],
-  );
-
   useEffect(
     () =>
       window.api.onDashboardNavigate((route) => {
@@ -885,34 +494,6 @@ export default function AppShell(): React.JSX.Element {
       }),
     [navigate],
   );
-
-  // Keep the persisted selection in sync after direct navigation, while
-  // retaining it unchanged for Settings and plugin routes.
-  useEffect(() => {
-    if (routeWorkspace && routeWorkspace !== sidebarWorkspace) {
-      setSidebarWorkspace(routeWorkspace);
-    }
-  }, [routeWorkspace, setSidebarWorkspace, sidebarWorkspace]);
-
-  useEffect(() => {
-    if (!isRemixSidebar) {
-      setIsSessionSearchOpen(false);
-      setRemixSessionSearch("");
-    }
-  }, [isRemixSidebar]);
-
-  const handleSessionSearchOpenChange = useCallback((open: boolean) => {
-    setIsSessionSearchOpen(open);
-    if (!open) setRemixSessionSearch("");
-  }, []);
-
-  useEffect(() => {
-    if (!isSessionSearchOpen) return;
-    const frame = requestAnimationFrame(() =>
-      sessionSearchRef.current?.focus(),
-    );
-    return () => cancelAnimationFrame(frame);
-  }, [isSessionSearchOpen]);
 
   useEffect(() => window.api.onFullscreenChanged(setIsFullscreen), []);
 
@@ -977,37 +558,24 @@ export default function AppShell(): React.JSX.Element {
             />
             {isSettingsRoute ? (
               <SettingsSidebar
-                workspace={sidebarWorkspace}
-                onBack={() => navigate(workspaceHomeRoute(sidebarWorkspace))}
+                onBack={() => navigate("/today")}
                 onHideSidebar={hideSidebar}
                 toggleRef={sidebarToggleRef}
               />
             ) : (
               <>
                 <div
-                  className="remix-sidebar-titlebar"
+                  className="sidebar-titlebar"
                   style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 >
-                  <WorkspaceSwitcher
-                    workspace={activeWorkspace}
-                    onWorkspaceChange={changeWorkspace}
-                  />
+                  <span className="text-foreground text-[17px] font-semibold">
+                    Dictate
+                  </span>
                   {import.meta.env.DEV && (
-                    <span className="remix-dev-badge" title="Development build">
+                    <span className="dev-badge" title="Development build">
                       DEV
                     </span>
                   )}
-                  {isRemixSidebar && canChat ? (
-                    <button
-                      type="button"
-                      aria-label="Search sessions"
-                      title="Search sessions"
-                      onClick={() => handleSessionSearchOpenChange(true)}
-                      className="remix-session-search-trigger"
-                    >
-                      <Search aria-hidden="true" />
-                    </button>
-                  ) : null}
                   <SidebarVisibilityToggle
                     onClick={hideSidebar}
                     buttonRef={sidebarToggleRef}
@@ -1018,29 +586,17 @@ export default function AppShell(): React.JSX.Element {
                   className="no-scrollbar min-h-0 flex-1 overflow-y-auto"
                   style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
                 >
-                  {isRemixSidebar ? (
-                    <RemixSidebarSessions searchQuery="" />
-                  ) : (
+                  <NavList items={mainNav} />
+                  {pluginNav.length > 0 ? (
                     <>
-                      <NavList items={mainNav} />
-                      {pluginNav.length > 0 ? (
-                        <>
-                          <div className="border-sidebar-border mx-3 my-1.5 border-t" />
-                          <NavList items={pluginNav} />
-                        </>
-                      ) : null}
+                      <div className="border-sidebar-border mx-3 my-1.5 border-t" />
+                      <NavList items={pluginNav} />
                     </>
-                  )}
+                  ) : null}
                 </div>
-                {!dismissedSignInCards[activeWorkspace] ? (
+                {!dismissedSignInCard ? (
                   <SignInCtaCard
-                    workspace={activeWorkspace}
-                    onDismiss={() =>
-                      setDismissedSignInCards((previous) => ({
-                        ...previous,
-                        [activeWorkspace]: true,
-                      }))
-                    }
+                    onDismiss={() => setDismissedSignInCard(true)}
                   />
                 ) : null}
                 <SidebarFooter items={footerNav} />
@@ -1056,7 +612,7 @@ export default function AppShell(): React.JSX.Element {
         <aside
           className="glass-sidebar glass-sidebar--collapsed"
           aria-label="Compact sidebar"
-          data-workspace={activeWorkspace}
+          data-workspace="dictate"
         >
           <div
             className={cn(
@@ -1072,26 +628,13 @@ export default function AppShell(): React.JSX.Element {
               ref={sidebarRevealRef}
               onClick={showSidebar}
             />
-            <WorkspaceSwitcher
-              compact
-              workspace={activeWorkspace}
-              onWorkspaceChange={changeWorkspace}
-            />
           </div>
           <div className="sidebar-rail-navigation no-scrollbar">
-            {isRemixSidebar ? (
-              <RemixSidebarRail
-                onSearch={() => handleSessionSearchOpenChange(true)}
-              />
-            ) : (
-              <>
-                <RailNav label="Dictate navigation" items={mainNav} />
-                {pluginNav.length > 0 ? (
-                  <div className="sidebar-rail-divider" />
-                ) : null}
-                <RailNav label="Plugin navigation" items={pluginNav} />
-              </>
-            )}
+            <RailNav label="Dictate navigation" items={mainNav} />
+            {pluginNav.length > 0 ? (
+              <div className="sidebar-rail-divider" />
+            ) : null}
+            <RailNav label="Plugin navigation" items={pluginNav} />
           </div>
           <div className="sidebar-rail-footer sidebar-rail-group">
             <RailNav label="App navigation" items={footerNav} />
@@ -1099,16 +642,6 @@ export default function AppShell(): React.JSX.Element {
           </div>
         </aside>
       )}
-
-      {isRemixSidebar && canChat ? (
-        <SessionSearchDialog
-          open={isSessionSearchOpen}
-          onOpenChange={handleSessionSearchOpenChange}
-          query={remixSessionSearch}
-          onQueryChange={setRemixSessionSearch}
-          inputRef={sessionSearchRef}
-        />
-      ) : null}
 
       <div className="glass-content relative z-0 flex min-h-0 min-w-0 flex-1 flex-col">
         <ContentTitlebar

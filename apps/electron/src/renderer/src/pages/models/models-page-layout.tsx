@@ -56,19 +56,17 @@ export function ModelsLoadingSkeleton(): React.JSX.Element {
       aria-busy="true"
     >
       <div className="@container border-border bg-card/55 overflow-hidden rounded-[12px] border">
-        {[
-          t("models.picker.transcription"),
-          t("models.picker.cleanup"),
-          "Remix",
-        ].map((label) => (
-          <ModelSettingRow
-            key={label}
-            label={label}
-            model={<SkeletonLine className="h-4 w-44 max-w-full" />}
-            detail={<SkeletonLine className="h-3 w-32 max-w-full" />}
-            actions={<SkeletonLine className="h-7 w-16 rounded-md" />}
-          />
-        ))}
+        {[t("models.picker.transcription"), t("models.picker.cleanup")].map(
+          (label) => (
+            <ModelSettingRow
+              key={label}
+              label={label}
+              model={<SkeletonLine className="h-4 w-44 max-w-full" />}
+              detail={<SkeletonLine className="h-3 w-32 max-w-full" />}
+              actions={<SkeletonLine className="h-7 w-16 rounded-md" />}
+            />
+          ),
+        )}
         <div className="flex items-center justify-between px-4 py-3 sm:px-5">
           <SkeletonLine className="h-3 w-52 max-w-full" />
           <SkeletonLine className="h-7 w-16 rounded-md" />

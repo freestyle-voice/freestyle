@@ -1,4 +1,4 @@
-import { BookOpen, CalendarClock, Puzzle, Settings } from "lucide-react";
+import { BookOpen, PanelLeftOpen, Puzzle, Settings } from "lucide-react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router";
@@ -55,21 +55,21 @@ describe("compact sidebar navigation", () => {
     expect(plugin).not.toMatch(/aria-label="Plugins"[^>]*aria-current/);
   });
 
-  it("exposes the current Remix surface and preserves unavailable action state", () => {
+  it("exposes the current action and preserves unavailable action state", () => {
     const html = renderToStaticMarkup(
       createElement(
         TooltipProvider,
         null,
         createElement(RailAction, {
-          icon: CalendarClock,
-          label: "Schedules",
+          icon: PanelLeftOpen,
+          label: "Show sidebar",
           current: true,
           disabled: true,
         }),
       ),
     );
     expect(html).toContain('type="button"');
-    expect(html).toContain('aria-label="Schedules"');
+    expect(html).toContain('aria-label="Show sidebar"');
     expect(html).toContain('aria-current="page"');
     expect(html).toContain('disabled=""');
   });

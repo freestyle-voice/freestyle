@@ -28,7 +28,7 @@ export interface StreamerCallbacks {
   onFinal: (text: string) => void;
   onError: (message: string, code?: string) => void;
   onReady: () => void;
-  /** Live partial transcript. Only the remix card consumes this today. */
+  /** Live partial transcript, available to dictation preview consumers. */
   onPartial?: (text: string) => void;
   onConnectionState?: (state: StreamerConnectionState) => void;
   onConfig: (config: {

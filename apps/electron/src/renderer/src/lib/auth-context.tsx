@@ -13,16 +13,12 @@ import {
 } from "react";
 import type { CloudUser } from "../../../shared/cloud-user";
 import { getClient, resolveApiBase, subscribeToUnauthorized } from "./api";
-import { resetBrainCache } from "./brain-fs";
-import { isDeviceOwnedRemixQuery, queryKeys } from "./query";
+import { queryKeys } from "./query";
 
 function resetAccountCaches(queryClient: QueryClient): void {
-  resetBrainCache();
   // Local pages stay mounted after sign-out. Reset their observed queries so
   // cancelled startup reads restart, while discarding all cached account data.
-  void queryClient.resetQueries({
-    predicate: (query) => !isDeviceOwnedRemixQuery(query.queryKey),
-  });
+  void queryClient.resetQueries();
 }
 
 export interface UseCloudAuth {
@@ -96,14 +92,6 @@ function useCloudAuthState(): UseCloudAuth {
   const user = phase === "authenticated" ? (status?.user ?? null) : null;
   const loading = phase === "checking";
   const canRequestData = phase !== "signed_out";
-  const notificationAuthKey = loading ? null : (user?.id ?? "signed-out");
-
-  useEffect(() => {
-    if (notificationAuthKey === null) return;
-    // The hidden inbox pauses after a 401. Wake it from every page that can
-    // change the Cloud session, including onboarding and Settings.
-    window.api.notificationAuthChanged();
-  }, [notificationAuthKey]);
 
   useEffect(() => {
     if (!status?.reached) return;

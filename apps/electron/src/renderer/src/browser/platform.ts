@@ -1,6 +1,5 @@
 import type { PlatformApi } from "../../../preload/index";
 import { getDefaultHotkey } from "../../../shared/hotkey-defaults";
-import { getDefaultRemixHotkey } from "../../../shared/remix";
 
 export const browserCapabilities = {
   globalHotkeys: false,
@@ -42,7 +41,6 @@ export function createBrowserApi(
   // Native events cannot occur in a browser. Return a real cleanup function.
   const nativeSubscription = () => noop;
   const native = (action: string) => () => host.unsupported(action);
-  const failed = async () => ({ ok: false, reason: "desktop_required" });
   const rejected = async () => {
     host.unsupported("This action");
     throw new Error("This action requires the desktop application.");
@@ -51,29 +49,10 @@ export function createBrowserApi(
     host.unsupported("This action");
     return false;
   };
-  const titles = (): Record<string, string> => {
-    try {
-      const value: unknown = JSON.parse(
-        host.storage.getItem("freestyle.browser.titles") ?? "{}",
-      );
-      if (value && typeof value === "object" && !Array.isArray(value)) {
-        return Object.fromEntries(
-          Object.entries(value).filter(
-            ([, title]) => typeof title === "string",
-          ),
-        );
-      }
-    } catch {
-      /* Storage may be unavailable in private browser contexts. */
-    }
-    return {};
-  };
-
   return {
     platform: options.platform,
     isE2E: false,
     defaultHotkey: getDefaultHotkey(options.platform),
-    defaultRemixHotkey: getDefaultRemixHotkey(options.platform),
     updateHotkey: native("Global shortcuts"),
     reloadHotkey: noop,
     hidePill: noop,
@@ -112,32 +91,8 @@ export function createBrowserApi(
       host.navigate("/settings/models");
       return "models";
     },
-    pasteRemixResult: unavailable,
-    onRemixDown: nativeSubscription,
-    onRemixUp: nativeSubscription,
-    onRemixSelection: nativeSubscription,
-    onRemixRoute: nativeSubscription,
-    onRemixSupersede: nativeSubscription,
-    onRemixOpenChat: nativeSubscription,
-    onRemixObserverHandoff: nativeSubscription,
-    remixRecapture: failed,
-    remixSelectAll: failed,
-    remixSelectText: failed,
-    remixCollapseSelection: failed,
-    remixCopy: failed,
-    remixSetClipboardImage: failed,
-    remixUndo: failed,
-    remixRedo: failed,
-    remixPressKey: failed,
-    remixPasteText: failed,
-    setRemixRouteKeys: noop,
-    setRemixEscapeActive: noop,
-    openRemixWorkspace: () => host.navigate("/remix"),
-    remixThreadUpdated: noop,
     pasteText: rejected,
     copyText: (text) => host.writeClipboard(text),
-    requestAgentFileSaveGrant: failed,
-    saveAgentFile: failed,
     prepareSystemAudio: rejected,
     restoreSystemAudio: async () => {},
     openLogsFolder: unavailable,
@@ -156,38 +111,7 @@ export function createBrowserApi(
     setDictationPhase: noop,
     onHotkeyError: nativeSubscription,
     setHotkeyMode: noop,
-    reloadRemixHotkey: noop,
-    remixGetContext: async () => ({
-      ok: false,
-      reason: "desktop_required",
-      appName: null,
-      windowTitle: null,
-      url: null,
-      selection: null,
-    }),
-    remixReadDocument: failed,
-    remixSetClipboard: async (text) => {
-      try {
-        await host.writeClipboard(text);
-        return { ok: true };
-      } catch {
-        return { ok: false, reason: "clipboard_permission_denied" };
-      }
-    },
-    remixPasteClipboard: failed,
-    remixGetClipboard: async () => {
-      try {
-        return { ok: true, text: await host.readClipboard() };
-      } catch {
-        return { ok: false, reason: "clipboard_permission_denied" };
-      }
-    },
-    panelOpenForDictation: noop,
-    panelDictationPartial: noop,
-    panelDictationFinal: noop,
-    panelDictationError: noop,
     panelRendererReady: noop,
-    onPanelDictation: nativeSubscription,
     dictationPrefs: async () => ({
       destination: "composer",
       outputMode: "clipboard",
@@ -203,19 +127,7 @@ export function createBrowserApi(
     setPanelSidebarHidden: noop,
     openSettings: () => host.navigate("/settings"),
     settingsClose: () => host.navigate("/today"),
-    panelSetComposerFocused: noop,
-    panelRequestFocus: noop,
-    onPanelFocusComposer: nativeSubscription,
     onDashboardNavigate: nativeSubscription,
-    notificationPresent: native("Native notifications"),
-    notificationSetVisible: noop,
-    notificationSetHeight: noop,
-    notificationOpenThread: () => host.navigate("/remix"),
-    notificationAuthChanged: () => emit("auth"),
-    onNotificationAuthChanged: (callback) => subscribe("auth", callback),
-    onNotificationNativeClick: nativeSubscription,
-    onPanelOpenThread: nativeSubscription,
-    onPanelThreadUpdated: nativeSubscription,
     getOpenAppCandidates: async () => [],
     getPillPosition: async () => "bottom-center",
     setPillPosition: native("Voice pill positioning"),
@@ -264,23 +176,6 @@ export function createBrowserApi(
     setLaunchAtStartup: native("Launch at startup"),
     getShowDashboardOnLaunch: async () => false,
     setShowDashboardOnLaunch: native("Desktop launch preferences"),
-    getRemixSessionTitles: async () => titles(),
-    setRemixSessionTitle: async (threadId, title) => {
-      const next = titles();
-      if (title === null) delete next[threadId];
-      else
-        Object.defineProperty(next, threadId, {
-          value: title,
-          enumerable: true,
-          configurable: true,
-        });
-      try {
-        host.storage.setItem("freestyle.browser.titles", JSON.stringify(next));
-        return true;
-      } catch {
-        return false;
-      }
-    },
     getFrontmostApp: async () => null,
     sendTranscriptionDone: () => emit("transcription"),
     onTranscriptionDone: (callback) => subscribe("transcription", callback),

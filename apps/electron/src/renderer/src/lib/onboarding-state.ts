@@ -1,17 +1,13 @@
 import type { OnboardingSaved } from "@renderer/lib/onboarding-core";
 import { ONBOARDING_KEY, parseSaved } from "@renderer/lib/onboarding-core";
-import {
-  queryKeys,
-  settingsQueryOptions,
-  threadHistoryInfiniteQueryOptions,
-} from "@renderer/lib/query";
+import { queryKeys, settingsQueryOptions } from "@renderer/lib/query";
 import {
   type QueryClient,
-  useInfiniteQuery,
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getClient } from "./api";
 import { saveOnboarding } from "./onboarding-persistence";
 
 function cacheSaved(queryClient: QueryClient, state: OnboardingSaved): void {
@@ -28,10 +24,10 @@ export type OnboardingStatus = "loading" | "show" | "done";
 
 /**
  * Tracks whether this installation still needs the product-level welcome.
- * Existing people with Remix history are grandfathered, so moving this flow
- * out of Remix never interrupts established workspaces.
+ * Existing dictation history and saved completions keep established users
+ * out of first-run practice.
  */
-export function useOnboarding(canRequestCloudData: boolean): {
+export function useOnboarding(_canRequestCloudData: boolean): {
   status: OnboardingStatus;
   markDone: () => Promise<boolean>;
   saving: boolean;
@@ -46,24 +42,25 @@ export function useOnboarding(canRequestCloudData: boolean): {
   const pendingSave = useRef<Promise<boolean> | null>(null);
   const queryClient = useQueryClient();
   const settingsQuery = useQuery(settingsQueryOptions());
-  // Cloud history is only needed to grandfather installations with no saved
-  // onboarding state. A completed or resumable local save must work offline.
-  const needsCloudHistory =
-    canRequestCloudData &&
+  // Existing dictation installations can skip first-run practice without
+  // mounting the retired conversation client.
+  const needsHistory =
     !settingsQuery.isPending &&
     !settingsQuery.isError &&
     !parseSaved(settingsQuery.data?.[ONBOARDING_KEY]);
-  const threadsQuery = useInfiniteQuery({
-    ...threadHistoryInfiniteQueryOptions(),
-    enabled: needsCloudHistory,
+  const historyQuery = useQuery({
+    queryKey: [...queryKeys.history.all, "onboarding"],
+    queryFn: async () => {
+      const response = await getClient().api.history.stats.$get({ query: {} });
+      if (!response.ok) throw new Error("Could not load dictation history");
+      return response.json();
+    },
+    enabled: needsHistory,
   });
   const decided = useRef<OnboardingSaved | null>(null);
 
   useEffect(() => {
-    if (
-      settingsQuery.isPending ||
-      (needsCloudHistory && threadsQuery.isPending)
-    )
+    if (settingsQuery.isPending || (needsHistory && historyQuery.isPending))
       return;
 
     const parsed = parseSaved(settingsQuery.data?.[ONBOARDING_KEY]);
@@ -85,10 +82,7 @@ export function useOnboarding(canRequestCloudData: boolean): {
       setStatus("show");
       return;
     }
-    if (
-      canRequestCloudData &&
-      (threadsQuery.data?.pages[0]?.threads.length ?? 0) > 0
-    ) {
+    if ((historyQuery.data?.unfiltered_total_sessions ?? 0) > 0) {
       const grandfathered: OnboardingSaved = { v: 2, done: true };
       decided.current = grandfathered;
       // Migration must not interrupt an established workspace. A failed write
@@ -101,14 +95,13 @@ export function useOnboarding(canRequestCloudData: boolean): {
     }
     setStatus("show");
   }, [
-    canRequestCloudData,
-    needsCloudHistory,
+    needsHistory,
     queryClient,
     settingsQuery.data,
     settingsQuery.isPending,
     settingsQuery.isError,
-    threadsQuery.data,
-    threadsQuery.isPending,
+    historyQuery.data,
+    historyQuery.isPending,
   ]);
 
   const savedRef = useRef<OnboardingSaved | null>(null);
@@ -149,8 +142,8 @@ export function useOnboarding(canRequestCloudData: boolean): {
 
   return {
     status:
-      needsCloudHistory &&
-      threadsQuery.isPending &&
+      needsHistory &&
+      historyQuery.isPending &&
       !parseSaved(settingsQuery.data?.[ONBOARDING_KEY])?.done
         ? "loading"
         : status,

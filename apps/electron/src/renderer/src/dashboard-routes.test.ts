@@ -95,16 +95,16 @@ describe("dashboard routes", () => {
     );
   });
 
-  it("uses the persisted workspace for the startup route", async () => {
+  it("starts in Dictate and redirects legacy Remix links without mounting an agent", async () => {
     const dashboard = await readFile(dashboardPath, "utf8");
-
-    expect(dashboard).toContain("function DashboardHomeRedirect()");
-    expect(dashboard).toContain("WORKSPACE_STORAGE_KEY");
-    expect(dashboard).toContain("workspaceHomeRoute(workspace)");
-    expect(dashboard).toContain("element={<DashboardHomeRedirect />}");
-    expect(dashboard).not.toContain(
-      'element={<Navigate to="/remix" replace />}',
+    expect(dashboard).toMatch(
+      /path="\/"\s+element=\{<Navigate to="\/today" replace \/>\}/s,
     );
+    expect(dashboard).toMatch(
+      /path="\/remix"\s+element=\{<Navigate to="\/today" replace \/>\}/s,
+    );
+    expect(dashboard).not.toContain("RemixSessionProvider");
+    expect(dashboard).not.toContain("WORKSPACE_STORAGE_KEY");
   });
 
   it("keeps first-run onboarding at the app boundary instead of in Remix", async () => {

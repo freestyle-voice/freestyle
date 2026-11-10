@@ -48,7 +48,6 @@ import {
   startOutboxDrain,
   stopOutboxDrain,
 } from "./lib/sync-outbox.js";
-import { syncTimezoneToCloud } from "./lib/timezone-sync.js";
 import {
   isTrustedRendererOrigin,
   trustedOriginMiddleware,
@@ -72,7 +71,6 @@ const TIMEOUT_PREFIXES = [
   "/api/plugins",
   "/api/usage",
   "/api/org",
-  "/api/agent/thread",
 ];
 
 /**
@@ -118,7 +116,7 @@ function createApp() {
     // carries no token. cors() answers the preflight and short-circuits it, so
     // auth never rejects it; real requests still fall through to auth.
     // Scoped to renderer origins, never `*`: a wildcard here would let any page
-    // the user has open read loopback responses (history, brain, settings).
+    // the user has open read loopback responses (history, settings).
     .use(
       cors({
         origin: (origin) =>
@@ -344,7 +342,6 @@ export async function startServer(
             return pullCloudPreferences(backgroundAbort.signal);
         }),
       );
-      backgroundTasks.push(syncTimezoneToCloud(backgroundAbort.signal));
       startupSucceeded = true;
       return running;
     } catch (error) {

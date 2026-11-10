@@ -3,13 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type { ActiveAudioPlaybackMode } from "../shared/audio-playback";
 import type { DictationPrefs } from "../shared/dictation-prefs";
 import { getDefaultHotkey } from "../shared/hotkey-defaults";
-import type {
-  RemixContextResult,
-  RemixCopyResult,
-  RemixPrimitiveResult,
-  RemixReadDocumentResult,
-} from "../shared/remix";
-import { getDefaultRemixHotkey } from "../shared/remix";
+import type { OpenAppCandidate } from "../shared/open-apps";
 
 // Custom APIs for renderer
 const api = {
@@ -21,15 +15,12 @@ const api = {
   // the restored visual shell.
   isE2E: process.env.FREESTYLE_E2E === "1",
   defaultHotkey: getDefaultHotkey(),
-  defaultRemixHotkey: getDefaultRemixHotkey(),
   updateHotkey: (hotkey: string): void =>
     ipcRenderer.send("hotkey:update", hotkey),
   reloadHotkey: (): void => ipcRenderer.send("hotkey:reload"),
   hidePill: (): void => ipcRenderer.send("pill:hide"),
-  setPillExpanded: (
-    expanded: boolean,
-    expansion?: "card" | "remix-chat",
-  ): void => ipcRenderer.send("pill:set-expanded", expanded, expansion),
+  setPillExpanded: (expanded: boolean, expansion?: "card"): void =>
+    ipcRenderer.send("pill:set-expanded", expanded, expansion),
   setPillHotRect: (
     rect: { x: number; y: number; width: number; height: number } | null,
   ): void => ipcRenderer.send("pill:set-hot-rect", rect),
@@ -55,98 +46,10 @@ const api = {
     ipcRenderer.invoke("cloud:prompt-upgrade"),
   localWhisperPromptRecovery: (): Promise<"cloud" | "models" | "dismissed"> =>
     ipcRenderer.invoke("local-whisper:prompt-recovery"),
-  pasteRemixResult: (text: string): Promise<boolean> =>
-    ipcRenderer.invoke("remix:paste", text),
-  onRemixDown: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
-    ipcRenderer.on("remix:down", handler);
-    return () => ipcRenderer.removeListener("remix:down", handler);
-  },
-  onRemixUp: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
-    ipcRenderer.on("remix:up", handler);
-    return () => ipcRenderer.removeListener("remix:up", handler);
-  },
-  onRemixSelection: (
-    callback: (payload: {
-      text: string | null;
-      appName: string | null;
-      windowTitle: string | null;
-      capturedAt: number;
-    }) => void,
-  ): (() => void) => {
-    const handler = (
-      _: unknown,
-      payload: Parameters<typeof callback>[0],
-    ): void => callback(payload);
-    ipcRenderer.on("remix:selection", handler);
-    return () => ipcRenderer.removeListener("remix:selection", handler);
-  },
-  onRemixRoute: (callback: (index: number) => void): (() => void) => {
-    const handler = (_: unknown, index: number): void => callback(index);
-    ipcRenderer.on("remix:route", handler);
-    return () => ipcRenderer.removeListener("remix:route", handler);
-  },
-  onRemixSupersede: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
-    ipcRenderer.on("remix:supersede", handler);
-    return () => ipcRenderer.removeListener("remix:supersede", handler);
-  },
-  onRemixOpenChat: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
-    ipcRenderer.on("remix:open-chat", handler);
-    return () => ipcRenderer.removeListener("remix:open-chat", handler);
-  },
-  onRemixObserverHandoff: (
-    callback: (threadId: string) => void,
-  ): (() => void) => {
-    const handler = (_e: unknown, threadId: string): void => callback(threadId);
-    ipcRenderer.on("remix:observer-handoff", handler);
-    return () => ipcRenderer.removeListener("remix:observer-handoff", handler);
-  },
-  remixRecapture: (): Promise<unknown> => ipcRenderer.invoke("remix:recapture"),
-  remixSelectAll: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:select-all"),
-  remixSelectText: (text: string, occurrence?: number): Promise<unknown> =>
-    ipcRenderer.invoke("remix:select-text", text, occurrence),
-  remixCollapseSelection: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:collapse-selection"),
-  remixCopy: (): Promise<RemixCopyResult> => ipcRenderer.invoke("remix:copy"),
-  remixSetClipboardImage: (url: string): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:set-clipboard-image", url),
-  remixUndo: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:undo"),
-  remixRedo: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:redo"),
-  remixPressKey: (key: string, times?: number): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:press-key", key, times),
-  remixPasteText: (text: string): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:paste-text", text),
-  setRemixRouteKeys: (open: boolean): void =>
-    ipcRenderer.send("remix:set-route-keys", open),
-  setRemixEscapeActive: (active: boolean): void =>
-    ipcRenderer.send("remix:set-escape-active", active),
-  openRemixWorkspace: (threadId: string): void =>
-    ipcRenderer.send("remix:open-workspace", threadId),
-  remixThreadUpdated: (threadId: string): void =>
-    ipcRenderer.send("remix:thread-updated", threadId),
   pasteText: (text: string, appContext?: string | null): Promise<void> =>
     ipcRenderer.invoke("paste:text", text, appContext ?? null),
   copyText: (text: string, appContext?: string | null): Promise<void> =>
     ipcRenderer.invoke("copy:text", text, appContext ?? null),
-  requestAgentFileSaveGrant: (input: {
-    toolCallId: string;
-    filename: string;
-    content: string;
-  }): Promise<{ ok: boolean; grant?: string; reason?: string }> =>
-    ipcRenderer.invoke("agent:grant-file-save", input),
-  saveAgentFile: (input: {
-    toolCallId: string;
-    filename: string;
-    content: string;
-    grant: string;
-  }): Promise<{ ok: boolean; path?: string; reason?: string }> =>
-    ipcRenderer.invoke("agent:save-file", input),
   prepareSystemAudio: (mode: ActiveAudioPlaybackMode): Promise<void> =>
     ipcRenderer.invoke("audio:prepare", mode),
   restoreSystemAudio: (): Promise<void> => ipcRenderer.invoke("audio:restore"),
@@ -191,41 +94,7 @@ const api = {
   },
   setHotkeyMode: (mode: "hold" | "toggle"): void =>
     ipcRenderer.send("hotkey:set-mode", mode),
-  // --- Remix ---
-  reloadRemixHotkey: (): void => ipcRenderer.send("remix-hotkey:reload"),
-  // --- Remix primitives (the agent's tools; workflow lives in its prompt) ---
-  remixGetContext: (): Promise<RemixContextResult> =>
-    ipcRenderer.invoke("remix:get-context"),
-  remixReadDocument: (): Promise<RemixReadDocumentResult> =>
-    ipcRenderer.invoke("remix:read-document"),
-  remixSetClipboard: (text: string): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:set-clipboard", text),
-  remixPasteClipboard: (): Promise<RemixPrimitiveResult> =>
-    ipcRenderer.invoke("remix:paste-clipboard"),
-  remixGetClipboard: (): Promise<RemixCopyResult> =>
-    ipcRenderer.invoke("remix:get-clipboard"),
-  panelOpenForDictation: (): void =>
-    ipcRenderer.send("panel:open-for-dictation"),
-  panelDictationPartial: (text: string): void =>
-    ipcRenderer.send("panel:dictation-partial", text),
-  panelDictationFinal: (text: string): void =>
-    ipcRenderer.send("panel:dictation-final", text),
-  panelDictationError: (message: string): void =>
-    ipcRenderer.send("panel:dictation-error", message),
   panelRendererReady: (): void => ipcRenderer.send("panel:renderer-ready"),
-  onPanelDictation: (
-    callback: (ev: {
-      kind: "partial" | "final" | "error";
-      text: string;
-    }) => void,
-  ): (() => void) => {
-    const handler = (
-      _e: unknown,
-      ev: { kind: "partial" | "final" | "error"; text: string },
-    ): void => callback(ev);
-    ipcRenderer.on("panel:dictation", handler);
-    return () => ipcRenderer.removeListener("panel:dictation", handler);
-  },
   dictationPrefs: (): Promise<DictationPrefs> =>
     ipcRenderer.invoke("dictation:prefs"),
   onDictationPrefs: (
@@ -245,68 +114,19 @@ const api = {
     ipcRenderer.send("panel:set-sidebar-hidden", hidden),
   openSettings: (): void => ipcRenderer.send("settings:open"),
   settingsClose: (): void => ipcRenderer.send("settings:close"),
-  panelSetComposerFocused: (focused: boolean): void =>
-    ipcRenderer.send("panel:composer-focused", focused),
-  panelRequestFocus: (): void => ipcRenderer.send("panel:request-focus"),
-  onPanelFocusComposer: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
-    ipcRenderer.on("panel:focus-composer", handler);
-    return () => ipcRenderer.removeListener("panel:focus-composer", handler);
-  },
   onDashboardNavigate: (
-    callback: (route: "/settings" | "/settings/models" | "/remix") => void,
+    callback: (route: "/settings" | "/settings/models" | "/today") => void,
   ): (() => void) => {
     const handler = (
       _e: unknown,
-      route: "/settings" | "/settings/models" | "/remix",
+      route: "/settings" | "/settings/models" | "/today",
     ): void => callback(route);
     ipcRenderer.on("dashboard:navigate", handler);
     return () => {
       ipcRenderer.removeListener("dashboard:navigate", handler);
     };
   },
-  notificationPresent: (payload: {
-    messageId: string;
-    title: string;
-    body: string;
-  }): void => ipcRenderer.send("notifications:present", payload),
-  notificationSetVisible: (visible: boolean): void =>
-    ipcRenderer.send("notifications:set-visible", visible),
-  notificationSetHeight: (height: number): void =>
-    ipcRenderer.send("notifications:set-height", height),
-  notificationOpenThread: (threadId: string): void =>
-    ipcRenderer.send("notifications:open-thread", threadId),
-  notificationAuthChanged: (): void =>
-    ipcRenderer.send("notifications:auth-changed"),
-  onNotificationAuthChanged: (callback: () => void): (() => void) => {
-    const handler = (): void => callback();
-    ipcRenderer.on("notifications:auth-changed", handler);
-    return () =>
-      ipcRenderer.removeListener("notifications:auth-changed", handler);
-  },
-  onNotificationNativeClick: (
-    callback: (messageId: string) => void,
-  ): (() => void) => {
-    const handler = (_event: unknown, messageId: string): void =>
-      callback(messageId);
-    ipcRenderer.on("notifications:native-click", handler);
-    return () =>
-      ipcRenderer.removeListener("notifications:native-click", handler);
-  },
-  onPanelOpenThread: (callback: (threadId: string) => void): (() => void) => {
-    const handler = (_e: unknown, threadId: string): void => callback(threadId);
-    ipcRenderer.on("panel:open-thread", handler);
-    return () => ipcRenderer.removeListener("panel:open-thread", handler);
-  },
-  onPanelThreadUpdated: (
-    callback: (threadId: string) => void,
-  ): (() => void) => {
-    const handler = (_e: unknown, threadId: string): void => callback(threadId);
-    ipcRenderer.on("panel:thread-updated", handler);
-    return () => ipcRenderer.removeListener("panel:thread-updated", handler);
-  },
-
-  getOpenAppCandidates: (): Promise<unknown[]> =>
+  getOpenAppCandidates: (): Promise<OpenAppCandidate[]> =>
     ipcRenderer.invoke("system:open-app-candidates"),
   getPillPosition: (): Promise<string> =>
     ipcRenderer.invoke("settings:pill-position"),
@@ -494,16 +314,6 @@ const api = {
     ipcRenderer.invoke("settings:show-dashboard-on-launch"),
   setShowDashboardOnLaunch: (enabled: boolean): void =>
     ipcRenderer.send("settings:set-show-dashboard-on-launch", enabled),
-  // Session display names are intentionally Electron-local during the Remix
-  // experiment: they improve the sidebar without changing Cloud thread data.
-  getRemixSessionTitles: (): Promise<Record<string, string>> =>
-    ipcRenderer.invoke("settings:remix-session-titles"),
-  setRemixSessionTitle: (
-    threadId: string,
-    title: string | null,
-  ): Promise<boolean> =>
-    ipcRenderer.invoke("settings:set-remix-session-title", threadId, title),
-  // Context-aware dictation
   getFrontmostApp: (): Promise<string | null> =>
     ipcRenderer.invoke("system:frontmost-app"),
   // Fired by the pill after a successful transcription + paste, so other

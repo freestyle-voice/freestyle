@@ -42,6 +42,25 @@ async function fixtures(page: Page, failure: string) {
               init,
             );
             const path = new URL(request.url).pathname;
+            if (failure.startsWith("usage-") && path === "/api/usage") {
+              return Response.json({
+                plan: "free",
+                remaining: 50,
+                limit: 50,
+                totalConsumed: 0,
+                resetsAt: "2030-01-01T00:00:00Z",
+                ...(failure === "usage-dictation"
+                  ? {
+                      dictation: {
+                        remaining: 4000,
+                        limit: 5000,
+                        totalConsumed: 1000,
+                        resetsAt: "2030-01-01T00:00:00Z",
+                      },
+                    }
+                  : {}),
+              });
+            }
             if (
               failure === "network" &&
               path.includes("/api/settings/network_")
@@ -117,34 +136,6 @@ async function fixtures(page: Page, failure: string) {
             }
             if (failure === "plugins" && path === "/api/plugins/reload")
               return Response.json({ ok: true });
-            if (failure === "tasks" && path === "/api/brain/read")
-              return Response.json({ ok: true, text: state.text, version: 1 });
-            if (failure === "tasks" && path === "/api/brain/write") {
-              state.writes++;
-              await new Promise((resolve) => setTimeout(resolve, 350));
-              if (state.fail)
-                return Response.json({ ok: false }, { status: 503 });
-              state.text = (await request.json()).text;
-              return Response.json({ ok: true, version: 2 });
-            }
-            if (
-              failure === "notifications" &&
-              path === "/api/notifications/token"
-            ) {
-              state.reads++;
-              return Response.json(
-                { error: "Unavailable" },
-                { status: state.fail ? 503 : 401 },
-              );
-            }
-            if (path === "/api/scheduled/tasks") {
-              if (request.method === "POST")
-                return Response.json(
-                  { error: "Couldn’t save this schedule. Try again." },
-                  { status: 503 },
-                );
-              return Response.json({ tasks: [] });
-            }
             return next(input, init);
           };
         },
@@ -239,6 +230,36 @@ test("billing distinguishes unknown membership from Free and retries", async ({
   ).toBeVisible();
 });
 
+test("legacy usage without a dictation pocket never becomes a word quota", async ({
+  page,
+}) => {
+  await fixtures(page, "usage-legacy");
+  await page.goto("/index.html#/settings/billing");
+  await expect(page.getByText("Dictation usage is unavailable.")).toBeVisible();
+  await expect(page.getByText(/dictation words (left|remaining)/)).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Upgrade to Pro", exact: true }),
+  ).toBeVisible();
+  await page.goto("/index.html#/today");
+  await expect(page.getByText("Dictation usage is unavailable.")).toBeVisible();
+  await expect(page.getByText(/dictation words left/)).toHaveCount(0);
+});
+
+test("dictation usage displays the word pocket rather than the legacy balance", async ({
+  page,
+}) => {
+  await fixtures(page, "usage-dictation");
+  await page.goto("/index.html#/settings/billing");
+  await expect(page.getByText(/5,000 dictation words remaining/)).toBeVisible();
+  await page.goto("/index.html#/today");
+  await expect(page.getByText(/5,000 dictation words left/)).toBeVisible();
+  await expect(page.getByText("Dictation usage is unavailable.")).toHaveCount(
+    0,
+  );
+});
+
 test("plugin loading and updates expose recoverable failures", async ({
   page,
 }) => {
@@ -280,43 +301,6 @@ test("plugin loading and updates expose recoverable failures", async ({
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 
-test("task additions survive failed writes and retry without duplication", async ({
-  page,
-}) => {
-  await fixtures(page, "tasks");
-  await page.goto("/index.html#/remix");
-  await page.getByRole("button", { name: /^Tasks/ }).click();
-  const inspector = page.getByRole("complementary", {
-    name: "Context inspector",
-  });
-  const input = inspector.getByRole("textbox", { name: "Add a task" });
-  await input.fill("Check the release notes");
-  await input.press("Enter");
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          (window as unknown as { recoveryFixture: { writes: number } })
-            .recoveryFixture.writes,
-      ),
-    )
-    .toBe(1);
-  if (baseline) {
-    await page.waitForTimeout(500);
-    await capture(page, "tasks-save");
-    return;
-  }
-  await expect(inspector.getByRole("alert")).toContainText("Couldn’t save");
-  await expect(input).toHaveValue("Check the release notes");
-  await capture(page, "tasks-save");
-  await recover(page);
-  await inspector.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(input).toHaveValue("");
-  await expect(
-    inspector.getByText("Check the release notes", { exact: true }),
-  ).toHaveCount(1);
-});
-
 test("restricted microphone access explains the next step", async ({
   page,
 }) => {
@@ -338,55 +322,6 @@ test("restricted microphone access explains the next step", async ({
   await expect(
     page.getByRole("button", { name: "Allow", exact: true }),
   ).toHaveCount(0);
-});
-
-test("notification failures have Retry and signed-out history has Sign in", async ({
-  page,
-}) => {
-  await fixtures(page, "notifications");
-  await page.goto("/index.html#/settings/notifications");
-  await expect(page.getByText(/Couldn't reach Freestyle Cloud/)).toBeVisible();
-  await capture(page, "notifications-unavailable");
-  if (baseline) return;
-  await recover(page);
-  await page.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(
-    page.getByText("Sign in to see your notifications."),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Sign in", exact: true }),
-  ).toBeVisible();
-});
-
-test("schedule creation explains timing and previews advanced cron", async ({
-  page,
-}) => {
-  await fixtures(page, "schedules");
-  await page.goto("/index.html#/remix");
-  await page.getByRole("button", { name: "Schedules", exact: true }).click();
-  await page.getByRole("button", { name: "New schedule", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "New schedule" });
-  await dialog.getByLabel("Name", { exact: true }).fill("Morning brief");
-  await dialog
-    .getByLabel("Schedule, in your words")
-    .fill("every weekday at 8am");
-  if (baseline) {
-    await capture(page, "schedule-timing");
-    return;
-  }
-  await expect(dialog.getByText(/Freestyle interprets/)).toBeVisible();
-  await capture(page, "schedule-natural");
-  await dialog.getByText("Advanced timing", { exact: true }).click();
-  await dialog.getByLabel("Cron expression").fill("0 8 * * 1-5");
-  await dialog.getByLabel("Timezone", { exact: true }).fill("Asia/Kolkata");
-  await expect(dialog.getByRole("status")).toContainText("Next scheduled time");
-  await expect(dialog.getByRole("status")).toContainText("Asia/Kolkata");
-  await capture(page, "schedule-timing");
-  await dialog.getByLabel("Cron expression").fill("bad cron");
-  await expect(dialog.getByRole("alert")).toBeVisible();
-  await expect(
-    dialog.getByRole("button", { name: "Save", exact: true }),
-  ).toBeDisabled();
 });
 
 for (const timing of [
@@ -443,38 +378,6 @@ for (const timing of [
     ).toEqual(["http://proxy.example.test:8080", ""]);
     await expect(input).toHaveValue("");
   });
-
-test("failed task toggles keep the saved state and share drafts between views", async ({
-  page,
-}) => {
-  test.skip(baseline);
-  await fixtures(page, "tasks");
-  await page.goto("/index.html#/remix");
-  const card = page.locator('[data-context-kind="tasks"]');
-  await card
-    .getByRole("textbox", { name: "Add a task" })
-    .fill("A draft to keep");
-  await page.getByRole("button", { name: /^Tasks/ }).click();
-  const inspector = page.getByRole("complementary", {
-    name: "Context inspector",
-  });
-  await expect(
-    inspector.getByRole("textbox", { name: "Add a task" }),
-  ).toHaveValue("A draft to keep");
-  const checkbox = inspector.getByRole("checkbox", {
-    name: "Review the release",
-  });
-  await checkbox.click();
-  await expect(checkbox).toBeDisabled();
-  await expect(inspector.getByRole("alert")).toBeVisible();
-  await expect(checkbox).not.toBeChecked();
-  await recover(page);
-  await inspector.getByRole("button", { name: "Retry" }).click();
-  await expect(checkbox).toBeChecked();
-  await expect(
-    inspector.getByRole("textbox", { name: "Add a task" }),
-  ).toHaveValue("A draft to keep");
-});
 
 test("known Pro membership remains visible after a failed refresh", async ({
   page,
@@ -552,32 +455,6 @@ test("plugin toggles and uninstall failures can be retried", async ({
     .getByRole("button", { name: "Try again" })
     .click();
   await expect(page).toHaveURL(/#\/plugins$/);
-});
-
-test("schedule save errors stay inside the editor with the draft", async ({
-  page,
-}) => {
-  test.skip(baseline);
-  await fixtures(page, "schedules");
-  await page.goto("/index.html#/remix");
-  await page.getByRole("button", { name: "Schedules", exact: true }).click();
-  await page.getByRole("button", { name: "New schedule", exact: true }).click();
-  const dialog = page.getByRole("dialog", { name: "New schedule" });
-  await dialog.getByLabel("Name", { exact: true }).fill("Release brief");
-  await dialog
-    .getByLabel("Schedule, in your words")
-    .fill("every Friday morning");
-  await dialog
-    .getByLabel("What Freestyle does")
-    .fill("Summarize release notes");
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
-  await expect(dialog.getByRole("alert")).toContainText(
-    "Couldn’t save this schedule",
-  );
-  await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue(
-    "Release brief",
-  );
-  await capture(page, "schedule-save-error");
 });
 
 test("recovery feedback remains usable in narrow dark settings", async ({

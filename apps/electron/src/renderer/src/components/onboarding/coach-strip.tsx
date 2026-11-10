@@ -3,8 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 // ---------------------------------------------------------------------------
 // Coach strip — the keycap sentence, status dot, and live waveform shared by
-// onboarding's draft and remix steps. Extracted from tutorial-demo.tsx and
-// parameterized by which key events drive it (dictation vs remix hotkey).
+// dictation practice.
 // ---------------------------------------------------------------------------
 
 export type CoachPhase = "idle" | "pressed" | "result";
@@ -17,7 +16,7 @@ const RESULT_HOLD_MS = 2400;
  * Wave inside its RAF loop, so no re-render per frame.
  */
 export function useCoachPress(
-  source: "dictation" | "remix",
+  _source: "dictation",
   handlers?: { onDown?: () => void; onUp?: () => void },
 ): { phase: CoachPhase; getLiveLevel: () => number | null } {
   const [phase, setPhase] = useState<CoachPhase>("idle");
@@ -30,10 +29,8 @@ export function useCoachPress(
   onUpRef.current = handlers?.onUp;
 
   useEffect(() => {
-    const subscribeDown =
-      source === "remix" ? window.api?.onRemixDown : window.api?.onHotkeyDown;
-    const subscribeUp =
-      source === "remix" ? window.api?.onRemixUp : window.api?.onHotkeyUp;
+    const subscribeDown = window.api?.onHotkeyDown;
+    const subscribeUp = window.api?.onHotkeyUp;
     const removeDown = subscribeDown?.(() => {
       livePressRef.current = true;
       audioLevelRef.current = 0;
@@ -58,7 +55,7 @@ export function useCoachPress(
       removeUp?.();
       if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
     };
-  }, [source]);
+  }, []);
 
   useEffect(() => {
     const remove = window.api?.onAudioLevel?.((level: number) => {

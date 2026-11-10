@@ -26,8 +26,6 @@ not copy a diamond or an old accent just because it is still on a screen.
 
 - **Theme values:** [`globals.css`](apps/electron/src/renderer/src/globals.css).
   Use semantic tokens so light and dark themes stay in sync.
-- **Remix colors:** [`remix-foundation.css`](apps/electron/src/renderer/src/remix-foundation.css)
-  aliases the same theme tokens. It does not define a separate brand palette.
 - **App wave:** [`mark-light.svg`](apps/electron/src/renderer/src/assets/mark-light.svg)
   on light surfaces and [`mark-dark.svg`](apps/electron/src/renderer/src/assets/mark-dark.svg)
   on dark surfaces. These are ready to import into the renderer.
@@ -144,7 +142,7 @@ you can reproduce the palette in a standalone HTML artifact.
 
 ### Rules
 
-- **One brand palette.** Remix, Dictate, onboarding, sign-in, and settings
+- **One brand palette.** Dictate, onboarding, sign-in, and settings
   consume the same semantic olive tokens. Do not use generic Tailwind greens,
   a new purple/orange brand accent, or hardcoded legacy `tavern-*` colors.
 - **Olive is rationed.** A typical screen has olive in exactly 2–3 places: the
@@ -194,13 +192,11 @@ followed by an upright period:
 
 Optionally followed by one muted sentence (`text-muted-foreground text-[14px] leading-[1.5] max-w-[580px]`).
 
-Chat titles, compact workspace headers, and functional controls use the UI
-family. Do not force an oversized serif hero into every Remix chat view.
+Compact headers and functional controls use the UI family.
 Logo lettering follows the current-brand rules above, not this page-title recipe.
 
-The shared sidebar sign-in cards use **Instrument Serif italic** for both
-`Freestyle Transcribe` and `Freestyle Remix` titles. Their descriptions and
-buttons keep the normal UI typeface.
+The sidebar sign-in card uses **Instrument Serif italic** for the
+`Freestyle Transcribe` title. Its description and buttons keep the normal UI typeface.
 
 ### Eyebrows / kickers
 
@@ -371,13 +367,12 @@ calendar and use the accent wash to indicate the matching selection.
 
 - The app is an Electron desktop window. The top 36–38px is a **draggable
   titlebar** (`WebkitAppRegion: drag`); interactive content sets `no-drag`.
-- **Workspace, not tabs:** Remix keeps chat as the primary column. Its optional
-  right context rail contains independently expandable Tasks, Notes, and Brain
-  cards; expanding a card never replaces or navigates away from the chat.
+- **Dictation first:** The app opens to dictation history. Recording, models,
+  cleanup, vocabulary, and dictionary support the same dictation workflow.
 - **Settings is a workspace route:** Settings uses its own left navigation in
   the existing workspace window. Do not introduce a second settings window or
   a nested settings sidebar inside the page content. The Models page belongs
-  to the General settings group; Connected apps belongs to Remix.
+  to the General settings group.
 - Page scroll area uses `.responsive-page-scroll` — `padding-inline: 3rem`
   (→ 2rem ≤1080px → 1rem ≤820px), `padding-bottom: 3rem`.
 - Content **max-width ~760px**, centered, for settings/editorial pages — keep

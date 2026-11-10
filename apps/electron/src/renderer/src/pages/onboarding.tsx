@@ -152,8 +152,8 @@ export default function OnboardingPage(): React.JSX.Element {
             )}
             <footer className="border-border flex flex-wrap items-center justify-between gap-3 border-t pt-5">
               <p className="text-muted-foreground m-0 max-w-sm text-xs leading-5">
-                Remix is also available when you want to rewrite, research or
-                act on an idea. Explore it after setup.
+                Your voice model, cleanup preferences and permissions are
+                available in Settings whenever you need them.
               </p>
               <div className="flex flex-wrap gap-2">
                 <Button
@@ -267,8 +267,8 @@ export default function OnboardingPage(): React.JSX.Element {
               </p>
             )}
             <p className="text-muted-foreground m-0 text-xs leading-5">
-              You can change models at any time in Settings. Remix helps you
-              rewrite, research and take action when you need it.
+              You can change your transcription and cleanup models at any time
+              in Settings.
             </p>
           </>
         )}

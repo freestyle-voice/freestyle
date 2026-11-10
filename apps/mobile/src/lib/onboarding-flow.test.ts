@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { canCompleteOnboardingWithoutVoiceSetup } from "./onboarding-flow";
 
 describe("onboarding voice setup policy", () => {
-  it("never traps a typing-capable user in voice setup", () => {
+  it("lets users finish onboarding while deferring voice permissions", () => {
     expect(canCompleteOnboardingWithoutVoiceSetup()).toBe(true);
   });
 });

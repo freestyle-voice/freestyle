@@ -9,33 +9,6 @@ const dashboardPath = resolve(rendererRoot, "dashboard.tsx");
 const globalsPath = resolve(rendererRoot, "globals.css");
 
 describe("settings consolidation", () => {
-  it("keeps the former Remix-only data controls in dedicated Settings", async () => {
-    const settings = await readFile(
-      resolve(rendererRoot, "pages/settings.tsx"),
-      "utf8",
-    );
-
-    expect(settings).toContain("NotificationsHistory");
-    expect(settings).toContain('apiFetch("/api/brain/export")');
-    expect(settings).toContain('apiFetch("/api/brain/clear"');
-  });
-
-  it("does not retain a second settings surface in the Remix workspace", async () => {
-    const panel = await readFile(
-      resolve(rendererRoot, "components/panel.tsx"),
-      "utf8",
-    );
-    const remixStyles = await readFile(
-      resolve(rendererRoot, "remix-workspace.css"),
-      "utf8",
-    );
-
-    expect(panel).not.toContain("SettingsView");
-    expect(panel).not.toContain('aria-label="Settings"');
-    expect(panel).not.toContain("remix-inline-settings");
-    expect(remixStyles).not.toContain("remix-inline-settings");
-  });
-
   it("keeps the remix workspace affordance out of Settings", async () => {
     const settings = await readFile(
       resolve(rendererRoot, "pages/settings.tsx"),
@@ -59,7 +32,7 @@ describe("settings consolidation", () => {
     expect(settings).not.toContain("function SettingsSidebar");
     expect(shell).toContain("function SettingsSidebar");
     expect(shell).toContain('to: "/settings/transcription"');
-    expect(shell).toContain('to: "/settings/apps"');
+    expect(shell).not.toContain('to: "/settings/apps"');
     expect(shell).toContain('to: "/settings/network"');
     const settingsNavigation = shell.slice(
       shell.indexOf("const SETTINGS_NAV_GROUPS"),
@@ -71,7 +44,7 @@ describe("settings consolidation", () => {
     expect(settingsNavigation).toContain('to: "/settings/models"');
     const dictationGroup = settingsNavigation.slice(
       settingsNavigation.indexOf('label: "Dictation"'),
-      settingsNavigation.indexOf('label: "Remix"'),
+      settingsNavigation.indexOf('label: "General"'),
     );
     const generalGroup = settingsNavigation.slice(
       settingsNavigation.indexOf('label: "General"'),

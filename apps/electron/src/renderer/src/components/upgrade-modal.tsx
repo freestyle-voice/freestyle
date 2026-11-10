@@ -89,7 +89,6 @@ export function UpgradeModalProvider({
 // ---------------------------------------------------------------------------
 
 const FREE_FEATURES = [
-  "50 Freestyle Remix turns / week",
   "3,000 dictation words per week",
   "Transcribe + Polish — full dictation",
   "History, dictionary, vocabulary, tone & plugins",
@@ -99,19 +98,12 @@ const FREE_FEATURES = [
 ];
 
 const PRO_FEATURES = [
-  "Unlimited Freestyle Remix",
   "Unlimited dictation",
   "Sync across all devices",
-  "Agents & integrations (coming soon)",
   "Priority support",
 ];
 
-const PRO_MEMBERSHIP_FEATURES = [
-  "Freestyle Remix",
-  "Dictation",
-  "Sync across devices",
-  "Agents & integrations",
-];
+const PRO_MEMBERSHIP_FEATURES = ["Dictation", "Sync across devices"];
 
 const ENTERPRISE_FEATURES = [
   "Dedicated support channel",
@@ -525,8 +517,8 @@ function UpgradeModal({
               You're Pro!
             </DialogTitle>
             <DialogDescription className="max-w-xs text-[13px]">
-              Unlimited Freestyle Remix and dictation are now active on this
-              device. Thanks for supporting Freestyle.
+              Unlimited dictation are now active on this device. Thanks for
+              supporting Freestyle.
             </DialogDescription>
             <Button className="mt-2 min-w-32" onClick={close}>
               Done
@@ -539,8 +531,7 @@ function UpgradeModal({
                 Upgrade to Freestyle Pro
               </DialogTitle>
               <DialogDescription className="text-[12.5px]">
-                Unlimited Freestyle Remix and dictation, synced everywhere you
-                work.
+                Unlimited dictation, synced everywhere you work.
               </DialogDescription>
             </div>
 

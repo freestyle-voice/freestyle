@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router";
 import { FreestyleCloudBundleCard } from "./freestyle-cloud-bundle-card";
 import { MlxWarmingDialog } from "./mlx-memory-section";
 import { ConfirmDialog, type ModalState, ModelModal } from "./model-modal";
@@ -25,7 +24,6 @@ import {
 } from "./models-page-layout";
 import { PageShell } from "./page-chrome";
 import { PairCard } from "./pair-card";
-import { RemixModelCard } from "./remix-model-card";
 import {
   FREESTYLE_CLOUD_CLEANUP,
   FREESTYLE_CLOUD_TIER,
@@ -43,16 +41,6 @@ const FREESTYLE_CLOUD_PROVIDER = "freestyle-cloud";
 export default function ModelsPage(): React.JSX.Element {
   const { t } = useTranslation();
   const m = useModels();
-  const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [choosingForRemix] = useState(searchParams.get("choose") === "remix");
-  useEffect(() => {
-    if (m.loading || searchParams.get("choose") !== "remix") return;
-    setModal({ kind: "list", type: "remix" });
-    const next = new URLSearchParams(searchParams);
-    next.delete("choose");
-    setSearchParams(next, { replace: true });
-  }, [m.loading, searchParams, setSearchParams]);
   const cloudAuth = useCloudAuth();
   const [modal, setModal] = useState<ModalState | null>(null);
   const [saving, setSaving] = useState(false);
@@ -151,9 +139,8 @@ export default function ModelsPage(): React.JSX.Element {
     setSaving(false);
   };
 
-  const finishSelection = (type: string | null): void => {
+  const finishSelection = (_type: string | null): void => {
     closeModal();
-    if (type === "remix" && choosingForRemix) navigate("/remix");
   };
 
   const ensureCloudAuth = async (): Promise<boolean> => {
@@ -212,8 +199,6 @@ export default function ModelsPage(): React.JSX.Element {
     m.setCleanup(true);
     setModal({ kind: "list", type: "llm", llmView: "tiers" });
   };
-
-  const openRemix = (): void => setModal({ kind: "list", type: "remix" });
 
   const onToggleCleanup = (next: boolean): void => {
     if (freestyleVoiceActive) return;
@@ -310,8 +295,6 @@ export default function ModelsPage(): React.JSX.Element {
       setModal({ kind: "list", type: "voice", voiceView: "tiers" });
     } else if (modal.type === "llm") {
       setModal({ kind: "list", type: "llm", llmView: "tiers" });
-    } else if (modal.type === "remix") {
-      setModal({ kind: "list", type: "remix" });
     } else {
       closeModal();
     }
@@ -377,7 +360,7 @@ export default function ModelsPage(): React.JSX.Element {
           <p className="text-muted-foreground text-[12px] leading-relaxed">
             {t("models.pipeline", {
               defaultValue:
-                "Dictation: speech → transcription → optional cleanup. Remix uses its own model, selected independently below.",
+                "Dictation: speech → transcription → optional cleanup.",
             })}
           </p>
           <div className="@container border-border bg-card/55 overflow-hidden rounded-[12px] border">
@@ -393,13 +376,6 @@ export default function ModelsPage(): React.JSX.Element {
                 onConfigureWarming={
                   showMlxWarming ? () => setWarmingOpen(true) : undefined
                 }
-              />
-            </section>
-            <section aria-label="Remix model">
-              <RemixModelCard
-                model={m.defaultRemix}
-                signedIn={!!cloudAuth.user}
-                onChooseModel={openRemix}
               />
             </section>
             <FreestyleCloudBundleCard
@@ -499,8 +475,7 @@ export default function ModelsPage(): React.JSX.Element {
                   }}
                 />
                 {(m.defaultVoice?.provider === pendingProviderDelete ||
-                  m.defaultLlm?.provider === pendingProviderDelete ||
-                  m.defaultRemix?.provider === pendingProviderDelete) &&
+                  m.defaultLlm?.provider === pendingProviderDelete) &&
                   t("models.deleteProviderCurrentSuffix")}
                 .
               </>

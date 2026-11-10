@@ -2,30 +2,24 @@ import { Check, Keyboard, Mic } from "lucide-react-native";
 import { useCallback } from "react";
 import { Linking, Pressable, StyleSheet, View } from "react-native";
 
-import {
-  Card,
-  OptionCard,
-  SettingsScreenScaffold,
-} from "@/components/settings-ui";
+import { SettingsScreenScaffold } from "@/components/settings-ui";
 import { ThemedText } from "@/components/themed-text";
 import { Fonts, Radius, Spacing } from "@/constants/theme";
 import { useTheme } from "@/hooks/use-theme";
 import { useMicPermission } from "@/lib/audio/use-mic-permission";
 import { useKeyboardStatus } from "@/lib/keyboard/use-keyboard-status";
-import { useSettings } from "@/lib/settings";
 
 const STEPS = [
   "Open Settings › General › Keyboard › Keyboards.",
   "Tap “Add New Keyboard…” and choose Freestyle.",
   "Tap Freestyle in the list, then enable “Allow Full Access”.",
-  "In any app, choose Dictate for instant transcription or Remix for a voice-only request.",
+  "In any app, tap the microphone to dictate and insert your words.",
 ];
 
 export function KeyboardSetupScreen() {
   const theme = useTheme();
   const { status: micStatus, request: requestMic } = useMicPermission();
   const { status: keyboardStatus, ready: keyboardReady } = useKeyboardStatus();
-  const { settings, setAutoListenAfterRemixQuestion } = useSettings();
 
   const grantMic = useCallback(async () => {
     const status = await requestMic();
@@ -110,34 +104,6 @@ export function KeyboardSetupScreen() {
         )}
       </Pressable>
 
-      <Card>
-        <ThemedText style={styles.rowLabel}>Two voice modes</ThemedText>
-        <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
-          Dictate pastes your spoken words. Remix hears a request, streams a
-          short follow-up here if it needs one, then pastes only the finished
-          result.
-        </ThemedText>
-      </Card>
-
-      <Card>
-        <ThemedText style={styles.rowLabel}>Remix follow-up</ThemedText>
-        <ThemedText themeColor="mutedForeground" style={styles.rowHint}>
-          When Remix asks a short question, start listening again automatically.
-        </ThemedText>
-        <OptionCard
-          label="Resume listening"
-          hint="Recommended for a quick voice-only keyboard flow."
-          selected={settings.autoListenAfterRemixQuestion}
-          onPress={() => setAutoListenAfterRemixQuestion(true)}
-        />
-        <OptionCard
-          label="Wait for my tap"
-          hint="Keep the keyboard quiet until you choose to answer."
-          selected={!settings.autoListenAfterRemixQuestion}
-          onPress={() => setAutoListenAfterRemixQuestion(false)}
-        />
-      </Card>
-
       <View style={styles.steps}>
         {STEPS.map((step, i) => (
           <View key={step} style={styles.step}>
@@ -180,7 +146,7 @@ export function KeyboardSetupScreen() {
   );
 
   const subtitle =
-    "Add the Freestyle keyboard once, then use it in any app. Choose Dictate to paste what you say, or Remix to give the agent a voice-only request. Full Access lets the keyboard talk to Freestyle and insert the finished text.";
+    "Add the Freestyle keyboard once, then use it in any app. Tap the microphone to paste what you say. Full Access lets the keyboard talk to Freestyle and insert the finished text.";
 
   return (
     <SettingsScreenScaffold title="Voice keyboard" subtitle={subtitle}>

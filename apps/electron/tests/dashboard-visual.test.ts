@@ -11,7 +11,6 @@ import { _electron as electron } from "playwright";
 
 const DASHBOARD_SCENARIOS = [
   { id: "today", path: "/today" },
-  { id: "remix", path: "/remix" },
   { id: "settings-transcription", path: "/settings/transcription" },
   { id: "settings-models", path: "/settings/models" },
   { id: "settings-application", path: "/settings/application" },
@@ -83,13 +82,6 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           type: string;
         }>;
         __failToneWrites?: boolean;
-        __failAttentionReads?: boolean;
-        __holdLocalReply?: boolean;
-        __releaseLocalReply?: () => void;
-        __holdLocalCreate?: boolean;
-        __releaseLocalCreate?: () => void;
-        __holdLocalDetail?: boolean;
-        __releaseLocalDetail?: () => void;
       };
       visualReviewWindow.__visualReviewErrors = [];
       visualReviewWindow.__visualReviewModelWrites = [];
@@ -103,8 +95,6 @@ async function installDashboardFixtures(page: Page): Promise<void> {
       const uiClarity = scenario?.startsWith("ui-clarity") ?? false;
       visualReviewWindow.__failToneWrites =
         scenario === "ui-clarity-tone-failure";
-      visualReviewWindow.__failAttentionReads =
-        scenario === "ui-clarity-attention-failure";
       const claritySettings: Record<string, string> = {
         onboarding: JSON.stringify({ v: 2, done: true }),
         llm_cleanup: "true",
@@ -293,31 +283,6 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           return originalFetch(input, init);
         visualReviewWindow.__visualReviewRequests?.push(url.pathname);
 
-        const personalScenario =
-          scenario === "guest-remix-local" ||
-          scenario === "guest-remix-byok" ||
-          scenario === "guest-remix-race";
-        const provider =
-          scenario === "guest-remix-byok" ? "openai" : "local-llm";
-        const model = {
-          provider_id: provider,
-          provider_name: provider === "openai" ? "OpenAI" : "Local LLM",
-          model_id:
-            provider === "local-llm"
-              ? "local-llm/Personal chat model"
-              : `${provider}/test-chat`,
-          model_name: "Personal chat model",
-          type: "llm",
-          curated: true,
-        };
-        const selectionKey = `${scenario}:model`;
-        const historyKey = `${scenario}:history`;
-        const selectedModel = JSON.parse(
-          localStorage.getItem(selectionKey) ?? "null",
-        );
-        const localThreads = JSON.parse(
-          localStorage.getItem(historyKey) ?? "[]",
-        );
         const method =
           init?.method ?? (input instanceof Request ? input.method : "GET");
         const requestBody = async (): Promise<string> =>
@@ -418,90 +383,6 @@ async function installDashboardFixtures(page: Page): Promise<void> {
                   })),
             );
           }
-          if (url.pathname === "/api/attention") {
-            if (visualReviewWindow.__failAttentionReads)
-              return Response.json(
-                { error: "fixture_unavailable" },
-                { status: 503 },
-              );
-            return Response.json({
-              generatedAt: "2026-10-26T00:00:00Z",
-              items: Array.from({ length: 7 }, (_, index) => ({
-                id: `attention-${index}`,
-                kind: index === 0 ? "connection" : "agent_run",
-                priority: "important",
-                status: "failed",
-                title:
-                  index === 0 ? "Reconnect Gmail" : `Review work ${index + 1}`,
-                detail: "Open to review the next step.",
-                createdAt: "2026-10-26T00:00:00Z",
-                updatedAt: "2026-10-26T00:00:00Z",
-                target:
-                  index === 0
-                    ? { type: "connection", connectionId: "clarity-gmail" }
-                    : { type: "thread", threadId: `clarity-thread-${index}` },
-              })),
-            });
-          }
-          if (url.pathname === "/api/suggestions/apply-template") {
-            await new Promise((resolve) => setTimeout(resolve, 250));
-            return Response.json({
-              applied: [
-                {
-                  id: "briefing",
-                  path: "schedules/briefing",
-                  name: "Daily briefing",
-                },
-              ],
-              skipped: [],
-            });
-          }
-          if (url.pathname === "/api/suggestions/capabilities")
-            return Response.json({
-              groups: [
-                {
-                  id: "writing",
-                  title: "Write and plan",
-                  blurb: "Choose what to do next.",
-                  items: [
-                    {
-                      id: "draft",
-                      title: "Draft a reply",
-                      subtitle: "Start with a conversation.",
-                      prompt: "Help draft a reply",
-                    },
-                    {
-                      id: "brief",
-                      title: "Daily briefing",
-                      subtitle: "Create a recurring morning briefing.",
-                      templateId: "daily-brief",
-                    },
-                    {
-                      id: "email",
-                      title: "Search email",
-                      subtitle: "Connect Gmail to search your inbox.",
-                      locked: true,
-                      toolkitSlug: "gmail",
-                    },
-                  ],
-                },
-              ],
-            });
-          if (url.pathname === "/api/connectors")
-            return Response.json({
-              connections: [
-                {
-                  id: "clarity-gmail",
-                  toolkitSlug: "gmail",
-                  toolkitName: "Gmail",
-                  toolkitLogo: null,
-                  accountLabel: null,
-                  toolCount: 1,
-                  status: "needs_reconnect",
-                  statusReason: "Sign in again to reconnect.",
-                },
-              ],
-            });
         }
         if (
           scenario?.startsWith("guest-history-") &&
@@ -531,166 +412,6 @@ async function installDashboardFixtures(page: Page): Promise<void> {
           );
           return Response.json({ ok: true });
         }
-        if (url.pathname === "/api/remix/sessions/runtime") {
-          return Response.json(
-            personalScenario && selectedModel
-              ? {
-                  kind: "local",
-                  model: {
-                    provider: selectedModel.provider,
-                    model_id: selectedModel.model_id,
-                    model_name: selectedModel.model_name,
-                  },
-                }
-              : { kind: "managed" },
-          );
-        }
-        if (personalScenario) {
-          if (url.pathname === "/api/test-sign-in") {
-            guest = false;
-            return Response.json({ ok: true });
-          }
-          if (url.pathname === "/api/settings/local-llm/test")
-            return Response.json({
-              ok: true,
-              models: ["Personal chat model", "Second chat model"],
-            });
-          if (url.pathname === "/api/models/available")
-            return Response.json([
-              model,
-              {
-                ...model,
-                model_id:
-                  provider === "local-llm"
-                    ? "local-llm/Second chat model"
-                    : `${provider}/second-chat`,
-                model_name: "Second chat model",
-              },
-            ]);
-          if (url.pathname === "/api/models/configured") {
-            if (method === "POST") {
-              const configured = {
-                ...JSON.parse(await requestBody()),
-                id: 1,
-                is_default: 1,
-              };
-              localStorage.setItem(selectionKey, JSON.stringify(configured));
-              return Response.json(configured);
-            }
-            return Response.json(selectedModel ? [selectedModel] : []);
-          }
-          if (url.pathname === "/api/keys/validate")
-            return Response.json({ valid: true });
-          if (url.pathname === "/api/keys") {
-            if (method === "POST")
-              localStorage.setItem(`${scenario}:key`, "saved");
-            return Response.json(
-              localStorage.getItem(`${scenario}:key`)
-                ? [{ provider, status: "valid" }]
-                : [],
-            );
-          }
-          if (url.pathname === "/api/remix/sessions" && method === "POST") {
-            if (visualReviewWindow.__holdLocalCreate) {
-              await new Promise<void>((resolve) => {
-                visualReviewWindow.__releaseLocalCreate = resolve;
-              });
-              visualReviewWindow.__holdLocalCreate = false;
-            }
-            if (
-              scenario === "guest-remix-local" &&
-              !localStorage.getItem(`${scenario}:startup-retried`)
-            ) {
-              localStorage.setItem(`${scenario}:startup-retried`, "true");
-              return Response.json({ error: "unavailable" }, { status: 503 });
-            }
-            const next = {
-              id: crypto.randomUUID(),
-              type: "local",
-              title: null,
-              messages: [],
-              model: {
-                provider: selectedModel.provider,
-                modelId: selectedModel.model_id,
-                modelName: selectedModel.model_name,
-              },
-              lastActiveAt: new Date()
-                .toISOString()
-                .slice(0, 19)
-                .replace("T", " "),
-            };
-            localStorage.setItem(
-              historyKey,
-              JSON.stringify([next, ...localThreads]),
-            );
-            return Response.json({ thread: next }, { status: 201 });
-          }
-          if (url.pathname === "/api/remix/sessions/local/latest") {
-            if (
-              scenario === "guest-remix-byok" &&
-              !localStorage.getItem(`${scenario}:startup-retried`)
-            ) {
-              localStorage.setItem(`${scenario}:startup-retried`, "true");
-              return Response.json({ error: "unavailable" }, { status: 503 });
-            }
-            return Response.json({ thread: localThreads[0] ?? null });
-          }
-          if (url.pathname === "/api/remix/sessions/local")
-            return Response.json({ threads: localThreads, nextCursor: null });
-          const session = localThreads.find(
-            (item: { id: string }) => item.id === url.pathname.split("/")[4],
-          );
-          if (session) {
-            if (url.pathname.endsWith("/stream")) {
-              if (visualReviewWindow.__holdLocalReply) {
-                await new Promise<void>((resolve) => {
-                  visualReviewWindow.__releaseLocalReply = resolve;
-                });
-                visualReviewWindow.__holdLocalReply = false;
-              }
-              const parts = [
-                { type: "start", messageId: crypto.randomUUID() },
-                { type: "text-start", id: "reply" },
-                {
-                  type: "text-delta",
-                  id: "reply",
-                  delta: `Hello from ${session.model.modelName}.`,
-                },
-                { type: "text-end", id: "reply" },
-                { type: "finish", finishReason: "stop" },
-              ];
-              return new Response(
-                `${parts.map((part) => `data: ${JSON.stringify(part)}\n\n`).join("")}data: [DONE]\n\n`,
-                {
-                  headers: {
-                    "Content-Type": "text/event-stream",
-                    "x-vercel-ai-ui-message-stream": "v1",
-                  },
-                },
-              );
-            }
-            if (url.pathname.endsWith("/messages") && method === "PUT") {
-              session.messages = JSON.parse(await requestBody()).messages;
-              localStorage.setItem(
-                historyKey,
-                JSON.stringify([
-                  session,
-                  ...localThreads.filter(
-                    (item: { id: string }) => item.id !== session.id,
-                  ),
-                ]),
-              );
-              return Response.json({ ok: true });
-            }
-            if (visualReviewWindow.__holdLocalDetail) {
-              await new Promise<void>((resolve) => {
-                visualReviewWindow.__releaseLocalDetail = resolve;
-              });
-              visualReviewWindow.__holdLocalDetail = false;
-            }
-            return Response.json({ thread: session });
-          }
-        }
 
         if (scenario === "guest-sidebar") {
           if (url.pathname === "/api/auth/device/code") {
@@ -706,22 +427,6 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             guest = false;
             return Response.json({ user: fixtureUser });
           }
-        }
-
-        if (
-          scenario === "guest-connectors" &&
-          url.pathname === "/api/auth/device/code"
-        ) {
-          return Response.json({ error: "test_sign_in" }, { status: 503 });
-        }
-        if (
-          scenario === "guest-connectors" &&
-          url.pathname === "/api/connectors"
-        ) {
-          return Response.json(
-            { error: "cloud_auth_required" },
-            { status: 401 },
-          );
         }
 
         if (url.pathname === "/api/client-error") {
@@ -754,30 +459,6 @@ async function installDashboardFixtures(page: Page): Promise<void> {
         ) {
           localStorage.setItem("visual.guest-onboarding", "done");
         }
-        // Guests cannot load managed conversations; onboarding must still resolve.
-        if (guest && url.pathname.startsWith("/api/agent/")) {
-          return new Response(
-            JSON.stringify({ error: "cloud_auth_required" }),
-            {
-              status: 401,
-              headers: { "content-type": "application/json" },
-            },
-          );
-        }
-        const thread = {
-          id: "visual-review-thread",
-          type: "remote",
-          title: "Sidebar layout",
-          messages: uiClarity
-            ? []
-            : [
-                {
-                  id: "visual-review-message",
-                  role: "assistant",
-                  parts: [{ type: "text", text: "Ready when you are." }],
-                },
-              ],
-        };
         const body = (() => {
           if (pluginLayoutScenario && url.pathname === "/api/plugins") {
             return {
@@ -889,23 +570,6 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             };
           }
           if (url.pathname === "/api/dismissed-notifications") return [];
-          if (url.pathname === "/api/agent/activity") return { threads: [] };
-          if (url.pathname === "/api/agent/thread/latest") {
-            return { thread };
-          }
-          if (url.pathname === "/api/agent/thread/list") {
-            if (scenario === "signed-in-onboarded-offline")
-              return new Promise<never>(() => {});
-            return { threads: [], nextCursor: null };
-          }
-          if (url.pathname.startsWith("/api/agent/thread/")) {
-            if (url.pathname.endsWith("/runs")) return { runs: [] };
-            return {
-              thread,
-              activeTurn: null,
-              pendingAction: null,
-            };
-          }
           if (url.pathname === "/api/usage") {
             return {
               remaining: 2400,
@@ -953,9 +617,7 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             url.pathname === "/api/models/available" ||
             url.pathname === "/api/models/configured" ||
             url.pathname === "/api/keys" ||
-            url.pathname === "/api/api-keys" ||
-            url.pathname === "/api/brain/files" ||
-            url.pathname === "/api/brain/notes"
+            url.pathname === "/api/api-keys"
           ) {
             return [];
           }
@@ -964,54 +626,6 @@ async function installDashboardFixtures(page: Page): Promise<void> {
             url.pathname === "/api/vocabulary"
           ) {
             return { items: [], total: 0 };
-          }
-          if (url.pathname === "/api/connectors/catalog") {
-            if (scenario === "guest-connectors") {
-              const apps = [
-                {
-                  slug: "gmail",
-                  name: "Gmail",
-                  description: "Search and send email.",
-                  authMode: "oauth",
-                  connection: null,
-                },
-                {
-                  slug: "github",
-                  name: "GitHub",
-                  description: "Work with repositories.",
-                  authMode: "oauth",
-                  connection: null,
-                },
-                {
-                  slug: "posthog",
-                  name: "PostHog",
-                  description: "Product analytics.",
-                  authMode: "api_key",
-                  connection: null,
-                },
-              ];
-              const search = url.searchParams.get("search");
-              if (search)
-                return {
-                  connectors: apps.filter((app) =>
-                    app.name.toLowerCase().includes(search.toLowerCase()),
-                  ),
-                  nextCursor: null,
-                };
-              return url.searchParams.get("cursor")
-                ? { connectors: apps.slice(1), nextCursor: null }
-                : { connectors: apps.slice(0, 1), nextCursor: "second" };
-            }
-            return { connectors: [], nextCursor: null };
-          }
-          if (url.pathname === "/api/connectors/connections") {
-            return { connections: [] };
-          }
-          if (url.pathname === "/api/connectors/suggested") {
-            return { connectors: [] };
-          }
-          if (url.pathname === "/api/notifications/token") {
-            return { token: null, userId: null };
           }
           return {};
         })();
@@ -1115,14 +729,6 @@ test("captures every main dashboard page while loading and after data resolves",
       ).toBeVisible();
       await expect(dashboard.getByPlaceholder(/Search/)).toBeVisible();
     }
-    if (scenario.id === "remix") {
-      await expect(dashboard.getByLabel("Loading profile")).toBeVisible();
-      await expect(dashboard.getByLabel("Loading sessions")).toBeVisible();
-      await expect(dashboard.getByLabel("Loading conversation")).toBeVisible();
-      await expect(
-        dashboard.getByRole("button", { name: "Switch workspace" }),
-      ).toBeVisible();
-    }
     const staticHeading = STATIC_LOADING_HEADINGS[scenario.id];
     if (staticHeading) {
       await expect(
@@ -1174,10 +780,6 @@ test("captures every main dashboard page while loading and after data resolves",
     if (scenario.id === "today") {
       expect(requestedEndpoints).toContain("/api/auth/status");
       expect(requestedEndpoints).toContain("/api/history");
-    }
-    if (scenario.id === "remix") {
-      expect(requestedEndpoints).toContain("/api/auth/status");
-      expect(requestedEndpoints).toContain("/api/agent/thread/latest");
     }
     await expect(
       dashboard.getByRole("heading", {
@@ -1803,7 +1405,7 @@ test("captures the desktop sidebar hidden and restored", async ({
       panel?.setSize(windowWidth, 760);
     }, width);
 
-    for (const path of ["/today", "/remix", "/settings/transcription"]) {
+    for (const path of ["/today", "/settings/transcription"]) {
       await dashboard.goto(
         `${DASHBOARD_URL}?visual=sidebar-toggle-${width}-${path}#${path}`,
       );
@@ -1832,11 +1434,6 @@ test("captures the desktop sidebar hidden and restored", async ({
       });
       await expect(showSidebar).toBeVisible();
       await expect(dashboard).toHaveURL(new RegExp(`#${path}$`));
-      if (path === "/remix") {
-        await expect(
-          dashboard.getByText("Ready when you are.", { exact: true }),
-        ).toBeVisible();
-      }
       await expectReservedHeader();
       const hidden = testInfo.outputPath(
         `sidebar-hidden-${width}-${path.replaceAll("/", "-")}.png`,
@@ -1995,105 +1592,11 @@ test("completes signed-in onboarding and restores its local save without Cloud h
   ).not.toContain("/api/agent/thread/list");
 });
 
-test("guides guests to Remix model setup and keeps workspace sign-in cards above the footer", async ({
-  browserName,
-}, testInfo) => {
-  void browserName;
-  await dashboard.goto(
-    `${DASHBOARD_URL}?visual=guest-settings#/settings/models`,
-  );
-  await expect(
-    dashboard.getByRole("heading", { name: "Models", exact: true }),
-  ).toBeVisible();
-  await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
-  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-remix#/remix`);
-  await expect(
-    dashboard.getByRole("heading", {
-      name: "Set up your Remix model",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
-  await expect(
-    dashboard.getByRole("button", { name: "Switch workspace" }),
-  ).toBeVisible();
-  const sessions = dashboard.getByRole("region", { name: "Remix chats" });
-  const chat = dashboard.getByRole("region", {
-    name: "Remix chat",
-    exact: true,
-  });
-  await expect(
-    chat.getByRole("heading", { name: "New chat", exact: true }),
-  ).toBeVisible();
-  await expect(
-    chat.getByRole("textbox", { name: "Message Remix" }),
-  ).toBeDisabled();
-  await expect(
-    chat.getByRole("textbox", { name: "Message Remix" }),
-  ).toHaveAttribute("placeholder", "Choose a Remix model to start chatting…");
-  await expect(
-    chat.getByRole("button", { name: "Send", exact: true }),
-  ).toBeDisabled();
-  await expect(
-    sessions.getByText("No sessions yet", { exact: true }),
-  ).toBeVisible();
-  await expect(
-    sessions.getByRole("button", { name: "New chat" }),
-  ).toBeDisabled();
-  await expect(
-    sessions.getByRole("button", { name: "Schedules" }),
-  ).toBeDisabled();
-  await expect(
-    dashboard.getByRole("link", { name: /Transcriptions/ }),
-  ).toBeHidden();
-  const remixCard = dashboard.getByRole("region", {
-    name: "Freestyle Remix",
-    exact: true,
-  });
-  await expect(remixCard).toBeVisible();
-  await expect(
-    remixCard.getByText(
-      "Sign in for Cloud models, synced chats, and scheduled tasks.",
-    ),
-  ).toBeVisible();
-  await expect(
-    sessions.getByText("Choose your Remix model to start a chat."),
-  ).toBeVisible();
-  const cardBounds = await remixCard.boundingBox();
-  const settingsBounds = await dashboard
-    .getByRole("link", { name: /^Settings/ })
-    .boundingBox();
-  expect(cardBounds!.y + cardBounds!.height).toBeLessThan(settingsBounds!.y);
-  await dashboard.screenshot({
-    path: testInfo.outputPath("remix-model-setup.png"),
-  });
-  await remixCard.getByRole("button", { name: "Dismiss sign-in card" }).click();
-  await expect(remixCard).toBeHidden();
-  await dashboard.evaluate(() => {
-    window.location.hash = "#/today";
-  });
-  await expect(
-    dashboard.getByRole("button", { name: "Dismiss sign-in card" }),
-  ).toBeVisible();
-  await expect(
-    dashboard.getByRole("region", {
-      name: "Freestyle Transcribe",
-      exact: true,
-    }),
-  ).toBeVisible();
-  await dashboard.evaluate(() => {
-    window.location.hash = "#/remix";
-  });
-  await expect(remixCard).toBeHidden();
-  await dashboard.reload();
-  await expect(remixCard).toBeVisible();
-});
-
-test("shares Settings and Help across workspaces and switches to the signed-in profile", async () => {
-  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-sidebar#/remix`);
+test("keeps Settings and Help available from Dictate and switches to the signed-in profile", async () => {
+  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-sidebar#/today`);
   const sidebar = dashboard.locator(".glass-sidebar");
 
-  for (const path of ["/remix", "/today"]) {
+  for (const path of ["/today"]) {
     await dashboard.evaluate((route) => {
       window.location.hash = `#${route}`;
     }, path);
@@ -2116,11 +1619,11 @@ test("shares Settings and Help across workspaces and switches to the signed-in p
     });
   });
   await dashboard.evaluate(() => {
-    window.location.hash = "#/remix";
+    window.location.hash = "#/today";
   });
   await sidebar.getByRole("button", { name: "Sign in", exact: true }).click();
 
-  for (const path of ["/remix", "/today"]) {
+  for (const path of ["/today"]) {
     await dashboard.evaluate((route) => {
       window.location.hash = `#${route}`;
     }, path);
@@ -2141,7 +1644,7 @@ test("shares Settings and Help across workspaces and switches to the signed-in p
   }
 
   await dashboard.evaluate(() => {
-    window.location.hash = "#/remix";
+    window.location.hash = "#/today";
   });
   await sidebar.getByRole("button", { name: "Visual review" }).click();
   await dashboard.getByRole("menuitem", { name: "Sign out" }).click();
@@ -2150,347 +1653,6 @@ test("shares Settings and Help across workspaces and switches to the signed-in p
   await expect(
     sidebar.getByRole("button", { name: "Visual review" }),
   ).toBeHidden();
-});
-
-for (const mode of ["local", "byok"] as const) {
-  test(`lets a guest choose a ${mode} Remix model, chat and restore history`, async ({
-    browserName,
-  }, testInfo) => {
-    void browserName;
-    await dashboard.goto(`${DASHBOARD_URL}?visual=guest-remix-${mode}#/remix`);
-    await dashboard
-      .getByRole("button", { name: "Choose a Remix model", exact: true })
-      .click();
-    const picker = dashboard.getByRole("dialog", {
-      name: "Choose a Remix model",
-    });
-    await expect(picker).toBeVisible();
-    if (mode === "byok")
-      await picker
-        .getByRole("button", { name: "Browse all providers", exact: true })
-        .click();
-    if (mode === "local") {
-      await picker
-        .getByRole("button", { name: "Custom endpoint", exact: true })
-        .click();
-      await picker.getByRole("button", { name: "Test", exact: true }).click();
-    }
-    await picker
-      .locator(".group")
-      .filter({ hasText: "Personal chat model" })
-      .getByRole("button", {
-        name: mode === "local" ? "Use" : "Add key",
-        exact: true,
-      })
-      .click();
-    if (mode === "byok") {
-      const form = picker.getByRole("form", {
-        name: "Connect provider",
-        exact: true,
-      });
-      await form
-        .getByLabel("API key", { exact: true })
-        .fill("test-key-not-a-real-secret");
-      await form
-        .getByRole("button", { name: "Connect provider", exact: true })
-        .click();
-      await expect(form).toHaveCount(0);
-      await picker
-        .getByTestId("model-option")
-        .filter({ hasText: "Personal chat model" })
-        .getByRole("button", { name: "Use", exact: true })
-        .click();
-    }
-    await expect(dashboard).toHaveURL(/#\/remix$/);
-    // Recover both a failed create (local) and a failed latest-history read
-    // (BYOK) without leaving the workspace or asking the guest to sign in.
-    await dashboard
-      .getByRole("button", { name: "Try again", exact: true })
-      .click();
-    const composer = dashboard.locator("#panel-composer");
-    await expect(composer).toBeVisible();
-    const sidebar = dashboard.getByRole("region", { name: "Remix chats" });
-    const newChat = sidebar
-      .getByRole("button", { name: "New chat", exact: true })
-      .and(sidebar.locator(".remix-sidebar-new"));
-    await expect(newChat).toBeEnabled();
-    await expect(
-      sidebar.getByRole("button", { name: "Schedules" }),
-    ).toBeDisabled();
-    await dashboard.evaluate(() => {
-      (
-        window as typeof window & { __holdLocalReply?: boolean }
-      ).__holdLocalReply = true;
-    });
-    await composer.fill("Say hello");
-    await dashboard.getByRole("button", { name: "Send", exact: true }).click();
-    await expect(
-      dashboard.getByRole("button", { name: "Stop generating" }),
-    ).toBeVisible();
-    await composer.fill("Keep my next message while this reply is running");
-    await expect(
-      dashboard.getByRole("button", { name: "Send", exact: true }),
-    ).toBeDisabled();
-    await composer.press("Enter");
-    await expect(composer).toHaveValue(
-      "Keep my next message while this reply is running",
-    );
-    await expect
-      .poll(() =>
-        dashboard.evaluate(
-          () =>
-            typeof (
-              window as typeof window & { __releaseLocalReply?: () => void }
-            ).__releaseLocalReply,
-        ),
-      )
-      .toBe("function");
-    await dashboard.evaluate(() => {
-      (
-        window as typeof window & { __releaseLocalReply?: () => void }
-      ).__releaseLocalReply?.();
-    });
-    await expect(
-      dashboard.getByText("Hello from Personal chat model.", { exact: true }),
-    ).toBeVisible();
-    await expect(composer).toHaveValue(
-      "Keep my next message while this reply is running",
-    );
-    await expect(
-      dashboard.getByRole("button", { name: "Send", exact: true }),
-    ).toBeEnabled();
-    await dashboard.screenshot({
-      path: testInfo.outputPath(`guest-remix-${mode}.png`),
-    });
-    await expect
-      .poll(() =>
-        dashboard.evaluate(() =>
-          (
-            window as typeof window & { __visualReviewRequests: string[] }
-          ).__visualReviewRequests.some((path) => path.endsWith("/messages")),
-        ),
-      )
-      .toBe(true);
-    // Settings navigation unmounts the chat. The completed transcript must
-    // survive before a document reload fetches persisted history.
-    await dashboard
-      .locator(".glass-sidebar")
-      .getByRole("link", {
-        name: /^Settings/,
-      })
-      .click();
-    await expect(dashboard).toHaveURL(/#\/settings\/transcription$/);
-    await dashboard.getByRole("button", { name: "Back to app" }).click();
-    await expect(dashboard).toHaveURL(/#\/remix$/);
-    await expect(
-      dashboard.getByText("Hello from Personal chat model.", {
-        exact: true,
-      }),
-    ).toBeVisible();
-    await dashboard.reload();
-    await expect(
-      dashboard.getByText("Hello from Personal chat model.", { exact: true }),
-    ).toBeVisible();
-    await expect(composer).toBeVisible();
-    await newChat.click();
-    await expect(
-      dashboard.getByText("Hello from Personal chat model.", { exact: true }),
-    ).toBeHidden();
-    await expect(composer).toBeVisible();
-    const requests = await dashboard.evaluate(
-      () =>
-        (window as typeof window & { __visualReviewRequests: string[] })
-          .__visualReviewRequests,
-    );
-    expect(
-      requests.some(
-        (path) =>
-          path.startsWith("/api/agent/") ||
-          path.startsWith("/api/connectors") ||
-          path.startsWith("/api/suggestions") ||
-          path.startsWith("/api/scheduled"),
-      ),
-    ).toBe(false);
-    expect(requests).not.toContain("/api/auth/device/code");
-    await composer.fill("Keep this draft across account changes");
-    await dashboard.evaluate(async () => {
-      // Local chat can be ready before the delayed startup auth check. Let
-      // that read settle before simulating the next account reconciliation.
-      await fetch("http://127.0.0.1:4649/api/auth/status");
-      await fetch("http://127.0.0.1:4649/api/test-sign-in");
-      window.dispatchEvent(new Event("focus"));
-    });
-    const profile = dashboard
-      .locator(".glass-sidebar")
-      .getByRole("button", { name: "Visual review" });
-    await expect(profile).toBeVisible();
-    await expect(composer).toHaveValue(
-      "Keep this draft across account changes",
-    );
-    await profile.click();
-    await dashboard.getByRole("menuitem", { name: "Sign out" }).click();
-    await expect(profile).toBeHidden();
-    await expect(composer).toHaveValue(
-      "Keep this draft across account changes",
-    );
-  });
-}
-
-test("keeps a selected local conversation loading when an older create finishes", async () => {
-  await dashboard.evaluate(() => {
-    const model = {
-      provider: "local-llm",
-      model_id: "local-llm/Personal chat model",
-      model_name: "Personal chat model",
-      type: "remix",
-      is_default: 1,
-    };
-    localStorage.setItem("guest-remix-race:model", JSON.stringify(model));
-    localStorage.setItem(
-      "guest-remix-race:history",
-      JSON.stringify(
-        ["First conversation", "Second conversation"].map((title) => ({
-          id: crypto.randomUUID(),
-          type: "local",
-          title,
-          model: {
-            provider: model.provider,
-            modelId: model.model_id,
-            modelName: model.model_name,
-          },
-          messages: [
-            {
-              id: crypto.randomUUID(),
-              role: "user",
-              parts: [{ type: "text", text: title }],
-            },
-          ],
-          lastActiveAt: "2026-10-09 00:00:00",
-        })),
-      ),
-    );
-  });
-  await dashboard.goto(`${DASHBOARD_URL}?visual=guest-remix-race#/remix`);
-  const composer = dashboard.locator("#panel-composer");
-  await expect(composer).toBeEnabled();
-  await dashboard.evaluate(() => {
-    const fixture = window as typeof window & {
-      __holdLocalCreate?: boolean;
-      __holdLocalDetail?: boolean;
-    };
-    fixture.__holdLocalCreate = true;
-    fixture.__holdLocalDetail = true;
-  });
-  const sidebar = dashboard.getByRole("region", { name: "Remix chats" });
-  await sidebar.getByRole("button", { name: "New chat", exact: true }).click();
-  await expect(composer).toBeDisabled();
-  await sidebar
-    .getByRole("button", { name: "Second conversation", exact: true })
-    .click();
-  await expect(composer).toHaveAttribute(
-    "placeholder",
-    "Loading conversation…",
-  );
-  await expect
-    .poll(() =>
-      dashboard.evaluate(
-        () =>
-          typeof (
-            window as typeof window & { __releaseLocalCreate?: () => void }
-          ).__releaseLocalCreate,
-      ),
-    )
-    .toBe("function");
-  await dashboard.evaluate(() => {
-    (
-      window as typeof window & { __releaseLocalCreate?: () => void }
-    ).__releaseLocalCreate?.();
-  });
-  await expect
-    .poll(() =>
-      dashboard.evaluate(
-        () =>
-          (window as typeof window & { __holdLocalCreate?: boolean })
-            .__holdLocalCreate,
-      ),
-    )
-    .toBe(false);
-  await expect(composer).toBeDisabled();
-  await expect(composer).toHaveAttribute(
-    "placeholder",
-    "Loading conversation…",
-  );
-  await expect
-    .poll(() =>
-      dashboard.evaluate(
-        () =>
-          typeof (
-            window as typeof window & { __releaseLocalDetail?: () => void }
-          ).__releaseLocalDetail,
-      ),
-    )
-    .toBe("function");
-  await dashboard.evaluate(() => {
-    (
-      window as typeof window & { __releaseLocalDetail?: () => void }
-    ).__releaseLocalDetail?.();
-  });
-  await expect(composer).toBeEnabled();
-  await expect(
-    dashboard.locator(".tavern-msg").getByText("Second conversation", {
-      exact: true,
-    }),
-  ).toBeVisible();
-});
-
-test("lets guests browse, paginate and search apps before signing in to connect", async ({
-  browserName,
-}, testInfo) => {
-  void browserName;
-  await dashboard.goto(
-    `${DASHBOARD_URL}?visual=guest-connectors#/settings/apps`,
-  );
-  await expect(dashboard.getByText("Gmail", { exact: true })).toBeVisible();
-  await dashboard.locator(".connector-load-more").scrollIntoViewIfNeeded();
-  await expect(dashboard.getByText("GitHub", { exact: true })).toBeVisible();
-  await expect(
-    dashboard.getByText("Sign in to Freestyle before connecting an app.", {
-      exact: true,
-    }),
-  ).toBeHidden();
-  await dashboard.screenshot({
-    path: testInfo.outputPath("guest-connected-apps.png"),
-  });
-  await dashboard
-    .getByRole("textbox", { name: "Search all apps" })
-    .fill("PostHog");
-  const posthog = dashboard
-    .locator(".connector-card")
-    .filter({ hasText: "PostHog" });
-  await expect(posthog).toBeVisible();
-  await posthog.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect
-    .poll(() =>
-      dashboard.evaluate(
-        () =>
-          (
-            window as typeof window & { __visualReviewRequests?: string[] }
-          ).__visualReviewRequests?.filter(
-            (path) => path === "/api/auth/device/code",
-          ).length,
-      ),
-    )
-    .toBe(1);
-  await expect(
-    dashboard.getByRole("dialog", { name: "Connect PostHog" }),
-  ).toBeHidden();
-  const requests = await dashboard.evaluate(
-    () =>
-      (window as typeof window & { __visualReviewRequests?: string[] })
-        .__visualReviewRequests ?? [],
-  );
-  expect(requests).not.toContain("/api/connectors");
-  expect(requests).not.toContain("/api/connectors/posthog/connect");
 });
 
 test("keeps local settings usable after signing out", async () => {
@@ -2597,17 +1759,6 @@ test("keeps the compact model overview usable with Cloud, local setup and collap
     .getByRole("dialog")
     .getByRole("button", { name: "Close", exact: true })
     .click();
-  await overview
-    .getByTestId("remix-model-configuration")
-    .getByRole("button", { name: "Choose a model" })
-    .click();
-  await expect(
-    dashboard.getByRole("dialog").getByText("Freestyle Cloud", { exact: true }),
-  ).toBeVisible();
-  await dashboard
-    .getByRole("dialog")
-    .getByRole("button", { name: "Close", exact: true })
-    .click();
 });
 
 test("refreshes cleanup state when a session expires while Models is open", async () => {
@@ -2626,62 +1777,6 @@ test("refreshes cleanup state when a session expires while Models is open", asyn
     dashboard.getByRole("heading", { name: "Models", exact: true }),
   ).toBeVisible();
   await expect(dashboard.locator(".glass-sidebar")).toBeVisible();
-});
-
-test("resumes paused notifications after sign-in outside Remix and pauses again on sign-out", async () => {
-  const notifications = app!
-    .windows()
-    .find((page) => page.url().includes("notification.html"));
-  expect(notifications).toBeDefined();
-  let requests = 0;
-  await notifications!.route("**/api/notifications/token", async (route) => {
-    requests += 1;
-    await route.fulfill({
-      status: 401,
-      json: { ok: false, reason: "cloud_auth_required" },
-    });
-  });
-  try {
-    await notifications!.reload();
-    await expect.poll(() => requests).toBeGreaterThan(0);
-    await dashboard.goto(`${DASHBOARD_URL}?visual=guest-sidebar#/today`);
-    const sidebar = dashboard.locator(".glass-sidebar");
-    await expect(
-      sidebar.getByRole("button", { name: "Sign in", exact: true }),
-    ).toBeVisible();
-    const signedOutRequests = requests;
-    await notifications!.clock.install();
-    await notifications!.clock.fastForward(60_000);
-    expect(requests).toBe(signedOutRequests);
-
-    await app!.evaluate(({ shell }) => {
-      Object.defineProperty(shell, "openExternal", {
-        configurable: true,
-        value: async () => {},
-      });
-    });
-    await sidebar.getByRole("button", { name: "Sign in", exact: true }).click();
-    await expect(
-      sidebar.getByRole("button", { name: "Visual review" }),
-    ).toBeVisible();
-    await expect.poll(() => requests).toBeGreaterThan(signedOutRequests);
-    const signedInRequests = requests;
-
-    await sidebar.getByRole("button", { name: "Visual review" }).click();
-    await dashboard
-      .getByRole("menuitem", { name: "Sign out", exact: true })
-      .click();
-    await expect(
-      sidebar.getByRole("button", { name: "Sign in", exact: true }),
-    ).toBeVisible();
-    await expect.poll(() => requests).toBeGreaterThan(signedInRequests);
-    const finalRequests = requests;
-    await notifications!.clock.fastForward(60_000);
-    expect(requests).toBe(finalRequests);
-  } finally {
-    await notifications!.clock.resume();
-    await notifications!.unroute("**/api/notifications/token");
-  }
 });
 
 test("captures cleanup model selection for the UI clarity review", async ({
@@ -2822,44 +1917,6 @@ test("allows manual cleanup selection after a fresh endpoint fails discovery", a
   );
 });
 
-test("shows attention failures, all pending items, and the affected connection", async ({
-  browserName,
-}, testInfo) => {
-  void browserName;
-  await dashboard.goto(
-    `${DASHBOARD_URL}?visual=ui-clarity-attention-failure#/remix`,
-  );
-  const attention = dashboard.getByRole("region", { name: "Needs attention" });
-  await expect(attention).toContainText(
-    "Couldn't refresh work that needs attention.",
-  );
-  await dashboard.evaluate(() => {
-    (
-      window as typeof window & { __failAttentionReads?: boolean }
-    ).__failAttentionReads = false;
-  });
-  await attention.getByRole("button", { name: "Try again" }).click();
-  await expect(
-    attention.getByText("Review work 7", { exact: true }),
-  ).toBeHidden();
-  await attention.getByText("View 2 more items", { exact: true }).click();
-  await expect(
-    attention.getByText("Review work 7", { exact: true }),
-  ).toBeVisible();
-  await dashboard.screenshot({
-    path: testInfo.outputPath("attention-all-items.png"),
-    animations: "disabled",
-  });
-  await attention.getByRole("button", { name: /Reconnect Gmail/ }).click();
-  await expect(dashboard).toHaveURL(/#\/settings\/apps/);
-  await expect(
-    dashboard.getByRole("textbox", { name: "Search all apps" }),
-  ).toHaveValue("Gmail");
-  await expect(
-    dashboard.getByText("Sign in again to reconnect.", { exact: true }),
-  ).toBeVisible();
-});
-
 test("teaches the configured dictation mode and keeps collapsed navigation usable", async ({
   browserName,
 }, testInfo) => {
@@ -2902,57 +1959,6 @@ test("teaches the configured dictation mode and keeps collapsed navigation usabl
     path: testInfo.outputPath("collapsed-vocabulary.png"),
     animations: "disabled",
   });
-});
-
-test("distinguishes conversations, automations, and app connections in Actions", async ({
-  browserName,
-}, testInfo) => {
-  void browserName;
-  await dashboard.goto(`${DASHBOARD_URL}?visual=ui-clarity-actions#/remix`);
-  const collapse = dashboard.getByRole("button", {
-    name: "Hide sidebar",
-    exact: true,
-  });
-  if (await collapse.isVisible()) await collapse.click();
-  const rail = dashboard.locator(".glass-sidebar--collapsed");
-  const actions = rail.getByRole("button", { name: "Actions", exact: true });
-  await expect(actions).toBeDisabled();
-  await expect(actions).toBeEnabled();
-  await expect(
-    dashboard.getByRole("heading", { name: "Sidebar layout", exact: true }),
-  ).toBeVisible();
-  await actions.click();
-  await expect(
-    dashboard.getByRole("heading", { name: "What Freestyle can do" }),
-  ).toBeVisible();
-  await expect(
-    dashboard.getByRole("button", { name: /Draft a reply.*Start chat/ }),
-  ).toBeVisible();
-  await expect(
-    dashboard.getByRole("button", { name: /Search email.*Connect app/ }),
-  ).toBeVisible();
-  const automation = dashboard.getByRole("button", {
-    name: /Daily briefing.*Add automation/,
-  });
-  await expect(automation).toBeVisible();
-  await dashboard.screenshot({
-    path: testInfo.outputPath("remix-action-labels.png"),
-    animations: "disabled",
-  });
-  await automation.click();
-  await expect(
-    dashboard.getByRole("button", { name: /Daily briefing.*Adding/ }),
-  ).toBeDisabled();
-  await expect(
-    dashboard.getByRole("button", { name: /Daily briefing.*Added/ }),
-  ).toBeDisabled();
-  await dashboard
-    .getByRole("button", { name: /Search email.*Connect app/ })
-    .click();
-  await expect(dashboard).toHaveURL(/#\/settings\/apps$/);
-  await expect(
-    dashboard.getByRole("textbox", { name: "Search all apps" }),
-  ).toBeVisible();
 });
 
 test("recovers rejected manual model selection after connecting a provider", async () => {

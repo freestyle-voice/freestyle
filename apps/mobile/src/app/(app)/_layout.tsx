@@ -10,7 +10,7 @@ import { useOnboarding } from "@/lib/onboarding";
 import { SettingsProvider } from "@/lib/settings";
 
 /**
- * Authenticated area. A Stack hosts the chat-home group `(tabs)` plus the
+ * Authenticated area. A Stack hosts the dictation home group `(tabs)` plus the
  * pushed pages (settings, profile, keyboard setup). The resident keyboard
  * dictation session lives in a provider here (not on any one screen) so it
  * survives across navigation — the whole point is that after the first
@@ -43,7 +43,6 @@ export default function AppLayout() {
                 <Stack.Screen name="(tabs)" />
                 <Stack.Screen name="onboarding" />
                 <Stack.Screen name="settings" />
-                <Stack.Screen name="settings/approvals" />
                 <Stack.Screen name="profile" />
                 <Stack.Screen name="history" />
                 <Stack.Screen name="vocabulary" />
@@ -52,10 +51,6 @@ export default function AppLayout() {
                 <Stack.Screen name="keyboard-setup" />
                 <Stack.Screen name="help" />
                 <Stack.Screen name="billing" />
-                <Stack.Screen name="connected-apps" />
-                <Stack.Screen name="automations" />
-                <Stack.Screen name="notifications" />
-                <Stack.Screen name="agent-thread/[id]" />
               </Stack>
               <KeyboardDictationStrip />
             </KeyboardDictationProvider>

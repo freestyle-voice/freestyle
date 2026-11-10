@@ -132,18 +132,4 @@ describe("typed API client startup routing", () => {
     expect(request.method).toBe("POST");
     expect(request.body).toBeNull();
   });
-
-  it("does not sign out for a stale Remix ownership response", async () => {
-    fetchMock.mockResolvedValue(
-      Response.json({ error: "remix_account_changed" }, { status: 401 }),
-    );
-    const { getClient, subscribeToUnauthorized } = await import("./api");
-    const unauthorized = vi.fn();
-    const unsubscribe = subscribeToUnauthorized(unauthorized);
-
-    await getClient().api.settings.$get();
-
-    expect(unauthorized).not.toHaveBeenCalled();
-    unsubscribe();
-  });
 });

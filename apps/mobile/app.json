@@ -23,8 +23,7 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#F4F0E4",
@@ -60,12 +59,6 @@
       "expo-web-browser",
       "expo-asset",
       "expo-apple-authentication",
-      [
-        "expo-notifications",
-        {
-          "defaultChannel": "remix-updates"
-        }
-      ],
       "./plugins/withKeyboardExtension",
       "./plugins/withPodResourceBundleSigning"
     ],

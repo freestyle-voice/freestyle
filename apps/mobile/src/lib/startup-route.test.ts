@@ -36,3 +36,24 @@ describe("startup routing", () => {
     ).toBe("/sign-in");
   });
 });
+
+import { redirectSystemPath } from "../app/+native-intent";
+
+describe("legacy mobile deep links", () => {
+  it.each([
+    "freestyle://remix",
+    "/agent-thread/old-id",
+    "/(app)/agent-thread/old-id",
+    "freestyle://automations",
+    "/settings/approvals",
+    "freestyle://settings/approvals",
+    "freestyle://dictate",
+  ])("resolves %s to dictation", (path) => {
+    expect(redirectSystemPath({ path, initial: true })).toBe("/(app)/(tabs)");
+  });
+  it("preserves a dictation settings destination", () => {
+    expect(redirectSystemPath({ path: "/settings", initial: false })).toBe(
+      "/settings",
+    );
+  });
+});

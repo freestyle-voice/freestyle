@@ -160,7 +160,7 @@ export default defineConfig(({ mode }) => {
           order: "pre",
           handler(html) {
             return html.replace(
-              /src="\/src\/(?:dashboard|components\/(?:pill|notification))\.tsx"/g,
+              /src="\/src\/(?:dashboard|components\/pill)\.tsx"/g,
               'src="/src/browser/bootstrap.ts"',
             );
           },
@@ -188,7 +188,7 @@ export default defineConfig(({ mode }) => {
       emptyOutDir: true,
       rollupOptions: {
         input: Object.fromEntries(
-          ["index", "panel", "pill", "notification"].map((name) => [
+          ["index", "panel", "pill"].map((name) => [
             name,
             resolve(__dirname, `src/renderer/${name}.html`),
           ]),

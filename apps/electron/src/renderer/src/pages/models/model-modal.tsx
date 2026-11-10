@@ -35,14 +35,14 @@ import { displayName } from "./utils";
 export type ModalState =
   | {
       kind: "list";
-      type: "voice" | "llm" | "remix";
+      type: "voice" | "llm";
       voiceView?: "tiers" | "all" | "local" | "cloud";
       llmView?: "tiers" | "all" | "local" | "cloud";
     }
   | {
       kind: "key";
       /** Slot to return to on Back; null = standalone key edit. */
-      type: "voice" | "llm" | "remix" | null;
+      type: "voice" | "llm" | null;
       provider: string;
       modelName?: string;
       /** Model to configure after the key is saved (null for edits). */
@@ -137,11 +137,7 @@ export function ModelModal({
     <Backdrop
       onClose={onClose}
       label={
-        modal.type === "voice"
-          ? "Choose a voice model"
-          : modal.type === "remix"
-            ? "Choose a Remix model"
-            : "Pick an LLM model"
+        modal.type === "voice" ? "Choose a voice model" : "Pick an LLM model"
       }
     >
       <ModelList

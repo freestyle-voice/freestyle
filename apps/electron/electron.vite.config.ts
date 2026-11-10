@@ -130,9 +130,7 @@ export default defineConfig({
       "process.platform": JSON.stringify(process.platform),
     },
     resolve: {
-      // Several restored legacy surfaces and the current notification client
-      // share React. Force one renderer copy across the multi-page build so a
-      // provider from one entry never invokes hooks against another copy.
+      // Keep the dashboard, panel, and pill on one React renderer copy.
       dedupe: ["react", "react-dom"],
       alias: {
         ...workspaceAliases,
@@ -146,7 +144,6 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve("src/renderer/index.html"),
-          notification: resolve("src/renderer/notification.html"),
           panel: resolve("src/renderer/panel.html"),
           pill: resolve("src/renderer/pill.html"),
         },

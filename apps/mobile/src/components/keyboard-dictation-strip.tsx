@@ -13,7 +13,7 @@
  * the session (releases the mic) and hides the strip.
  *
  * Anchored to the BOTTOM, floating above the safe area — not the top, where it
- * would cover each screen's header. The chat-first app no longer reserves a
+ * would cover each screen's header. The app does not reserve a
  * permanent tab dock, so it has one consistent position on every screen.
  */
 

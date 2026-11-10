@@ -453,38 +453,6 @@ export async function postProcessWithFreestyleCloud(opts: {
 }
 
 /**
- * Exchange the server-owned Freestyle Cloud session for a short-lived,
- * user-scoped Courier Inbox JWT. The Cloud bearer token never crosses the
- * embedded-server boundary into an Electron renderer.
- */
-export async function fetchCourierInboxToken(token: string): Promise<string> {
-  const res = await fetch(`${freestyleCloudUrl()}/v2/notifications/token`, {
-    method: "POST",
-    headers: { authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (res.status === 401) {
-    throw new FreestyleCloudAuthError("Freestyle Cloud session expired");
-  }
-  if (!res.ok) {
-    throw new FreestyleCloudRequestError(
-      res.status,
-      "Courier notification token fetch failed",
-    );
-  }
-  const payload = (await res.json().catch(() => null)) as {
-    token?: unknown;
-  } | null;
-  if (!payload || typeof payload.token !== "string" || !payload.token) {
-    throw new FreestyleCloudRequestError(
-      502,
-      "Courier notification token response was invalid",
-    );
-  }
-  return payload.token;
-}
-
-/**
  * Fetch the current usage balance from Freestyle Cloud.
  * Returns remaining credits, limit, total consumed, and window reset time.
  *

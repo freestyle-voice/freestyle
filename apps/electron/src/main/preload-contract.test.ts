@@ -87,96 +87,27 @@ describe("preload contract", () => {
     expect(showPill).not.toContain('ipcMain.on("settings:set-pill-position"');
   });
 
-  it("routes the Remix hold hotkey through the pill's live event contract", async () => {
-    const [main, preload, pill] = await Promise.all([
+  it("exposes dictation without agent IPC or a second hotkey listener", async () => {
+    const [main, preload] = await Promise.all([
       readFile(mainPath, "utf8"),
       readFile(preloadPath, "utf8"),
-      readFile(join(rendererRoot, "pages/app.tsx"), "utf8"),
     ]);
-
-    const handlers = main.slice(
-      main.indexOf("function handleRemixHotkeyDown(): void {"),
-      main.indexOf("async function registerRemixHotkey"),
+    expect(main).not.toMatch(
+      /ipcMain\.(?:on|handle)\(\s*["'](?:remix:|remix-hotkey:|agent:|notifications:open-thread)/,
     );
-
-    expect(handlers).toContain('webContents.send("remix:down")');
-    expect(handlers).toContain('webContents.send("remix:up")');
-    expect(handlers).toContain("captureRemixSelection()");
-    expect(handlers).not.toContain('webContents.send("talk:down")');
-    expect(handlers).not.toContain('webContents.send("talk:up")');
-    expect(preload).toContain('ipcRenderer.on("remix:down"');
-    expect(preload).toContain('ipcRenderer.on("remix:up"');
-    expect(pill).toContain("window.api.onRemixDown(beginRemix)");
-    expect(pill).toContain("window.api.onRemixUp(finishRemixPress)");
-  });
-
-  it("preserves an open Remix chat's room for a spoken follow-up", async () => {
-    const main = await readFile(mainPath, "utf8");
-    const handlers = main.slice(
-      main.indexOf("function handleRemixHotkeyDown(): void {"),
-      main.indexOf("function handleRemixHotkeyUp(): void {"),
+    expect(preload).not.toMatch(
+      /ipcRenderer\.(?:on|invoke|send)\(\s*["'](?:remix:|remix-hotkey:|agent:|notifications:open-thread)/,
     );
-    const showPill = main.slice(
-      main.indexOf("function showPill("),
-      main.indexOf("function openPanelSettings(): void {"),
+    expect(main).not.toContain("remixKeyListener");
+    expect(main).toContain('webContents.send("hotkey:down")');
+    expect(main).toContain('webContents.send("hotkey:up")');
+    expect(main).toContain(
+      'globalShortcut.register("Escape", cancelActivePill)',
     );
-
-    // A generic hotkey starts from a fresh capsule. A Remix follow-up is
-    // different: collapsing the existing chat room races the live React
-    // surface and strands it inside the 160×60 window.
-    expect(handlers).toContain("showPill({ preserveRemixRoom: true })");
-    expect(showPill).toContain("preserveRemixRoom?: boolean");
-    expect(showPill).toContain('pillExpansion === "remix-chat"');
-    expect(showPill).toContain("setPillExpanded(false)");
-  });
-
-  it("restores active Remix route keys after rebuilding global shortcuts", async () => {
-    const main = await readFile(mainPath, "utf8");
-    const register = main.slice(
-      main.indexOf("async function registerHotkey("),
-      main.indexOf("// Clean up key listener"),
-    );
-
-    expect(register).toContain("globalShortcut.unregisterAll()");
-    expect(register).toContain("if (remixRouteKeysHeld)");
-    expect(register).toContain("remixRouteKeysHeld = false");
-    expect(register).toContain("setRemixRouteKeys(true)");
-  });
-
-  it("accepts Remix route-key state only from the pill renderer", async () => {
-    const main = await readFile(mainPath, "utf8");
-    const routeKeys = main.slice(
-      main.indexOf('ipcMain.on("remix:set-route-keys"'),
-      main.indexOf("});", main.indexOf('ipcMain.on("remix:set-route-keys"')),
-    );
-
-    expect(routeKeys).toContain("event.sender !== mainWindow?.webContents");
-    expect(routeKeys).toContain("setRemixRouteKeys(open === true)");
-  });
-
-  it("claims Escape for active Remix work and routes it through the pill", async () => {
-    const [main, preload, pill] = await Promise.all([
-      readFile(mainPath, "utf8"),
-      readFile(preloadPath, "utf8"),
-      readFile(join(rendererRoot, "pages/app.tsx"), "utf8"),
-    ]);
-    const escapeState = main.slice(
-      main.indexOf('ipcMain.on("remix:set-escape-active"'),
-      main.indexOf("});", main.indexOf('ipcMain.on("remix:set-escape-active"')),
-    );
-
-    expect(preload).toContain(
-      'ipcRenderer.send("remix:set-escape-active", active)',
-    );
-    expect(escapeState).toContain("event.sender !== mainWindow?.webContents");
-    expect(escapeState).toContain("setRemixEscapeActive(active === true)");
-    expect(main).toContain("function updatePillEscape(): void {");
-    expect(main).toContain("remixEscapeActive");
     expect(main).toContain('webContents.send("pill:cancel")');
-    expect(pill).toContain("setRemixEscapeActive");
   });
 
-  it("resets stale expanded bounds before placing either hotkey pill", async () => {
+  it("resets stale expanded bounds before placing the dictation pill", async () => {
     const main = await readFile(mainPath, "utf8");
     const showPill = main.slice(
       main.indexOf("function showPill("),
@@ -189,69 +120,6 @@ describe("preload contract", () => {
     );
     expect(main).toContain("function anchorPillForHotkey(): void {");
     expect(main).not.toContain("function anchorPillForDictation(): void {");
-  });
-
-  it("opens a pill conversation in the existing workspace window", async () => {
-    const [main, preload] = await Promise.all([
-      readFile(mainPath, "utf8"),
-      readFile(preloadPath, "utf8"),
-    ]);
-    const workspace = main.slice(
-      main.indexOf('ipcMain.on("remix:open-workspace"'),
-      main.indexOf('ipcMain.on("settings:close"'),
-    );
-
-    expect(preload).toContain(
-      "openRemixWorkspace: (threadId: string): void =>",
-    );
-    expect(workspace).toContain("openPanel({ focusComposer: true");
-    expect(workspace).toContain('channel: "panel:open-thread"');
-    expect(workspace).not.toContain("openRemixWorkspaceWindow()");
-    expect(main).not.toContain("function openRemixWorkspaceWindow(): void {");
-  });
-
-  it("refreshes the selected workspace thread when a pill turn persists", async () => {
-    const [main, preload] = await Promise.all([
-      readFile(mainPath, "utf8"),
-      readFile(preloadPath, "utf8"),
-    ]);
-
-    expect(preload).toContain(
-      "remixThreadUpdated: (threadId: string): void =>",
-    );
-    expect(preload).toContain(
-      'ipcRenderer.send("remix:thread-updated", threadId)',
-    );
-    expect(main).toContain('ipcMain.on("remix:thread-updated"');
-    expect(main).toContain('channel: "panel:thread-updated"');
-  });
-
-  it("delivers normal dictation to the focused Remix composer without native paste", async () => {
-    const [main, preload, panel] = await Promise.all([
-      readFile(mainPath, "utf8"),
-      readFile(preloadPath, "utf8"),
-      readFile(join(rendererRoot, "components/panel.tsx"), "utf8"),
-    ]);
-
-    expect(preload).toContain("panelSetComposerFocused: (focused: boolean)");
-    expect(panel).toContain("window.api.panelSetComposerFocused(true)");
-    expect(panel).toContain("window.api.panelSetComposerFocused(false)");
-    expect(main).toContain('dictationDeliveryTarget === "panel-composer"');
-    expect(main).toContain('forwardDictation("final", text)');
-  });
-
-  it("detaches the hidden pill observer before the workspace resumes its stream", async () => {
-    const [main, preload] = await Promise.all([
-      readFile(mainPath, "utf8"),
-      readFile(preloadPath, "utf8"),
-    ]);
-    const workspace = main.slice(
-      main.indexOf('ipcMain.on("remix:open-workspace"'),
-      main.indexOf('ipcMain.on("remix:thread-updated"'),
-    );
-
-    expect(preload).toContain("onRemixObserverHandoff");
-    expect(workspace).toContain('send("remix:observer-handoff", threadId)');
   });
 
   it("registers every preload invoke channel in the main process", async () => {

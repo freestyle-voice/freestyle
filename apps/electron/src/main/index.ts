@@ -61,10 +61,7 @@ import {
   startServer as startFreestyleServer,
 } from "@freestyle-voice/server";
 import { createAppLogger, enableFileLogging } from "@freestyle-voice/utils";
-import {
-  REMIX_CLIPBOARD_LIMIT,
-  serverUrlSchema,
-} from "@freestyle-voice/validations";
+import { serverUrlSchema } from "@freestyle-voice/validations";
 import * as Sentry from "@sentry/electron/main";
 import {
   app,
@@ -111,38 +108,20 @@ import {
   normalizePillExpansion,
   type PillExpansion,
 } from "../shared/pill-presentation";
-import {
-  getDefaultRemixHotkey,
-  REMIX_CLIPBOARD_PREVIEW_LIMIT,
-} from "../shared/remix";
 import { bearerAuthHeaders } from "../shared/server-auth";
 import { SETTINGS_KEYS } from "../shared/settings-keys";
-import { registerAgentFileIpc } from "./agent-files";
 import { AudioPlaybackController } from "./audio-control/controller";
 import { recoverDuckedVolumeFromCrash } from "./audio-control/volume-ducker";
-import { CourierNativeNotificationPresenter } from "./courier-native-notifications";
 import { HotkeyRecorder } from "./hotkey-recorder";
-import {
-  shouldRetryMacNativeListener,
-  shouldScheduleRemixRegistration,
-} from "./hotkey-startup";
+import { shouldRetryMacNativeListener } from "./hotkey-startup";
 import { normalizeAccelerator } from "./hotkey-utils";
 import { NativeKeyListener } from "./key-listener";
 import * as linuxAutostart from "./linux-autostart";
 import { checkLinuxSetup } from "./linux-setup";
 import { getNativeBinaryPath } from "./native-binary";
-import {
-  createNotificationWindow,
-  hideNotifications,
-  notificationWindow,
-  setNotificationHeight,
-  showNotifications,
-} from "./notification-window";
 import { PanelRendererMessageQueue } from "./panel-renderer-message-queue";
 import {
-  copySelectionFromFocusedApp,
   isWaylandSession,
-  pasteClipboardIntoFocusedApp,
   pasteIntoFocusedApp,
   startLinuxPasteHelper,
   stopLinuxPasteHelper,
@@ -161,7 +140,6 @@ import {
 } from "./plugins/index";
 import { initPluginUiHost, invalidatePluginViews } from "./plugins/ui-host";
 import { boundedQuitCleanup } from "./quit-cleanup.js";
-import { isRemixTargetAllowed } from "./remix-target";
 import { rendererUrl } from "./renderer-url";
 import { SerializedRegistration } from "./serialized-registration";
 import { createTrayImage } from "./tray-image";
@@ -289,17 +267,10 @@ const APP_HEIGHT = 60;
  */
 const PILL_CARD_WIDTH = 340;
 const PILL_CARD_HEIGHT = 144;
-/** Held for the whole remix session so mid-morph setBounds doesn't blink. */
-const PILL_CHAT_WIDTH = 440;
-const PILL_CHAT_HEIGHT = 600;
-
-function pillExpansionSize(expansion: PillExpansion): {
+function pillExpansionSize(_expansion: PillExpansion): {
   width: number;
   height: number;
 } {
-  if (expansion === "remix-chat") {
-    return { width: PILL_CHAT_WIDTH, height: PILL_CHAT_HEIGHT };
-  }
   return { width: PILL_CARD_WIDTH, height: PILL_CARD_HEIGHT };
 }
 
@@ -499,7 +470,6 @@ function getServerBaseUrl(): string {
  */
 function broadcastServerChanged(): void {
   panelWindow?.webContents.send("server:changed");
-  notificationWindow()?.webContents.send("server:changed");
   invalidatePluginViews();
 }
 
@@ -535,30 +505,12 @@ let keyListener: NativeKeyListener | null = null;
 let accessibilityConfirmed = false;
 let hotkeyPressed = false;
 let dictationInProgress = false;
-// A normal dictation begun in the focused Remix composer must return there.
-// Native paste deliberately blurs Freestyle first, which is correct for every
-// external app but cannot work for this in-app target.
-let panelComposerFocused = false;
-let dictationDeliveryTarget: "panel-composer" | null = null;
-// The renderer owns Remix's actual capture/run state. Main only mirrors this
-// narrow boolean to claim Escape while there is live work to cancel.
-let remixEscapeActive = false;
 let currentHotkeyAccel: string | null = null;
 let hotkeyActivationMode: "hold" | "toggle" = "hold";
 let hotkeyRecorder: HotkeyRecorder | null = null;
 // The latest desired dictation accelerator. The coordinator below coalesces
-// settings updates and starts listeners only after the prior pair has stopped.
+// settings updates and starts listeners only after the prior helper has stopped.
 let requestedHotkey: string | undefined;
-/** Own listener process — native binaries only take one accelerator each. */
-let remixKeyListener: NativeKeyListener | null = null;
-let remixPressed = false;
-/** User-configured accel (may differ from what's listening while parked/off). */
-let remixHotkeyPreference: string | undefined;
-let currentRemixAccel: string | null = null;
-/** True once Remix may register, initially with its default accelerator. */
-let remixInitialized = false;
-/** Onboarding practice: allow Remix to target Freestyle's own window. */
-const remixPracticeTarget = false;
 const audioPlaybackController = new AudioPlaybackController();
 
 function stopHotkeyRecorderProcess(): void {
@@ -819,29 +771,11 @@ function registerPillPositionIpc(): void {
   });
 }
 
-function showPill(options: { preserveRemixRoom?: boolean } = {}): void {
+function showPill(): void {
   createPillWindow();
   const win = mainWindow;
   if (!win || win.isDestroyed()) return;
 
-  // A Remix follow-up is delivered to the chat that is already on screen.
-  // The generic hotkey path intentionally resets to the compact 160×60 slot,
-  // but doing that here clips the still-live chat renderer before it can paint
-  // its listening and transcribing states. Keep the existing Remix room until
-  // that conversation is actually closed.
-  const keepRemixRoom =
-    options.preserveRemixRoom === true &&
-    win.isVisible() &&
-    pillExpansion === "remix-chat" &&
-    (pillExpandOffset.dx !== 0 || pillExpandOffset.dy !== 0);
-  if (keepRemixRoom) {
-    win.showInactive();
-    return;
-  }
-  // A previous Remix card can still be handing its room back when another
-  // hotkey arrives. Always return to the collapsed slot before calculating a
-  // new position; otherwise the expanded window's origin is mistaken for the
-  // pill's origin and the next surface visibly drifts.
   setPillExpanded(false);
   movePillToDisplaySlot(
     screen.getDisplayNearestPoint(screen.getCursorScreenPoint()),
@@ -1241,17 +1175,12 @@ function hidePill(): void {
   // The next session starts as a bare capsule, so give the extra room back
   // now — the renderer's own collapse only runs when it animates a card away.
   setPillExpanded(false);
-  // Remix can hide its pill while a hold-to-dictation session remains active.
-  // Preserve that session's physical key state so its eventual key-up still
-  // stops recording; completed/cancelled sessions can be reset here.
+  // Keep the physical hold state until recording settles, so its key-up
+  // still stops a recording even if the pill is dismissed early.
   if (!dictationInProgress) {
     hotkeyPressed = false;
     clearHotkeyStuckWatchdog();
   }
-  remixPressed = false;
-  clearRemixStuckWatchdog();
-  setRemixRouteKeys(false);
-  // Chat may have set focusable; clear it when hiding.
   try {
     mainWindow?.setFocusable(false);
   } catch {}
@@ -1284,16 +1213,7 @@ async function deliverOutput(
   }
 
   try {
-    const panel = panelWindow;
-    if (
-      mode === OutputMode.Paste &&
-      dictationDeliveryTarget === "panel-composer" &&
-      panel &&
-      !panel.isDestroyed() &&
-      panel.isVisible()
-    ) {
-      forwardDictation("final", text);
-    } else if (mode === OutputMode.Paste) {
+    if (mode === OutputMode.Paste) {
       await yieldFocusToUserApp();
       await pasteIntoFocusedApp(text);
     } else {
@@ -1316,7 +1236,6 @@ async function deliverOutput(
     text,
     mode,
   });
-  dictationDeliveryTarget = null;
 }
 
 // Per-request timeout for main-process API calls to the server.
@@ -1697,7 +1616,7 @@ function buildTrayContextMenu(): Menu {
   return Menu.buildFromTemplate([
     {
       label: "Open Freestyle",
-      click: () => openPanel({ focusComposer: true, trigger: "tray" }),
+      click: () => openPanel({ focus: true, trigger: "tray" }),
     },
     {
       label: "Settings",
@@ -1755,7 +1674,7 @@ function createTray(): void {
   }
 
   tray.on("click", () => {
-    openPanel({ focusComposer: true, trigger: "tray" });
+    openPanel({ focus: true, trigger: "tray" });
   });
 }
 
@@ -1846,7 +1765,7 @@ if (!gotTheLock) {
 }
 
 app.on("second-instance", () => {
-  openPanel({ focusComposer: true, trigger: "tray" });
+  openPanel({ focus: true, trigger: "tray" });
 });
 
 // This method will be called when Electron has finished
@@ -1902,26 +1821,6 @@ app.whenReady().then(async () => {
       await deliverOutput(text, OutputMode.Clipboard);
     },
   );
-
-  registerAgentFileIpc(ipcMain, () => app.getPath("downloads"), {
-    isPanelSender: (sender) => sender === panelWindow?.webContents,
-    confirmSave: async ({ filename }) => {
-      const options = {
-        type: "question" as const,
-        title: "Save generated file",
-        message: `Save ${filename} to Downloads?`,
-        detail:
-          "Freestyle will save this generated file to your Downloads folder.",
-        buttons: ["Save", "Cancel"],
-        defaultId: 0,
-        cancelId: 1,
-      };
-      const response = panelWindow
-        ? await dialog.showMessageBox(panelWindow, options)
-        : await dialog.showMessageBox(options);
-      return response.response === 0;
-    },
-  });
 
   ipcMain.handle("audio:prepare", async (_event, mode: unknown) => {
     if (!isActiveAudioPlaybackMode(mode)) return;
@@ -2114,7 +2013,7 @@ app.whenReady().then(async () => {
       type: "info",
       message: "Usage limit reached",
       detail:
-        "You've used all your agent runs for this week. Upgrade to Pro for unlimited runs, or wait for your weekly allowance to reset.",
+        "You've reached your Freestyle Cloud usage limit. Upgrade to Pro or wait for your allowance to reset.",
       buttons: ["Upgrade to Pro", "Not Now"],
       defaultId: 0,
       cancelId: 1,
@@ -2180,7 +2079,7 @@ app.whenReady().then(async () => {
     ipcMain.on("e2e:trigger-hotkey-up", handleNativeHotkeyUp);
     ipcMain.on("e2e:trigger-escape", cancelActivePill);
     ipcMain.on("e2e:open-panel", () =>
-      openPanel({ focusComposer: true, trigger: "other" }),
+      openPanel({ focus: true, trigger: "other" }),
     );
     // The production desktop opens panel.html. Visual review needs to exercise
     // the route-based dashboard too, but only in an isolated E2E process with
@@ -2204,11 +2103,6 @@ app.whenReady().then(async () => {
 
   // IPC: hotkey recording — global native listener + renderer DOM on macOS
   ipcMain.on("hotkey-record:start", (event) => {
-    // Park remix listener while recording a hotkey.
-    if (remixKeyListener) {
-      remixKeyListener.stop();
-      remixKeyListener = null;
-    }
     // Pause the active hotkey listener so it doesn't fire during recording
     if (keyListener) {
       keyListener.stop();
@@ -2340,10 +2234,6 @@ app.whenReady().then(async () => {
   capturePerson({
     launch_at_login: app.getLoginItemSettings().openAtLogin,
   });
-  // The hidden renderer owns Courier's real-time Inbox connection and asks
-  // main to show the window only while unopened messages exist.
-  createNotificationWindow();
-
   // Paint the desktop shell as soon as the launch preference permits it. The
   // local server readiness checks run independently; waiting for them made a
   // mostly-static workspace look frozen on every cold start.
@@ -2542,36 +2432,6 @@ app.whenReady().then(async () => {
     },
   );
 
-  // -- Remix session display names (Electron-local only) --
-  // Titles remain a presentation preference during the desktop redesign
-  // experiment. The canonical thread payload and Cloud API stay untouched.
-  const remixSessionTitles = (): Record<string, string> => {
-    const stored = readSettings().remixSessionTitles;
-    if (!stored || typeof stored !== "object" || Array.isArray(stored))
-      return {};
-    return Object.fromEntries(
-      Object.entries(stored).flatMap(([id, title]) => {
-        if (typeof title !== "string") return [];
-        const trimmed = title.trim().slice(0, 120);
-        return trimmed ? [[id, trimmed]] : [];
-      }),
-    );
-  };
-
-  ipcMain.handle("settings:remix-session-titles", () => remixSessionTitles());
-  ipcMain.handle(
-    "settings:set-remix-session-title",
-    (_event, threadId: unknown, title: unknown) => {
-      if (typeof threadId !== "string" || threadId.length === 0) return false;
-      const titles = remixSessionTitles();
-      const next = typeof title === "string" ? title.trim().slice(0, 120) : "";
-      if (next) titles[threadId] = next;
-      else delete titles[threadId];
-      writeSettings({ remixSessionTitles: titles });
-      return true;
-    },
-  );
-
   // -- Context-aware dictation: get frontmost app + browser context --
   ipcMain.handle("system:frontmost-app", async () => {
     try {
@@ -2604,12 +2464,9 @@ app.whenReady().then(async () => {
   // server. Once the server answers, re-register with the configured
   // accelerator + activation mode (only if they differ, to avoid a needless
   // native-listener rebuild).
-  // Remix uses its default even when the server is unavailable, but its native
-  // helper is started only after this dictation registration has settled.
-  remixInitialized = true;
   scheduleHotkeyRegistration(DEFAULT_HOTKEY);
   void waitForServerReady().then(async () => {
-    // One request for both keys, instead of a read per key. Skip if the server
+    // Read the saved hotkey once. Skip if the server
     // never answered — the default registered above stands.
     const settings = await getServerSettings();
     if (!settings) return;
@@ -2619,8 +2476,6 @@ app.whenReady().then(async () => {
       ? normalizeAccelerator(configured)
       : DEFAULT_HOTKEY;
     if (accel !== currentHotkeyAccel) scheduleHotkeyRegistration(configured);
-    // Wait for server settings — don't spawn a listener just to tear it down.
-    applyRemixSettings(settings);
   });
 
   // Listen for hotkey changes from the settings UI
@@ -2646,566 +2501,16 @@ app.whenReady().then(async () => {
     clearHotkeyStuckWatchdog();
     scheduleHotkeyRegistration(currentHotkeyAccel ?? undefined);
   });
-
-  // Remix: the settings UI writes the setting, then tells us to re-read it.
-  ipcMain.on("remix-hotkey:reload", () => {
-    void getServerSettings().then((settings) => {
-      if (!settings) return;
-      applyRemixSettings(settings);
-    });
-  });
-
-  // Paste over selection — not deliverOutput (no trailing space / plugin pipeline).
-  ipcMain.handle("remix:paste", async (_event, text: string) => {
-    if (typeof text !== "string" || !text.trim()) return false;
-    if (await isSecureInputActive()) {
-      notifyPasteFailed();
-      hotkeyLog.warn("Remix paste refused: secure input is active.");
-      return false;
-    }
-    try {
-      await pasteIntoFocusedApp(
-        text,
-        async () => {
-          hidePill();
-          await wait(0);
-        },
-        { trailingSpace: false },
-      );
-      return true;
-    } catch (err) {
-      notifyPasteFailed();
-      hotkeyLog.error(`Remix paste failed: ${err}`);
-      return false;
-    }
-  });
-
-  // Remix primitives — focus the document before injecting keystrokes.
-
-  ipcMain.handle("remix:get-context", async () => {
-    if (await isSecureInputActive()) {
-      return { ok: false, reason: "secure-input" };
-    }
-    const panelYielded = await yieldFocusToUserApp();
-    try {
-      const front = await getFrontmostContext();
-      const ours = getFreestyleAppExclusions();
-      if (!isRemixTargetAllowed(front.appName, ours, remixPracticeTarget)) {
-        return { ok: false, reason: "document-not-in-front" };
-      }
-      remixAnchor = { ...front, capturedAt: Date.now() };
-      const [selection, caps] = await Promise.all([
-        copySelectionFromFocusedApp().catch(() => null),
-        runMacAxCaps(),
-      ]);
-      hotkeyLog.info(
-        `remix get-context: "${front.appName}"${selection ? ` · ${selection.length} chars selected` : " · no selection"} · precise=${caps?.settable ?? false}`,
-      );
-      const preview = clipboardPreviewFields();
-      return {
-        ok: true,
-        appName: front.appName,
-        windowTitle: front.windowTitle,
-        url: front.url,
-        selection,
-        preciseSelection: caps?.settable ?? false,
-        docLength: caps && caps.length >= 0 ? caps.length : null,
-        clipboardPreview: preview.clipboard,
-        clipboardLength: preview.clipboardLength,
-      };
-    } finally {
-      if (panelYielded) restorePanelFocus();
-    }
-  });
-
-  // AX read keeps the highlight; canvas editors return unsupported.
-  ipcMain.handle("remix:read-document", async () => {
-    const panelWasFocused = panelWindow?.isFocused() ?? false;
-    try {
-      return await readDocumentForRemix();
-    } finally {
-      if (panelWasFocused) restorePanelFocus();
-    }
-  });
-
-  async function readDocumentForRemix(): Promise<Record<string, unknown>> {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    const ax = await runMacAxRead();
-    if (!ax?.text) return { ok: false, reason: "unsupported" };
-    hotkeyLog.info(
-      `remix read-document: ${ax.text.length} chars via accessibility`,
-    );
-    return {
-      ok: true,
-      text: ax.text.slice(0, 60_000),
-      truncated: ax.text.length > 60_000,
-      selStart: ax.selStart,
-      selLen: ax.selLen,
-    };
-  }
-
-  ipcMain.handle("remix:select-all", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (!(await sendSelectAllToFocusedApp())) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
-  });
-
-  ipcMain.handle("remix:collapse-selection", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (
-      !(await runMacAxKey(124)) &&
-      !(await runKeystrokeScript(["key code 124"]))
-    ) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
-  });
-
-  ipcMain.handle("remix:copy", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    // Whole-document copy after select_all can be slow in rich editors.
-    const text = await copySelectionFromFocusedApp({
-      timeoutsMs: [600, 2_000],
-    }).catch(() => null);
-    if (text === null) return { ok: false, reason: "nothing-copied" };
-    return {
-      ok: true,
-      text: text.slice(0, 60_000),
-      truncated: text.length > 60_000,
-    };
-  });
-
-  ipcMain.handle("remix:set-clipboard", (_event, text: unknown) => {
-    if (
-      typeof text !== "string" ||
-      !text ||
-      text.length > REMIX_CLIPBOARD_LIMIT
-    ) {
-      return { ok: false, reason: "bad-text" };
-    }
-    clipboard.writeText(text);
-    hotkeyLog.info(`remix set-clipboard: ${text.length} chars`);
-    return { ok: true };
-  });
-
-  ipcMain.handle("remix:set-clipboard-image", async (_event, url: unknown) => {
-    if (typeof url !== "string" || !url)
-      return { ok: false, reason: "bad-url" };
-    const image = await fetchRemixImage(url);
-    if (!image) return { ok: false, reason: "fetch-failed" };
-    clipboard.writeImage(image);
-    return { ok: true };
-  });
-
-  ipcMain.handle("remix:paste-clipboard", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    // Log length only — distinguishes empty clipboard from inject failure.
-    hotkeyLog.info(
-      `remix paste: injecting (clipboard: ${clipboard.readText().length} chars)`,
-    );
-    try {
-      await pasteClipboardIntoFocusedApp();
-      if (remixPracticeTarget) {
-      }
-      return { ok: true };
-    } catch (err) {
-      hotkeyLog.error(`Remix paste failed: ${err}`);
-      return { ok: false, reason: "paste-failed" };
-    }
-  });
-
-  ipcMain.handle(
-    "remix:select-text",
-    async (_event, text: unknown, occurrence: unknown) => {
-      if (typeof text !== "string" || !text.trim() || text.length > 20_000) {
-        return { ok: false, reason: "failed" };
-      }
-      const wanted =
-        typeof occurrence === "number" &&
-        Number.isInteger(occurrence) &&
-        occurrence >= 1
-          ? occurrence
-          : null;
-      if (!(await focusAnchorForInjection())) {
-        return { ok: false, reason: "document-not-in-front" };
-      }
-      const ax = await runMacAxRead();
-      if (!ax?.text || !ax.settable) {
-        return { ok: false, reason: "unsupported" };
-      }
-      // Ambiguous matches error unless occurrence is named — wrong twin corrupts text.
-      const positions: number[] = [];
-      for (
-        let at = ax.text.indexOf(text);
-        at >= 0 && positions.length <= 50;
-        at = ax.text.indexOf(text, at + 1)
-      ) {
-        positions.push(at);
-      }
-      if (positions.length === 0) return { ok: false, reason: "not-found" };
-      if (wanted === null && positions.length > 1) {
-        return { ok: false, reason: "ambiguous", matches: positions.length };
-      }
-      const index = positions[(wanted ?? 1) - 1];
-      if (index === undefined) {
-        return { ok: false, reason: "not-found", matches: positions.length };
-      }
-      if (!(await runMacAxSelect(index, text.length))) {
-        return { ok: false, reason: "failed" };
-      }
-      if (remixAnchor) remixAnchor.capturedAt = Date.now();
-      return { ok: true };
-    },
-  );
-
-  // Undo/redo via native chord binary (non-QWERTY-safe); osascript fallback.
-  ipcMain.handle("remix:undo", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (!(await sendChordToFocusedApp("z", false))) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
-  });
-
-  ipcMain.handle("remix:redo", async () => {
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    if (!(await sendChordToFocusedApp("z", true))) {
-      return { ok: false, reason: "inject-failed" };
-    }
-    return { ok: true };
-  });
-
-  ipcMain.handle(
-    "remix:press-key",
-    async (_event, key: unknown, times: unknown) => {
-      const code =
-        typeof key === "string" ? REMIX_PRESSABLE_KEYS[key] : undefined;
-      if (code === undefined) return { ok: false, reason: "bad-key" };
-      const count =
-        typeof times === "number" && Number.isInteger(times)
-          ? Math.min(Math.max(times, 1), 50)
-          : 1;
-      if (!(await focusAnchorForInjection())) {
-        return { ok: false, reason: "document-not-in-front" };
-      }
-      for (let i = 0; i < count; i++) {
-        if (
-          !(await runMacAxKey(code)) &&
-          !(await runKeystrokeScript([`key code ${code}`]))
-        ) {
-          return { ok: false, reason: "inject-failed", pressed: i };
-        }
-        if (count > 1) await wait(25);
-      }
-      return { ok: true };
-    },
-  );
-
-  ipcMain.handle("remix:get-clipboard", () => {
-    const text = clipboard.readText();
-    return {
-      ok: true,
-      text: text.slice(0, 60_000),
-      truncated: text.length > 60_000,
-    };
-  });
-
-  // Preset chips: replace selection, preserve clipboard.
-  ipcMain.handle("remix:paste-text", async (_event, text: unknown) => {
-    if (typeof text !== "string" || !text.trim()) {
-      return { ok: false, reason: "bad-text" };
-    }
-    if (!(await focusAnchorForInjection())) {
-      return { ok: false, reason: "document-not-in-front" };
-    }
-    try {
-      await pasteIntoFocusedApp(text, undefined, { trailingSpace: false });
-      if (remixPracticeTarget) {
-      }
-      return { ok: true };
-    } catch (err) {
-      hotkeyLog.error(`Remix paste-text failed: ${err}`);
-      return { ok: false, reason: "paste-failed" };
-    }
-  });
-
-  // Re-read selection for typed follow-ups (document may have changed).
-  ipcMain.handle("remix:recapture", async () => {
-    // Pill or panel may be key window while typing — yield before Copy or we
-    // read our own input.
-    const panelYielded = await yieldFocusToUserApp();
-    try {
-      const front = await getFrontmostContext();
-      const ours = getFreestyleAppExclusions();
-      const inDocument = isRemixTargetAllowed(
-        front.appName,
-        ours,
-        remixPracticeTarget,
-      );
-      if (inDocument) {
-        remixAnchor = { ...front, capturedAt: Date.now() };
-        const selection = (await isSecureInputActive())
-          ? null
-          : await copySelectionFromFocusedApp().catch(() => null);
-        hotkeyLog.info(
-          `remix recapture: ${selection ? `${selection.length} chars` : "no selection"} in "${front.appName}"`,
-        );
-        return {
-          selection,
-          ...clipboardPreviewFields(),
-          ...remixAnchor,
-          stale: false,
-        };
-      }
-      hotkeyLog.info("remix recapture: document not in front; keeping anchor");
-      return {
-        selection: null,
-        appName: remixAnchor?.appName ?? null,
-        windowTitle: remixAnchor?.windowTitle ?? null,
-        url: remixAnchor?.url ?? null,
-        ...clipboardPreviewFields(),
-        capturedAt: remixAnchor?.capturedAt ?? Date.now(),
-        stale: true,
-      };
-    } finally {
-      if (panelYielded) restorePanelFocus();
-    }
-  });
-
-  if (process.env.FREESTYLE_E2E === "1") {
-    ipcMain.handle("e2e:remix-practice-target", () => remixPracticeTarget);
-  }
-
-  // Chat card releases digit routes while open.
-  ipcMain.on("remix:set-route-keys", (event, open: unknown) => {
-    if (event.sender !== mainWindow?.webContents) return;
-    setRemixRouteKeys(open === true);
-  });
-
-  ipcMain.on("remix:set-escape-active", (event, active: unknown) => {
-    if (event.sender !== mainWindow?.webContents) return;
-    setRemixEscapeActive(active === true);
-  });
 });
-
-interface FrontmostContext {
-  appName: string | null;
-  windowTitle: string | null;
-  url: string | null;
-}
-
-async function getFrontmostContext(): Promise<FrontmostContext> {
-  try {
-    let raw: string | null = null;
-    if (process.platform === "darwin") raw = await getMacFrontmostApp();
-    else if (process.platform === "win32") raw = await getWindowsFrontmostApp();
-    else if (process.platform === "linux") raw = await getLinuxFrontmostApp();
-    if (!raw) return { appName: null, windowTitle: null, url: null };
-    try {
-      const parsed = JSON.parse(raw) as {
-        app?: string;
-        windowTitle?: string;
-        title?: string;
-        url?: string;
-      };
-      return {
-        appName: parsed.app?.trim() || null,
-        windowTitle: parsed.windowTitle?.trim() || parsed.title?.trim() || null,
-        url: parsed.url?.trim() || null,
-      };
-    } catch {
-      return { appName: raw.trim() || null, windowTitle: null, url: null };
-    }
-  } catch {
-    return { appName: null, windowTitle: null, url: null };
-  }
-}
-
-/** Clipboard preview after selection capture restores what Copy borrowed. */
-function clipboardPreviewFields(): {
-  clipboard: string | null;
-  clipboardLength: number;
-} {
-  const text = clipboard.readText();
-  return {
-    clipboard: text ? text.slice(0, REMIX_CLIPBOARD_PREVIEW_LIMIT) : null,
-    clipboardLength: text.length,
-  };
-}
-
-let remixAnchor: {
-  appName: string | null;
-  windowTitle: string | null;
-  url: string | null;
-  capturedAt: number;
-} | null = null;
-
-const REMIX_ANCHOR_MAX_AGE_MS = 5 * 60 * 1000;
-
-// Remix document access: AX when available, keyboard fallback for canvas editors.
-
-interface AxReadResult {
-  text: string;
-  selStart: number;
-  selLen: number;
-  settable: boolean;
-}
-
-async function runMacAxRead(): Promise<AxReadResult | null> {
-  if (process.platform !== "darwin") return null;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return null;
-  try {
-    // A large document's JSON easily exceeds execFile's 1MB default buffer.
-    const out = await execAsync(binary, ["read"], 3000, 16 * 1024 * 1024);
-    return JSON.parse(out) as AxReadResult;
-  } catch {
-    return null;
-  }
-}
-
-async function runMacAxSelect(start: number, len: number): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return false;
-  try {
-    await execAsync(binary, ["select", String(start), String(len)], 3000);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function runMacAxCaps(): Promise<{
-  settable: boolean;
-  length: number;
-} | null> {
-  if (process.platform !== "darwin") return null;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return null;
-  try {
-    const out = await execAsync(binary, ["caps"], 3000);
-    return JSON.parse(out) as { settable: boolean; length: number };
-  } catch {
-    return null;
-  }
-}
-
-async function isSecureInputActive(): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return false;
-  try {
-    return (await execAsync(binary, ["secure"], 1000)) === "1";
-  } catch {
-    return false;
-  }
-}
-
-async function runMacAxKey(code: number): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-ax");
-  if (!binary) return false;
-  try {
-    await execAsync(binary, ["key", String(code)], 3000);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Cmd+A via CGEvent binary (same AX permission as paste); osascript fallback. */
-async function sendSelectAllToFocusedApp(): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-fast-paste");
-  if (binary) {
-    try {
-      await execAsync(binary, ["a"], 3000);
-      return true;
-    } catch (err) {
-      hotkeyLog.warn(`Native select-all failed, trying osascript: ${err}`);
-    }
-  }
-  return runKeystrokeScript(['keystroke "a" using {command down}']);
-}
-
-/** Whitelist of bare keycodes press_key may inject (no modifier chords). */
-const REMIX_PRESSABLE_KEYS: Record<string, number> = {
-  enter: 36,
-  tab: 48,
-  escape: 53,
-  backspace: 51,
-  delete: 117,
-  left: 123,
-  right: 124,
-  down: 125,
-  up: 126,
-  home: 115,
-  end: 119,
-};
-
-async function sendChordToFocusedApp(
-  letter: string,
-  shift: boolean,
-): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const binary = getNativeBinaryPath("macos-fast-paste");
-  if (binary) {
-    try {
-      await execAsync(binary, shift ? [letter, "shift"] : [letter], 3000);
-      return true;
-    } catch (err) {
-      hotkeyLog.warn(`Native chord ${letter} failed, trying osascript: ${err}`);
-    }
-  }
-  return runKeystrokeScript([
-    `keystroke "${letter}" using {command down${shift ? ", shift down" : ""}}`,
-  ]);
-}
-
-async function runKeystrokeScript(lines: string[]): Promise<boolean> {
-  if (process.platform !== "darwin") return false;
-  const script = [
-    'tell application "System Events"',
-    ...lines,
-    "end tell",
-  ].flatMap((line) => ["-e", line]);
-  try {
-    await execAsync("osascript", script, 8000);
-    return true;
-  } catch (err) {
-    hotkeyLog.warn(`Keystroke script failed: ${err}`);
-    return false;
-  }
-}
 
 /**
  * Injected keystrokes land in the KEY window, so any focusable Freestyle
- * window (the pill while typing or the workspace composer) must yield
- * before a Copy/Paste or we read/write our own input field.
+ * window must yield before Paste so output reaches the user's app.
  *
- * Returns whether the workspace was the window that yielded, so
- * capture handlers can hand focus back to its composer when they finish.
  * macOS panels can order themselves out on losing key status — if the blur
  * hid the panel, reshow it inactive so the user never sees it vanish.
  */
-async function yieldFocusToUserApp(): Promise<boolean> {
+async function yieldFocusToUserApp(): Promise<void> {
   let yielded = false;
   let panelYielded = false;
   for (const win of [mainWindow, panelWindow]) {
@@ -3219,88 +2524,6 @@ async function yieldFocusToUserApp(): Promise<boolean> {
   const panel = panelWindow;
   if (panelYielded && panel && !panel.isDestroyed() && !panel.isVisible()) {
     panel.showInactive();
-  }
-  return panelYielded;
-}
-
-/** Hand key focus back to the panel composer after a capture finished. */
-function restorePanelFocus(): void {
-  const win = panelWindow;
-  if (!win || win.isDestroyed() || !win.isVisible()) return;
-  win.focus();
-  win.webContents.send("panel:focus-composer");
-}
-
-/** Yield key focus to the document before injecting; false if it can't. */
-async function focusAnchorForInjection(): Promise<boolean> {
-  const anchor = remixAnchor;
-  if (
-    !anchor?.appName ||
-    Date.now() - anchor.capturedAt > REMIX_ANCHOR_MAX_AGE_MS
-  ) {
-    return false;
-  }
-  if (await isSecureInputActive()) {
-    hotkeyLog.warn("Remix injection refused: secure input is active.");
-    return false;
-  }
-  await yieldFocusToUserApp();
-  let front = await getFrontmostContext();
-  const ours = getFreestyleAppExclusions();
-  // Practice mode: don't osascript-activate Freestyle (we're already there).
-  if (
-    front.appName &&
-    !isRemixTargetAllowed(front.appName, ours, remixPracticeTarget)
-  ) {
-    await activateAnchorApp(anchor.appName);
-    front = await getFrontmostContext();
-  }
-  return front.appName === anchor.appName;
-}
-
-/** Keyboard-tier selection via the app's Find (canvas editors). */
-const REMIX_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
-const REMIX_IMAGE_TIMEOUT_MS = 15_000;
-
-async function fetchRemixImage(
-  url: string,
-): Promise<Electron.NativeImage | null> {
-  try {
-    const parsed = new URL(url);
-    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
-      return null;
-    }
-    const res = await fetch(url, {
-      signal: AbortSignal.timeout(REMIX_IMAGE_TIMEOUT_MS),
-      redirect: "follow",
-    });
-    if (!res.ok) return null;
-    const type = res.headers.get("content-type") ?? "";
-    if (!type.startsWith("image/")) return null;
-    const buffer = Buffer.from(await res.arrayBuffer());
-    if (buffer.byteLength === 0 || buffer.byteLength > REMIX_IMAGE_MAX_BYTES) {
-      return null;
-    }
-    const image = nativeImage.createFromBuffer(buffer);
-    return image.isEmpty() ? null : image;
-  } catch (err) {
-    hotkeyLog.warn(`Remix image fetch failed: ${err}`);
-    return null;
-  }
-}
-
-/** Bring the anchored app frontmost (macOS); settle before re-check. */
-async function activateAnchorApp(appName: string): Promise<void> {
-  if (process.platform !== "darwin") return;
-  try {
-    await execAsync(
-      "osascript",
-      ["-e", `tell application ${JSON.stringify(appName)} to activate`],
-      2000,
-    );
-    await wait(150);
-  } catch (err) {
-    hotkeyLog.warn(`Could not re-activate "${appName}": ${err}`);
   }
 }
 
@@ -3432,117 +2655,9 @@ ipcMain.handle("dictation:prefs", () => dictationPrefs());
 
 ipcMain.on("dictation:reload-prefs", () => broadcastDictationPrefs());
 
-const courierNativeNotifications = new CourierNativeNotificationPresenter(
-  (title, body, onClick) => {
-    if (!Notification.isSupported()) return;
-    const notification = new Notification({ title, body });
-    notification.on("click", onClick);
-    notification.show();
-  },
-  (messageId) => {
-    notificationWindow()?.webContents.send(
-      "notifications:native-click",
-      messageId,
-    );
-  },
-);
-
-ipcMain.on("notifications:present", (event, payload: unknown) => {
-  if (event.sender !== notificationWindow()?.webContents) return;
-  const item = payload as {
-    messageId?: unknown;
-    title?: unknown;
-    body?: unknown;
-  };
-  if (
-    typeof item?.messageId !== "string" ||
-    typeof item.title !== "string" ||
-    typeof item.body !== "string"
-  ) {
-    return;
-  }
-  courierNativeNotifications.present({
-    messageId: item.messageId,
-    title: item.title,
-    body: item.body,
-  });
-  // The notification renderer owns the content, but a new notification must
-  // also wake its window immediately while its inbox refresh settles.
-  showNotifications();
-});
-
-ipcMain.on("notifications:set-visible", (event, visible: unknown) => {
-  if (event.sender !== notificationWindow()?.webContents) return;
-  if (typeof visible !== "boolean") return;
-  if (visible) {
-    showNotifications();
-    return;
-  }
-  hideNotifications();
-});
-
-ipcMain.on("notifications:set-height", (event, height: unknown) => {
-  if (event.sender !== notificationWindow()?.webContents) return;
-  if (typeof height !== "number") return;
-  setNotificationHeight(height);
-});
-
-ipcMain.on("notifications:open-thread", (event, threadId: unknown) => {
-  if (event.sender !== notificationWindow()?.webContents) return;
-  if (typeof threadId !== "string" || !threadId) return;
-  openPanel({ focusComposer: false, trigger: "notification" });
-  panelRendererMessages.send({
-    channel: "panel:open-thread",
-    payload: threadId,
-  });
-});
-
-ipcMain.on("notifications:auth-changed", (event) => {
-  if (event.sender !== panelWindow?.webContents) return;
-  courierNativeNotifications.clearAll();
-  notificationWindow()?.webContents.send("notifications:auth-changed");
-});
-
-function forwardDictation(
-  kind: "partial" | "final" | "error",
-  text: string,
-): void {
-  const win = panelWindow;
-  if (!win || win.isDestroyed()) return;
-  panelRendererMessages.send({
-    channel: "panel:dictation",
-    payload: { kind, text },
-  });
-}
-
-ipcMain.on("panel:open-for-dictation", (event) => {
-  if (event.sender !== mainWindow?.webContents) return;
-  openPanel({ focusComposer: true, trigger: "dictation" });
-});
-
-ipcMain.on("panel:dictation-partial", (event, text: string) => {
-  if (event.sender !== mainWindow?.webContents) return;
-  forwardDictation("partial", text);
-});
-
-ipcMain.on("panel:dictation-final", (event, text: string) => {
-  if (event.sender !== mainWindow?.webContents) return;
-  forwardDictation("final", text);
-});
-
-ipcMain.on("panel:dictation-error", (event, message: string) => {
-  if (event.sender !== mainWindow?.webContents) return;
-  forwardDictation("error", message);
-});
-
 ipcMain.on("panel:renderer-ready", (event) => {
   if (event.sender !== panelWindow?.webContents) return;
   panelRendererMessages.markReady();
-});
-
-ipcMain.on("panel:composer-focused", (event, focused: unknown) => {
-  if (event.sender !== panelWindow?.webContents) return;
-  panelComposerFocused = focused === true;
 });
 
 ipcMain.on("panel:close", (event) => {
@@ -3586,61 +2701,11 @@ ipcMain.on("settings:open", (event) => {
   openPanelSettings();
 });
 
-ipcMain.on("remix:open-workspace", (event, threadId: unknown) => {
-  if (
-    event.sender !== mainWindow?.webContents ||
-    typeof threadId !== "string" ||
-    threadId.length === 0 ||
-    threadId.length > 100
-  )
-    return;
-  // The pill is only a compact control surface. Opening a conversation returns
-  // to the existing workspace window and selects that exact durable thread.
-  // Detach the hidden renderer from the local agent stream first. Hono keeps
-  // the Cloud reader alive; the workspace becomes the single tool observer.
-  mainWindow.webContents.send("remix:observer-handoff", threadId);
-  hidePill();
-  openPanel({ focusComposer: true, trigger: "other" });
-  panelRendererMessages.send({
-    channel: "panel:open-thread",
-    payload: threadId,
-  });
-});
-
-// A pill turn persists through the local server, while this renderer is only
-// one live view of it. Wake an already-open workspace after the Cloud snapshot
-// is written so it reads the same thread instead of retaining the empty
-// snapshot captured at handoff time.
-ipcMain.on("remix:thread-updated", (event, threadId: unknown) => {
-  if (
-    event.sender !== mainWindow?.webContents ||
-    typeof threadId !== "string" ||
-    threadId.length === 0 ||
-    threadId.length > 100
-  )
-    return;
-  panelRendererMessages.send({
-    channel: "panel:thread-updated",
-    payload: threadId,
-  });
-});
-
 ipcMain.on("settings:close", (event) => {
   // Retain this legacy channel while older preloads are still in circulation.
   // Settings is a route in the panel now, so there is no separate window to
   // hide and the current shell owns its own back-navigation.
   if (event.sender !== panelWindow?.webContents) return;
-});
-
-// Clicking into the composer after an agent tool yielded key focus: panel
-// windows don't always take key back from a content click on macOS, so the
-// renderer asks for it explicitly.
-ipcMain.on("panel:request-focus", (event) => {
-  if (event.sender !== panelWindow?.webContents) return;
-  const win = panelWindow;
-  if (win && !win.isDestroyed() && win.isVisible() && !win.isFocused()) {
-    win.focus();
-  }
 });
 
 let panelWindow: BrowserWindow | null = null;
@@ -3651,16 +2716,7 @@ let nextPanelWindowEntry = "panel.html";
 const panelRendererMessages = new PanelRendererMessageQueue((message) => {
   const win = panelWindow;
   if (!win || win.isDestroyed()) return;
-  if (
-    message.channel === "panel:dictation" ||
-    message.channel === "panel:open-thread" ||
-    message.channel === "panel:thread-updated" ||
-    message.channel === "dashboard:navigate"
-  ) {
-    win.webContents.send(message.channel, message.payload);
-    return;
-  }
-  win.webContents.send(message.channel);
+  win.webContents.send(message.channel, message.payload);
 });
 const DASHBOARD_DEFAULT_WIDTH = 1080;
 const DASHBOARD_DEFAULT_HEIGHT = 760;
@@ -3811,16 +2867,10 @@ function createPanelWindow(): void {
   void panelWindow.loadURL(rendererUrl(entry));
 }
 
-type PanelTrigger =
-  | "hover"
-  | "hotkey"
-  | "notification"
-  | "dictation"
-  | "tray"
-  | "other";
+type PanelTrigger = "hover" | "hotkey" | "dictation" | "tray" | "other";
 
 function openPanel(
-  opts: { focusComposer?: boolean; trigger?: PanelTrigger } = {},
+  opts: { focus?: boolean; trigger?: PanelTrigger } = {},
 ): void {
   const wasVisible =
     !!panelWindow && !panelWindow.isDestroyed() && panelWindow.isVisible();
@@ -3845,10 +2895,9 @@ function openPanel(
   // is open. We only centre it when first shown, on the display that invoked
   // it (or the dictation display for a pill-triggered open).
   if (!wasVisible) positionPanelOnDisplay(targetDisplay);
-  if (opts.focusComposer) {
+  if (opts.focus) {
     win.show();
     win.focus();
-    panelRendererMessages.send({ channel: "panel:focus-composer" });
   } else {
     win.showInactive();
   }
@@ -3874,7 +2923,7 @@ function registerSummonShortcut(): void {
     const ok = globalShortcut.register(SUMMON_ACCELERATOR, () => {
       const visible = panelWindow?.isVisible() && !panelWindow.isDestroyed();
       if (visible) closePanel();
-      else openPanel({ focusComposer: true, trigger: "hotkey" });
+      else openPanel({ focus: true, trigger: "hotkey" });
     });
     if (!ok) reportSummonConflict();
   } catch (err) {
@@ -3886,23 +2935,6 @@ function registerSummonShortcut(): void {
 function destroyPanelWindow(): void {
   if (panelWindow && !panelWindow.isDestroyed()) panelWindow.destroy();
   panelWindow = null;
-}
-
-function applyRemixSettings(settings: Record<string, string>): void {
-  remixInitialized = true;
-  const stored = settings[SETTINGS_KEYS.remixHotkey];
-  const configured = stored && isValidAccelerator(stored) ? stored : undefined;
-  const changed = configured !== remixHotkeyPreference;
-  remixHotkeyPreference = configured;
-  if (
-    shouldScheduleRemixRegistration(
-      changed,
-      remixKeyListener !== null,
-      listenerRegistration.isActive,
-    )
-  ) {
-    scheduleRemixHotkeyRegistration();
-  }
 }
 
 const DEFAULT_HOTKEY = getDefaultHotkey();
@@ -3978,7 +3010,7 @@ function dictationTargets(): BrowserWindow[] {
 }
 
 function updatePillEscape(): void {
-  if (!dictationInProgress && !remixEscapeActive) {
+  if (!dictationInProgress) {
     try {
       globalShortcut.unregister("Escape");
     } catch {}
@@ -3997,12 +3029,6 @@ function updatePillEscape(): void {
   }
 }
 
-function setRemixEscapeActive(active: boolean): void {
-  if (remixEscapeActive === active) return;
-  remixEscapeActive = active;
-  updatePillEscape();
-}
-
 function setDictationPhase(phase: "idle" | "recording" | "transcribing"): void {
   dictationInProgress = phase !== "idle";
   updatePillEscape();
@@ -4010,16 +3036,12 @@ function setDictationPhase(phase: "idle" | "recording" | "transcribing"): void {
 }
 
 function cancelActivePill(): void {
-  if (!dictationInProgress && !remixEscapeActive) return;
-  if (dictationInProgress) {
-    hotkeyPressed = false;
-    clearHotkeyStuckWatchdog();
-    dictationDeliveryTarget = null;
-  }
-  // The legacy pill listens on `pill:cancel`; the newer surfaces retain the
-  // generic dictation event. Remix consumes only the shared pill event.
+  if (!dictationInProgress) return;
+  hotkeyPressed = false;
+  clearHotkeyStuckWatchdog();
+  // Both pill contracts receive cancellation while dictation is active.
   mainWindow?.webContents.send("pill:cancel");
-  if (dictationInProgress) mainWindow?.webContents.send("dictation:cancel");
+  mainWindow?.webContents.send("dictation:cancel");
 }
 
 function sendHotkeyDown(): void {
@@ -4030,8 +3052,6 @@ function sendHotkeyDown(): void {
     void showRequiredPermissionDialog(missingPermission);
     return;
   }
-  dictationDeliveryTarget =
-    panelComposerFocused && panelWindow?.isFocused() ? "panel-composer" : null;
   showPill();
   anchorPillForHotkey();
   relayServerEvent({ type: FreestyleEventType.RecordingStarted });
@@ -4043,195 +3063,6 @@ function sendHotkeyDown(): void {
 function sendHotkeyUp(): void {
   for (const win of dictationTargets()) {
     win.webContents.send("hotkey:up");
-  }
-}
-
-let remixStuckTimer: NodeJS.Timeout | null = null;
-
-function clearRemixStuckWatchdog(): void {
-  if (remixStuckTimer) {
-    clearTimeout(remixStuckTimer);
-    remixStuckTimer = null;
-  }
-}
-
-function armRemixStuckWatchdog(): void {
-  clearRemixStuckWatchdog();
-  remixStuckTimer = setTimeout(() => {
-    remixStuckTimer = null;
-    if (!remixPressed) return;
-    hotkeyLog.warn("Remix hold saw no key-up for 5 minutes; forcing release.");
-    handleRemixHotkeyUp();
-  }, HOTKEY_STUCK_TIMEOUT_MS);
-}
-
-/** Remix chord + digit routes; claimed while the card is up. Spell modifiers
- *  (Control is physically down); Fn isn't expressible as an accelerator. */
-const REMIX_ROUTE_MODIFIER =
-  process.platform === "darwin" ? "Control" : "Control+Alt";
-const REMIX_ROUTE_DIGITS = ["1", "2", "3"];
-let remixRouteKeysHeld = false;
-
-function setRemixRouteKeys(open: boolean): void {
-  if (open === remixRouteKeysHeld) return;
-  remixRouteKeysHeld = open;
-
-  for (const [index, digit] of REMIX_ROUTE_DIGITS.entries()) {
-    const accel = `${REMIX_ROUTE_MODIFIER}+${digit}`;
-    if (!open) {
-      try {
-        globalShortcut.unregister(accel);
-      } catch {}
-      continue;
-    }
-    try {
-      const claimed = globalShortcut.register(accel, () => {
-        if (mainWindow?.isVisible()) {
-          mainWindow.webContents.send("remix:route", index);
-        }
-      });
-      // Log when the OS already owns the chord.
-      if (!claimed) {
-        hotkeyLog.warn(`Route shortcut "${accel}" is already taken.`);
-      }
-    } catch (err) {
-      hotkeyLog.warn(`Could not claim "${accel}" for a remix route: ${err}`);
-    }
-  }
-}
-
-function scheduleRemixHotkeyRegistration(hotkey?: string): void {
-  if (hotkey !== undefined) remixHotkeyPreference = hotkey;
-  scheduleListenerRegistration();
-}
-
-/** False if the Remix chord includes C — injected Copy would collide with it. */
-function canCopySelectionWhileHeld(): boolean {
-  const parts = currentRemixAccel?.split("+") ?? [];
-  return !parts.some((part) => part.trim().toLowerCase() === "c");
-}
-
-let remixSelectionRequested = false;
-
-function captureRemixSelection(): void {
-  if (remixSelectionRequested) return;
-  remixSelectionRequested = true;
-
-  void Promise.allSettled([
-    isSecureInputActive().then((secure) =>
-      secure
-        ? Promise.reject(new Error("secure-input"))
-        : copySelectionFromFocusedApp(),
-    ),
-    getFrontmostContext(),
-  ]).then(([selection, front]) => {
-    const context =
-      front.status === "fulfilled"
-        ? front.value
-        : { appName: null, windowTitle: null, url: null };
-    remixAnchor = { ...context, capturedAt: Date.now() };
-    if (selection.status === "rejected") {
-      hotkeyLog.warn(`Remix selection capture failed: ${selection.reason}`);
-    }
-    const win = mainWindow;
-    if (!win || win.isDestroyed()) return;
-    win.webContents.send("remix:selection", {
-      text: selection.status === "fulfilled" ? selection.value : null,
-      ...clipboardPreviewFields(),
-      ...remixAnchor,
-    });
-  });
-}
-
-/** The Remix hold key always stays in the unobtrusive pill lane. */
-function handleRemixHotkeyDown(): void {
-  if (remixPressed) return;
-  remixPressed = true;
-
-  // Fn+Control shares Fn with dictation. Supersede a partial plain-Fn press
-  // without hiding the pill that is about to become the Remix surface.
-  if (hotkeyPressed) {
-    hotkeyPressed = false;
-    clearHotkeyStuckWatchdog();
-    mainWindow?.webContents.send("remix:supersede");
-  }
-
-  setRemixRouteKeys(true);
-  armRemixStuckWatchdog();
-  remixSelectionRequested = false;
-  showPill({ preserveRemixRoom: true });
-  // A preserved chat already owns a stable on-screen position. Re-anchoring
-  // it to the cursor here would make the conversation jump between turns.
-  if (pillExpandOffset.dx === 0 && pillExpandOffset.dy === 0) {
-    anchorPillForHotkey();
-  }
-  const win = mainWindow;
-  if (win && !win.isDestroyed()) win.webContents.send("remix:down");
-
-  // Capture on press so an empty selection is known before listening begins.
-  if (canCopySelectionWhileHeld()) captureRemixSelection();
-}
-
-function handleRemixHotkeyUp(): void {
-  if (!remixPressed) return;
-  remixPressed = false;
-  clearRemixStuckWatchdog();
-  const win = mainWindow;
-  if (win && !win.isDestroyed()) win.webContents.send("remix:up");
-  captureRemixSelection();
-}
-
-/** Start the Remix native listener. No globalShortcut fallback (needs hold/tap). */
-async function registerRemixHotkey(hotkey?: string): Promise<void> {
-  if (isQuitting) return;
-  if (remixKeyListener) {
-    await remixKeyListener.stop();
-    remixKeyListener = null;
-  }
-  if (isQuitting) return;
-
-  remixHotkeyPreference = hotkey ?? remixHotkeyPreference;
-  const configured = hotkey ?? remixHotkeyPreference;
-  const normalized =
-    configured && isValidAccelerator(configured)
-      ? normalizeAccelerator(configured)
-      : null;
-  const accel = normalized ?? getDefaultRemixHotkey();
-
-  // Dictation wins on chord clash; the Remix key stays off until Settings
-  // resolves it.
-  if (currentHotkeyAccel && accel === currentHotkeyAccel) {
-    hotkeyLog.warn(
-      `Remix hotkey "${accel}" is already the dictation hotkey; remix disabled.`,
-    );
-    return;
-  }
-
-  currentRemixAccel = accel;
-
-  const listener = new NativeKeyListener({
-    hotkey: accel,
-    onKeyDown: handleRemixHotkeyDown,
-    onKeyUp: handleRemixHotkeyUp,
-    onError: (error) => {
-      hotkeyLog.error(`Remix key listener error: ${error}`);
-    },
-    onReady: () => {
-      hotkeyLog.debug(`Remix key listener ready for "${accel}"`);
-    },
-    onPermanentFailure: () => {
-      if (remixKeyListener !== listener) return;
-      hotkeyLog.error("Remix key listener permanently failed; remix off.");
-      listener.stop();
-      remixKeyListener = null;
-    },
-  });
-  remixKeyListener = listener;
-  const started = await listener.start();
-  if (!started) {
-    hotkeyLog.warn(`Remix key listener did not start for "${accel}"`);
-    listener.stop();
-    if (remixKeyListener === listener) remixKeyListener = null;
   }
 }
 
@@ -4401,7 +3232,7 @@ const listenerRegistration = new SerializedRegistration(
 );
 
 function scheduleListenerRegistration(): void {
-  if (isQuitting || !remixInitialized) return;
+  if (isQuitting) return;
   listenerRegistration.schedule();
 }
 
@@ -4411,18 +3242,16 @@ function scheduleHotkeyRegistration(hotkey?: string): void {
   scheduleListenerRegistration();
 }
 
-/** Stop both event-tap helpers before the next native listener is spawned. */
+/** Stop the prior event-tap helper before spawning its replacement. */
 async function stopNativeHotkeyListeners(): Promise<void> {
-  const listeners = [keyListener, remixKeyListener].filter(
+  const listeners = [keyListener].filter(
     (listener): listener is NativeKeyListener => listener !== null,
   );
   keyListener = null;
-  remixKeyListener = null;
-  currentRemixAccel = null;
   await Promise.all(listeners.map((listener) => listener.stop()));
 }
 
-/** Register dictation and Remix in order, retrying a cold-start native timeout. */
+/** Register dictation, retrying a cold-start native timeout. */
 async function registerConfiguredHotkeys(): Promise<void> {
   if (isQuitting) return;
   await stopNativeHotkeyListeners();
@@ -4448,7 +3277,6 @@ async function registerConfiguredHotkeys(): Promise<void> {
     hotkeyLog.error("Native key listener timed out after all startup retries.");
   }
   if (isQuitting) return;
-  await registerRemixHotkey();
 }
 
 let accessibilityWatch: NodeJS.Timeout | null = null;
@@ -4485,15 +3313,6 @@ async function registerHotkey(
     // panel summon claimed at boot — re-claim it or it dies on the first
     // hotkey registration and never comes back within the session.
     registerSummonShortcut();
-    // Route keys belong to a currently open Remix card. unregisterAll() has
-    // just released them, but their state flag intentionally remains true so
-    // the card can close them later. Reset that flag before restoring them or
-    // setRemixRouteKeys() would (correctly) conclude there is nothing to do.
-    if (remixRouteKeysHeld) {
-      remixRouteKeysHeld = false;
-      setRemixRouteKeys(true);
-    }
-
     if (!hotkey) {
       // Unreachable server yields no map; registration falls back to the
       // default accelerator below.
@@ -4624,7 +3443,7 @@ app.on("window-all-closed", () => {
 // Re-open the dashboard when the app is activated (e.g. clicking the dock
 // icon or relaunching) and no dashboard window is currently open.
 app.on("activate", () => {
-  openPanel({ focusComposer: true });
+  openPanel({ focus: true });
 });
 
 let stopEventLoopMonitor: (() => void) | undefined;
@@ -4650,7 +3469,6 @@ function cleanupBeforeQuit(): Promise<void> {
   if (quitCleanup) return quitCleanup;
   quitCleanup = (async () => {
     try {
-      remixInitialized = false;
       listenerRegistration.shutdown();
       audioPlaybackController.restoreSync();
       stopLinuxPasteHelper();

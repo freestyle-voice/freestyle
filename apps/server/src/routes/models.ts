@@ -487,7 +487,7 @@ const models = new Hono()
     const db = getDb();
     const rows = db
       .prepare(
-        "SELECT id, provider, model_id, model_name, type, is_default, created_at FROM model_configs ORDER BY type, is_default DESC, created_at DESC",
+        "SELECT id, provider, model_id, model_name, type, is_default, created_at FROM model_configs WHERE type IN ('voice', 'llm') ORDER BY type, is_default DESC, created_at DESC",
       )
       .all() as {
       id: number;
@@ -561,7 +561,7 @@ const models = new Hono()
 
     const row = db
       .prepare(
-        "SELECT type, provider, model_id FROM model_configs WHERE id = ?",
+        "SELECT type, provider, model_id FROM model_configs WHERE id = ? AND type IN ('voice', 'llm')",
       )
       .get(id) as
       | { type: string; provider: string; model_id: string }

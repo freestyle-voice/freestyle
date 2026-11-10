@@ -92,26 +92,6 @@
       "instructionPrefix": "Klicken Sie in die E-Mail, halten Sie",
       "instructionSuffix": "gedrückt und sagen Sie Wort für Wort:",
       "sayText": "Alles Gute zum Geburtstag, Sam — ich bringe am Freitag Kuchen mit."
-    },
-    "remix": {
-      "statusReady": "Bereit",
-      "statusListening": "Höre zu…",
-      "statusWorking": "Remix läuft…",
-      "statusRemixed": "Geremixt.",
-      "doneNote": "Der Entwurf wurde direkt neu geschrieben. Probieren Sie eine weitere Anweisung — oder schließen Sie ab.",
-      "extraCaption": "Das dauert ein paar Sekunden.",
-      "extraDone": "Ein Fakt und ein Foto, direkt im Entwurf. Schließen Sie ab, wann immer Sie bereit sind.",
-      "fallbackNote": "Remix braucht ein Assistenzmodell — fügen Sie eines in den Einstellungen hinzu, sobald Sie bereit sind.",
-      "sampleDraft": "Alles Gute zum Geburtstag, Sam. Ich hoffe, dein Tag wird schön — ich bringe am Freitag Kuchen mit.",
-      "sampleSignoff": "Schön, dass wir dich diese Woche feiern können.\n\nHerzliche Grüße\n{{name}}",
-      "fallbackName": "Alex",
-      "title": "Jetzt remixen",
-      "highlightNote": "Ihr Entwurf ist bereits markiert — lassen Sie ihn markiert und klicken Sie nicht in die E-Mail.",
-      "instructionPrefix": "Halten Sie",
-      "instructionSuffix": "gedrückt und sagen Sie Wort für Wort:",
-      "sayText": "Mach sie wärmer und unterschreibe mit {{name}}.",
-      "extraLead": "Noch ein Trick — solange der Text markiert ist:",
-      "extraSay": "Füge einen lustigen Fakt über Geburtstagskuchen hinzu, und ein Bild davon."
     }
   },
   "settings": {
@@ -127,10 +107,7 @@
       "recording": "Transkription",
       "display": "Anzeige",
       "permissions": "Berechtigungen",
-      "notifications": "Benachrichtigungen",
-      "connectedApps": "Verbundene Apps",
-      "data": "Daten",
-      "remix": "Remix"
+      "data": "Daten"
     },
     "application": {
       "autoUpdate": "Automatische Updates",
@@ -182,7 +159,6 @@
       "outputModeClipboard": "In Zwischenablage kopieren",
       "sound": "Klangfeedback",
       "soundDesc": "Sanfte Töne zu Beginn und Ende der Aufnahme.",
-      "conflict": "Das ist bereits Ihre Remix-Tastenkombination. Wählen Sie eine andere Kombination.",
       "needsModifier": "Tastenkombinationen benötigen eine Modifikatortaste oder Maustaste"
     },
     "display": {
@@ -214,13 +190,6 @@
       "historyDesc": "Alle gespeicherten Sitzungen dauerhaft löschen — dies kann nicht rückgängig gemacht werden.",
       "clearHistory": "Verlauf löschen",
       "clearHistoryConfirm": "Gesamten Transkriptionsverlauf löschen? Alle gespeicherten Sitzungen werden dauerhaft gelöscht."
-    },
-    "remix": {
-      "hotkey": "Remix-Tastenkombination",
-      "hotkeyDesc": "Halten Sie sie gedrückt und sagen Sie, was geändert werden soll — oder tippen Sie kurz für die Schnellrouten.",
-      "conflict": "Das ist bereits Ihre Diktat-Tastenkombination. Wählen Sie eine andere Kombination.",
-      "bar": "Remix-Leiste",
-      "barDesc": "Zeigt eine kleine Leiste am unteren Bildschirmrand. Fahren Sie darüber, um Remix zu öffnen."
     }
   },
   "today": {
@@ -573,59 +542,7 @@
       "models": "Modelle",
       "plugins": "Plugins",
       "settings": "Einstellungen",
-      "help": "Hilfe",
-      "remix": "Remix"
-    }
-  },
-  "remixPage": {
-    "stats": {
-      "remixes": "Remixe ausgeführt",
-      "apps": "Apps remixt",
-      "lastRemix": "letzter Remix",
-      "firstHint": "Halten Sie die Tasten über einem Text, um Ihren ersten zu starten.",
-      "heading": "Nutzung"
-    },
-    "hotkey": {
-      "change": "Tastenkombination ändern"
-    },
-    "tips": {
-      "heading": "Gut zu wissen",
-      "highlight": "Markieren Sie einen Satz, um nur diesen Teil zu remixen — ohne Auswahl liest Remix das ganze Feld.",
-      "tap": "Tippen Sie die Tastenkombination kurz an (statt zu halten) für die Schnellrouten (Strg+1–3).",
-      "followUp": "Nicht ganz richtig? Tippen Sie eine Rückfrage in die Chat-Karte — der Verlauf bleibt erhalten."
-    },
-    "examples": {
-      "groups": {
-        "everyday": "Alltagstexte",
-        "work": "Arbeit & Studium",
-        "web": "Mit dem Web — Freestyle Cloud"
-      },
-      "quotes": {
-        "email": "Mach das wärmer und halb so lang — ich klinge wie ein Anwalt.",
-        "tone": "Ich habe das wütend geschrieben. Mach es bestimmt, aber höflich.",
-        "social": "Mach das knackiger und bring es unter 280 Zeichen.",
-        "format": "Mach aus diesen Stichpunkten einen Absatz für den Bericht.",
-        "translate": "Übersetze das ins Spanische, aber lass meine Grußformel auf Englisch.",
-        "notes": "Mach aus diesen chaotischen Notizen eine saubere Liste, nach Themen gruppiert.",
-        "commit": "Schreibe diese Commit-Nachricht so um, dass sie das Warum erklärt, nicht das Was.",
-        "espresso": "Füge einen Fakt über Espresso hinzu, und ein Bild eines Pour-over.",
-        "mla": "Wandle die Zitate in diesem Essay ins MLA-Format um.",
-        "legal": "Formuliere diese Vertragsklausel so um, dass ein Mandant sie versteht.",
-        "medical": "Prüfe diese Aussagen gegen WebMD und markiere alles, was nicht stimmt."
-      }
-    },
-    "demo": {
-      "statusReady": "Bereit",
-      "statusListening": "Höre zu…",
-      "statusDone": "An Ort und Stelle neu geschrieben"
-    },
-    "how": {
-      "heading": "So verwenden Sie es",
-      "step1": "Markieren Sie mit dem Cursor den Text, den Sie ändern möchten.",
-      "step2Prefix": "Halten Sie",
-      "step2Suffix": "gedrückt und sagen Sie die Änderung laut.",
-      "step3": "Remix schreibt den Text an Ort und Stelle neu. Rückgängig bringt ihn zurück, falls Sie es sich anders überlegen.",
-      "more": "Nichts markiert? Dann liest Remix das ganze Feld, in dem Sie sind. Es kann außerdem das Web nach Fakten und Quellen durchsuchen und Bilder direkt in Ihren Entwurf einfügen."
+      "help": "Hilfe"
     }
   }
 }

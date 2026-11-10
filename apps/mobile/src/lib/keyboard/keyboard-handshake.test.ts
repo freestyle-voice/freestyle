@@ -54,12 +54,13 @@ describe("keyboard readiness handshake", () => {
     if (extensionBridge) expect(extensionBridge).toBe(mirroredBridge);
   });
 
-  it("keeps keyboard preference optional chains valid Swift", () => {
-    expect(mirroredKeyboardController).toMatch(
-      /UserDefaults\(suiteName: FreestyleDictationBridge\.appGroupID\)\?\s*\.string/,
+  it("ignores stored conversational modes and only launches dictation", () => {
+    expect(sharedStoreModule).toMatch(
+      /Function\("keyboardMode"\)[\s\S]*?return "dictate"/,
     );
-    expect(mirroredKeyboardController).toMatch(
-      /UserDefaults\(suiteName: FreestyleDictationBridge\.appGroupID\)\?\s*\.set/,
+    expect(mirroredKeyboardController).not.toContain("UISegmentedControl");
+    expect(mirroredKeyboardController).toContain(
+      'URL(string: "freestyle://dictate")!',
     );
   });
 

@@ -13,7 +13,6 @@ import { createContext, type ReactNode, useContext, useMemo } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import type { Phase } from "@/lib/keyboard/dictation-bridge";
 import { useKeyboardDictationBridge } from "@/lib/keyboard/use-keyboard-dictation-bridge";
-import { useSettings } from "@/lib/settings";
 
 interface KeyboardDictationContextValue {
   active: boolean;
@@ -33,9 +32,8 @@ export function KeyboardDictationProvider({
   children: ReactNode;
 }) {
   const { signedIn } = useAuth();
-  const { settings } = useSettings();
   const { active, phase, partial, finalText, toggle, dismiss } =
-    useKeyboardDictationBridge(signedIn, settings.autoListenAfterRemixQuestion);
+    useKeyboardDictationBridge(signedIn);
 
   const value = useMemo(
     () => ({ active, phase, partial, finalText, toggle, dismiss }),

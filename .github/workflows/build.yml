@@ -189,7 +189,8 @@ jobs:
     name: Test (Browser UI)
     needs: [changes]
     if: needs.changes.outputs.run_electron == 'true'
-    runs-on: ubuntu-latest
+    # Playwright 1.60 supports Ubuntu 24.04; ubuntu-latest can select 26.04.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
@@ -412,7 +413,7 @@ jobs:
     name: Build (macOS)
     needs: [changes, lint, typecheck, test-server]
     if: needs.changes.outputs.run_electron == 'true'
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -432,6 +433,8 @@ jobs:
         working-directory: apps/electron
         run: pnpm run build:mac
         env:
+          # Keep native helpers compatible with the former macOS 14 runner.
+          MACOSX_DEPLOYMENT_TARGET: "14.0"
           CSC_LINK: ${{ secrets.MAC_CERTS }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERTS_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -491,8 +494,8 @@ jobs:
       - name: Build server
         run: pnpm turbo build --filter=@freestyle-voice/server --force
 
-      - name: Run focused agent OS tests
-        run: pnpm --filter @freestyle-voice/server exec vitest run tests/agent-os.test.ts
+      - name: Run dictation compatibility tests
+        run: pnpm --filter @freestyle-voice/server exec vitest run tests/dictation-only.test.ts
 
       - name: Setup MSVC
         uses: ilammy/msvc-dev-cmd@v1

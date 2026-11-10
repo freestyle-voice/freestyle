@@ -1,17 +1,7 @@
-export type PanelDictationEvent = {
-  kind: "partial" | "final" | "error";
-  text: string;
+export type PanelRendererMessage = {
+  channel: "dashboard:navigate";
+  payload: "/settings" | "/settings/models" | "/today";
 };
-
-export type PanelRendererMessage =
-  | { channel: "panel:focus-composer" }
-  | { channel: "panel:dictation"; payload: PanelDictationEvent }
-  | { channel: "panel:open-thread"; payload: string }
-  | { channel: "panel:thread-updated"; payload: string }
-  | {
-      channel: "dashboard:navigate";
-      payload: "/settings" | "/settings/models" | "/remix";
-    };
 
 /**
  * Holds panel messages until React has registered its IPC listeners. Electron's
@@ -21,10 +11,6 @@ export type PanelRendererMessage =
 export class PanelRendererMessageQueue {
   private ready = false;
   private initialNavigation = true;
-  private focusComposerPending = false;
-  private pendingDictation: PanelRendererMessage | null = null;
-  private pendingOpenThread: PanelRendererMessage | null = null;
-  private pendingThreadUpdate: PanelRendererMessage | null = null;
   private pendingNavigation: PanelRendererMessage | null = null;
 
   constructor(
@@ -36,40 +22,13 @@ export class PanelRendererMessageQueue {
       this.deliver(message);
       return;
     }
-    if (message.channel === "panel:focus-composer") {
-      this.focusComposerPending = true;
-      return;
-    }
-    if (message.channel === "panel:open-thread") {
-      this.pendingOpenThread = message;
-      return;
-    }
-    if (message.channel === "panel:thread-updated") {
-      this.pendingThreadUpdate = message;
-      return;
-    }
-    if (message.channel === "dashboard:navigate") {
-      this.pendingNavigation = message;
-      return;
-    }
-    // The final transcript supersedes every prior partial. Retaining only the
-    // newest event avoids unbounded buffering if a renderer fails to mount.
-    this.pendingDictation = message;
+    this.pendingNavigation = message;
   }
 
   markReady(): void {
     if (this.ready) return;
     this.ready = true;
     if (this.pendingNavigation) this.deliver(this.pendingNavigation);
-    if (this.focusComposerPending)
-      this.deliver({ channel: "panel:focus-composer" });
-    if (this.pendingDictation) this.deliver(this.pendingDictation);
-    if (this.pendingOpenThread) this.deliver(this.pendingOpenThread);
-    if (this.pendingThreadUpdate) this.deliver(this.pendingThreadUpdate);
-    this.focusComposerPending = false;
-    this.pendingDictation = null;
-    this.pendingOpenThread = null;
-    this.pendingThreadUpdate = null;
     this.pendingNavigation = null;
   }
 
@@ -88,10 +47,6 @@ export class PanelRendererMessageQueue {
 
   private clear(): void {
     this.ready = false;
-    this.focusComposerPending = false;
-    this.pendingDictation = null;
-    this.pendingOpenThread = null;
-    this.pendingThreadUpdate = null;
     this.pendingNavigation = null;
   }
 }

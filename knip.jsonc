@@ -24,14 +24,10 @@
     "apps/electron": {
       "entry": [
         "electron.vite.config.ts",
-        "browser.vite.config.ts",
         "src/renderer/src/browser/bootstrap.ts",
         "src/main/index.ts",
         "src/preload/index.ts",
         "src/preload/plugin-bridge.ts",
-        "src/renderer/src/dashboard.tsx",
-        "src/renderer/src/components/panel.tsx",
-        "src/renderer/src/components/notification.tsx",
         "src/renderer/src/components/pill.tsx",
         "src/**/*.test.{ts,tsx}",
         "tests/**/*.ts",

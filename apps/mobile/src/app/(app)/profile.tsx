@@ -7,13 +7,9 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import {
-  Bell,
   Building2,
-  CalendarClock,
   Check,
   LogOut,
-  PlugZap,
-  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
 } from "lucide-react-native";
@@ -201,32 +197,6 @@ export function ProfileContent() {
           label="Dictation settings"
           value="Language, cleanup, and privacy"
           onPress={() => router.push("/(app)/settings")}
-        />
-        <SettingsNavRow
-          icon={PlugZap}
-          label="Connected apps & MCPs"
-          value="Give Remix access to your tools"
-          onPress={() => router.push("/(app)/connected-apps")}
-        />
-        <SettingsNavRow
-          icon={ShieldCheck}
-          label="Action approvals"
-          value="Confirm connected-app changes"
-          // Expo's generated route declarations refresh when Metro starts; keep
-          // this new nested settings route usable in a clean typecheck too.
-          onPress={() => router.push("/(app)/settings/approvals" as never)}
-        />
-        <SettingsNavRow
-          icon={CalendarClock}
-          label="Automations"
-          value="Scheduled work and briefs"
-          onPress={() => router.push("/(app)/automations")}
-        />
-        <SettingsNavRow
-          icon={Bell}
-          label="Notifications"
-          value="Updates from Remix"
-          onPress={() => router.push("/(app)/notifications")}
           last
         />
       </SettingsGroup>

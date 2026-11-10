@@ -21,7 +21,6 @@ import {
   useSetActiveOrganization,
 } from "@renderer/lib/use-profile";
 import { cn } from "@renderer/lib/utils";
-import type { Workspace } from "@renderer/lib/workspace";
 import {
   Building2,
   Check,
@@ -83,30 +82,31 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
   if (!user || isPro || !balance) return null;
 
   const dictation = balance.dictation;
-  const remix = balance.remix ?? balance;
-  const primary = dictation ?? remix;
-  const primaryLabel = dictation ? "dictation words" : "Remix turns";
-  const pct = usagePercent(primary);
 
   return (
     <div
       className="glass-card mx-3 mt-2 rounded-[10px] border p-3"
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
-      <div className="text-foreground text-[12px] font-medium">
-        {formatNumber(primary.remaining)}
-        <span className="text-muted-foreground font-normal">
-          {" "}
-          / {formatNumber(primary.limit)}
-        </span>{" "}
-        {primaryLabel} left
-      </div>
-      <Progress value={pct} className="mt-1.5 h-1.5" />
+      {dictation ? (
+        <>
+          <div className="text-foreground text-[12px] font-medium">
+            {formatNumber(dictation.remaining)}
+            <span className="text-muted-foreground font-normal">
+              {" "}
+              / {formatNumber(dictation.limit)}
+            </span>{" "}
+            dictation words left
+          </div>
+          <Progress value={usagePercent(dictation)} className="mt-1.5 h-1.5" />
+        </>
+      ) : (
+        <p className="text-muted-foreground text-[12px]">
+          Dictation usage is unavailable.
+        </p>
+      )}
       <p className="text-muted-foreground mt-2.5 text-[11px] leading-snug">
-        {dictation
-          ? `${formatNumber(remix.remaining)} / ${formatNumber(remix.limit)} Remix turns left. `
-          : ""}
-        Upgrade to Pro for unlimited dictation and Remix.
+        Upgrade to Pro for unlimited dictation.
       </p>
       <Button
         size="sm"
@@ -120,16 +120,13 @@ export function UpgradeCtaCard(): React.JSX.Element | null {
 }
 
 export function SignInCtaCard({
-  workspace = "dictate",
   onDismiss,
 }: {
-  workspace?: Workspace;
   onDismiss: () => void;
 }): React.JSX.Element | null {
   const { user, phase, signingIn, signIn } = useCloudAuth();
   if (user || phase === "checking") return null;
-  const title =
-    workspace === "remix" ? "Freestyle Remix" : "Freestyle Transcribe";
+  const title = "Freestyle Transcribe";
 
   return (
     <section
@@ -154,9 +151,7 @@ export function SignInCtaCard({
         </Button>
       </div>
       <p className="text-muted-foreground mt-1 text-[11px] leading-snug">
-        {workspace === "remix"
-          ? "Sign in for Cloud models, synced chats, and scheduled tasks."
-          : "Fast, accurate transcription, no API key required."}
+        Fast, accurate transcription, no API key required.
       </p>
       <Button
         size="sm"

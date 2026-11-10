@@ -17,7 +17,6 @@ const user = {
   name: "Browser Preview",
   email: "preview@example.test",
 };
-const timestamp = "2026-10-01T10:00:00.000Z";
 
 /** Each page load gets isolated mutable fixtures. Unknown requests never go live. */
 export function createFixtureFetch(scenario: PreviewScenario) {
@@ -55,7 +54,7 @@ export function createFixtureFetch(scenario: PreviewScenario) {
           },
         ];
   const history =
-    scenario === "empty"
+    scenario === "empty" || scenario === "onboarding"
       ? []
       : [
           {
@@ -74,23 +73,6 @@ export function createFixtureFetch(scenario: PreviewScenario) {
             created_at: "2026-10-01 10:00:00",
           },
         ];
-  const thread = {
-    id: "preview-thread",
-    type: "remote",
-    title: "Browser development",
-    messages: [
-      {
-        id: "preview-message",
-        role: "assistant",
-        parts: [
-          {
-            type: "text",
-            text: "This is a fixture conversation. Explore the UI without running Electron.",
-          },
-        ],
-      },
-    ],
-  };
   const dictionary: { id: number; key: string; value: string }[] = [];
   const vocabulary: { id: number; word: string }[] = [];
 
@@ -105,10 +87,6 @@ export function createFixtureFetch(scenario: PreviewScenario) {
       return json({ status: "ok", name: "freestyle" });
     if (path === "/api/client-error" && method === "POST")
       return json({ ok: true });
-    if (path === "/api/notifications/token" && method === "POST")
-      return json({ token: null, userId: null });
-    if (path === "/api/brain/read" && method === "POST")
-      return json({ ok: true, text: "" });
     if (path === "/api/auth/status")
       return json({
         authenticated: !signedOut,
@@ -134,7 +112,6 @@ export function createFixtureFetch(scenario: PreviewScenario) {
         "/api/history",
         "/api/dictionary",
         "/api/vocabulary",
-        "/api/attention",
         "/api/models/available",
       ].includes(path)
     ) {
@@ -163,12 +140,6 @@ export function createFixtureFetch(scenario: PreviewScenario) {
     }
     if (method === "GET") {
       switch (path) {
-        case "/api/brain/list":
-          return json({ ok: true, files: [] });
-        case "/api/remix/identity":
-          return json({ userId: user.id, host: "http://browser-preview.test" });
-        case "/api/remix/sessions/runtime":
-          return json({ kind: "managed" });
         case "/api/org/active":
           return json({ organization: null });
         case "/api/org/list":
@@ -191,11 +162,6 @@ export function createFixtureFetch(scenario: PreviewScenario) {
             monthly: { amount: 1200, display: "$12" },
             annual: { amount: 900, display: "$9" },
           });
-        case "/api/agent/activity/stream":
-          return new Response(
-            `event: activity\ndata: ${JSON.stringify({ threads: [] })}\n\n`,
-            { headers: { "Content-Type": "text/event-stream" } },
-          );
         case "/api/history": {
           const search = url.searchParams.get("search")?.toLowerCase() ?? "";
           const items = history.filter((item) =>
@@ -241,12 +207,6 @@ export function createFixtureFetch(scenario: PreviewScenario) {
           ]);
         case "/api/models/configured":
           return json(models);
-        case "/api/models/remix-runtime":
-          return json({
-            provider: "openai",
-            model: "gpt-4o-mini",
-            configured: true,
-          });
         case "/api/whisper/status":
           return json({
             binaryAvailable: false,
@@ -287,23 +247,6 @@ export function createFixtureFetch(scenario: PreviewScenario) {
           return json({ plugins: [] });
         case "/api/plugins/check-updates":
           return json({ updates: [] });
-        case "/api/agent/activity":
-          return json({ threads: [] });
-        case "/api/agent/thread/latest":
-          return json({ thread: scenario === "empty" ? null : thread });
-        case "/api/agent/thread/list":
-          return json({ threads: [], nextCursor: null });
-        case "/api/agent/thread/preview-thread":
-        case "/api/remix/thread/preview-thread":
-          return json({ thread, activeTurn: null, pendingAction: null });
-        case "/api/remix/preview-thread/queue":
-          return json({ active: false, items: [] });
-        case "/api/agent/thread/preview-thread/runs":
-          return json({ runs: [] });
-        case "/api/remix/sessions/local":
-          return json({ threads: [], nextCursor: null });
-        case "/api/remix/model":
-          return json({ model: null });
         case "/api/usage":
           return json({
             remaining: 2400,
@@ -312,29 +255,6 @@ export function createFixtureFetch(scenario: PreviewScenario) {
             resetsAt: "2030-01-01T00:00:00.000Z",
             plan: "free",
           });
-        case "/api/attention":
-          return json({ generatedAt: timestamp, items: [] });
-        case "/api/connectors/catalog":
-          return json({ connectors: [], nextCursor: null });
-        case "/api/connectors/connections":
-          return json({ connections: [] });
-        case "/api/connectors/suggested":
-          return json({ connectors: [] });
-        case "/api/notifications/token":
-          return json({ token: null, userId: null });
-        case "/api/brain/files":
-        case "/api/brain/notes":
-          return json([]);
-        case "/api/mcp/connections":
-          return json([]);
-        case "/api/connectors":
-          return json({ connectors: [] });
-        case "/api/scheduled-tasks":
-          return json({ tasks: [] });
-        case "/api/suggestions/home":
-          return json({ suggestions: [] });
-        case "/api/suggestions/capabilities":
-          return json({ capabilities: [] });
       }
     }
     return Response.json(

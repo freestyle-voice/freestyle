@@ -13,8 +13,6 @@ export interface CloudUsagePocket {
 }
 
 export interface CloudUsageBalance extends CloudUsagePocket {
-  /** The Remix/agent allowance. Absent on Cloud versions before usage pockets. */
-  remix?: CloudUsagePocket;
   /** The dictation-word allowance. Absent on Cloud versions before usage pockets. */
   dictation?: CloudUsagePocket;
   /** Subscription plan; absent on older cloud versions (treated as "free"). */

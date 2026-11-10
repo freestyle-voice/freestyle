@@ -34,7 +34,7 @@ export interface DictationStateInput {
   level: number;
 }
 
-export type KeyboardMode = "dictate" | "remix";
+export type KeyboardMode = "dictate";
 
 /** Events emitted to JS — `onCommand` fires when the keyboard posts a command. */
 type FreestyleSharedStoreModuleEvents = {
@@ -67,7 +67,7 @@ declare class FreestyleSharedStoreModule extends NativeModule<FreestyleSharedSto
    * to the shared container).
    */
   keyboardLastActive(): number;
-  /** Read the compact mode selector controlled by the keyboard extension. */
+  /** Legacy compatibility; always resolves to dictation. */
   keyboardMode(): KeyboardMode;
 }
 

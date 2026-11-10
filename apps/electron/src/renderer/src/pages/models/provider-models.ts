@@ -43,10 +43,7 @@ export function withConfiguredCleanupModels(
 ): AvailableModel[] {
   const result = [...catalog];
   for (const model of configured) {
-    if (
-      (model.type !== "llm" && model.type !== "remix") ||
-      !CLEANUP_API_PROVIDERS.includes(model.provider)
-    )
+    if (model.type !== "llm" || !CLEANUP_API_PROVIDERS.includes(model.provider))
       continue;
     const prefix = `${model.provider}/`;
     const nativeId = model.model_id.startsWith(prefix)

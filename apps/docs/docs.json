@@ -33,8 +33,6 @@
         "group": "Features",
         "icon": "sliders-horizontal",
         "pages": [
-          "features/remix",
-          "features/mcp",
           "features/cleanup",
           "features/dictionary",
           "features/vocabulary",

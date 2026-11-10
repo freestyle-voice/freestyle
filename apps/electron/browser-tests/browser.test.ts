@@ -5,13 +5,9 @@ const routes = [
   "/remix",
   "/settings/application",
   "/settings/transcription",
-  "/settings/remix",
   "/settings/appearance",
-  "/settings/mcp",
   "/settings/permissions",
   "/settings/data",
-  "/settings/notifications",
-  "/settings/apps",
   "/settings/billing",
   "/settings/network",
   "/settings/models",
@@ -37,16 +33,12 @@ for (const route of routes) {
     const settingsHeadings: Record<string, string> = {
       "/settings/application": "Application",
       "/settings/transcription": "Dictation",
-      "/settings/remix": "Remix",
       "/settings/appearance": "Appearance",
       "/settings/permissions": "Permissions",
       "/settings/data": "Data",
-      "/settings/apps": "Connected apps",
-      "/settings/notifications": "Notifications",
       "/settings/billing": "Usage & billing",
       "/settings/network": "Network",
       "/settings/models": "Models",
-      "/settings/mcp": "MCP connections",
     };
     if (settingsHeadings[route])
       await expect(
@@ -117,17 +109,8 @@ test("theme controls update the real UI and desktop-only switches are disabled",
   await expect(page.getByRole("switch")).toHaveCount(3);
   for (const control of await page.getByRole("switch").all())
     await expect(control).toBeDisabled();
-  await page.goto("/index.html#/settings/remix");
+  await page.goto("/index.html#/settings/transcription");
   await expect(page.getByRole("button", { name: /Change$/ })).toBeDisabled();
-});
-
-test("notification preview uses the shared card and can be dismissed", async ({
-  page,
-}) => {
-  await page.goto("/notification.html");
-  await expect(page.getByText("Your brief is ready")).toBeVisible();
-  await page.getByRole("button", { name: "Dismiss", exact: true }).click();
-  await expect(page.getByText("Your brief is ready")).toHaveCount(0);
 });
 
 test.describe("macOS browser", () => {
@@ -172,10 +155,6 @@ test("reports unavailable native actions instead of claiming success", async ({
 }) => {
   await page.goto("/");
   await expect(page.locator("#root")).not.toBeEmpty();
-  expect(await page.evaluate(() => window.api.remixSelectAll())).toEqual({
-    ok: false,
-    reason: "desktop_required",
-  });
   await page.evaluate(() => window.api.installUpdate());
   await expect(
     page
@@ -184,7 +163,7 @@ test("reports unavailable native actions instead of claiming success", async ({
   ).toBeVisible();
 });
 
-for (const surface of ["panel", "pill", "notification"]) {
+for (const surface of ["panel", "pill"]) {
   test(`boots the ${surface} surface`, async ({ page }) => {
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -247,22 +226,6 @@ test("uses the authenticated standalone server through the browser proxy", async
       )
     ).status(),
   ).toBe(403);
-  const mcpRequests: string[] = [];
-  page.on("request", (req) => {
-    if (req.url().includes("/api/mcp/")) mcpRequests.push(req.url());
-  });
-  await page.goto("http://127.0.0.1:5174/index.html#/settings/mcp");
-  await expect(
-    page.getByRole("heading", {
-      name: "MCP connections",
-      exact: true,
-      level: 1,
-    }),
-  ).toBeVisible();
-  await expect.poll(() => mcpRequests.length).toBeGreaterThan(0);
-  expect(
-    mcpRequests.every((url) => new URL(url).origin === "http://127.0.0.1:5174"),
-  ).toBe(true);
   const websocket = await page.evaluate(
     () =>
       new Promise<string>((resolve) => {
@@ -284,3 +247,26 @@ test("uses the authenticated standalone server through the browser proxy", async
   );
   expect(websocket).toMatch(/^\{"type":"(config|error)"/);
 });
+
+for (const path of ["/", "/remix"]) {
+  test(`opens Dictate with a saved Remix workspace at ${path}`, async ({
+    page,
+  }) => {
+    await page.addInitScript(() =>
+      localStorage.setItem("shell.workspace", "remix"),
+    );
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      const pathname = new URL(request.url()).pathname;
+      if (/^\/api\/(remix|agent|brain|mcp|connectors|scheduled)/.test(pathname))
+        requests.push(pathname);
+    });
+    await page.goto(`/index.html#${path}`);
+    await expect(page).toHaveURL(/#\/today$/);
+    await expect(
+      page.getByRole("navigation", { name: "Remix navigation" }),
+    ).toHaveCount(0);
+    await page.waitForLoadState("networkidle");
+    expect(requests).toEqual([]);
+  });
+}
